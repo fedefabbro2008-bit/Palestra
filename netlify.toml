@@ -1,0 +1,20 @@
+# Palestra: la pagina e il service worker non devono restare in cache nel browser,
+# così ogni nuova versione di index.html arriva subito (offline ci pensa sw.js)
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache"
