@@ -869,6 +869,11 @@ body.dark nav.bottom button.active{color:#ff7d8f;}   /* sulla pillola di vetro i
 .sess-ex.collapsed .sess-name-input{pointer-events:none;}
 /* tastiera aperta: la barra in basso lascia spazio al campo in cui si scrive */
 body.kb-open nav.bottom{display:none;}
+/* e quella della seduta non resta ferma in alto: con la stima aperta copriva quasi tutto lo spazio sopra la tastiera */
+body.kb-open .session-topbar{position:relative;}
+/* il browser (campo toccato, elemento portato a vista) lascia libere la barra in alto e quella in basso */
+main{scroll-padding-top:calc(var(--head-h, 0px) + var(--sess-h, 0px) + 12px); scroll-padding-bottom:calc(var(--stack-h, 92px) + 12px);}
+body.kb-open main{scroll-padding-top:calc(var(--head-h, 0px) + 12px);}
 .sess-ex-head .sess-summary{font-size:11px; color:var(--text-faint); font-family:'JetBrains Mono',ui-monospace,monospace;
   order:10; flex:1 0 100%; padding-left:29px; margin-top:1px; line-height:1.4;}   /* sotto il nome: "3 serie · 18 kg · 10/9/8 rip" */
 .sess-ex.collapsed .sess-ex-head{flex-wrap:wrap; row-gap:0;}
@@ -7825,12 +7830,23 @@ lastBkSig = settingsSig();   // all'apertura la copia automatica ha già queste 
     if(el.tagName==='TEXTAREA' || el.isContentEditable) return true;
     return el.tagName==='INPUT' && !NON_TEXT.test(el.type||'');
   }
+  /* parte di <main> davvero libera: sopra la coprono l'intestazione o la barra della seduta (che resta ferma in alto),
+     sotto la barra di vetro e il timer. Prima contava tutto main e il campo poteva finire sotto la barra della seduta */
+  function freeArea(m){
+    let top = m.top, bottom = m.bottom;
+    [document.querySelector('header'), document.querySelector('#sessionView .session-topbar')].forEach(x=>{
+      if(!x || !x.offsetHeight || getComputedStyle(x).position==='relative') return;
+      top = Math.max(top, x.getBoundingClientRect().bottom);
+    });
+    document.querySelectorAll('.bottom-stack > *').forEach(x=>{ if(x.offsetHeight) bottom = Math.min(bottom, x.getBoundingClientRect().top); });
+    return { top, bottom };
+  }
   function keepVisible(el){
     if(!mainEl || !el || !mainEl.contains(el)) return;
-    const r = el.getBoundingClientRect(), m = mainEl.getBoundingClientRect();
-    const pad = 24;
-    if(r.bottom > m.bottom - pad) mainEl.scrollTop += r.bottom - (m.bottom - pad);
-    else if(r.top < m.top + pad) mainEl.scrollTop -= (m.top + pad) - r.top;
+    const r = el.getBoundingClientRect(), f = freeArea(mainEl.getBoundingClientRect());
+    const pad = 24, top = f.top + pad, bottom = f.bottom - pad;
+    if(r.top < top) mainEl.scrollTop -= top - r.top;
+    else if(r.bottom > bottom) mainEl.scrollTop += Math.min(r.bottom - bottom, r.top - top);   // mai oltre il bordo alto libero
   }
   function apply(){
     raf = 0;
@@ -7939,11 +7955,14 @@ else if(staleSessionSaved) renderAll();
 /* liquid glass: la barra in basso galleggia sopra il contenuto, quindi main si allunga quanto lei */
 (function(){
   const st = document.querySelector('.bottom-stack'); if(!st) return;
-  const hd = document.querySelector('header');
-  const set = ()=>{ document.documentElement.style.setProperty('--stack-h', st.offsetHeight+'px');
-    if(hd) document.documentElement.style.setProperty('--head-h', hd.offsetHeight+'px'); };
+  const hd = document.querySelector('header'), sb = document.querySelector('#sessionView .session-topbar');
+  // --sess-h: altezza della barra della seduta (0 fuori dall'allenamento), per il margine di scorrimento di main
+  const set = ()=>{ const ds = document.documentElement.style;
+    ds.setProperty('--stack-h', st.offsetHeight+'px');
+    if(hd) ds.setProperty('--head-h', hd.offsetHeight+'px');
+    if(sb) ds.setProperty('--sess-h', sb.offsetHeight+'px'); };
   set();
-  try{ const ro = new ResizeObserver(set); ro.observe(st); if(hd) ro.observe(hd); }catch(e){ window.addEventListener('resize', set); }
+  try{ const ro = new ResizeObserver(set); ro.observe(st); if(hd) ro.observe(hd); if(sb) ro.observe(sb); }catch(e){ window.addEventListener('resize', set); }
 })();
 pruneOldBackups();
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){}
