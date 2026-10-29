@@ -444,6 +444,10 @@ main{
 .ex-row2 select.ex-type:focus{color:var(--accent-hi); outline:none;}
 .ex-row1b{display:flex; gap:8px; margin-bottom:8px;}
 .ex-row1b select{flex:1; min-width:0;}
+/* muscolo e secondario: etichetta sopra e "nessuno" nel menu (prima "+ secondario: nessuno" restava tagliato) */
+.ex-musc .fw{flex:1 1 0; min-width:0; display:flex; flex-direction:column; gap:3px;}
+.ex-musc .fw > span{font-size:10px; color:var(--text-faint);}
+.ex-musc .fw select{width:100%;}
 .ex-row2{display:grid; grid-template-columns:.62fr .62fr 1.9fr; gap:8px; align-items:end; min-width:0; margin-bottom:8px;}
 .ex-row2b{display:grid; grid-template-columns:1fr 1fr auto auto; gap:8px; align-items:end; min-width:0;}
 .ex-row2b .fw label{display:block; font-size:10px; color:var(--text-faint); margin-bottom:3px; min-height:13px;}
@@ -745,7 +749,7 @@ body.dark .bk-status{color:#b3b3b3;}   /* nel pannello di vetro il grigio medio 
   display:flex; gap:10px; align-items:flex-start;
 }
 .banner .ic{color:var(--warn); margin-top:1px;}
-.banner .btn{margin-top:10px;}
+.banner .btn{display:flex; width:max-content; margin-top:10px;}   /* su una riga sua: in mezzo al testo lasciava l'ultima parola appesa */
 
 /* ---------- barra inferiore + timer ---------- */
 .bottom-stack{flex:0 0 auto; position:relative; z-index:30;}
@@ -811,9 +815,11 @@ body.dark nav.bottom button.active{color:#ff7d8f;}   /* sulla pillola di vetro i
 .st-row{display:flex; align-items:center; gap:10px; padding-bottom:10px;}
 .st-left{display:flex; flex-direction:column; min-width:70px;}
 .st-elapsed{font-family:'JetBrains Mono',ui-monospace,monospace; font-size:20px; font-weight:700; color:var(--accent-hi); font-variant-numeric:tabular-nums;}
-.st-meta{font-size:10px; color:var(--text-faint); font-family:'JetBrains Mono',ui-monospace,monospace; letter-spacing:-.2px;}
+.st-meta{font-size:10px; color:var(--text-faint); font-family:'JetBrains Mono',ui-monospace,monospace; letter-spacing:-.2px; white-space:pre-line; line-height:1.3;}
 .st-title{flex:1; min-width:0; font-family:'Space Grotesk',-apple-system,sans-serif; font-weight:600; font-size:13.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.25;}
 .st-title .st-kicker{display:block; font-family:'Inter',-apple-system,sans-serif; font-weight:500; font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.07em;}
+/* schermi stretti: il nome dell'esercizio in corso su una riga sua (accanto restavano pochi pixel con le lettere tagliate) */
+@media (max-width:359px){ .st-row{flex-wrap:wrap; row-gap:6px;} .st-title{order:3; flex:1 0 100%;} .st-actions{margin-left:auto;} }
 .st-actions .icon-btn{width:40px; height:40px;}
 .st-actions{display:flex; gap:8px; flex-shrink:0;}
 .st-actions button{padding:9px 13px; font-size:12.5px;}
@@ -884,7 +890,11 @@ body.kb-open nav.bottom{display:none;}
 .rx-tiles{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 0 12px;}
 .rx-tiles .m-tile b{font-size:22px; font-variant-numeric:tabular-nums;}
 .rx-tiles .m-tile > span:last-child{color:var(--text-dim);}
-.rx-tiles.over .ti{color:var(--st-over);} .rx-tiles.under .ti{color:var(--st-low);} .rx-tiles.ok .ti{color:var(--st-ok);}
+/* recuperi: più corto = azzurro, come previsto = verde, più lungo = rosso (al contrario delle serie per muscolo:
+   qui il problema è riposare troppo, che allunga l'allenamento) */
+.rx-tiles.over .ti{color:var(--st-low);} .rx-tiles.under .ti{color:var(--st-over);} .rx-tiles.ok .ti{color:var(--st-ok);}
+#restCard .vol-key .k-under, #restCard .vol-track .fill.under{background:var(--st-over);}
+#restCard .vol-key .k-over, #restCard .vol-track .fill.over{background:var(--st-low);}
 .rx-row{display:grid; grid-template-columns:84px minmax(0,1fr) 58px; align-items:center; column-gap:10px; row-gap:5px; padding:10px 0; border-bottom:1px solid var(--border);}
 .rx-row:last-child{border-bottom:none;}
 .rx-name{grid-row:span 2; align-self:start; display:flex; flex-direction:column; gap:2px; min-width:0;}
@@ -894,7 +904,7 @@ body.kb-open nav.bottom{display:none;}
 .rx-zero{position:absolute; top:-5px; bottom:-5px; width:2px; margin-left:-1px; background:var(--text-faint); border-radius:2px; opacity:.75; z-index:1;}
 .rx-fill{position:absolute; top:0; bottom:0; background:var(--st-ok); border-radius:0 5px 5px 0;}
 .rx-fill.neg{border-radius:5px 0 0 5px;}
-.rx-row.over .rx-fill{background:var(--st-over);} .rx-row.under .rx-fill{background:var(--st-low);}
+.rx-row.over .rx-fill{background:var(--st-low);} .rx-row.under .rx-fill{background:var(--st-over);}
 .rx-val{text-align:right; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; font-variant-numeric:tabular-nums;}
 .rx-meta{grid-column:2 / 4; font-size:11.5px; line-height:1.4; color:var(--text-dim);}
 .rx-meta b{color:var(--text); font-weight:600;}
@@ -1041,6 +1051,8 @@ body.light .timer-bar{box-shadow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px
 #sessList.with-rpe .sess-col-head,
 #sessList.with-rpe .sess-set-row{grid-template-columns:30px .85fr 1fr 1fr .78fr 40px; gap:6px;}
 #sessList.with-rpe .sess-set-row .idx{width:30px; height:34px; font-size:13px;}
+.sess-col-head span{white-space:nowrap;}
+#sessList.with-rpe .sess-col-head{letter-spacing:0;}   /* colonna da 30 px: "SERIE" andava a capo ("SERI/E") */
 #sessList.with-rpe .sess-set-row .check{width:38px; height:38px;}
 #sessList.with-rpe .sess-set-row input{padding:9px 2px;}
 #sessList.with-rpe .sess-set-row .prec{font-size:11.5px;}
@@ -1287,7 +1299,8 @@ body.light .timer-bar{box-shadow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px
 .confirm-actions{display:flex; gap:10px;}
 /* tipo di serie */
 .st-box{padding:18px 16px 16px;}
-.st-title{font-weight:700; font-size:16px; margin:0 4px 2px; font-family:'Space Grotesk',-apple-system,sans-serif;}
+/* solo nel riquadro: senza .st-box cambiava anche il titolo della barra dell'allenamento (stessa classe) */
+.st-box .st-title{font-weight:700; font-size:16px; margin:0 4px 2px; font-family:'Space Grotesk',-apple-system,sans-serif;}
 .st-sub{font-size:12px; color:var(--text-faint); margin:0 4px 12px; overflow-wrap:anywhere;}
 .st-list{display:flex; flex-direction:column; gap:6px; margin-bottom:14px;}
 .st-opt{display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:9px 10px; border-radius:12px; border:1px solid var(--border); background:none; color:var(--text); font:inherit;}
@@ -1775,7 +1788,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card" id="restCard">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>Recuperi <span class="sub">rispetto alla scheda</span><button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoRest"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoRest"><p>Quanto riposi <b>in più</b> (o in meno) rispetto ai recuperi della scheda. Per ogni esercizio il recupero vero è la mediana, in questa scheda, del tempo tra una serie di lavoro e la successiva, meno il tempo della serie.</p><p><b>Grafico</b>: per ogni giornata, il riposo in più a recupero (media degli esercizi, pesata sul numero di recuperi di ognuno); la linea è lo zero, cioè come la scheda. <b>Verde</b> entro il 20% del previsto, <b>azzurro</b> più lungo, <b>rosso</b> più corto. Minuti a seduta = riposo in più a recupero × recuperi previsti in quella giornata.</p><p><b>In cima</b> la media di tutti i tuoi allenamenti: ogni giornata conta quante volte l'hai fatta.</p><p><b>Mostra tutti gli esercizi</b> apre l'elenco: per ognuno il recupero vero e quello della scheda (la tacca).</p><p>Esclusi superset e circuiti (lì il recupero è dopo il giro), riscaldamenti, stretching, esercizi senza recupero e le pause in cui hai fatto un altro esercizio.</p></div>
+      <div class="card-info" id="infoRest"><p>Quanto riposi <b>in più</b> (o in meno) rispetto ai recuperi della scheda. Per ogni esercizio il recupero vero è la mediana, in questa scheda, del tempo tra una serie di lavoro e la successiva, meno il tempo della serie.</p><p><b>Grafico</b>: per ogni giornata, il riposo in più a recupero (media degli esercizi, pesata sul numero di recuperi di ognuno); la linea è lo zero, cioè come la scheda. <b>Verde</b> entro il 20% del previsto, <b>rosso</b> più lungo, <b>azzurro</b> più corto. Minuti a seduta = riposo in più a recupero × recuperi previsti in quella giornata.</p><p><b>In cima</b> la media di tutti i tuoi allenamenti: ogni giornata conta quante volte l'hai fatta.</p><p><b>Mostra tutti gli esercizi</b> apre l'elenco: per ognuno il recupero vero e quello della scheda (la tacca).</p><p>Esclusi superset e circuiti (lì il recupero è dopo il giro), riscaldamenti, stretching, esercizi senza recupero e le pause in cui hai fatto un altro esercizio.</p></div>
       <div id="restChart"></div>
     </div>
 
@@ -2233,6 +2246,9 @@ function applyPhase(e){
   if(rx && rx.test(e.name)){ const n = String(e.name).replace(rx, '').trim(); if(n) e.name = n.charAt(0).toUpperCase() + n.slice(1); }
   return true;
 }
+/* tutta la scheda con le stesse regole del caricamento: la scheda di default (o le aggiunte) salvata com'è
+   veniva ripulita solo in memoria, e alla prima uscita dall'app si riscriveva (per la sincronizzazione "cambiata") */
+function cleanDays(days){ Object.values(days).forEach(d=>{ if(d && Array.isArray(d.exercises)){ d.exercises.forEach(cleanPlanEx); normalizeLinks(d); } }); return days; }
 function cleanPlanEx(e){
   applyPhase(e);
   // serie di riscaldamento previste in scheda (0-5): create da sole a ogni allenamento.
@@ -2806,6 +2822,7 @@ function loadAll(){
         contentMigrated = hadStoredDays;
         state.days = JSON.parse(JSON.stringify(DEFAULT_DAYS));
       }
+      cleanDays(state.days);
       state.settings.contentVersion = CONTENT_VERSION;
       persist('days');
     }
@@ -3257,11 +3274,13 @@ function addNewDay(){
 }
 async function deleteCurrentDay(){
   if(Object.keys(state.days).length<=1){ showToast('Deve restare almeno una giornata'); return; }
+  // restassero solo riserve, non ci sarebbe più una giornata "che tocca" a cui farle valere
+  if(!isSpare(currentDay) && mainDayKeys().length<=1){ showToast('Serve almeno una giornata normale'); return; }
   const backup = { key:currentDay, day: JSON.parse(JSON.stringify(state.days[currentDay])), order: Object.keys(state.days) };
   const ok = await customConfirm('Eliminare "'+state.days[currentDay].name+'"? Lo storico allenamenti resta salvato.');
   if(!ok) return;
   delete state.days[currentDay];
-  currentDay = Object.keys(state.days)[0];
+  currentDay = dayAfterLast();   // la giornata di turno (prima poteva finire su una riserva)
   state.settings.lastDay = currentDay;
   persist('days'); persist('settings'); renderWorkout();
   showToast('Giornata eliminata', 'Ripristina', ()=>{
@@ -3296,7 +3315,7 @@ function lastLogDateFor(dayKey){
 function renderWorkout(){
   // difesa: currentDay può puntare a una giornata non più esistente (undo di un import, ripristino backup…)
   if(!hasOwn(state.days, currentDay)){
-    if(!Object.keys(state.days).length) state.days = JSON.parse(JSON.stringify(DEFAULT_DAYS));
+    if(!Object.keys(state.days).length) state.days = cleanDays(JSON.parse(JSON.stringify(DEFAULT_DAYS)));
     currentDay = Object.keys(state.days)[0];
     state.settings.lastDay = currentDay;
   }
@@ -3657,14 +3676,14 @@ function renderExList(){
           ${PHASES.map(ph=>`<option value="${ph}" ${ph===phaseOf(e)?'selected':''}>Sezione: ${PHASE_LBL[ph]}</option>`).join('')}
         </select>
       </div>
-      <div class="ex-row1b">
-        <select data-i="${i}" data-f="muscle">
+      <div class="ex-row1b ex-musc">
+        <label class="fw"><span>Muscolo</span><select data-i="${i}" data-f="muscle">
           ${MUSCLES.map(m=>`<option ${m===e.muscle?'selected':''}>${m}</option>`).join('')}
-        </select>
-        <select data-i="${i}" data-f="secondary">
-          <option value="">+ secondario: nessuno</option>
+        </select></label>
+        <label class="fw"><span>Secondario</span><select data-i="${i}" data-f="secondary">
+          <option value="">nessuno</option>
           ${MUSCLES.map(m=>`<option ${m===e.secondary?'selected':''}>${m}</option>`).join('')}
-        </select>
+        </select></label>
       </div>
       <div class="ex-row2">
         <div class="fw"><label>Serie</label><input type="text" inputmode="numeric" value="${num(e.sets)}" data-i="${i}" data-f="sets"></div>
@@ -4251,7 +4270,7 @@ function closeStaleSession(){
     state.logs[iso].sort((a,b)=>a.startedAt-b.startedAt);
     if(!persist('logs')) return false;   // spazio esaurito: la sessione resta aperta
     if(Object.keys(state.days).length>1 && hasOwn(state.days, record.dayKey)){
-      currentDay = rotationNext(record.dayKey); state.settings.lastDay = currentDay; persist('settings');
+      currentDay = rotationNext(slotOf(record) || record.dayKey); state.settings.lastDay = currentDay; persist('settings');
     }
     staleSessionSaved = true;
     autoBackupSave(backupJson());   // anche questo è un allenamento salvato
@@ -4291,8 +4310,9 @@ function startSession(){
   saveSession();
   enterSessionView();
 }
-/* gli esercizi di una seduta nuova, precompilati dall'ultima volta (anche per la durata stimata in home) */
-function sessionExercisesFor(day){
+/* gli esercizi di una seduta nuova, precompilati dall'ultima volta (anche per la durata stimata in home).
+   forEta: solo per la stima della durata, senza i consigli (stallo e pesi della macchina: ~80% del costo, a ogni ridisegno della home) */
+function sessionExercisesFor(day, forEta){
   return day.exercises.map(e=>{
       const nW = Math.min(5, Math.max(0, Math.round(num(e.warmups))||0));
       const count = nW ? Math.min(30, Math.max(0, Math.round(num(e.sets))||0)) : Math.max(1, Math.round(num(e.sets))||1);
@@ -4314,7 +4334,7 @@ function sessionExercisesFor(day){
         type: EX_TYPES[e.type]?e.type:'reps',
         rest: (e.rest==null || e.rest==='') ? 90 : Math.max(0, num(e.rest)), linkNext: !!e.linkNext,
         plan: { sets:count, reps:e.reps },
-        ...(h=>({hint:h.hint, hintKind:h.kind, hintAct:h.act||null}))(hintFor(e, prev)),
+        ...(h=>({hint:h.hint, hintKind:h.kind, hintAct:h.act||null}))(forEta ? {hint:'', kind:'', act:null} : hintFor(e, prev)),
         prevRef: det,   // serie di lavoro dell'ultima volta, allineate alle serie di lavoro di oggi
         prevIso: prev ? prev.iso : null,
         sets
@@ -4369,7 +4389,8 @@ function updateSessionElapsed(){
   const sec = Math.max(0, Math.floor((Date.now()-session.startedAt)/1000));
   setText(document.getElementById('sessElapsed'), String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0'));
   const done = sessionDoneSets(), tot = sessionTotalSets(), ton = sessionTonnage();
-  countTo(document.getElementById('sessMeta'), ton, v=> done+'/'+tot+' serie' + (ton>0 ? ' · '+fmtTon(v) : ''), { key:session.id });
+  // peso sollevato sotto le serie (a capo): sulla stessa riga allargava il blocco e schiacciava il nome dell'esercizio
+  countTo(document.getElementById('sessMeta'), ton, v=> done+'/'+tot+' serie' + (ton>0 ? '\n'+fmtTon(v) : ''), { key:session.id });
   const bar = document.getElementById('sessProgress');
   const w = (tot ? (done/tot*100) : 0).toFixed(1)+'%';
   if(bar && bar.style.width!==w) bar.style.width = w;
@@ -4552,7 +4573,7 @@ function planEtaSec(k){
   const key = k+'|'+dataVersion;
   if(planEtaCache[k] && planEtaCache[k].key===key) return planEtaCache[k].sec;
   let sec = 0;
-  try{ sec = estimateRemaining(sessionExercisesFor(day), Date.now(), {all:true}).total; }catch(e){ console.error('planEta', e); }
+  try{ sec = estimateRemaining(sessionExercisesFor(day, true), Date.now(), {all:true}).total; }catch(e){ console.error('planEta', e); }
   planEtaCache[k] = { key, sec };
   return sec;
 }
@@ -4584,7 +4605,16 @@ function fmtTon(kg){ return kg>=1000 ? dec(kg/1000)+' t' : Math.round(kg)+' kg';
 
 /* una serie è un record se supera lo storico di quell'esercizio (mai al primo utilizzo):
    più carico, oppure stesso carico e più ripetizioni/secondi, oppure a corpo libero più ripetizioni */
+/* il meglio di sempre di un esercizio si calcola una volta per indice (lo storico non cambia durante la seduta):
+   prima si ripercorreva tutto lo storico per ogni serie a ogni ridisegno */
+const bestCache = new WeakMap();
 function bestOf(exx, hist){
+  let memo = bestCache.get(hist); if(!memo){ memo = new Map(); bestCache.set(hist, memo); }
+  const ck = exx.exId+'|'+exx.name;
+  if(!memo.has(ck)) memo.set(ck, bestOfCalc(exx, hist));
+  return memo.get(ck);
+}
+function bestOfCalc(exx, hist){
   const e = hist['id:'+exx.exId] || Object.values(hist).find(v=>v.label===exx.name);
   if(!e || !e.items.length) return null;
   let kg=0, valAtKg=0, val=0, seen=false;
@@ -4673,15 +4703,20 @@ function fitNameField(el){
   if(h>0) el.style.height = (h + el.offsetHeight - el.clientHeight)+'px'; else el.style.height='';
 }
 /* tutte insieme: prima le scritture, poi le letture, poi le scritture. Una per volta forzava un ricalcolo
-   del layout per ogni esercizio (~130 ms su un telefono lento con 13 esercizi, a ogni spunta) */
+   del layout per ogni esercizio (~130 ms su un telefono lento con 13 esercizi, a ogni spunta).
+   Le altezze già misurate si riusano: stesso nome nello stesso posto (dentro o fuori da un gruppo, stessi pulsanti
+   accanto, aperto o chiuso) ha la stessa altezza. Così una spunta non obbliga a reimpaginare tutta la seduta */
+const nameH = new Map();
+const nameKey = el=> (el.closest('.sess-grp') ? 'g' : '-')+el.parentElement.childElementCount+(el.readOnly ? 'c' : 'o')+'|'+el.value;
 function fitSessionNames(){
   const els = [...document.querySelectorAll('#sessList .sess-name-input')];
-  els.forEach(el=>{ el.style.height='auto'; });
-  const m = els.map(el=> [el.scrollHeight, el.offsetHeight - el.clientHeight]);
-  els.forEach((el,i)=>{ const [h,bd] = m[i]; el.style.height = h>0 ? (h+bd)+'px' : ''; });
+  const todo = els.filter(el=>{ const h = nameH.get(nameKey(el)); if(h){ el.style.height = h; return false; } return true; });
+  todo.forEach(el=>{ el.style.height='auto'; });
+  const m = todo.map(el=> [el.scrollHeight, el.offsetHeight - el.clientHeight]);
+  todo.forEach((el,i)=>{ const [h,bd] = m[i]; el.style.height = h>0 ? (h+bd)+'px' : ''; if(h>0) nameH.set(nameKey(el), el.style.height); });
 }
-window.addEventListener('resize', ()=>{ if(session) fitSessionNames(); });
-if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ if(session) fitSessionNames(); }).catch(()=>{});
+window.addEventListener('resize', ()=>{ nameH.clear(); if(session) fitSessionNames(); });
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ nameH.clear(); if(session) fitSessionNames(); }).catch(()=>{});
 /* serie di avvicinamento verso il carico di lavoro (50% → 70% → 90%, ripetizioni a scendere):
    preparano il gesto senza affaticare. Sotto i 20 kg ne basta una. */
 function warmupRamp(target, ws){
@@ -5511,8 +5546,9 @@ async function finalizeSession(){
   const nSets = record.entries.reduce((a,e)=> a + (MUSCLES.includes(e.muscle) && e.muscle!=='Altro' ? num(e.sets) : 0), 0);
 
   // la scheda è a rotazione: finito il Giorno 1, l'app si prepara sul Giorno 2
+  // (una riserva vale come la giornata che ha sostituito: si riparte da quella, non dalla prima)
   if(Object.keys(state.days).length>1 && hasOwn(state.days, record.dayKey)){
-    currentDay = rotationNext(record.dayKey);
+    currentDay = rotationNext(slotOf(record) || record.dayKey);
     state.settings.lastDay = currentDay; persist('settings');
   }
   lastSummary = { id:record.id, dayName:record.dayName||('Giorno '+record.dayKey),
@@ -5765,7 +5801,8 @@ function renderDayDetail(){
   const sessions=state.logs[calSelectedIso];
   box.innerHTML = sessions.map(s=>{
     const ton = s.entries.reduce((a,e)=>a+e.tonnage,0);
-    const nSets = s.entries.reduce((a,e)=>a+e.sets,0);
+    // serie di lavoro come nel riepilogo di fine allenamento e nelle statistiche: stretching e riscaldamenti generici no
+    const nSets = s.entries.reduce((a,e)=>a+(e.muscle!=='Altro' ? num(e.sets) : 0),0);
     const dur = s.endedAt ? Math.round((s.endedAt-s.startedAt)/60000) : null;
     const rows = s.entries.map((e,ei)=>{
       const T=EX_TYPES[e.type]||EX_TYPES.reps;
@@ -6064,7 +6101,8 @@ function renderPrCard(cfg, entriesIdx){
     // serie per serie, non il riassunto dell'esercizio: 100×5 e 100×8 nella stessa seduta -> 100×8
     v.items.forEach(({iso,e})=>{
       if(e.detail && e.detail.length){ const v1 = e1rmOf(e.detail, e.type||v.type); if(v1>best1) best1 = v1; }
-      const sets = (e.detail && e.detail.length) ? workDetail(e.detail) : [{kg:e.kg, val:e.val}];
+      // drop set esclusi: come il trofeo durante l'allenamento, non valgono come record
+      const sets = (e.detail && e.detail.length) ? mainDetail(e.detail) : [{kg:e.kg, val:e.val}];
       sets.forEach(d=>{
         const kg=num(d.kg), val=num(d.val);
         if(kg>0 && (!bestKg || kg>bestKg.kg || (kg===bestKg.kg && val>bestKg.val))) bestKg={kg, val, date:iso};
@@ -6116,7 +6154,7 @@ function monthRecords(fromI, toI){
     if(iso>toI) return;
     s.entries.forEach(e=>{
       if(e.muscle==='Altro') return;
-      const w = workDetail(e.detail); if(!w.length) return;
+      const w = mainDetail(e.detail); if(!w.length) return;   // drop set esclusi, come in beatsRecord
       const k = exKey(e), T = EX_TYPES[e.type]||EX_TYPES.reps, u = T.unit || ' rip';
       let top = null, bw = 0;   // serie migliore della seduta (carico, a parità ripetizioni) e più ripetizioni a corpo libero
       w.forEach(d=>{ const kg=num(d.kg), v=num(d.val);
@@ -6249,7 +6287,7 @@ function muscleRowsHtml(vol, wk, planned, sec){
       return `<div class="vol-row m-mrow ${cls}" data-m="${o.m}" role="button" tabindex="0" aria-expanded="false">
         <div class="lbl"><span class="m">${o.m}</span><span class="n">${Math.round(o.avg)} <span class="rng">/ ${o.t[0]}-${o.t[1]}</span></span></div>
         <div class="vol-det">${det}</div>
-        <div class="vol-track">${o.avg>0 ? `<div class="fill ${cls}" style="width:${Math.min(100,o.avg/maxScale*100).toFixed(1)}%; --d:${i*60}ms"></div>` : ''}
+        <div class="vol-track">${Math.round(o.avg)>0 ? `<div class="fill ${cls}" style="width:${Math.min(100,Math.round(o.avg)/maxScale*100).toFixed(1)}%; --d:${i*60}ms"></div>` : ''}
           <div class="tick" style="left:${(o.t[0]/maxScale*100).toFixed(1)}%"></div><div class="tick" style="left:${Math.min(99.5,o.t[1]/maxScale*100).toFixed(1)}%"></div></div>
       </div>`; }).join('');
 }
@@ -6521,7 +6559,7 @@ function renderPlanPage(){
   renderPrCard(PR_CARDS.plan, Object.values(idx));
 }
 /* ---------- RECUPERI: riposo in più (o in meno) rispetto alla scheda, per giornata ---------- */
-const fmtRest = s=>{ s = Math.round(s); return s<60 ? s+' s' : Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+const fmtRest = s=>{ s = Math.round(s); return s<60 ? s+'s' : Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };   // "45s" come "rec. 90s" nel resto dell'app (nel font a spaziatura fissa "45 s" aveva un buco)
 const fmtDelta = s=>{ s = Math.round(s); return (s>0?'+':s<0?'−':'')+fmtRest(Math.abs(s)); };
 // recuperi veri di un esercizio in una seduta (secondi, già tolto il tempo della serie)
 function restGapsIn(s, en, type){
@@ -6570,7 +6608,7 @@ function restByDay(range){
     const nm = splitDayName(d.name, k);
     out.push({ key:k, name: isSpare(k) ? 'Riserva'+(nm.focus ? ' '+nm.focus.split(' · ')[0].toLowerCase() : '') : nm.key, avg, real, plan,
       extra: avg*planned, planned, sessions: ds.length, measured: measured.size, gaps: gapsN,
-      cls: Math.round(avg)<0 ? 'under' : (r>1.2 ? 'over' : 'ok') });
+      cls: r<0.8 ? 'under' : (r>1.2 ? 'over' : 'ok') });   // ±20% come i riquadri in cima (prima bastava 1 s in meno per "più corto")
   });
   return out;
 }
@@ -6595,7 +6633,7 @@ function restRows(range){
     });
     const real = medianOf(gaps); if(real==null) return;
     const pl = num(e.rest), r = real/pl;
-    rows.push({ name:e.name, plan:pl, real, n, gaps:gaps.length, cls: Math.round(real-pl)<0 ? 'under' : (r>1.2 ? 'over' : 'ok') });
+    rows.push({ name:e.name, plan:pl, real, n, gaps:gaps.length, cls: r<0.8 ? 'under' : (r>1.2 ? 'over' : 'ok') });
   });
   return rows.sort((a,b)=> (b.real-b.plan) - (a.real-a.plan));
 }
@@ -7512,7 +7550,7 @@ document.getElementById('resetSchedaBtn').addEventListener('click', async ()=>{
   const ok = await customConfirm('Ripristinare la scheda predefinita? Storico allenamenti e PR restano intatti.');
   if(!ok || session) return;
   const before = JSON.parse(JSON.stringify(state.days)), beforeDay = currentDay;
-  state.days = JSON.parse(JSON.stringify(DEFAULT_DAYS));
+  state.days = cleanDays(JSON.parse(JSON.stringify(DEFAULT_DAYS)));
   state.settings.contentVersion = CONTENT_VERSION;
   currentDay = pickDay(beforeDay);   // la giornata di turno resta, se esiste anche nella scheda nuova
   state.settings.lastDay = currentDay;
@@ -7763,7 +7801,7 @@ catch(e){
   }catch(e2){}
   showToast('Dati non leggibili: scheda ripristinata, storico conservato', null, null, 5000, 'warn');
   if(!state.logs || typeof state.logs!=='object') state.logs={};
-  state.days=JSON.parse(JSON.stringify(DEFAULT_DAYS));
+  state.days=cleanDays(JSON.parse(JSON.stringify(DEFAULT_DAYS)));
   state.settings.lastDay = currentDay = Object.keys(state.days)[0];
   try{ renderAll(); }catch(e3){ console.error('renderAll', e3); }
 }
@@ -7983,7 +8021,7 @@ function swInit(){
     check.then(okSw=>{ if(!okSw){ swState = 'no'; renderSync(); return; }
     navigator.serviceWorker.register('sw.js').then(reg=>{
       if(navigator.serviceWorker.controller) swState = 'ok';
-      else { swState = 'wait'; (reg.installing || reg.waiting || reg.active) && navigator.serviceWorker.ready.then(()=>{ swState = 'ok'; renderSync(); }); }
+      else { swState = 'wait'; reg && (reg.installing || reg.waiting || reg.active) && navigator.serviceWorker.ready.then(()=>{ swState = 'ok'; renderSync(); }); }
       renderSync();
     }, ()=>{ swState = 'no'; renderSync(); });
     });

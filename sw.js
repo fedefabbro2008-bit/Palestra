@@ -37,8 +37,9 @@ self.addEventListener('fetch', e=>{
     const finish = r=>{ if(!done && r){ done = true; resolve(r); } };
     const net = fetch(req).then(r=> save(req, r));
     // rete lenta (palestra sotto terra): dopo 3 s la copia salvata, se c'è; la rete intanto aggiorna la copia
-    const t = setTimeout(()=> fromCache(req).then(finish), 3000);
-    net.then(r=>{ clearTimeout(t); if(r.ok || !done) finish(r); })
-       .catch(()=>{ clearTimeout(t); fromCache(req).then(r=> finish(r || Response.error())); });
+    const t = setTimeout(()=> fromCache(req).then(finish, ()=>{}), 3000);
+    // risposta d'errore (es. 500 o 404 mentre Netlify pubblica): meglio la copia salvata, se c'è
+    net.then(r=>{ clearTimeout(t); if(r.ok) finish(r); else if(!done) fromCache(req).then(c=> finish(c || r), ()=> finish(r)); })
+       .catch(()=>{ clearTimeout(t); fromCache(req).then(r=> finish(r || Response.error()), ()=> finish(Response.error())); });
   }));
 });
