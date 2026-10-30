@@ -18,3 +18,16 @@
   for = "/"
   [headers.values]
     Cache-Control = "no-cache"
+
+# Sicurezza (tutte le pagine): la pagina non si apre dentro altri siti (niente "clickjacking"),
+# il browser non indovina il tipo dei file, nessun indirizzo inviato ad altri siti,
+# niente fotocamera, microfono, posizione o pagamenti (l'app non li usa).
+# Nessun limite agli script: l'app è tutta in un file con script interni.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"

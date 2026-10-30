@@ -2513,9 +2513,10 @@ function normalizeLogs(raw){
         const src = legacy && setsCount>0 ? rawDetail.slice(0, setsCount) : rawDetail;
         const detail = src.filter(d=>d&&typeof d==='object').map(d=>{
           const o = {
-            kg: num(d.kg),
-            val: num(d.val!==undefined ? d.val : d.reps),
-            rpe: (d.rpe===null||d.rpe===undefined||d.rpe==='') ? null : num(d.rpe),
+            // mai negativi (file modificati a mano o dati sincronizzati rovinati abbassavano il peso sollevato); RPE solo 1-10
+            kg: Math.max(0, num(d.kg)),
+            val: Math.max(0, num(d.val!==undefined ? d.val : d.reps)),
+            rpe: (d.rpe===null||d.rpe===undefined||d.rpe==='' || !(num(d.rpe)>=1 && num(d.rpe)<=10)) ? null : num(d.rpe),
             at:  d.at ? num(d.at) : null
           };
           if(d.w) o.w = true;   // serie di riscaldamento: resta nello storico, non conta nel volume né nei record
@@ -2523,8 +2524,8 @@ function normalizeLogs(raw){
           return o;
         });
         const hasWarm = detail.some(d=>d.w);
-        const kg  = num(e.kg);
-        const val = num(e.val!==undefined ? e.val : e.reps);
+        const kg  = Math.max(0, num(e.kg));
+        const val = Math.max(0, num(e.val!==undefined ? e.val : e.reps));
         entries.push({
           exId: e.exId || null,
           name: name || 'Esercizio',
@@ -2534,7 +2535,7 @@ function normalizeLogs(raw){
           sets: hasWarm ? detail.filter(d=>!d.w).length : (setsCount || detail.length),
           kg, val,
           // il tonnellaggio è tutto il peso sollevato, riscaldamento compreso (salvataggi vecchi ricalcolati)
-          tonnage: (e.tonnage!=null && !hasWarm) ? num(e.tonnage) : detail.reduce((a,d)=>a+d.kg*(type==='reps'?d.val:1),0),
+          tonnage: (e.tonnage!=null && !hasWarm) ? Math.max(0, num(e.tonnage)) : detail.reduce((a,d)=>a+d.kg*(type==='reps'?d.val:1),0),
           detail
         });
       });
@@ -2567,11 +2568,12 @@ function setHtml(d, T, attrs){
 function workDetail(det){ return (det||[]).filter(d=>!d.w); }
 /* tipi di serie oltre al riscaldamento (R). Contano tutti come serie di lavoro (volume, serie per muscolo);
    il drop set (fatto subito dopo, con meno peso) non vale per record, consigli, stallo e confronti */
-const SET_KINDS = {
+// senza prototipo, come EX_TYPES: un tipo "__proto__" o "constructor" (da un file) non deve risultare valido
+const SET_KINDS = Object.assign(Object.create(null), {
   f: { l:'F', name:'Cedimento', tip:'fino a non riuscire a fare un\'altra ripetizione' },
   d: { l:'D', name:'Drop set', tip:'subito dopo la serie prima, con meno peso: senza recupero, non conta per record e consigli' },
   a: { l:'A', name:'AMRAP', tip:'più ripetizioni possibili con quel peso' }
-};
+});
 function kindOf(s){ return (s && !s.warm && s.kind && SET_KINDS[s.kind]) ? s.kind : ''; }     // serie dell'allenamento in corso
 function detKind(d){ return (d && !d.w && d.t && SET_KINDS[d.t]) ? d.t : ''; }               // serie salvata nello storico
 /* serie di lavoro "piene": senza i drop set */
@@ -2796,7 +2798,7 @@ function loadAll(){
   }
   Object.keys(state.days).forEach(k=>{
     const d = state.days[k];
-    if(!d || typeof d!=='object'){ delete state.days[k]; return; }
+    if(!d || typeof d!=='object' || !okKey(k)){ delete state.days[k]; return; }
     d.name = d.name ? String(d.name) : 'Giorno '+k;
     if(d.spare) d.spare = true; else delete d.spare;   // giornata di riserva: versione corta, vale come la giornata che tocca
     d.exercises = Array.isArray(d.exercises) ? d.exercises.filter(e=>e&&typeof e==='object') : [];
@@ -5528,6 +5530,10 @@ async function finalizeSession(){
     startedAt: session.startedAt, endedAt: Date.now(),
     note: session.note || '', entries
   };
+  // lo stesso allenamento già nello storico (per esempio terminato anche in un'altra finestra): resta una volta sola, questa
+  const dup = [];
+  Object.keys(state.logs).forEach(k=>{ const l = state.logs[k];
+    if(l.some(x=>String(x.id)===String(record.id))){ dup.push([k, l]); state.logs[k] = l.filter(x=>String(x.id)!==String(record.id)); if(!state.logs[k].length) delete state.logs[k]; } });
   state.logs[iso] = state.logs[iso] || [];
   state.logs[iso].push(record);
   state.logs[iso].sort((a,b)=>a.startedAt-b.startedAt);
@@ -5537,6 +5543,7 @@ async function finalizeSession(){
     // così i dati non spariscono mentre l'utente crede di averli salvati
     state.logs[iso] = state.logs[iso].filter(s=>s.id!==record.id);
     if(!state.logs[iso].length) delete state.logs[iso];
+    dup.forEach(([k,l])=>{ state.logs[k] = l; });
     showToast(logsLocked ? 'Storico non leggibile: allenamento NON salvato. Esporta un backup e reimportalo.'
                          : 'Spazio esaurito: allenamento NON salvato. Esporta un backup, libera spazio e riprova.',
               'Esporta', ()=>document.getElementById('exportAllBtn').click(), 12000, 'err');
@@ -5600,7 +5607,7 @@ function resumableSession(){
 /* allenamento ricostruito dallo storico (se manca la copia fatta a Termina o l'hai corretto dopo):
    le serie fatte, più quelle della scheda ancora da fare */
 function sessionFromRecord(rec){
-  const day = state.days[rec.dayKey];
+  const day = hasOwn(state.days, rec.dayKey) ? state.days[rec.dayKey] : null;
   const exs = day ? sessionExercisesFor(day) : [];
   const used = new Set();
   rec.entries.forEach(e=>{
@@ -7432,10 +7439,14 @@ function restoreSettings(fileSet){
 /* import di un file o del backup automatico: prima si prepara e si controlla tutto, poi si sostituisce.
    askLost: se il file non ha allenamenti che ci sono adesso (un backup vecchio), prima di sostituire si chiede */
 /* scheda arrivata da fuori (file o sincronizzazione): ogni valore controllato */
+/* chiave di giornata accettabile: non un nome di Object.prototype ("constructor", "__proto__"…): in un oggetto normale
+   "__proto__" cambierebbe il prototipo e "constructor" farebbe trovare una giornata anche dove non c'è */
+const okKey = k=> typeof k==='string' && k!=='' && !(k in Object.prototype);
 function sanitizeDays(raw){
   const days={};
   if(!raw || typeof raw!=='object' || Array.isArray(raw)) return days;
   Object.keys(raw).forEach(k=>{
+    if(!okKey(k)) return;
     const d=raw[k];
     if(!d || typeof d!=='object' || Array.isArray(d)) return;
     days[k]={ name: d.name?String(d.name):'Giorno '+k, ...(d.spare ? {spare:true} : {}),
@@ -7644,16 +7655,20 @@ function loadTimer(){
       if(t && typeof t==='object'){
         const hadFlag = 'paused' in t;
         timer = Object.assign(timer, t);
-        timer.duration = num(timer.duration)||120;
-        timer.remaining = num(timer.remaining)||timer.duration;
+        timer.label = String(timer.label==null || typeof timer.label==='object' ? 'Generico' : timer.label).slice(0, 200);
+        timer.running = !!timer.running; timer.paused = !!timer.paused;
+        timer.duration = Math.min(3600, Math.max(0, num(timer.duration)))||120;
+        timer.remaining = Math.min(3600, Math.max(0, num(timer.remaining)))||timer.duration;
         // timer salvato da una versione precedente (senza il campo "paused")
         if(!hadFlag) timer.paused = !timer.running && timer.remaining>0 && timer.remaining<timer.duration;
-        if(timer.running && timer.endAt){
-          const rem=Math.ceil((num(timer.endAt)-Date.now())/1000);
-          if(rem<=0){
+        if(timer.running){
+          const endAt = num(timer.endAt), rem = Math.ceil((endAt-Date.now())/1000);
+          if(!(endAt>0) || rem<=0){
             timer.running=false; timer.endAt=null; timer.remaining=timer.duration; timer.notified=true;
-            saveTimer(); showToast('Recupero già terminato'); beep();
-            if(navigator.vibrate) navigator.vibrate([300,100,300]);
+            saveTimer();
+            // finito da poco: lo si dice. Finito da ore (app riaperta il giorno dopo) o dato rovinato: niente.
+            // Suono e vibrazione no: senza un tocco il browser li blocca
+            if(endAt>0 && rem > -120) showToast('Recupero già terminato');
           } else { timer.remaining=rem; startTicking(); }
         }
       }
@@ -8026,6 +8041,45 @@ document.addEventListener('visibilitychange', ()=>{
   checkNewDay();
 });
 
+/* ===================== PIÙ FINESTRE APERTE =====================
+   Android (app installata e scheda di Chrome), iPad, computer: due finestre dell'app condividono gli stessi dati.
+   Ognuna li teneva in memoria e, salvando, cancellava quello che aveva appena salvato l'altra (un allenamento
+   finito spariva). Ora, quando l'altra finestra salva, questa riprende i dati salvati e ridisegna quando è libera */
+let extRenderT = 0;
+function externalRender(){
+  clearTimeout(extRenderT);
+  if(syncUiBusy()){ extRenderT = setTimeout(externalRender, 3000); return; }   // niente ridisegno sotto le dita
+  try{ renderAll(); }catch(err){ console.error('externalRender', err); }
+}
+window.addEventListener('storage', e=>{
+  if(!e.key || e.storageArea!==localStorage || !e.key.startsWith(LS_PREFIX)) return;
+  const k = e.key.slice(LS_PREFIX.length);
+  // l'allenamento in corso qui è stato terminato (o annullato) nell'altra finestra: qui si chiude, senza salvarlo due volte
+  if(k==='session'){
+    let other = null; try{ other = e.newValue ? JSON.parse(e.newValue) : null; }catch(err){}
+    if(session && (!other || other.id!==session.id)){
+      const saved = allSessions().some(({s})=> String(s.id)===String(session.id));
+      if(closeConfirm) closeConfirm();
+      session = null; clearInterval(sessionTickHandle); exitSessionView(); externalRender();
+      infoToast(saved ? 'Allenamento terminato nell\'altra finestra' : 'Allenamento chiuso nell\'altra finestra', 3500, 'warn');
+    }
+    return;
+  }
+  if(e.newValue==null) return;   // dati cancellati da fuori: quelli in memoria restano (al prossimo salvataggio tornano)
+  let v; try{ v = JSON.parse(e.newValue); }catch(err){ return; }
+  if(!v || typeof v!=='object' || Array.isArray(v)) return;
+  if(k==='logs'){ if(logsLocked) return; state.logs = normalizeLogs(v).logs; savedText.logs = e.newValue; }
+  else if(k==='days'){
+    const d = sanitizeDays(v); if(!Object.keys(d).length) return;
+    state.days = d; savedText.days = e.newValue;
+    if(!hasOwn(state.days, currentDay)){ currentDay = dayAfterLast(); state.settings.lastDay = currentDay; }
+  }
+  else if(k==='settings'){ state.settings = Object.assign({}, state.settings, v); savedText.settings = e.newValue; applyPrefs(); }
+  else if(k==='sync'){ sync = v; renderSync(); return; }   // stessa base della sincronizzazione: nessuna finestra rimanda dati vecchi
+  else return;
+  dataVersion++; invalidateStats(); externalRender();
+});
+
 /* ===================== FUNZIONA SENZA CAMPO (service worker) =====================
    sw.js accanto a index.html: la pagina resta salvata sul telefono e si apre anche senza rete.
    Dalla preview, da file o se sw.js non c'è: niente, l'app funziona come prima */
@@ -8074,7 +8128,7 @@ const sessHash = s=> hsh(stableStr(compactSession(s)));
 function syncSetPick(st){ const o = {}; SYNC_SET_KEYS.forEach(k=>{ if(st[k]!==undefined) o[k] = st[k]; }); return o; }
 const setHash = st=> hsh(stableStr(syncSetPick(st)));
 const daysHash = d=> hsh(stableStr(d));
-function flatLogs(logs){ const m = {}; Object.keys(logs||{}).forEach(iso=> (logs[iso]||[]).forEach(s=>{ if(s && s.id!=null) m[String(s.id)] = { iso, s, h:sessHash(s) }; })); return m; }
+function flatLogs(logs){ const m = Object.create(null); Object.keys(logs||{}).forEach(iso=> (logs[iso]||[]).forEach(s=>{ if(s && s.id!=null) m[String(s.id)] = { iso, s, h:sessHash(s) }; })); return m; }
 function newSyncCode(){
   const b = new Uint8Array(20); crypto.getRandomValues(b);
   const c = Array.from(b, x=> SYNC_ALPHA[x & 31]).join('');
@@ -8165,7 +8219,7 @@ function syncApply(m){
   }finally{ syncApplying = false; }
 }
 function syncRememberBase(rev, wid){
-  const logs = {}; Object.values(flatLogs(state.logs)).forEach(x=>{ logs[x.s.id] = x.h; });
+  const logs = Object.create(null); Object.values(flatLogs(state.logs)).forEach(x=>{ logs[x.s.id] = x.h; });
   sync.base = { logs, days:daysHash(state.days), set:setHash(state.settings) };
   sync.rev = rev; sync.wid = wid || null; sync.lastOk = Date.now(); sync.lastErr = null; sync.joining = false;
   saveSync();
@@ -8242,22 +8296,35 @@ function renderSync(){
   if(os) setText(os, swState==='ok' ? 'Si apre anche senza rete: l\'app è salvata su questo dispositivo.' : swState==='wait' ? 'Si apre anche senza rete dalla prossima apertura.' : 'Apertura senza rete non attiva: serve il file sw.js accanto a index.html (vedi la spiegazione).');
 }
 async function syncEnable(code, join){
+  if(join){
+    // il codice deve esistere già: con una lettera sbagliata si creava in silenzio uno spazio nuovo e vuoto
+    // ("Collegato"), e i due dispositivi restavano separati senza che nessuno se ne accorgesse
+    if(!/^https?:$/.test(location.protocol)){ showToast('Funziona solo con l\'app pubblicata (Netlify).', null, null, 3500, 'warn'); return false; }
+    let remote = null, status = 0;
+    try{ const r = await fetch(SYNC_API+'?code='+encodeURIComponent(code), { cache:'no-store' }); status = r.status; if(r.ok) remote = await r.json(); }catch(e){}
+    if(!remote){ showToast(status===404 ? 'Il server di sincronizzazione non risponde: pubblica anche la cartella netlify.' : 'Serve la rete per collegarti: riprova quando sei connesso.', null, null, 4000, 'warn'); return false; }
+    if(!num(remote.rev)){ showToast('Nessun dato con questo codice: controlla di averlo copiato intero dall\'altro dispositivo.', null, null, 5000, 'warn'); return false; }
+  }
   sync = { code, joining: !!join, base:{ logs:{} }, daysAt: 0, setAt: 0, setHash: setHash(state.settings) };
   saveSync(); renderSync();
   await syncNow({ confirmed:true, manual:true });
   if(sync.lastOk) showToast(join ? 'Collegato: dati uniti a quelli dell\'altro dispositivo' : 'Sincronizzazione attiva: usa lo stesso codice sugli altri dispositivi', null, null, 5000);
+  return true;
 }
 document.getElementById('syncNewBtn').addEventListener('click', ()=> syncEnable(newSyncCode(), false));
 document.getElementById('syncJoinBtn').addEventListener('click', ()=>{
   const box = document.getElementById('syncJoinBox'); box.hidden = !box.hidden;
   if(!box.hidden) document.getElementById('syncCodeIn').focus();
 });
-document.getElementById('syncJoinGo').addEventListener('click', ()=>{
+document.getElementById('syncJoinGo').addEventListener('click', async e=>{
+  const btn = e.currentTarget; if(btn.disabled) return;
   const c = cleanSyncCode(document.getElementById('syncCodeIn').value);
   if(!c){ showToast('Codice non valido: copialo intero dall\'altro dispositivo', null, null, 3500, 'warn'); return; }
-  document.getElementById('syncCodeIn').value = '';
-  document.getElementById('syncJoinBox').hidden = true;
-  syncEnable(c, true);
+  btn.disabled = true;   // un secondo tocco mentre si controlla il codice non deve collegare due volte
+  try{
+    // il campo si svuota solo se il collegamento parte: con un codice sbagliato lo correggi senza riscriverlo tutto
+    if(await syncEnable(c, true)){ document.getElementById('syncCodeIn').value = ''; document.getElementById('syncJoinBox').hidden = true; }
+  }finally{ btn.disabled = false; }
 });
 document.getElementById('syncNowBtn').addEventListener('click', ()=> syncNow({ manual:true }));
 document.getElementById('syncCopyBtn').addEventListener('click', ()=>{

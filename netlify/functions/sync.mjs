@@ -9,7 +9,7 @@ import { getStore } from "@netlify/blobs";
    non possono cancellarsi a vicenda, il secondo riceve 409.
    Il codice è la chiave: chi lo conosce legge e scrive, per questo l'app ne genera uno lungo e casuale. */
 
-const HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+const HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const MAX_BYTES = 5 * 1024 * 1024;
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: HEADERS });
 
