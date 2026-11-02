@@ -1091,8 +1091,24 @@ body.light .timer-bar{box-shadow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px
   background:var(--card-2); border:1px solid var(--border); border-radius:11px; color:var(--text); font:inherit;}
 .sub-opt .so-name{font-size:14px; line-height:1.35;}
 .sub-opt .so-meta{font-size:11.5px; color:var(--text-faint);}
-.sub-custom{display:flex; gap:8px; align-items:stretch;}
-.sub-custom input{flex:1; min-width:0; box-sizing:border-box; border-radius:10px; border:1px solid var(--border-input); background:var(--card-2); color:var(--text); padding:10px 12px; font-size:16px;}
+/* ricerca: resta in cima mentre scorri l'elenco */
+.sub-search{position:sticky; top:-20px; z-index:2; display:flex; align-items:center; margin:0 -18px 4px; padding:14px 18px 10px;   /* -20px: fino al bordo del pannello (che ha 20 px di margine interno) */
+  background:rgba(18,18,20,.96); -webkit-backdrop-filter:blur(30px) saturate(180%); backdrop-filter:blur(30px) saturate(180%);}   /* quasi pieno: sotto scorre l'elenco */
+body.light .sub-search{background:rgba(250,250,250,.97);}
+.sub-search > .ic{position:absolute; left:31px; width:18px; height:18px; color:var(--text-faint); pointer-events:none;}
+.sub-search input{flex:1; min-width:0; box-sizing:border-box; border-radius:var(--r-ctl,14px); border:1px solid var(--border-input); background-color:var(--glass-fill, var(--card-2));
+  color:var(--text); padding:11px 42px 11px 40px; font-size:16px; -webkit-appearance:none; appearance:none;}
+.sub-search input:placeholder-shown{padding-right:12px;}   /* senza testo la × non c'è: più spazio al suggerimento */
+.sub-search input::-webkit-search-cancel-button{-webkit-appearance:none; display:none;}
+.sub-clear{position:absolute; right:22px; width:36px; height:36px; border:0; padding:0; background:none; color:var(--text-faint); display:flex; align-items:center; justify-content:center; border-radius:50%;}
+.sub-clear[hidden], .sub-grp[hidden], .sub-mg[hidden], .sub-opt[hidden]{display:none;}
+html.eco .sub-search{background:#000 !important;}
+@media (prefers-reduced-transparency: reduce){ .sub-search{background:var(--bg-elev); -webkit-backdrop-filter:none; backdrop-filter:none;} }
+/* sottogruppi per muscolo in "Altri esercizi comuni" */
+.sub-mg-h{font-size:11.5px; font-weight:600; color:var(--text-dim); margin:12px 2px 6px;}
+.sub-grp-note{font-size:11.5px; color:var(--text-faint); line-height:1.45; margin:-4px 2px 8px;}
+.sub-use{border-style:dashed; margin-top:2px;}
+.sub-use .so-name b{font-weight:600;}
 .sub-note{font-size:12px; color:var(--text-faint); line-height:1.5; margin:0 0 6px;}
 /* riepilogo del mese */
 .month-lbl{font-size:13.5px; font-weight:600; color:var(--text); text-align:center;}
@@ -2014,12 +2030,14 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
       <button class="icon-btn" id="subSheetClose" aria-label="Chiudi"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <p class="sub-note" id="subNote"></p>
-    <div id="subList"></div>
-    <div class="sheet-sec">Un altro esercizio</div>
-    <div class="sub-custom">
-      <input type="text" id="subCustom" placeholder="Nome esercizio" autocomplete="off" enterkeyhint="done" aria-label="Nome dell'esercizio sostitutivo">
-      <button class="btn primary" id="subCustomBtn">Usa</button>
+    <div class="sub-search">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <input type="search" id="subSearch" placeholder="Cerca esercizio o muscolo" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Cerca un esercizio" aria-controls="subList">
+      <button type="button" class="sub-clear" id="subClear" aria-label="Cancella la ricerca" hidden><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
+    <div id="subList"></div>
+    <div class="chart-empty" id="subNone" hidden></div>
+    <button type="button" class="sub-opt sub-use" id="subUseBtn" hidden></button>
   </div>
 </div>
 
@@ -4855,32 +4873,84 @@ const ALT_LIB = {
   Polpacci:[],
   Altro:[['Riscaldamento · Mobilità spalle con elastico (pull-apart, rotazioni esterne, circonduzioni)',null,'5 min','time'],['Band pull-apart con elastico',null,'15'],['Rotazioni esterne con elastico (per lato)',null,'15']]
 };
-/* esercizi che piegano o caricano il ginocchio: mai proposti come sostituti, nemmeno se fatti in passato */
-const KNEE_RE = /leg ?curl|leg ?press|leg ?extension|squat|affond|calf|ponte glutei|hip thrust|cyclette|ellittica|kickback|clamshell|abductor|step[ -]?up|marcia|tapis|stacc|pistol|polpacci al muro/i;
+/* altri esercizi comuni (da palestra e a corpo libero), per muscolo: si scelgono dall'elenco invece di scrivere il nome,
+   così muscolo, secondario e tipo sono giusti e le statistiche li contano bene. Non tutti sono pensati per il polso
+   (prese con il bilanciere): quelli adatti a ginocchio e polso restano in ALT_LIB, nei "Consigliati". [nome, secondario, ripetizioni, tipo] */
+const COMMON_LIB = {
+  Petto:[['Panca piana con bilanciere','Tricipiti','6-10'],['Panca inclinata con bilanciere','Spalle','6-10'],['Panca declinata con bilanciere','Tricipiti','8-12'],
+    ['Panca piana con manubri','Tricipiti','8-12'],['Panca inclinata con manubri','Spalle','8-12'],['Chest press inclinata alla macchina','Spalle','8-12'],
+    ['Croci con manubri su panca piana',null,'10-15'],['Croci ai cavi alti (crossover)',null,'12-15'],['Croci ai cavi bassi',null,'12-15'],
+    ['Dip alle parallele','Tricipiti','6-12'],['Piegamenti (push-up)','Tricipiti','10-20'],['Pullover con manubrio','Schiena','10-12']],
+  Schiena:[['Trazioni presa prona','Bicipiti','5-10'],['Trazioni presa supina (chin-up)','Bicipiti','5-10'],['Lat machine presa larga','Bicipiti','8-12'],
+    ['Lat machine presa stretta','Bicipiti','8-12'],['Lat machine presa inversa','Bicipiti','8-12'],['Rematore con bilanciere','Bicipiti','6-10'],
+    ['Rematore con manubrio a un braccio (per lato)','Bicipiti','8-12'],['Rematore T-bar','Bicipiti','8-12'],['Pulley basso presa larga','Spalle','10-12'],
+    ['Pulldown a braccia tese ai cavi',null,'12-15'],['Scrollate con manubri (trapezio)',null,'10-15']],
+  Spalle:[['Military press con bilanciere','Tricipiti','6-10'],['Lento avanti con manubri','Tricipiti','8-12'],['Arnold press','Tricipiti','8-12'],
+    ['Alzate laterali con manubri',null,'12-15'],['Alzate frontali con manubri',null,'10-12'],['Alzate posteriori con manubri a busto flesso','Schiena','12-15'],
+    ['Tirate al mento ai cavi','Schiena','10-12']],
+  Bicipiti:[['Curl con bilanciere',null,'8-12'],['Curl con bilanciere EZ',null,'8-12'],['Curl con manubri',null,'8-12'],['Curl alternato con manubri',null,'8-12'],
+    ['Curl su panca Scott',null,'8-12'],['Curl concentrato (per lato)',null,'10-12'],['Curl su panca inclinata con manubri',null,'10-12'],['Curl ai cavi con barra',null,'10-15']],
+  Tricipiti:[['French press con bilanciere EZ',null,'8-12'],['Pushdown ai cavi con barra',null,'10-15'],['Estensioni sopra la testa con manubrio',null,'10-12'],
+    ['Panca presa stretta','Petto','6-10'],['Dip su panca',null,'10-15'],['Kickback con manubri (per lato)',null,'10-15']],
+  Addominali:[['Crunch a terra',null,'15-20'],['Crunch obliqui (per lato)',null,'12-15'],['Sollevamento gambe tese alla sbarra',null,'8-12'],
+    ['Sollevamento gambe tese da sdraiato',null,'10-15'],['Russian twist',null,'20'],['Ruota per addominali (ab wheel)',null,'8-12'],
+    ['Hollow hold',null,'20-30','time'],['Woodchopper ai cavi (per lato)',null,'10-12']],
+  Quadricipiti:[], Polpacci:[],
+  Femorale:[['Hyperextension 45° con disco','Glutei','8-12'],['Good morning con bilanciere','Glutei','8-12']],
+  Glutei:[['Reverse hyperextension alla macchina','Femorale','12-15'],['Slanci laterali da sdraiato con cavigliera (per lato)',null,'12-15']],
+  Altro:[['Mobilità toracica a terra (rotazioni)',null,'10'],['Dislocazioni delle spalle con elastico',null,'10'],['Ergometro a braccia',null,'10 min','time'],
+    ['Stretching pettorali al muro',null,'45','time'],['Stretching dorsali',null,'45','time']]
+};
+/* altri nomi con cui si cerca un muscolo ("dorso", "core"…) */
+const MUSCLE_ALIAS = { Petto:'pettorali pettorale', Schiena:'dorso dorsali lat trapezio', Spalle:'deltoidi deltoide', Bicipiti:'bicipite braccia', Tricipiti:'tricipite braccia',
+  Addominali:'addome core obliqui', Quadricipiti:'cosce gambe', Femorale:'femorali bicipite femorale gambe', Glutei:'gluteo sedere', Polpacci:'polpaccio gambe', Altro:'riscaldamento stretching mobilita cardio' };
+/* esercizi che piegano o caricano il ginocchio: mai proposti come sostituti, nemmeno se fatti in passato.
+   "kickback" solo quello dei glutei (in quadrupedia, ginocchio piegato): quello con i manubri è dei tricipiti */
+const KNEE_RE = /leg ?curl|leg ?press|leg ?extension|squat|affond|calf|ponte glutei|hip thrust|cyclette|ellittica|glute\w* ?kickback|kickback (?:per (?:i )?glute|in quadrupedia)|clamshell|abductor|step[ -]?up|marcia|tapis|stacc|pistol|polpacci al muro/i;
+/* alternative nel pannello "Sostituisci", in tre gruppi:
+   rec   consigliati per lo stesso muscolo: già fatti (dal più recente), nella scheda, consigliati per ginocchio e polso
+   plan  tutti gli altri esercizi della scheda (altri muscoli)
+   more  altri esercizi comuni, per muscolo (prima quello dell'esercizio da sostituire): già fatti fuori scheda, catalogo, consigliati
+   Niente doppioni (anche rispetto agli esercizi della seduta) e mai esercizi che caricano il ginocchio */
 function subCandidates(exx){
   const m = MUSCLES.includes(exx.muscle) ? exx.muscle : 'Altro';
   const seen = new Set(session ? session.exercises.map(x=>normName(x.name)) : [normName(exx.name)]);
   const ids = new Set((session ? session.exercises : [exx]).map(x=>x.exId).filter(Boolean));
   const out = [];
   const push = c=>{ const k=normName(c.name); if(!k || seen.has(k) || (c.exId && ids.has(c.exId)) || KNEE_RE.test(c.name)) return; seen.add(k); out.push(c); };
-  // 1. già fatti, dal più recente: sono quelli di cui hai uno storico da cui ripartire
-  Object.values(exerciseIndex()).filter(v=>v.items.length && v.muscle===m)
-    .sort((a,b)=> b.items[b.items.length-1].iso.localeCompare(a.items[a.items.length-1].iso))
-    .forEach(v=>{
-      const last = v.items[v.items.length-1], e = last.e, w = workDetail(e.detail);
-      const top = w.length ? w.reduce((a,d)=> (num(d.kg)>num(a.kg) || (num(d.kg)===num(a.kg) && num(d.val)>num(a.val))) ? d : a, w[0]) : null;
-      const T = EX_TYPES[e.type]||EX_TYPES.reps;
-      push({ name:v.label, muscle:m, secondary:e.secondary||null, type:e.type, exId:e.exId||null, group:'done',
-        meta: (top ? 'ultima volta '+setTxt(top.kg, top.val, T)+' · ' : '')+dm(last.iso) });
-    });
-  // 2. nella scheda, in altre giornate
-  Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{
-    if(e.muscle===m) push({ name:e.name, muscle:m, secondary:e.secondary||null, type:e.type, exId:e.id, reps:e.reps, group:'plan', meta:'in scheda · '+String(d.name).split('·')[0].trim() });
-  }));
-  // 3. consigliati
-  (ALT_LIB[m]||[]).forEach(([name,sec,reps,type])=> push({ name, muscle:m, secondary:sec||null, type:type||'reps', exId:null, reps, group:'lib', meta:'consigliato · '+reps }));
+  const dayLbl = d=> String(d.name).split('·')[0].trim();
+  const musc = (mm, sec)=> mm+(sec && sec!==mm && sec!=='Altro' ? ' + '+sec : '');
+  // già fatti, per muscolo, dal più recente: hanno uno storico da cui ripartire
+  const hist = Object.values(exerciseIndex()).filter(v=>v.items.length && MUSCLES.includes(v.muscle))
+    .sort((a,b)=> b.items[b.items.length-1].iso.localeCompare(a.items[a.items.length-1].iso));
+  const histC = (v, group)=>{
+    const last = v.items[v.items.length-1], e = last.e, w = workDetail(e.detail);
+    const top = w.length ? w.reduce((a,d)=> (num(d.kg)>num(a.kg) || (num(d.kg)===num(a.kg) && num(d.val)>num(a.val))) ? d : a, w[0]) : null;
+    const T = EX_TYPES[e.type]||EX_TYPES.reps;
+    return { name:v.label, muscle:v.muscle, secondary:e.secondary||null, type:e.type, exId:e.exId||null, group, mg:v.muscle,
+      meta: (group==='rec' ? '' : musc(v.muscle, e.secondary)+' · ')+(top ? 'ultima volta '+setTxt(top.kg, top.val, T)+' · ' : 'fatto il ')+dm(last.iso) };
+  };
+  const planC = (e, d, group)=> ({ name:e.name, muscle:e.muscle, secondary:e.secondary||null, type:e.type, exId:e.id, reps:e.reps, group, mg:e.muscle,
+    meta: group==='rec' ? 'in scheda · '+dayLbl(d) : dayLbl(d)+' · '+(e.muscle==='Altro' ? PHASE_LBL[phaseOf(e)] : musc(e.muscle, secOf(e)))+' · '+e.reps });
+  const libC = (mm, [name,sec,reps,type], group, safe)=> ({ name, muscle:mm, secondary:sec||null, type:type||'reps', exId:null, reps, group, mg:mm,
+    meta: (group==='rec' ? 'consigliato · ' : (safe ? 'ok per ginocchio e polso · ' : ''))+(group==='rec' ? '' : musc(mm, sec)+' · ')+reps });
+  // 1. consigliati per questo muscolo
+  hist.filter(v=> v.muscle===m).forEach(v=> push(histC(v, 'rec')));
+  Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ if(e.muscle===m) push(planC(e, d, 'rec')); }));
+  (ALT_LIB[m]||[]).forEach(x=> push(libC(m, x, 'rec', true)));
+  // 2. il resto della scheda (riscaldamenti e stretching solo se si sostituisce uno di loro)
+  Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ if(e.muscle!=='Altro' || m==='Altro') push(planC(e, d, 'plan')); }));
+  // 3. altri esercizi comuni, muscolo per muscolo
+  [m, ...MUSCLES.filter(x=> x!==m)].forEach(mm=>{
+    hist.filter(v=> v.muscle===mm).forEach(v=> push(histC(v, 'more')));
+    (COMMON_LIB[mm]||[]).forEach(x=> push(libC(mm, x, 'more', false)));
+    (ALT_LIB[mm]||[]).forEach(x=> push(libC(mm, x, 'more', true)));
+  });
   return out;
 }
+/* testo su cui si cerca: nome, muscoli e i loro altri nomi, senza accenti né maiuscole */
+const foldTxt = t=> normName(t).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function subSearchText(c){ return foldTxt([c.name, c.muscle, MUSCLE_ALIAS[c.muscle]||'', c.secondary||''].join(' ')); }
 /* id stabile del sostituto: quello in scheda o nello storico con lo stesso nome, altrimenti derivato dal nome */
 function subId(name){
   const k = normName(name);
@@ -4959,17 +5029,40 @@ function openSubSheet(ei){
     ? `${done===1?'La serie già fatta resta':'Le '+done+' serie già fatte restano'} su “${exx.name}”; quelle da fare passano al nuovo esercizio.`
     : "Numero di serie, recupero e riscaldamento restano quelli previsti; kg e ripetizioni ripartono dall'ultima volta che hai fatto il nuovo esercizio.";
   subCands = subCandidates(exx);
-  const G = { done:'Già fatti', plan:'Dalla scheda', lib:'Consigliati · ok per ginocchio e polso' };
-  let html = '';
-  ['done','plan','lib'].forEach(g=>{
-    const items = subCands.map((x,i)=>({x,i})).filter(o=>o.x.group===g);
-    if(!items.length) return;
-    html += `<div class="sheet-sec">${G[g]}</div>` + items.map(({x,i})=>
-      `<button class="sub-opt" data-i="${i}"><span class="so-name">${escapeHtml(x.name)}</span><span class="so-meta">${escapeHtml(x.meta)}</span></button>`).join('');
-  });
-  document.getElementById('subList').innerHTML = html || `<div class="chart-empty">Nessuna alternativa senza ginocchio per ${escapeHtml(exx.muscle)}: scrivi il nome qui sotto.</div>`;
-  document.getElementById('subCustom').value = '';
+  const m = MUSCLES.includes(exx.muscle) ? exx.muscle : 'Altro';
+  const opt = (x,i)=> `<button type="button" class="sub-opt" data-i="${i}" data-q="${escapeHtml(subSearchText(x))}"><span class="so-name">${escapeHtml(x.name)}</span><span class="so-meta">${escapeHtml(x.meta)}</span></button>`;
+  const of = g=> subCands.map((x,i)=>({x,i})).filter(o=> o.x.group===g);
+  const grp = (title, body, note)=> body ? `<div class="sub-grp"><div class="sheet-sec">${title}</div>${note ? `<p class="sub-grp-note">${note}</p>` : ''}${body}</div>` : '';
+  let html = grp(m==='Altro' ? 'Consigliati' : 'Consigliati per '+escapeHtml(m), of('rec').map(o=> opt(o.x, o.i)).join(''))
+    + grp('Dalla scheda', of('plan').map(o=> opt(o.x, o.i)).join(''));
+  const more = of('more'), mgs = [...new Set(more.map(o=> o.x.mg))];
+  html += grp('Altri esercizi comuni', mgs.map(mg=> `<div class="sub-mg"><div class="sub-mg-h">${escapeHtml(mg==='Altro' ? 'Riscaldamento, stretching e cardio' : mg)}</div>`
+      + more.filter(o=> o.x.mg===mg).map(o=> opt(o.x, o.i)).join('')+'</div>').join(''),
+    'Senza esercizi che caricano il ginocchio. Non tutti sono pensati per il polso: quelli adatti a ginocchio e polso sono segnati.');
+  document.getElementById('subList').innerHTML = html;
+  const q = document.getElementById('subSearch'); q.value = '';
+  subFilter();
   document.getElementById('subSheet').classList.add('show');
+  const sh = document.querySelector('#subSheet .sheet'); if(sh) sh.scrollTop = 0;
+}
+/* ricerca: tutte le parole scritte devono comparire (nome, muscolo, secondario o un altro nome del muscolo) */
+function subFilter(){
+  const raw = document.getElementById('subSearch').value.trim(), words = foldTxt(raw).split(' ').filter(Boolean);
+  const list = document.getElementById('subList');
+  let shown = 0;
+  list.querySelectorAll('.sub-opt').forEach(b=>{ const ok = words.every(w=> b.dataset.q.includes(w)); b.hidden = !ok; if(ok) shown++; });
+  list.querySelectorAll('.sub-mg, .sub-grp').forEach(g=>{ g.hidden = !g.querySelector('.sub-opt:not([hidden])'); });
+  document.getElementById('subClear').hidden = !raw;
+  const none = document.getElementById('subNone');
+  none.hidden = !(raw && !shown);
+  if(!none.hidden) none.innerHTML = '<b>Nessun esercizio trovato.</b><span>Controlla come l\'hai scritto, oppure usalo come esercizio nuovo qui sotto.</span>';
+  // il nome scritto come esercizio nuovo: il muscolo dal nome se si capisce, altrimenti quello dell'esercizio sostituito
+  const use = document.getElementById('subUseBtn');
+  use.hidden = !raw;
+  if(raw){
+    const exx = subEx, mm = muscleFromName(raw) || (exx && exx.muscle) || 'Altro';
+    use.innerHTML = `<span class="so-name">Usa <b>«${escapeHtml(raw)}»</b></span><span class="so-meta">esercizio nuovo · ${escapeHtml(mm)}${muscleFromName(raw) ? ' (dal nome)' : ''}</span>`;
+  }
 }
 function closeSubSheet(){ document.getElementById('subSheet').classList.remove('show'); subEx = null; }
 function subLost(){ closeSubSheet(); showToast("L'esercizio non è più nell'allenamento: riapri ⇄", null, null, 2600, 'warn'); }
@@ -4981,15 +5074,32 @@ document.getElementById('subList').addEventListener('click', ev=>{
   if(c) applySubstitute(ei, c);
 });
 function subCustomGo(){
-  const name = document.getElementById('subCustom').value.trim();
+  const name = document.getElementById('subSearch').value.trim();
   const ei = subIndex(), exx = ei>=0 ? session.exercises[ei] : null;
-  if(!name){ document.getElementById('subCustom').focus(); return; }
+  if(!name){ document.getElementById('subSearch').focus(); return; }
   if(!exx){ subLost(); return; }
   closeSubSheet();
-  applySubstitute(ei, { name, muscle:exx.muscle, type:exx.type, exId:null });
+  // muscolo dal nome ("Panca…" -> Petto) se si capisce: copiare quello dell'esercizio sostituito falsava le serie per muscolo
+  const mm = muscleFromName(name);
+  applySubstitute(ei, mm && mm!==exx.muscle ? { name, muscle:mm, secondary:null, type:exx.type, exId:null } : { name, muscle:exx.muscle, type:exx.type, exId:null });
 }
-document.getElementById('subCustomBtn').addEventListener('click', subCustomGo);
-document.getElementById('subCustom').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); subCustomGo(); } });
+document.getElementById('subUseBtn').addEventListener('click', subCustomGo);
+document.getElementById('subSearch').addEventListener('input', ()=>{
+  subFilter();
+  // scrivendo dopo aver scorso in basso: i risultati ripartono subito sotto la barra di ricerca, non restano nascosti sopra
+  const bar = document.querySelector('#subSheet .sub-search'), list = document.getElementById('subList'), sh = bar && bar.parentElement;
+  if(!sh) return;
+  const gap = bar.getBoundingClientRect().bottom - list.getBoundingClientRect().top;
+  if(gap > 0) sh.scrollTop -= gap;
+});
+// Invio: un solo risultato -> quello; nessun risultato -> esercizio nuovo; altrimenti si chiude la tastiera e si sceglie dall'elenco
+document.getElementById('subSearch').addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  e.preventDefault();
+  const vis = [...document.querySelectorAll('#subList .sub-opt:not([hidden])')];
+  if(vis.length===1) vis[0].click(); else if(!vis.length) subCustomGo(); else e.target.blur();
+});
+document.getElementById('subClear').addEventListener('click', ()=>{ const q = document.getElementById('subSearch'); q.value = ''; subFilter(); q.focus(); });
 document.getElementById('subSheetClose').addEventListener('click', closeSubSheet);
 document.getElementById('subSheet').addEventListener('click', e=>{ if(e.target.id==='subSheet') closeSubSheet(); });
 
