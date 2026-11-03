@@ -818,10 +818,13 @@ const eventsOf = (pid, data) => eventiValidi(allEvents(), pid).filter(e=>!data||
 
 /* ================= Meteo ================= */
 const fresco = w => w && Array.isArray(w.days) && w.days.some(d=>d.date===today());
+// i dati del bot valgono solo se calcolati per la posizione impostata nell'app
+const qui = x => !!(x && S.location && x.lat!=null && Math.abs(x.lat-S.location.lat)<0.3 && Math.abs(x.lon-S.location.lon)<0.3);
 function activeWeather(){
-  const bot=fresco(W.bot)?W.bot:null, man=fresco(W.manual)?W.manual:null;
+  const wb=qui(W.bot)?W.bot:null;
+  const bot=fresco(wb)?wb:null, man=fresco(W.manual)?W.manual:null;
   if(bot && man) return (Date.parse(man.updatedAt||0)>Date.parse(bot.updatedAt||0)) ? man : bot;
-  return bot||man||W.manual||W.bot||null;
+  return bot||man||W.manual||wb||null;
 }
 function wxDays(){
   const w=activeWeather(); const lat=S.location?.lat;
@@ -848,7 +851,7 @@ const plantsSig = () => JSON.stringify(S.plants.map(p=>[p.id,p.specie,p.fase,p.d
 const copreOggi = P => P?.data?.piante?.some(x=>x.giorni?.some(g=>g.data===today()));
 function activePlan(){
   const local=localPlan();
-  const cand=[P.claude,P.bot].filter(copreOggi).sort((a,b)=>Date.parse(b.createdAt||0)-Date.parse(a.createdAt||0));
+  const cand=[P.claude,qui(P.bot)?P.bot:null].filter(copreOggi).sort((a,b)=>Date.parse(b.createdAt||0)-Date.parse(a.createdAt||0));
   const best=cand[0];
   if(!best) return local?{source:'locale',data:local,stale:false}:null;
   const ids=new Set(best.data.piante.map(x=>x.id));

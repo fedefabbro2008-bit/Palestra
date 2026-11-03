@@ -253,8 +253,8 @@ async function main(){
     await writeFile(F.stato,JSON.stringify(stato,null,1)+'\n');
     await writeFile(F.perApp,JSON.stringify({
       aggiornato:new Date().toISOString(),
-      meteo: stato.meteo ? {source:'open-meteo',updatedAt:stato.meteo.aggiornato,days:stato.meteo.giorni.map(({code,...d})=>d)} : null,
-      piano: stato.ultimo_piano ? {createdAt:stato.meteo?.aggiornato||new Date().toISOString(),source:'bot',fonte:stato.ultimo_piano.fonte,
+      meteo: stato.meteo ? {source:'open-meteo',updatedAt:stato.meteo.aggiornato,lat:cfg.posizione.lat,lon:cfg.posizione.lon,days:stato.meteo.giorni.map(({code,...d})=>d)} : null,
+      piano: stato.ultimo_piano ? {createdAt:stato.meteo?.aggiornato||new Date().toISOString(),source:'bot',fonte:stato.ultimo_piano.fonte,lat:cfg.posizione.lat,lon:cfg.posizione.lon,
         data:{sintesi:'Piano del bot con il meteo reale di Open-Meteo'+(stato.ultimo_piano.fonte==='Claude'?', rifinito da Claude':'')+'.',avvisi:stato.ultimo_piano.avvisi||[],piante:stato.ultimo_piano.piante}} : null,
       eventi: stato.eventi.filter(e=>e.data>=M.addDays(oggi,-120))
     },null,1)+'\n');
