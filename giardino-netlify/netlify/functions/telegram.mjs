@@ -1,10 +1,10 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, messaggioSettimana, TIPI, ETICHETTE, COMANDI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, messaggioSettimana, segnaFatte, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · webhook di Telegram (/api/telegram/<segreto>).
    - /start dalla chat dell'utente: collega il bot a quella chat (solo la prima volta).
-   - /oggi: manda subito il piano di oggi. /fatto: segna come innaffiate le piante di oggi. /settimana: i prossimi 7 giorni.
+   - /oggi: manda subito il piano di oggi. /fatto [zona]: segna come annaffiate le piante di oggi. /settimana: i prossimi 7 giorni.
    - /vacanza 10/8 20/8 (o /vacanza no). /aiuto: l'elenco dei comandi.
-   - pulsanti dei messaggi (Fatto, Era umida, Salto, Secca, Concimata): registrati nel diario all'istante. */
+   - pulsanti dei messaggi (Annaffiato, Terreno ancora umido, Salto, Era secca, Concimata): registrati nel diario all'istante. */
 export const config = { path: "/api/telegram/*" };
 const ok = () => new Response("ok");
 const corto = (s) => { s = String(s || ""); return s.length > 18 ? s.slice(0, 17) + "…" : s; };
@@ -47,16 +47,11 @@ async function messaggio(st, tkey, t, code, m) {
       await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {});
     } else if (comando.endsWith("settimana")) await invia(messaggioSettimana(cur.data, ap));
     else {
-      const fatte = [];
-      await aggiorna(st, code, (d) => {
-        for (const p of d.plants) {
-          const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
-          if (g?.azione !== "innaffia" || d.eventi.some((e) => e.plantId === p.id && e.data === oggi && ["fatto", "secco", "umido", "saltato"].includes(e.tipo))) continue;
-          d.eventi.push({ id: "tg-f-" + oggi + "-" + p.id, plantId: p.id, tipo: "fatto", data: oggi, fonte: "telegram", ts: new Date().toISOString(), litri: g.litri }); fatte.push(p.nome);
-        }
-        if (!fatte.length) return false;
-      });
-      await invia(fatte.length ? "✅ Segnate come innaffiate: " + fatte.join(", ") + "." : "Oggi non c'era niente da innaffiare, o l'avevi già segnato.");
+      // /fatto balcone → solo le piante della zona “Balcone”
+      const zona = String(m.text || "").trim().split(/\s+/).slice(1).join(" ").slice(0, 40);
+      if (zona && !cur.data.plants.some((p) => M.zonaDi(p).toLowerCase() === zona.toLowerCase())) { await invia(`Non trovo la zona «${esc(zona)}». Le zone si danno alle piante nell'app.`); return; }
+      const fatte = await segnaFatte(st, code, ap, oggi, { zona, fonte: "telegram" });
+      await invia(fatte.length ? "✅ Segnate come annaffiate: " + fatte.map(esc).join(", ") + "." : "Oggi non c'era niente da innaffiare" + (zona ? " in " + esc(zona) : "") + ", o l'avevi già segnato.");
     }
     return;
   }
@@ -95,19 +90,23 @@ async function pulsante(st, t, code, cq) {
     const p = d.plants.find((y) => y.id === pid); if (!p) return false;
     nome = p.nome;
     if (d.eventi.some((e) => e.plantId === pid && e.data === data && e.tipo === tipo && e.fonte === "telegram")) return false;
-    if (tipo !== "concime") d.eventi = d.eventi.filter((e) => !(e.plantId === pid && e.data === data && e.fonte === "telegram" && ["fatto", "secco", "umido", "saltato"].includes(e.tipo)));
+    if (tipo !== "concime") d.eventi = d.eventi.filter((e) => !(e.plantId === pid && e.data === data && e.fonte === "telegram" && ESITI.includes(e.tipo)));
     const g = d.piano_claude?.data?.piante?.find((y) => y.id === pid)?.giorni?.find((y) => y.data === data);
     d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo, data, fonte: "telegram", ts: new Date().toISOString(), ...(tipo === "fatto" || tipo === "secco" ? { litri: g?.litri ?? (t.notificati?.[data] || []).find((n) => n.id === pid)?.litri ?? null } : {}) });
   });
-  await rispondi(`Registrato: ${nome} ${ETICHETTE[tipo]}`);
+  await rispondi(`Registrato: ${nome} — ${ETICHETTE[tipo]}`);
   const kb = cq.message?.reply_markup?.inline_keyboard;
   if (kb) {
+    // le righe della pianta premuta (Annaffiato + Terreno ancora umido/Salto, oppure Concimata) diventano una sola riga di conferma
     const gruppo = x === "c" ? "c" : "w";
+    let messa = false;
     const nuova = kb.map((row) => {
       const cb = row.map((b) => b.callback_data || "");
       const stessa = cb.some((c) => c.startsWith(`g|${data}|${pid}|`)), suo = cb.some((c) => c.endsWith("|c")) ? "c" : "w";
-      return stessa && suo === gruppo ? [{ text: `✔ ${corto(nome)}: ${ETICHETTE[tipo]}`, callback_data: "x" }] : row;
-    });
+      if (!(stessa && suo === gruppo)) return row;
+      if (messa) return null;
+      messa = true; return [{ text: `✔ ${corto(nome)}: ${ETICHETTE[tipo]}`, callback_data: "x" }];
+    }).filter(Boolean);
     await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: nuova } }, { ignora: true });
   }
 }

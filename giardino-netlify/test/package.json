@@ -1,0 +1,9 @@
+{
+  "name": "giardino-prove",
+  "private": true,
+  "type": "module",
+  "description": "Prove automatiche del Giardino: non fanno parte del sito pubblicato.",
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

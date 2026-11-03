@@ -1,0 +1,135 @@
+// Funzioni del sito: dati, connettore per Claude, Telegram (webhook e bot orario), Siri.
+// Si lancia con:  node --import ./test/registra-finto.mjs --test test/server.test.mjs   (dalla cartella giardino-netlify)
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { inviati, OGGI } from "./rete-finta.mjs";
+import { getStore } from "@netlify/blobs";
+const dati = (await import("../netlify/functions/dati.mjs")).default;
+const mcp = (await import("../netlify/functions/mcp.mjs")).default;
+const telegram = (await import("../netlify/functions/telegram.mjs")).default;
+const bot = (await import("../netlify/functions/bot.mjs")).default;
+const siri = (await import("../netlify/functions/siri.mjs")).default;
+
+const B = "https://giardino.test", CODE = "GRD-ABCDEF-GHJKLM-NPQRST-UVWXYZ", H = { "x-giardino-code": CODE };
+async function call(fn, path, { method = "GET", body, headers = {} } = {}) {
+  const r = await fn(new Request(B + path, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }));
+  const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = t; }
+  return { status: r.status, body: j };
+}
+const leggiDati = async () => (await call(dati, "/api/dati", { headers: H })).body.data;
+const PIANTE = [
+  { id: "zuc", nome: "Zucchine", specie: "zucchina", fase: "vegetativa", colt: "vaso", vaso: 30, num: 1, luce: 8, dove: "aperto", zona: "Orto" },
+  { id: "bas", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 2, num: 1, luce: 8, dove: "aperto", zona: "Balcone" },
+  { id: "pom", nome: "Pomodoro", specie: "pomodoro", fase: "fruttificazione", colt: "vaso", vaso: 12, num: 1, luce: 8, dove: "aperto", zona: "balcone" },
+  { id: "agl", nome: "Aglio", specie: "aglio", fase: "auto", data_semina: OGGI, tipo_data: "semina", colt: "vaso", vaso: 30, num: 3, luce: 4, dove: "aperto" }
+];
+
+test("dati: il codice viaggia nell'intestazione (e ?code= vale ancora per le app vecchie)", async () => {
+  assert.equal((await call(dati, "/api/dati")).status, 400);
+  assert.deepEqual((await call(dati, "/api/dati", { headers: H })).body, { rev: 0, data: null });
+  const r = await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { location: { name: "Castrocaro Terme", lat: 44.18, lon: 11.95 }, plants: PIANTE }, add: [{ id: "app-1", plantId: "bas", tipo: "fatto", data: OGGI, litri: 0.3 }] } });
+  assert.equal(r.status, 200); assert.equal(r.body.data.plants.length, 4); assert.equal(r.body.data.eventi[0].fonte, "app");
+  assert.equal((await call(dati, "/api/dati?code=" + CODE)).body.data.plants.length, 4);
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { remove: ["app-1"] } });
+  assert.equal((await leggiDati()).eventi.length, 0);
+});
+
+let KEY;
+const rpc = async (method, params = {}) => (await call(mcp, "/mcp/" + KEY, { method: "POST", body: { jsonrpc: "2.0", id: 1, method, params } })).body;
+const strumento = async (name, args = {}) => (await rpc("tools/call", { name, arguments: args })).result;
+
+test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async () => {
+  KEY = (await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "on" } })).body.token;
+  assert.match(KEY, /^[A-Z2-7]{26}$/);
+  assert.equal((await rpc("initialize", { protocolVersion: "2025-06-18" })).result.serverInfo.name, "giardino");
+  assert.equal((await rpc("tools/list")).result.tools.length, 6);
+  const g = (await strumento("giardino")).content[0].text;
+  const ordine = ["Basilico", "Pomodoro", "Zucchine", "Aglio"].map((n) => g.indexOf("**" + n + "**"));
+  assert.ok(ordine.every((x, i) => x > 0 && (!i || x > ordine[i - 1])), "piante per zona e in ordine alfabetico");
+  assert.match(g, /\*\*Basilico\*\* \[id bas\] · zona Balcone/);
+  const m = await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { zona: "  Orto  " } });
+  assert.equal(m.isError, false);
+  assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").zona, "Orto");
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { colore: "rosso" } })).isError, true);
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
+  assert.equal((await strumento("vacanza", { annulla: true })).isError, true);
+  assert.equal((await call(mcp, "/mcp/AAAAAAAAAAAAAAAAAAAAAAAAAA", { method: "POST", body: { jsonrpc: "2.0", id: 1, method: "ping" } })).status, 401);
+});
+
+let SECRET;
+const webhook = (u) => call(telegram, "/api/telegram/" + SECRET, { method: "POST", body: u, headers: { "x-telegram-bot-api-secret-token": SECRET } });
+const tastiere = () => inviati.filter((x) => x[0] === "sendMessage" && x[1].reply_markup).map((x) => x[1].reply_markup.inline_keyboard);
+
+test("Telegram: collegamento, /oggi con «Annaffiato» e «Terreno ancora umido», pulsanti, /fatto per zona", async () => {
+  const r = await call(dati, "/api/dati?op=telegram", { method: "POST", headers: H, body: { action: "token", token: "123456789:AAHfakefakefakefakefakefakefakefake" } });
+  assert.equal(r.body.configured, true);
+  SECRET = inviati.find((x) => x[0] === "setWebhook")[1].secret_token;
+  assert.equal((await call(telegram, "/api/telegram/" + SECRET, { method: "POST", body: {} })).status, 403);
+  await webhook({ message: { chat: { id: 77, type: "private" }, text: "/start" } });
+  assert.equal((await call(dati, "/api/dati?op=telegram", { headers: H })).body.collegato, true);
+
+  inviati.length = 0;
+  await webhook({ message: { chat: { id: 77, type: "private" }, text: "/oggi" } });
+  const kb = tastiere()[0], testi = kb.flat().map((b) => b.text);
+  assert.ok(testi.some((t) => t.startsWith("✅ Annaffiato")), "pulsante Annaffiato");
+  assert.ok(testi.includes("💦 Terreno ancora umido"), "pulsante Terreno ancora umido");
+  const msg = inviati.find((x) => x[0] === "sendMessage")[1].text;
+  assert.ok(msg.indexOf("Basilico") < msg.indexOf("Pomodoro") && msg.indexOf("Pomodoro") < msg.indexOf("Zucchine"), "piante in ordine");
+
+  // pulsante “Terreno ancora umido”: registrato e le due righe della pianta diventano una
+  const righe = kb.filter((r) => r.some((b) => b.callback_data.includes("|bas|") && !b.callback_data.endsWith("|c")));
+  assert.equal(righe.length, 2);
+  inviati.length = 0;
+  await webhook({ callback_query: { id: "cb1", data: `g|${OGGI}|bas|u`, message: { message_id: 5, chat: { id: 77 }, reply_markup: { inline_keyboard: kb } } } });
+  const ev = (await leggiDati()).eventi.find((e) => e.plantId === "bas");
+  assert.equal(ev.tipo, "umido"); assert.equal(ev.fonte, "telegram");
+  assert.match(inviati.find((x) => x[0] === "answerCallbackQuery")[1].text, /Basilico — terreno ancora umido/);
+  const nuova = inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard;
+  assert.equal(nuova.length, kb.length - 1);
+  assert.equal(nuova.filter((r) => r[0].text.startsWith("✔ Basilico")).length, 1);
+
+  // /fatto balcone: solo la zona Balcone (il basilico ha già una risposta, resta il pomodoro)
+  inviati.length = 0;
+  await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto Balcone" } });
+  assert.match(inviati.at(-1)[1].text, /Segnate come annaffiate: Pomodoro\./);
+  const d = await leggiDati();
+  assert.ok(d.eventi.some((e) => e.plantId === "pom" && e.tipo === "fatto"));
+  assert.ok(!d.eventi.some((e) => e.plantId === "zuc"), "la zona Orto resta da fare");
+  inviati.length = 0;
+  await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto cantina" } });
+  assert.match(inviati.at(-1)[1].text, /Non trovo la zona/);
+});
+
+test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora umido» a tutta riga", async () => {
+  const st = getStore({ name: "giardino" }), t = await st.get("t-" + CODE, { type: "json" });
+  // fuso scelto perché lì adesso siano le 12: mattino e sera partono nello stesso giro (orari impostati a 7 e 12)
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
+  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: new Date().toISOString().slice(0, 7) });
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
+  inviati.length = 0;
+  await bot();
+  const mattino = inviati.find((x) => x[0] === "sendMessage" && x[1].text.includes("Giardino —"));
+  assert.ok(mattino, "messaggio del mattino");
+  const sera = inviati.find((x) => x[0] === "sendMessage" && x[1].text.includes("Ancora da innaffiare"));
+  assert.ok(sera, "promemoria della sera");
+  const kb = sera[1].reply_markup.inline_keyboard;
+  assert.ok(kb.every((r) => r.length === 1), "una sola pulsante per riga");
+  assert.ok(kb.some((r) => r[0].text.startsWith("✅ Annaffiato")) && kb.some((r) => r[0].text.startsWith("💦 Terreno ancora umido")));
+  assert.ok(!kb.flat().some((b) => b.text.includes("Salto")));
+  inviati.length = 0; await bot();
+  assert.equal(inviati.filter((x) => x[0] === "sendMessage").length, 0, "una volta al giorno");
+});
+
+test("Siri: codice in intestazione, piano di oggi a voce, «ho innaffiato» per zona", async () => {
+  assert.equal((await call(siri, "/api/siri/oggi", { method: "POST" })).status, 401);
+  assert.equal((await call(siri, "/api/siri/boh", { method: "POST", headers: H })).status, 404);
+  assert.equal((await call(siri, "/api/siri/fatto", { headers: H })).status, 405);
+  const oggi = (await call(siri, "/api/siri/oggi", { method: "POST", headers: H })).body;
+  assert.match(oggi, /Zucchine, [\d,]+ litri, circa/);
+  assert.doesNotMatch(oggi, /[≈½¼¾]/);
+  assert.match((await call(siri, "/api/siri/oggi?zona=cantina", { headers: H })).body, /Non trovo la zona cantina/);
+  const r = await call(siri, "/api/siri/fatto?zona=orto", { method: "POST", headers: H });
+  assert.match(r.body, /Ho segnato come annaffiate: Zucchine\./);
+  assert.ok((await leggiDati()).eventi.some((e) => e.plantId === "zuc" && e.fonte === "siri"));
+  assert.match((await call(siri, "/api/siri/fatto?zona=Orto", { method: "POST", headers: H })).body, /niente da innaffiare in Orto/);
+});

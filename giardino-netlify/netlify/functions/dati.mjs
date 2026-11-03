@@ -1,20 +1,21 @@
-import { store, reply, cleanCode, newToken, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
+import { store, reply, codiceDa, newToken, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
+   Viaggia nell'intestazione x-giardino-code (non nell'indirizzo, così non resta nei log); ?code=X vale ancora per le app non aggiornate.
 
-   GET  /api/dati?code=X                      → { rev, data }  (data null se non c'è ancora niente)
-   POST /api/dati?code=X  { changes:{campo:valore}, add:[eventi], remove:[id eventi] }
+   GET  /api/dati                      → { rev, data }  (data null se non c'è ancora niente)
+   POST /api/dati  { changes:{campo:valore}, add:[eventi], remove:[id eventi] }
         Unisce sul server: i campi cambiati sostituiscono quelli salvati, gli eventi si aggiungono o tolgono uno per uno.
         Così le modifiche fatte nel frattempo da Claude o da Telegram non si perdono.
-   GET/POST /api/dati?code=X&op=mcp          { action: on | new | off | write, on }   chiave per Claude
-   GET/POST /api/dati?code=X&op=telegram     { action: token, token } | { action: test } | { action: off } */
+   GET/POST /api/dati?op=mcp          { action: on | new | off | write, on }   chiave per Claude
+   GET/POST /api/dati?op=telegram     { action: token, token } | { action: test } | { action: off } */
 
 export const config = { path: "/api/dati", rateLimit: { windowSize: 60, windowLimit: 120, aggregateBy: ["ip", "domain"] } };
 const MAX = 2 * 1024 * 1024;
 
 export default async (request) => {
-  const url = new URL(request.url), code = cleanCode(url.searchParams.get("code")), op = url.searchParams.get("op") || "";
+  const url = new URL(request.url), code = codiceDa(request), op = url.searchParams.get("op") || "";
   if (!code) return reply({ error: "codice mancante o non valido" }, 400);
   const st = store();
   try {

@@ -1,5 +1,6 @@
 // Giardino — versione Netlify, gratuita. Sostituisce le funzioni di claude.ai che l'app usa (window.claude.use):
-//   db    → /api/dati sul sito Netlify (codice di sincronizzazione casuale, salvato in questo browser)
+//   db    → /api/dati sul sito Netlify (codice di sincronizzazione casuale, salvato in questo browser e inviato
+//           nell'intestazione x-giardino-code: mai nell'indirizzo, così non resta nei log)
 //   meteo → Open-Meteo direttamente dal browser
 //   Claude non è chiamato dall'app: ragiona nella chat di claude.ai attraverso il connettore Giardino (/mcp/<chiave>).
 (function(){
@@ -16,7 +17,7 @@ const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],pi
 
 /* ---------------- server ---------------- */
 async function api(method, body, op){
-  const r=await fetch(API+'?code='+encodeURIComponent(code)+(op?'&op='+op:''),{method,headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});
+  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store'});
   const j=await r.json().catch(()=>null);
   if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')'));
   return j;
@@ -142,7 +143,8 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },120000);
 window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
-window.addEventListener('pagehide',()=>{ if(inAttesa&&navigator.onLine!==false){ try{ if(navigator.sendBeacon?.(API+'?code='+encodeURIComponent(code),new Blob([JSON.stringify(inAttesa)],{type:'application/json'}))){ inAttesa=null; LSset('pending',null); } }catch(e){} } });
+// chiudendo l'app con modifiche non ancora partite: invio “keepalive” (continua anche a pagina chiusa; sendBeacon non permette l'intestazione del codice)
+window.addEventListener('pagehide',()=>{ if(inAttesa&&navigator.onLine!==false){ try{ const b=JSON.stringify(inAttesa); if(b.length<60000){ fetch(API,{method:'POST',keepalive:true,headers:{'content-type':'application/json','x-giardino-code':code},body:b}).catch(()=>{}); inAttesa=null; LSset('pending',null); } }catch(e){} } });
 
 const caps={ db:{doc, collection:()=>{ throw new Error('non disponibile'); }}, user:{ id:async()=>'locale', me:async()=>({id:'locale',name:''}) }, mcp:{} };
 window.claude={ use:async n=>caps[n]??null };

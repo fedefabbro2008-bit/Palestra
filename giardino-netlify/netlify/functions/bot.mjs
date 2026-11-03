@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, esc, IMP_DEF, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Per ogni bot Telegram collegato, all'ora locale:
@@ -20,8 +20,6 @@ export default async () => {
   return new Response("ok");
 };
 
-const ESITI = ["fatto", "secco", "umido", "saltato"];
-const corto = (s) => { s = String(s || ""); return s.length > 18 ? s.slice(0, 17) + "…" : s; };
 
 async function uno(st, tkey) {
   const t = await st.get(tkey, { type: "json" });
@@ -58,10 +56,11 @@ async function uno(st, tkey) {
     // 1. promemoria: piante da innaffiare oggi ancora senza risposta (né dall'app, né da Telegram, né da Claude)
     const fresco = (await leggi(st, code))?.data || data;
     const mancano = (next.notificati?.[oggi] || []).filter((n) => !fresco.eventi.some((e) => e.plantId === n.id && e.data === oggi && ESITI.includes(e.tipo)))
-      .map((n) => ({ ...n, p: fresco.plants.find((p) => p.id === n.id) })).filter((n) => n.p);
+      .map((n) => ({ ...n, p: fresco.plants.find((p) => p.id === n.id) })).filter((n) => n.p)
+      .sort((a, b) => a.p.nome.localeCompare(b.p.nome, "it", { sensitivity: "base" }));
     if (mancano.length && !M.inVacanza(fresco.vacanza, oggi)) {
-      await invia("🔔 <b>Ancora da innaffiare oggi</b>\n" + mancano.map((n) => `💧 ${esc(n.p.nome)}: ${String(n.litri).replace(".", ",")} L (${esc(M.dose(n.litri, imp))})`).join("\n") + "\n<i>Se l'hai già fatto, premi Fatto: altrimenti domani lo conto come fatto.</i>",
-        { reply_markup: { inline_keyboard: mancano.map((n) => [{ text: "✅ " + corto(n.p.nome), callback_data: `g|${oggi}|${n.id}|f` }, { text: "💧 Era umida", callback_data: `g|${oggi}|${n.id}|u` }, { text: "⏭ Salto", callback_data: `g|${oggi}|${n.id}|s` }]) } });
+      await invia("🔔 <b>Ancora da innaffiare oggi</b>\n" + mancano.map((n) => `💧 ${esc(n.p.nome)}: ${String(n.litri).replace(".", ",")} L (${esc(M.dose(n.litri, imp))})`).join("\n") + "\n<i>Premi Annaffiato oppure Terreno ancora umido. Se non premi nulla, domani la conto come annaffiata.</i>",
+        { reply_markup: { inline_keyboard: mancano.flatMap((n) => pulsantiAcqua(n.p, oggi, { conNome: mancano.length > 1, salto: false })) } });
     }
     // 2. avvisi per domani
     const domani = met.days.find((d) => d.date === M.addDays(oggi, 1));

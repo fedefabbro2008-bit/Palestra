@@ -205,6 +205,23 @@ details.more[open]>summary{margin-bottom:12px}
 label.check{display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:.92rem}
 label.check input{flex:none;width:22px;height:22px;margin-top:1px;accent-color:var(--water)}
 
+/* scelta della specie con ricerca */
+.pick{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:8px 12px;border:1px solid var(--line);background:var(--surface-2);border-radius:12px;text-align:left;cursor:pointer;font-size:16px}
+.pick-ico{flex:none;font-size:1.3rem;line-height:1}
+.pick-t{flex:1;min-width:0}
+.pick .chev{margin-top:0;transform:rotate(90deg)}
+.pick[aria-expanded="true"] .chev{transform:rotate(-90deg)}
+.picker{display:flex;flex-direction:column;gap:8px;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.plist{display:flex;flex-direction:column;max-height:290px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.plist button{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:8px;border:0;border-radius:10px;background:none;text-align:left;font-size:.95rem;cursor:pointer}
+.plist button span:first-child{flex:none;width:1.6em;text-align:center;font-size:1.2rem;line-height:1}
+.plist button[aria-selected="true"]{background:var(--water-soft);color:var(--water);font-weight:700}
+.plist .vuoto{padding:10px 8px;color:var(--muted);font-size:.9rem}
+/* zone */
+.zhead{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;margin-top:4px}
+.zhead>span{font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:0}
+.zhead .btn{flex:none}
+
 /* diario */
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column}
@@ -333,7 +350,19 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
       <form id="plantForm" class="form" autocomplete="off" novalidate>
         <div class="row between"><h2 id="plantFormTitle">Nuova pianta</h2><button class="btn small ghost" type="button" id="cancelPlantBtn">Annulla</button></div>
         <div class="field"><label for="pf-nome">Nome</label><input type="text" id="pf-nome" maxlength="60" placeholder="Es. Pomodori del balcone" enterkeyhint="next"></div>
-        <div class="field"><label for="pf-specie">Che pianta è</label><select id="pf-specie"></select></div>
+        <div class="field"><span class="flabel" id="pf-specie-l">Che pianta è</span>
+          <input type="hidden" id="pf-specie">
+          <button type="button" class="pick" id="pf-specie-btn" aria-labelledby="pf-specie-l pf-specie-lab" aria-expanded="false"><span class="pick-ico" id="pf-specie-ico" aria-hidden="true"></span><span class="pick-t" id="pf-specie-lab"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+          <div class="picker" id="pf-picker" hidden>
+            <input type="text" id="pf-cerca" placeholder="Cerca: aglio, limone, rosa…" aria-label="Cerca la specie" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+            <div class="plist" id="pf-plist" role="listbox" aria-labelledby="pf-specie-l"></div>
+          </div>
+        </div>
+        <div class="field"><label for="pf-zona">Zona <span class="sub" style="font-weight:400">(facoltativa)</span></label>
+          <input type="text" id="pf-zona" maxlength="30" placeholder="Es. Balcone, Orto, Salotto" autocomplete="off" enterkeyhint="done">
+          <div class="quick" id="pf-zona-q"></div>
+          <span class="hint">Le piante della stessa zona stanno insieme e si segnano con un tocco solo.</span>
+        </div>
         <div class="field"><span class="flabel" id="pf-colt-l">Dove è piantata</span>
           <div class="seg" role="radiogroup" aria-labelledby="pf-colt-l">
             <label><input type="radio" name="colt" value="vaso">Vaso</label>
@@ -447,6 +476,23 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
       </div>
     </details>
 
+    <details class="set" id="set-siri"><summary><span class="si">🎙️</span><span class="st">Siri e Comandi Rapidi</span><span class="sv"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="body">
+        <p class="sub">Dì <b>“Ehi Siri, ho innaffiato”</b> per segnare le piante di oggi, oppure <b>“Ehi Siri, cosa innaffio oggi”</b> per sentire il piano. Il comando si crea una volta sola nell'app Comandi Rapidi.</p>
+        <div class="field"><label for="siriZona">Piante da segnare</label><select id="siriZona"></select></div>
+        <div class="field"><span class="flabel">Indirizzo per “Ho innaffiato”</span><div class="code" id="siriUrl"></div></div>
+        <div class="row"><button class="btn primary" id="siriCopyUrl" type="button">Copia l'indirizzo</button><button class="btn" id="siriCopyCode" type="button">Copia il codice</button></div>
+        <ol class="steps">
+          <li>Apri <b>Comandi Rapidi</b>, tocca <b>+</b> e poi <b>Aggiungi azione</b>: cerca <b>URL</b> e scegli <b>Ottieni contenuti dell'URL</b>.</li>
+          <li>Incolla l'indirizzo copiato qui sopra.</li>
+          <li>Apri le opzioni dell'azione: <b>Metodo</b> POST; in <b>Intestazioni</b> aggiungi la chiave <span class="mono">x-giardino-code</span> e come valore incolla il codice copiato.</li>
+          <li>Aggiungi l'azione <b>Pronuncia testo</b>: Siri leggerà la risposta.</li>
+          <li>Rinomina il comando <b>Ho innaffiato</b>. Per sentire il piano duplicalo, sostituisci <span class="mono">/fatto</span> con <span class="mono">/oggi</span> nell'indirizzo e chiamalo <b>Cosa innaffio oggi</b>.</li>
+        </ol>
+        <p class="hint">Il codice apre il tuo giardino: non condividere il comando con altri.</p>
+      </div>
+    </details>
+
     <details class="set" id="set-vac"><summary><span class="si">🏖️</span><span class="st">Vacanza</span><span class="sv" id="vacChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
       <div class="body">
         <p class="sub">Il giorno prima di partire il piano ti fa bagnare a fondo e calcola quanti giorni resiste ogni pianta.</p>
@@ -521,7 +567,8 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
 
 <script>
 // Giardino — versione Netlify, gratuita. Sostituisce le funzioni di claude.ai che l'app usa (window.claude.use):
-//   db    → /api/dati sul sito Netlify (codice di sincronizzazione casuale, salvato in questo browser)
+//   db    → /api/dati sul sito Netlify (codice di sincronizzazione casuale, salvato in questo browser e inviato
+//           nell'intestazione x-giardino-code: mai nell'indirizzo, così non resta nei log)
 //   meteo → Open-Meteo direttamente dal browser
 //   Claude non è chiamato dall'app: ragiona nella chat di claude.ai attraverso il connettore Giardino (/mcp/<chiave>).
 (function(){
@@ -538,7 +585,7 @@ const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],pi
 
 /* ---------------- server ---------------- */
 async function api(method, body, op){
-  const r=await fetch(API+'?code='+encodeURIComponent(code)+(op?'&op='+op:''),{method,headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined,cache:'no-store'});
+  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store'});
   const j=await r.json().catch(()=>null);
   if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')'));
   return j;
@@ -664,7 +711,8 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },120000);
 window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
-window.addEventListener('pagehide',()=>{ if(inAttesa&&navigator.onLine!==false){ try{ if(navigator.sendBeacon?.(API+'?code='+encodeURIComponent(code),new Blob([JSON.stringify(inAttesa)],{type:'application/json'}))){ inAttesa=null; LSset('pending',null); } }catch(e){} } });
+// chiudendo l'app con modifiche non ancora partite: invio “keepalive” (continua anche a pagina chiusa; sendBeacon non permette l'intestazione del codice)
+window.addEventListener('pagehide',()=>{ if(inAttesa&&navigator.onLine!==false){ try{ const b=JSON.stringify(inAttesa); if(b.length<60000){ fetch(API,{method:'POST',keepalive:true,headers:{'content-type':'application/json','x-giardino-code':code},body:b}).catch(()=>{}); inAttesa=null; LSset('pending',null); } }catch(e){} } });
 
 const caps={ db:{doc, collection:()=>{ throw new Error('non disponibile'); }}, user:{ id:async()=>'locale', me:async()=>({id:'locale',name:''}) }, mcp:{} };
 window.claude={ use:async n=>caps[n]??null };
@@ -692,7 +740,7 @@ const meseDi = iso => new Date(iso+'T12:00:00').getMonth();
    trap: età tipica della piantina al trapianto (giorni)
    cal: fase per mese (gen→dic) per le perenni: R riposo, V vegetativa, F fioritura, T fruttificazione, M maturazione
    gelo: minima (°C) sotto cui la pianta all'aperto soffre; conc: giorni tra concimazioni per fase; rinvaso: anni
-   cat: gruppo nell'elenco dell'app (CATEGORIE); ico: emoji della scheda */
+   cat: gruppo (CATEGORIE); ico: emoji della scheda; fasiNomi: nomi delle fasi propri della specie (es. bulbo per aglio e cipolla) */
 const SPECIE = {
   // Orto
   pomodoro:{nome:'Pomodoro',cat:'orto',ico:'🍅',kc:[0.6,0.85,1.15,0.8,0.3],area:0.30,radici:0.6,p:0.40,ann:true,ciclo:[10,40,75,95,145,175],trap:40,gelo:5,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
@@ -709,8 +757,8 @@ const SPECIE = {
   patata:{nome:'Patata',cat:'orto',ico:'🥔',kc:[0.5,0.75,1.15,0.75,0.3],area:0.20,radici:0.5,p:0.35,ann:true,ciclo:[20,35,55,75,null,115],trap:0,gelo:0,conc:{V:30},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
   carota:{nome:'Carota / rapa',cat:'orto',ico:'🥕',kc:[0.7,0.85,1.05,0.95,0.3],area:0.01,radici:0.4,p:0.35,ann:true,ciclo:[14,35,70,null,null,100],trap:0,gelo:-3,conc:{V:30},concTipo:'concime povero di azoto',rinvaso:0},
   ravanello:{nome:'Ravanello',cat:'orto',ico:'🌱',kc:[0.7,0.8,0.9,0.85,0.3],area:0.01,radici:0.2,p:0.30,ann:true,ciclo:[5,12,25,null,null,35],trap:0,gelo:-2,conc:{},concTipo:'',rinvaso:0},
-  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
-  cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
+  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
+  cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
   // Aromatiche
   basilico:{nome:'Basilico',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,1.0,0.9,0.3],area:0.05,radici:0.25,p:0.30,ann:true,ciclo:[10,30,90,120,null,150],trap:30,gelo:8,conc:{V:21},concTipo:'concime liquido per aromatiche',rinvaso:0},
   prezzemolo:{nome:'Prezzemolo / erbe tenere',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,0.95,0.9,0.4],area:0.05,radici:0.3,p:0.35,ann:true,ciclo:[20,50,200,null,null,260],trap:40,gelo:-5,conc:{V:30},concTipo:'concime liquido per aromatiche',rinvaso:0},
@@ -746,6 +794,16 @@ const FASI = {
   maturazione:{nome:'Maturazione / raccolta',kc:3,radici:1,p:null,l:'M'},
   riposo:{nome:'Riposo vegetativo',kc:4,radici:1,p:null,l:'R'}
 };
+// nome della fase per una specie (aglio e cipolla: “Ingrossamento del bulbo” al posto di “Fruttificazione”)
+function nomeFase(specie, fase){ const sp=SPECIE[specie]||SPECIE.altro; return sp.fasiNomi?.[fase] || (FASI[fase]||FASI.vegetativa).nome; }
+// specie in ordine alfabetico, “Altra pianta” in fondo
+function specieOrdinate(){ return Object.entries(SPECIE).sort(([a,x],[b,y])=>(a==='altro')-(b==='altro') || x.nome.localeCompare(y.nome,'it',{sensitivity:'base'})); }
+// piante in ordine alfabetico, raggruppate per zona (prima quelle con una zona, in ordine alfabetico)
+const zonaDi = p => String(p?.zona||'').trim().replace(/\s+/g,' ');
+function pianteOrdinate(piante){
+  const cmp=(a,b)=>a.localeCompare(b,'it',{sensitivity:'base',numeric:true});
+  return [...(piante||[])].sort((a,b)=>{ const za=zonaDi(a), zb=zonaDi(b); return (!za)-(!zb) || cmp(za,zb) || cmp(String(a.nome||''),String(b.nome||'')); });
+}
 const DA_LETTERA = {G:'germinazione',P:'piantina',V:'vegetativa',F:'fioritura',T:'fruttificazione',M:'maturazione',R:'riposo'};
 const ORDINE_FASI = ['germinazione','piantina','vegetativa','fioritura','fruttificazione','maturazione'];
 
@@ -828,7 +886,7 @@ function params(p, ctx={}){
   }
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib};
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
     const D=+p.diametro>0 ? +p.diametro/100 : Math.cbrt(4*V/1000/(0.9*Math.PI));   // vaso alto ~0,9 × diametro
@@ -1024,6 +1082,11 @@ const next7 = () => Array.from({length:7},(_,i)=>addDays(today(),i));
 const numOrNull = v => { if(v===''||v==null) return null; const n=parseFloat(String(v).trim().replace(',','.')); return isFinite(n)?n:null; };
 const numIn = v => v==null||v==='' ? '' : String(v).replace('.',',');
 const icoDi = p => (SPECIE[p.specie]||SPECIE.altro).ico||'🌱';
+const piante = () => pianteOrdinate(S.plants);   // sempre in ordine alfabetico, raggruppate per zona
+const chiaveZona = p => zonaDi(p).toLowerCase() || '·';
+const conZone = () => S.plants.some(p=>zonaDi(p));
+function zoneEsistenti(){ const m=new Map(); for(const p of S.plants){ const z=zonaDi(p); if(z&&!m.has(z.toLowerCase())) m.set(z.toLowerCase(),z); } return [...m.values()].sort((a,b)=>a.localeCompare(b,'it',{sensitivity:'base'})); }
+const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 // un campo si riscrive solo se il dato salvato è cambiato e non ci stai scrivendo: l'aggiornamento automatico non cancella ciò che stai inserendo
 const setVal = (el,v) => { v=String(v??''); if(!el || document.activeElement===el || el._last===v) return; el.value=v; el._last=v; };
 const setHTML = (el,h) => { if(el._h!==h){ el.innerHTML=h; el._h=h; } };
@@ -1242,7 +1305,7 @@ function renderWeather(){
 }
 function renderAlerts(AP){
   const t=today(), domani=futDays().find(d=>d.date===addDays(t,1));
-  const dom=avvisiDomani(S.plants,domani,activeWeather()?.notte), tipi=new Set(dom.map(a=>a.tipo));
+  const dom=avvisiDomani(piante(),domani,activeWeather()?.notte), tipi=new Set(dom.map(a=>a.tipo));
   const avvPiano=(AP?.data?.avvisi||[]).filter(a=>!(tipi.has('gelo')&&/minima|gelo|°C: proteggi/i.test(a)) && !(tipi.has('caldo')&&/caldo|massima/i.test(a)));
   const avv=[...dom.map(a=>/^Stanotte/.test(a.testo)?a.testo:'Domani: '+a.testo), ...avvPiano];
   setHTML($('#alerts'),avv.map(a=>'<div class="alert">'+ICON.warn+'<div>'+esc(a)+'</div></div>').join(''));
@@ -1278,9 +1341,9 @@ function renderOggi(AP){
     sub.textContent=S.location?'Il piano compare appena arrivano le previsioni.':'Serve per il meteo: impostalo qui sopra o in Impostazioni.';
     setHTML(list,''); $('#weekBox').hidden=true; renderConcime(); return;
   }
-  const items=S.plants.map(p=>{ const pp=AP.data.piante.find(x=>x.id===p.id); return {p, pp, g:pp?.giorni.find(x=>x.data===t), st:statoOggi(p)}; });
+  const items=piante().map(p=>{ const pp=AP.data.piante.find(x=>x.id===p.id); return {p, pp, g:pp?.giorni.find(x=>x.data===t), st:statoOggi(p)}; });
   // da fare: ciò che il piano chiede oggi, più ciò che hai già segnato (dopo "Fatto" il piano ricalcola la giornata come "non serve")
-  const todo=items.filter(x=>x.st || (x.g && (x.g.azione==='innaffia'||x.g.azione==='controlla'))).sort((a,b)=>(!!a.st)-(!!b.st));
+  const todo=items.filter(x=>x.st || (x.g && (x.g.azione==='innaffia'||x.g.azione==='controlla')));
   const rest=items.filter(x=>!todo.includes(x)), aperte=todo.filter(x=>!x.st);
   const inn=aperte.filter(x=>x.g.azione==='innaffia'), nCtrl=aperte.length-inn.length, litri=inn.reduce((a,x)=>a+x.g.litri,0);
   if(!todo.length){ head.textContent='Oggi niente acqua'; sub.textContent='La terra è ancora umida o è piovuto abbastanza.'; }
@@ -1290,7 +1353,21 @@ function renderOggi(AP){
     sub.textContent=[inn.length?fmtL(litri)+' in tutto':'', inn.length&&nCtrl?(nCtrl===1?'1 da controllare':nCtrl+' da controllare'):''].filter(Boolean).join(' · ');
   }
   const vac=inVacanza(S.vacanza,t)?`<div class="alert info">${ICON.info}<div>Sei in vacanza fino al ${esc(dataBreve(S.vacanza.al))}: queste azioni sono per chi bagna al posto tuo.</div></div>`:'';
-  setHTML(list, vac+todo.map(taskCard).join(''));
+  const primaAperte=v=>v.slice().sort((a,b)=>(!!a.st)-(!!b.st));
+  let html=vac;
+  if(!conZone()){
+    if(inn.length>=2) html+=`<button class="btn wide" type="button" data-tutte="*">✓ Annaffiate tutte (${inn.length} · ${esc(fmtL(litri))})</button>`;
+    html+=primaAperte(todo).map(taskCard).join('');
+  } else {
+    // una sezione per zona, con “Tutte annaffiate” quando nella zona ce n'è più di una da innaffiare
+    const gruppi=new Map();
+    for(const x of todo){ const k=chiaveZona(x.p); if(!gruppi.has(k)) gruppi.set(k,{nome:zonaDi(x.p)||'Senza zona',voci:[]}); gruppi.get(k).voci.push(x); }
+    for(const [k,g] of gruppi){
+      const n=g.voci.filter(x=>!x.st&&x.g?.azione==='innaffia').length;
+      html+=`<div class="zhead"><span>${esc(g.nome)}</span>${n>=2?`<button class="btn small" type="button" data-tutte="${esc(k)}">✓ Tutte annaffiate (${n})</button>`:''}</div>`+primaAperte(g.voci).map(taskCard).join('');
+    }
+  }
+  setHTML(list, html);
   if(rest.length){
     $('#restBox').hidden=false;
     setHTML($('#restList'),rest.map(x=>`<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(x.p))}</span><span class="li"><b>${esc(x.p.nome)}</b><span>${esc(x.g?x.g.motivo:'Non nel piano di Claude: chiedigli di rifarlo')}</span></span></div>`).join(''));
@@ -1299,7 +1376,7 @@ function renderOggi(AP){
 }
 function renderConcime(){
   const t=today(), c=ctx();
-  const due=ready?S.plants.map(p=>({p,c:concime(p,c),fatto:eventsOf(p.id,t).some(e=>e.tipo==='concime')})).filter(x=>x.c.inStagione&&(x.c.dovuto||x.fatto)):[];
+  const due=ready?piante().map(p=>({p,c:concime(p,c),fatto:eventsOf(p.id,t).some(e=>e.tipo==='concime')})).filter(x=>x.c.inStagione&&(x.c.dovuto||x.fatto)):[];
   $('#concBox').hidden=!due.length;
   setHTML($('#concList'),due.map(({p,c,fatto})=>`<div class="lrow"><span class="ri" aria-hidden="true">🌱</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(fatto?'Concimata oggi':c.tipo+', ogni '+c.freq+' giorni')}</span></span><button class="btn small ${fatto?'on':'ghost'}" type="button" data-ev="concime" data-pid="${esc(p.id)}">${fatto?'✓ Fatto':'Concimata'}</button></div>`).join(''));
 }
@@ -1309,7 +1386,7 @@ function renderWeek(AP){
   box.hidden=false;
   const aperti=new Set([...document.querySelectorAll('#weekList details[open]')].map(d=>d.dataset.d));
   setHTML($('#weekList'),dates.map(d=>{
-    const voci=S.plants.map(p=>{ const g=AP.data.piante.find(x=>x.id===p.id)?.giorni.find(x=>x.data===d); return g?{p,g}:null; }).filter(Boolean);
+    const voci=piante().map(p=>{ const g=AP.data.piante.find(x=>x.id===p.id)?.giorni.find(x=>x.data===d); return g?{p,g}:null; }).filter(Boolean);
     const az=voci.filter(v=>v.g.azione!=='salta');
     const pills=az.length?az.map(({p,g})=>`<span class="pill ${g.azione==='innaffia'?'water':'check'}">${esc(icoDi(p)+' '+p.nome+(g.azione==='innaffia'?' · '+fmtL(g.litri):' · controlla'))}</span>`).join(''):'<span class="pill">niente da fare</span>';
     const lab=`<span class="dl">${esc(dayLabel(d))}${inVacanza(S.vacanza,d)?'<small>sei via</small>':''}</span>`;
@@ -1326,7 +1403,7 @@ function vacText(){
   const v=S.vacanza; if(!v) return '';
   const durata=giorniTra(v.dal,v.al), fut=futDays();
   let s='Piante da bagnare dal '+dataBreve(v.dal)+' al '+dataBreve(v.al)+'\n';
-  for(const p of S.plants){
+  for(const p of piante()){
     const a=autonomia(p,{...ctx(),fut});
     if(a.giorni>=durata){ s+='\n• '+p.nome+': non serve, resiste.'; continue; }
     const ogni=Math.max(1,Math.floor(a.giorni*0.8));
@@ -1344,7 +1421,7 @@ function renderVacanza(){
   sv.textContent=dataBreve(v.dal)+' → '+dataBreve(v.al); sv.className='sv ok';
   if(!S.plants.length){ setHTML($('#vacTable'),''); return; }
   const fut=futDays();
-  setHTML($('#vacTable'),'<div class="eyebrow">'+durata+' giorni via · quanto resiste ogni pianta</div>'+S.plants.map(p=>{
+  setHTML($('#vacTable'),'<div class="eyebrow">'+durata+' giorni via · quanto resiste ogni pianta</div>'+piante().map(p=>{
     const a=autonomia(p,{...ctx(),fut}), ok=a.giorni>=durata;
     let cons;
     if(ok) cons='Bagnala a fondo il giorno prima.';
@@ -1358,14 +1435,17 @@ function renderPiante(AP){
   $('#plantCount').textContent=S.plants.length?'Le tue piante ('+S.plants.length+')':'Le tue piante';
   if(!ready){ setHTML(L,'<div class="empty">Caricamento…</div>'); return; }
   if(!S.plants.length){ setHTML(L,'<div class="card empty">Nessuna pianta. Tocca <b>+ Aggiungi</b> per iniziare.</div>'); return; }
-  const aperti=new Set([...L.querySelectorAll('details[open]')].map(d=>d.dataset.pid)), c=ctx(), haMeteo=futDays().length>0;
-  setHTML(L,S.plants.map(p=>{
+  const aperti=new Set([...L.querySelectorAll('details[open]')].map(d=>d.dataset.pid)), c=ctx(), haMeteo=futDays().length>0, zone=conZone();
+  let zonaPrima=null;
+  setHTML(L,piante().map(p=>{
+    let testa='';
+    if(zone && chiaveZona(p)!==zonaPrima){ zonaPrima=chiaveZona(p); testa=`<div class="zhead"><span>${esc(zonaDi(p)||'Senza zona')}</span></div>`; }
     const {k,uso,giorni}=schedaAcqua(p), pp=AP?.data?.piante.find(x=>x.id===p.id), nx=prossima(p,pp);
     const meta=[k.sp.nome.replace(/ \(.*\)$/,'')+(k.num>1?' ×'+k.num:''), k.vaso?'vaso '+fmt(k.V,1)+' L':COLT[p.colt]?.toLowerCase(), fmt(k.h,1)+' h di sole', DOVE_BREVE[p.dove]].filter(Boolean).join(' · ');
     const altri=k.membri.slice(1).map(m=>(SPECIE[m.specie]||SPECIE.altro).nome.split(' ')[0]+(m.num>1?' ×'+m.num:'')).join(', ');
     const ogni = giorni==null ? '—' : giorni<1 ? 'anche più volte al giorno' : giorni>30 ? 'raramente' : 'circa ogni '+fmt(giorni,giorni<3?1:0)+' giorni';
     const u=ultimaInnaffiatura(p,c.eventi);
-    const facts=[['Fase',k.fa.nome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
+    const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
       ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],['Quindi',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
     if(altri) facts.push(['Nel vaso anche',altri]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
@@ -1376,7 +1456,7 @@ function renderPiante(AP){
     if(Math.abs(k.calib-1)>0.01) notes.push(['','Imparato dalle tue risposte: beve il '+Math.round(Math.abs(k.calib-1)*100)+'% '+(k.calib<1?'in meno':'in più')+' del previsto.']);
     (pp?.consigli||[]).forEach(x=>notes.push(['','💬 '+x]));
     if(pp?.valutazione) notes.unshift(['','💬 '+pp.valutazione]);
-    return `<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ic leaf" aria-hidden="true">${esc(icoDi(p))}</span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
+    return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ic leaf" aria-hidden="true">${esc(icoDi(p))}</span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
       <div class="pbody"><div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
       ${notes.length?'<ul class="notes">'+notes.map(([cls,x])=>`<li class="${cls}">${esc(x)}</li>`).join('')+'</ul>':''}
       <button class="btn wide" type="button" data-edit="${esc(p.id)}">Modifica</button></div></details>`;
@@ -1403,10 +1483,16 @@ function renderImpostazioni(){
   setVal($('#impB'),numIn(i.bicchiere)); setVal($('#impA'),numIn(i.annaffiatoio)); setVal($('#impM'),i.ora_mattina); setVal($('#impS'),i.ora_sera);
   $('#misVal').textContent='annaffiatoio '+fmt(i.annaffiatoio)+' L';
   $('#impEx').textContent='Esempio: 1,2 L = '+dose(1.2,i)+'; 3 L = '+dose(3,i)+'.';
-  renderVacanza(); renderMeteoSet(); renderSync();
+  renderVacanza(); renderMeteoSet(); renderSync(); renderSiri();
+}
+function renderSiri(){
+  const sel=$('#siriZona'), prima=sel.value, zone=zoneEsistenti();
+  const h='<option value="">Tutte le piante di oggi</option>'+zone.map(z=>`<option value="${esc(z)}">Solo la zona ${esc(z)}</option>`).join('');
+  if(sel._h!==h){ sel.innerHTML=h; sel._h=h; sel.value=zone.includes(prima)?prima:''; }
+  $('#siriUrl').textContent=location.origin+'/api/siri/fatto'+(sel.value?'?zona='+encodeURIComponent(sel.value):'');
 }
 const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],meno:['➖','meno acqua (da foto)'],piu:['➕','più acqua (da foto)']};
-const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude'};
+const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
 function renderDiario(){
   const ev=allEvents(), t=today(), lim=addDays(t,-29);
   const giorni=Array.from({length:30},(_,i)=>addDays(t,i-29));
@@ -1415,7 +1501,7 @@ function renderDiario(){
   const tot=val.reduce((a,b)=>a+b,0);
   $('#dTot').textContent=fmt(tot)+' L'; $('#dNum').textContent=n;
   drawChart(giorni,val);
-  $('#statList').innerHTML=S.plants.length?S.plants.map(p=>{
+  $('#statList').innerHTML=S.plants.length?piante().map(p=>{
     const e=eventiValidi(ev,p.id).filter(x=>x.data>=lim), f=e.filter(x=>x.tipo==='fatto'||x.tipo==='secco'), cal=calibrazione(ev,p.id,t), um=e.filter(x=>x.tipo==='umido').length;
     const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%'].filter(Boolean).join(' · ');
     return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(det)}</span></span></div>`;
@@ -1454,15 +1540,39 @@ function drawChart(giorni,val){
 
 /* ================= Modulo pianta ================= */
 let editingId=null;
-const optSpecie = v => Object.entries(CATEGORIE).map(([c,n])=>{ const o=Object.entries(SPECIE).filter(([,s])=>(s.cat||'altro')===c); return o.length?'<optgroup label="'+esc(n)+'">'+o.map(([k,s])=>`<option value="${k}" ${k===v?'selected':''}>${esc(s.nome)}</option>`).join('')+'</optgroup>':''; }).join('');
-const optFasi = (v,auto) => (auto?`<option value="${auto.value}" ${v===auto.value?'selected':''}>${esc(auto.label)}</option>`:'')+Object.entries(FASI).map(([k,f])=>`<option value="${k}" ${k===v?'selected':''}>${esc(f.nome)}</option>`).join('');
+const optSpecie = v => specieOrdinate().map(([k,s])=>`<option value="${k}" ${k===v?'selected':''}>${esc((s.ico?s.ico+' ':'')+s.nome)}</option>`).join('');
+const optFasi = (v,auto,specie) => (auto?`<option value="${auto.value}" ${v===auto.value?'selected':''}>${esc(auto.label)}</option>`:'')+Object.keys(FASI).map(k=>`<option value="${k}" ${k===v?'selected':''}>${esc(nomeFase(specie,k))}</option>`).join('');
+// parole che fanno trovare una specie anche se non sono nel nome
+const ALIAS={appartamento:'pothos monstera ficus sansevieria zamioculcas dracena spatifillo kenzia',agrumi:'limone arancio mandarino lime pompelmo',fruttiferi:'melo pero pesco albicocco ciliegio susino fico kaki',
+  arbusto:'oleandro bosso alloro gelsomino lauroceraso',geranio:'petunia surfinia begonia fiori',succulenta:'cactus aloe grassa',prato:'erba',melone:'anguria cocomero',peperone:'peperoncino',cipolla:'porro scalogno',
+  spinaci:'bietola bieta rucola',cavolo:'broccolo cavolfiore verza',fagiolo:'fagiolino',pisello:'fava',carota:'rapa',prezzemolo:'erba cipollina coriandolo aneto',menta:'melissa',rosmarino:'salvia timo origano maggiorana',
+  lattuga:'insalata radicchio',vite:'uva',orchidea:'phalaenopsis',zucchina:'zucca',olivo:'ulivo oliva'};
+function setSpecie(k){ const sp=SPECIE[k]?k:'altro'; $('#pf-specie').value=sp; $('#pf-specie-ico').textContent=SPECIE[sp].ico||'🌱'; $('#pf-specie-lab').textContent=SPECIE[sp].nome; }
+function renderPicker(){
+  // cerca all'inizio delle parole del nome e dei sinonimi (“po” trova pomodoro, porro, pothos; non “cipollina”)
+  const q=norm($('#pf-cerca').value.trim()), v=$('#pf-specie').value, re=q?new RegExp('(^|[^a-z0-9])'+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')):null;
+  const voci=specieOrdinate().filter(([k,s])=>!re || re.test(norm(s.nome+' '+(ALIAS[k]||'')+' '+k)));
+  $('#pf-plist').innerHTML=voci.length?voci.map(([k,s])=>`<button type="button" role="option" data-sp="${k}" aria-selected="${k===v}"><span aria-hidden="true">${esc(s.ico||'🌱')}</span><span>${esc(s.nome)}</span></button>`).join('')
+    :'<div class="vuoto">Nessuna specie con questo nome: scegli “Altra pianta”.</div>';
+}
+function apriPicker(on){
+  $('#pf-picker').hidden=!on; $('#pf-specie-btn').setAttribute('aria-expanded',String(on));
+  if(on){ $('#pf-cerca').value=''; renderPicker(); const sel=$('#pf-plist [aria-selected="true"]'); if(sel) $('#pf-plist').scrollTop=sel.offsetTop-$('#pf-plist').offsetTop-80; }
+}
+function scegliSpecie(k){
+  setSpecie(k); apriPicker(false);
+  const sp=SPECIE[k]; if(!editingId) $('#pf-tipo-data').value=sp?.ann&&sp.trap>0?'trapianto':'semina';
+  $('#pf-fase').innerHTML=optFasi($('#pf-fase').value,{value:'auto',label:'Automatica'},k);
+  syncForm(); $('#pf-specie-btn').focus({preventScroll:true});
+}
+function renderZoneQuick(){ const v=$('#pf-zona').value.trim().toLowerCase(); $('#pf-zona-q').innerHTML=zoneEsistenti().map(z=>`<button type="button" data-zona="${esc(z)}" class="${z.toLowerCase()===v?'on':''}">${esc(z)}</button>`).join(''); }
 const radioVal = n => document.querySelector(`input[name=${n}]:checked`)?.value;
 const setRadio = (n,v) => { const r=document.querySelector(`input[name=${n}][value="${v}"]`)||document.querySelector(`input[name=${n}]`); r.checked=true; };
 function consRow(c){
   const i=uid();
   return `<div class="cons-row" data-cons>
     <select class="cs" aria-label="Specie" data-c="specie" id="cs-${i}">${optSpecie(c.specie||'basilico')}</select>
-    <select aria-label="Fase" data-c="fase" id="cf-${i}">${optFasi(c.fase||'',{value:'',label:'Stessa fase'})}</select>
+    <select aria-label="Fase" data-c="fase" id="cf-${i}">${optFasi(c.fase||'',{value:'',label:'Stessa fase'},c.specie||'basilico')}</select>
     <input type="text" inputmode="numeric" aria-label="Quante piante" data-c="num" id="cn-${i}" value="${Math.max(1,+c.num||1)}">
     <button type="button" class="btn ghost rm" data-cons-rm aria-label="Rimuovi">×</button></div>`;
 }
@@ -1475,18 +1585,19 @@ function syncForm(){
   let hint='';
   if(auto){
     const fe=faseEffettiva({specie,fase:'auto',data_semina:$('#pf-semina').value,tipo_data:$('#pf-tipo-data').value},today(),S.location?.lat);
-    hint=(ann?'Calcolata dalla data qui sotto':'Calcolata dal mese')+'. Oggi: '+FASI[fe.fase].nome.toLowerCase()+(fe.nota?' ('+fe.nota+')':'')+'.';
+    hint=(ann?'Calcolata dalla data qui sotto':'Calcolata dal mese')+'. Oggi: '+nomeFase(specie,fe.fase).toLowerCase()+(fe.nota?' ('+fe.nota+')':'')+'.';
   }
   $('#pf-fase-hint').textContent=hint;
   document.querySelectorAll('.seg label').forEach(l=>l.classList.toggle('on',!!l.querySelector('input:checked')));
   markQuick('#pf-vaso-q','data-vaso',$('#pf-vaso').value); markQuick('#pf-luce-q','data-luce',$('#pf-luce').value);
 }
 function openForm(id){
-  const p=id?S.plants.find(x=>x.id===id):{nome:'',specie:'pomodoro',fase:'auto',data_semina:'',tipo_data:'trapianto',colt:'vaso',vaso:12,diametro:null,area:'',num:1,luce:6,dove:'aperto',ultima:'',ultima_concime:'',data_rinvaso:'',note:'',consociate:[]};
+  const p=id?S.plants.find(x=>x.id===id):{nome:'',zona:'',specie:'pomodoro',fase:'auto',data_semina:'',tipo_data:'trapianto',colt:'vaso',vaso:12,diametro:null,area:'',num:1,luce:6,dove:'aperto',ultima:'',ultima_concime:'',data_rinvaso:'',note:'',consociate:[]};
   if(!p) return;
   editingId=id||null;
   $('#plantFormTitle').textContent=id?'Modifica pianta':'Nuova pianta';
-  $('#pf-nome').value=p.nome; $('#pf-specie').value=SPECIE[p.specie]?p.specie:'altro'; $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'});
+  $('#pf-nome').value=p.nome; setSpecie(p.specie); apriPicker(false); $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'},p.specie);
+  $('#pf-zona').value=zonaDi(p); renderZoneQuick();
   $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina';
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
   $('#pf-vaso').value=numIn(p.vaso); $('#pf-diam').value=numIn(p.diametro); $('#pf-area').value=numIn(p.area); $('#pf-num').value=p.num||1;
@@ -1505,7 +1616,9 @@ function submitForm(e){
   const pos=v=>{ const n=numOrNull(v); return n&&n>0?n:null; };
   const luce=numOrNull($('#pf-luce').value);
   const consociate = colt==='vaso' ? [...document.querySelectorAll('#pf-cons [data-cons]')].map(r=>{ const f=r.querySelector('[data-c=fase]').value; return {specie:r.querySelector('[data-c=specie]').value, ...(f?{fase:f}:{}), num:Math.max(1,Math.round(pos(r.querySelector('[data-c=num]').value)||1))}; }) : [];
-  const data={nome:nome.slice(0,60),specie:$('#pf-specie').value,fase:$('#pf-fase').value,data_semina:$('#pf-semina').value||'',tipo_data:$('#pf-tipo-data').value,colt,
+  // zona: se esiste già con maiuscole diverse, si usa quella
+  let zona=$('#pf-zona').value.trim().replace(/\s+/g,' ').slice(0,30); const zz=zoneEsistenti().find(z=>z.toLowerCase()===zona.toLowerCase()); if(zz) zona=zz;
+  const data={nome:nome.slice(0,60),zona,specie:$('#pf-specie').value,fase:$('#pf-fase').value,data_semina:$('#pf-semina').value||'',tipo_data:$('#pf-tipo-data').value,colt,
     vaso:colt==='vaso'?(pos($('#pf-vaso').value)||10):null, diametro:colt==='vaso'?pos($('#pf-diam').value):null, consociate,
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
     luce:luce==null?6:Math.max(0,Math.min(14,luce)), dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
@@ -1528,7 +1641,7 @@ function planText(){
   const dates=futDays().map(d=>d.date);
   let s='Piano di innaffiatura — '+(S.location?.name||'')+'\n'+(AP.data.sintesi?AP.data.sintesi+'\n':'');
   (AP.data.avvisi||[]).forEach(a=>s+='! '+a+'\n');
-  for(const p of S.plants){ const pp=AP.data.piante.find(x=>x.id===p.id); if(!pp) continue;
+  for(const p of piante()){ const pp=AP.data.piante.find(x=>x.id===p.id); if(!pp) continue;
     s+='\n'+p.nome+' — '+fmt(pp.fabbisogno_settimanale_litri)+' L in tutto\n';
     pp.giorni.filter(g=>dates.includes(g.data)).forEach(g=>s+='  '+dayLabel(g.data)+': '+(g.azione==='innaffia'?fmt(g.litri,2)+' L, '+dose(g.litri,S.impostazioni)+' ('+g.momento+')':g.azione)+' — '+g.motivo+'\n');
     (pp.consigli||[]).forEach(c=>s+='  • '+c+'\n'); }
@@ -1547,16 +1660,30 @@ function onEvent(pid,tipo){
   addEvent(pid,tipo,extra); renderAll();
   toast({fatto:'Segnata come innaffiata',secco:'Registrato: era secca, innaffiata',umido:'Registrato: era umida. Imparo a dare meno acqua.',saltato:'Saltata per oggi',concime:'Concimazione registrata'}[tipo]||'Registrato');
 }
+// segna come annaffiate tutte le piante da innaffiare oggi ancora senza risposta (tutte, o di una zona)
+function fattoTutte(key){
+  const AP=activePlan(), t=today(); if(!AP) return;
+  const scelte=piante().filter(p=>key==='*'||chiaveZona(p)===key).map(p=>({p,g:AP.data.piante.find(x=>x.id===p.id)?.giorni.find(x=>x.data===t)})).filter(x=>x.g?.azione==='innaffia'&&!statoOggi(x.p));
+  if(!scelte.length) return;
+  for(const {p,g} of scelte) S.eventi_app.push({id:'app-'+uid(), plantId:p.id, tipo:'fatto', data:t, fonte:'app', ts:new Date().toISOString(), litri:g.litri});
+  saveMain(); renderAll(); toast(scelte.length===1?'Segnata come annaffiata':'Segnate come annaffiate: '+scelte.length+' piante');
+}
 function undoOggi(pid){
   const t=today(); S.eventi_app=S.eventi_app.filter(e=>!(e.plantId===pid&&e.data===t&&ESITI.includes(e.tipo)));
   saveMain(); renderAll(); toast('Annullato');
 }
 function wire(){
-  $('#pf-specie').innerHTML=optSpecie('pomodoro');
+  $('#pf-specie-btn').addEventListener('click',()=>apriPicker($('#pf-picker').hidden));
+  $('#pf-cerca').addEventListener('input',renderPicker);
+  $('#pf-cerca').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); const b=$('#pf-plist [data-sp]'); if(b) scegliSpecie(b.dataset.sp); } });
+  $('#pf-plist').addEventListener('click',e=>{ const b=e.target.closest('[data-sp]'); if(b) scegliSpecie(b.dataset.sp); });
+  $('#pf-zona').addEventListener('input',renderZoneQuick);
+  $('#pf-zona-q').addEventListener('click',e=>{ const b=e.target.closest('[data-zona]'); if(!b) return; const z=$('#pf-zona'); z.value=z.value.trim().toLowerCase()===b.dataset.zona.toLowerCase()?'':b.dataset.zona; renderZoneQuick(); });
   document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));
   document.addEventListener('click',e=>{
     const b=e.target.closest('[data-ev]'); if(b){ onEvent(b.dataset.pid,b.dataset.ev); return; }
     const u=e.target.closest('[data-undo]'); if(u){ undoOggi(u.dataset.undo); return; }
+    const tt=e.target.closest('[data-tutte]'); if(tt){ fattoTutte(tt.dataset.tutte); return; }
     const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); }
   });
   $('#saveNote').addEventListener('click',()=>$('#saveNote').hidden=true);
@@ -1585,7 +1712,11 @@ function wire(){
   $('#addPlantBtn').addEventListener('click',()=>openForm(null));
   $('#plantList').addEventListener('click',e=>{ const b=e.target.closest('[data-edit]'); if(b) openForm(b.dataset.edit); });
   $('#plantForm').addEventListener('submit',submitForm);
-  $('#plantForm').addEventListener('change',e=>{ if(e.target.id==='pf-specie' && !editingId){ const sp=SPECIE[e.target.value]; $('#pf-tipo-data').value=sp?.ann&&sp.trap>0?'trapianto':'semina'; } syncForm(); });
+  $('#plantForm').addEventListener('change',e=>{
+    // nelle piante dello stesso vaso, i nomi delle fasi seguono la specie scelta
+    if(e.target.matches('[data-c=specie]')){ const f=e.target.closest('[data-cons]').querySelector('[data-c=fase]'); f.innerHTML=optFasi(f.value,{value:'',label:'Stessa fase'},e.target.value); }
+    syncForm();
+  });
   $('#plantForm').addEventListener('input',e=>{ if(['pf-vaso','pf-luce','pf-semina'].includes(e.target.id)) syncForm(); });
   document.querySelectorAll('[data-luce]').forEach(b=>b.addEventListener('click',()=>{ $('#pf-luce').value=b.dataset.luce; syncForm(); }));
   document.querySelectorAll('[data-vaso]').forEach(b=>b.addEventListener('click',()=>{ $('#pf-vaso').value=b.dataset.vaso; syncForm(); }));
@@ -1688,6 +1819,9 @@ function wireNetlify(){
   const N=window.GiardinoNet;
   $('#netCode').textContent=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
+  $('#siriZona').addEventListener('change',renderSiri);
+  $('#siriCopyUrl').addEventListener('click',async()=>toast(await copyText($('#siriUrl').textContent,$('#siriUrl'))?'Indirizzo copiato':'Seleziona e copia a mano'));
+  $('#siriCopyCode').addEventListener('click',async()=>toast(await copyText(N.codice())?'Codice copiato: incollalo come valore di x-giardino-code':'Copia non riuscita'));
   $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });
   $('#prompts').innerHTML=PROMPTS.map((t,i)=>`<button class="prompt" type="button" data-prompt="${i}"><span>“${esc(t)}”</span><span class="pc">Copia</span></button>`).join('');
   $('#prompts').addEventListener('click',async e=>{ const b=e.target.closest('[data-prompt]'); if(b) toast(await copyText(PROMPTS[+b.dataset.prompt])?'Copiato: incollalo nella chat di Claude':'Copia non riuscita'); });

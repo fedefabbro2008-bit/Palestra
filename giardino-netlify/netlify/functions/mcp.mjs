@@ -32,9 +32,9 @@ async function contesto(ctx) {
 function descrivi(p, data, oggi, met) {
   const lat = data.location?.lat, k = M.params(p, { oggi, lat, eventi: data.eventi }), imp = { ...IMP_DEF, ...(data.impostazioni || {}) };
   const d0 = met.days.find((d) => d.date === oggi) || { et0: 3 };
-  const altri = k.membri.slice(1).map((m) => (M.SPECIE[m.specie] || M.SPECIE.altro).nome + (m.num > 1 ? " ×" + m.num : "") + " (" + (M.FASI[m.fase] || M.FASI.vegetativa).nome.toLowerCase() + ")");
+  const altri = k.membri.slice(1).map((m) => (M.SPECIE[m.specie] || M.SPECIE.altro).nome + (m.num > 1 ? " ×" + m.num : "") + " (" + M.nomeFase(m.specie, m.fase).toLowerCase() + ")");
   const c = M.concime(p, { oggi, lat, eventi: data.eventi }), rv = M.rinvaso(p, { oggi, lat });
-  const L = [`- **${p.nome}** [id ${p.id}] — ${k.sp.nome}${k.num > 1 ? " ×" + k.num : ""}, ${k.fa.nome.toLowerCase()}${k.faseAuto ? " (calcolata" + (p.data_semina ? " da " + (p.tipo_data === "trapianto" ? "trapianto" : "semina") + " del " + p.data_semina : " dal mese") + ")" : ""}`,
+  const L = [`- **${p.nome}** [id ${p.id}]${M.zonaDi(p) ? " · zona " + M.zonaDi(p) : ""} — ${k.sp.nome}${k.num > 1 ? " ×" + k.num : ""}, ${k.faseNome.toLowerCase()}${k.faseAuto ? " (calcolata" + (p.data_semina ? " da " + (p.tipo_data === "trapianto" ? "trapianto" : "semina") + " del " + p.data_semina : " dal mese") + ")" : ""}`,
     `  ${k.vaso ? `vaso ${fmt(k.V)} L, Ø ${Math.round(k.D * 100)} cm${+p.diametro > 0 ? "" : " (stimato)"}` : COLT[p.colt]}${altri.length ? "; nello stesso vaso: " + altri.join(", ") : ""}; ${fmt(k.h)} h di luce diretta; ${DOVE[p.dove] || p.dove}`,
     `  calcolo: trattiene ${fmt(k.tawL, 2)} L, innaffiare dopo ${fmt(k.rawL, 2)} L consumati, consumo oggi ${fmt(M.consumoL(k, d0), 2)} L/giorno${Math.abs(k.calib - 1) > 0.01 ? `, correzione appresa ×${fmt(k.calib, 2)}` : ""}`,
     `  ultima innaffiatura: ${M.ultimaInnaffiatura(p, data.eventi) || "non indicata"}; ${c.inStagione ? c.testo.toLowerCase() : c.testo.toLowerCase()}${rv.length ? "; " + rv.join(" ") : ""}${k.faseNota ? "; fase: " + k.faseNota : ""}`];
@@ -48,15 +48,16 @@ async function toolGiardino(ctx) {
   if (data.vacanza) L.push(`Vacanza: dal ${data.vacanza.dal} al ${data.vacanza.al} (giorno del rientro).`);
   L.push("", "## Meteo (Open-Meteo, reale)", "giorno | cielo | min–max °C | pioggia mm (prob.) | ET0 mm | vento km/h");
   for (const d of met.days.filter((x) => x.date >= M.addDays(oggi, -3))) L.push(`${d.date === oggi ? "**oggi** " : ""}${dl(d.date)} | ${d.cond} | ${fmt(d.tmin, 0)}–${fmt(d.tmax, 0)} | ${fmt(d.rain)}${d.prob != null ? " (" + d.prob + "%)" : ""} | ${fmt(d.et0)} | ${fmt(d.wind, 0)}`);
-  L.push("", `## Piante (${data.plants.length})`);
-  for (const p of data.plants) L.push(descrivi(p, data, oggi, met));
+  const piante = M.pianteOrdinate(data.plants);
+  L.push("", `## Piante (${piante.length})`);
+  for (const p of piante) L.push(descrivi(p, data, oggi, met));
   L.push("", `## Piano dei prossimi 7 giorni — fonte: ${ap.fonte}${ap.fonte === "Claude" ? " (salvato il " + new Date(data.piano_claude.createdAt).toLocaleDateString("it-IT") + ")" : ""}`);
   if (ap.piano.sintesi) L.push(ap.piano.sintesi);
-  for (const p of data.plants) {
+  for (const p of piante) {
     const x = ap.piano.piante.find((y) => y.id === p.id); if (!x) continue;
     L.push(`- ${p.nome}: ` + x.giorni.map((g) => `${dl(g.data)} ${g.azione === "innaffia" ? fmt(g.litri, 2) + " L (" + M.dose(g.litri, imp) + ")" : g.azione}`).join(" · "));
   }
-  if (ap.fonte === "Claude") L.push("", "Calcolo automatico dell'app per confronto:", ...ap.base.piante.map((x) => `- ${data.plants.find((p) => p.id === x.id)?.nome}: ` + x.giorni.map((g) => `${dl(g.data)} ${g.azione === "innaffia" ? fmt(g.litri, 2) + " L" : g.azione}`).join(" · ")));
+  if (ap.fonte === "Claude") L.push("", "Calcolo automatico dell'app per confronto:", ...piante.map((p) => ap.base.piante.find((x) => x.id === p.id)).filter(Boolean).map((x) => `- ${data.plants.find((p) => p.id === x.id)?.nome}: ` + x.giorni.map((g) => `${dl(g.data)} ${g.azione === "innaffia" ? fmt(g.litri, 2) + " L" : g.azione}`).join(" · ")));
   const avv = [...(ap.piano.avvisi || []), ...M.avvisiDomani(data.plants, met.days.find((d) => d.date === M.addDays(oggi, 1)), met.notte).map((a) => "Domani: " + a.testo)];
   if (avv.length) L.push("", "## Avvisi", ...avv.map((a) => "- " + a));
   const rec = data.eventi.filter((e) => e.data >= M.addDays(oggi, -7)).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 25);
@@ -69,7 +70,7 @@ async function toolDiario(ctx, a) {
   const giorni = Math.max(1, Math.min(365, parseInt(a.giorni) || 30)), oggi = M.isoDate(new Date()), d = cur.data;
   const ev = d.eventi.filter((e) => e.data >= M.addDays(oggi, -giorni)).sort((x, y) => y.data.localeCompare(x.data));
   const L = [`# Diario degli ultimi ${giorni} giorni: ${ev.length} voci`];
-  for (const p of d.plants) {
+  for (const p of M.pianteOrdinate(d.plants)) {
     const e = M.eventiValidi(ev, p.id), f = e.filter((x) => x.tipo === "fatto" || x.tipo === "secco");
     L.push(`- ${p.nome}: ${f.length} innaffiature, ${fmt(f.reduce((s, x) => s + (+x.litri || 0), 0))} L, "era umida" ${e.filter((x) => x.tipo === "umido").length}, "era secca" ${e.filter((x) => x.tipo === "secco").length}, correzione ×${fmt(M.calibrazione(d.eventi, p.id, oggi), 2)}`);
   }
@@ -112,13 +113,13 @@ async function toolRegistra(ctx, a) {
   return `Registrato nel diario: ${nome} — ${a.tipo} (${data}).` + (a.tipo === "meno" ? " Da ora conto il 10% di acqua in meno per questa pianta." : a.tipo === "piu" ? " Da ora conto il 12% di acqua in più per questa pianta." : "");
 }
 const CAMPI_P = { nome: "s", specie: "specie", fase: "fase", data_semina: "data", tipo_data: ["semina", "trapianto"], colt: ["vaso", "terra", "rialzata"], vaso: "n", diametro: "n", num: "n", area: "n", luce: "n",
-  dove: ["aperto", "riparato", "interno"], ultima: "data", ultima_concime: "data", data_rinvaso: "data", note: "s", consociate: "cons" };
+  dove: ["aperto", "riparato", "interno"], ultima: "data", ultima_concime: "data", data_rinvaso: "data", note: "s", consociate: "cons", zona: "s" };
 function valida(campi) {
   const out = {};
   for (const [k, v] of Object.entries(campi || {})) {
     const t = CAMPI_P[k]; if (!t) throw new Error("Campo sconosciuto: " + k);
     if (v === null || v === "") { out[k] = k === "consociate" ? [] : null; continue; }
-    if (t === "s") out[k] = String(v).slice(0, k === "note" ? 500 : 60);
+    if (t === "s") out[k] = String(v).trim().replace(k === "note" ? /^$/ : /\s+/g, " ").slice(0, k === "note" ? 500 : k === "zona" ? 30 : 60);
     else if (t === "n") { const n = +v; if (!isFinite(n) || n < 0) throw new Error(k + " deve essere un numero"); out[k] = n; }
     else if (t === "data") { if (!ISO.test(v)) throw new Error(k + " deve essere AAAA-MM-GG"); out[k] = v; }
     else if (t === "specie") { if (!M.SPECIE[v]) throw new Error("specie non valida: " + Object.keys(M.SPECIE).join(", ")); out[k] = v; }
@@ -177,9 +178,9 @@ const TOOLS = [
       data: { type: "string", description: "AAAA-MM-GG, predefinito oggi" }, litri: { type: "number" }, nota: { type: "string" } } },
     annotations: { ...RW, title: "Registra" }, run: toolRegistra },
   { name: "modifica_pianta", title: "Aggiungi o modifica una pianta", write: true,
-    description: "Aggiunge una pianta o ne cambia i dati (vaso, luce, fase, consociate, note…). Prima di salvare riassumi all'utente cosa cambi. Specie: " + Object.keys(M.SPECIE).join(", ") + ". Fasi: auto (calcolata dalla data di semina/trapianto o dal mese), " + Object.keys(M.FASI).join(", ") + ". Per eliminare una pianta l'utente usa l'app.",
+    description: "Aggiunge una pianta o ne cambia i dati (vaso, luce, fase, consociate, note…). Prima di salvare riassumi all'utente cosa cambi. Specie: " + M.specieOrdinate().map(([k]) => k).join(", ") + ". Fasi: auto (calcolata dalla data di semina/trapianto o dal mese), " + Object.keys(M.FASI).join(", ") + ". Per eliminare una pianta l'utente usa l'app.",
     inputSchema: { type: "object", required: ["azione", "campi"], properties: { azione: { type: "string", enum: ["aggiungi", "modifica"] }, pianta: { type: "string", description: "id o nome (per modifica)" },
-      campi: { type: "object", description: "nome, specie, fase, data_semina, tipo_data (semina|trapianto), colt (vaso|terra|rialzata), vaso (litri), diametro (cm), num, area (m²), luce (ore di sole diretto 0-14), dove (aperto|riparato|interno), consociate ([{specie, fase, num}]), ultima, ultima_concime, data_rinvaso, note" } } },
+      campi: { type: "object", description: "nome, specie, fase, data_semina, tipo_data (semina|trapianto), colt (vaso|terra|rialzata), vaso (litri), diametro (cm), num, area (m²), luce (ore di sole diretto 0-14), dove (aperto|riparato|interno), consociate ([{specie, fase, num}]), ultima, ultima_concime, data_rinvaso, note, zona (gruppo libero, es. Balcone, Orto, Salotto)" } } },
     annotations: { ...RW, title: "Modifica pianta" }, run: toolModificaPianta },
   { name: "vacanza", title: "Imposta la vacanza", write: true,
     description: "Imposta (dal, al = giorno del rientro) o annulla il periodo in cui l'utente è via.",

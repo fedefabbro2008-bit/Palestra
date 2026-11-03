@@ -16,7 +16,7 @@ const meseDi = iso => new Date(iso+'T12:00:00').getMonth();
    trap: età tipica della piantina al trapianto (giorni)
    cal: fase per mese (gen→dic) per le perenni: R riposo, V vegetativa, F fioritura, T fruttificazione, M maturazione
    gelo: minima (°C) sotto cui la pianta all'aperto soffre; conc: giorni tra concimazioni per fase; rinvaso: anni
-   cat: gruppo nell'elenco dell'app (CATEGORIE); ico: emoji della scheda */
+   cat: gruppo (CATEGORIE); ico: emoji della scheda; fasiNomi: nomi delle fasi propri della specie (es. bulbo per aglio e cipolla) */
 export const SPECIE = {
   // Orto
   pomodoro:{nome:'Pomodoro',cat:'orto',ico:'🍅',kc:[0.6,0.85,1.15,0.8,0.3],area:0.30,radici:0.6,p:0.40,ann:true,ciclo:[10,40,75,95,145,175],trap:40,gelo:5,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
@@ -33,8 +33,8 @@ export const SPECIE = {
   patata:{nome:'Patata',cat:'orto',ico:'🥔',kc:[0.5,0.75,1.15,0.75,0.3],area:0.20,radici:0.5,p:0.35,ann:true,ciclo:[20,35,55,75,null,115],trap:0,gelo:0,conc:{V:30},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
   carota:{nome:'Carota / rapa',cat:'orto',ico:'🥕',kc:[0.7,0.85,1.05,0.95,0.3],area:0.01,radici:0.4,p:0.35,ann:true,ciclo:[14,35,70,null,null,100],trap:0,gelo:-3,conc:{V:30},concTipo:'concime povero di azoto',rinvaso:0},
   ravanello:{nome:'Ravanello',cat:'orto',ico:'🌱',kc:[0.7,0.8,0.9,0.85,0.3],area:0.01,radici:0.2,p:0.30,ann:true,ciclo:[5,12,25,null,null,35],trap:0,gelo:-2,conc:{},concTipo:'',rinvaso:0},
-  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
-  cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
+  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
+  cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
   // Aromatiche
   basilico:{nome:'Basilico',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,1.0,0.9,0.3],area:0.05,radici:0.25,p:0.30,ann:true,ciclo:[10,30,90,120,null,150],trap:30,gelo:8,conc:{V:21},concTipo:'concime liquido per aromatiche',rinvaso:0},
   prezzemolo:{nome:'Prezzemolo / erbe tenere',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,0.95,0.9,0.4],area:0.05,radici:0.3,p:0.35,ann:true,ciclo:[20,50,200,null,null,260],trap:40,gelo:-5,conc:{V:30},concTipo:'concime liquido per aromatiche',rinvaso:0},
@@ -70,6 +70,16 @@ export const FASI = {
   maturazione:{nome:'Maturazione / raccolta',kc:3,radici:1,p:null,l:'M'},
   riposo:{nome:'Riposo vegetativo',kc:4,radici:1,p:null,l:'R'}
 };
+// nome della fase per una specie (aglio e cipolla: “Ingrossamento del bulbo” al posto di “Fruttificazione”)
+export function nomeFase(specie, fase){ const sp=SPECIE[specie]||SPECIE.altro; return sp.fasiNomi?.[fase] || (FASI[fase]||FASI.vegetativa).nome; }
+// specie in ordine alfabetico, “Altra pianta” in fondo
+export function specieOrdinate(){ return Object.entries(SPECIE).sort(([a,x],[b,y])=>(a==='altro')-(b==='altro') || x.nome.localeCompare(y.nome,'it',{sensitivity:'base'})); }
+// piante in ordine alfabetico, raggruppate per zona (prima quelle con una zona, in ordine alfabetico)
+export const zonaDi = p => String(p?.zona||'').trim().replace(/\s+/g,' ');
+export function pianteOrdinate(piante){
+  const cmp=(a,b)=>a.localeCompare(b,'it',{sensitivity:'base',numeric:true});
+  return [...(piante||[])].sort((a,b)=>{ const za=zonaDi(a), zb=zonaDi(b); return (!za)-(!zb) || cmp(za,zb) || cmp(String(a.nome||''),String(b.nome||'')); });
+}
 const DA_LETTERA = {G:'germinazione',P:'piantina',V:'vegetativa',F:'fioritura',T:'fruttificazione',M:'maturazione',R:'riposo'};
 const ORDINE_FASI = ['germinazione','piantina','vegetativa','fioritura','fruttificazione','maturazione'];
 
@@ -152,7 +162,7 @@ export function params(p, ctx={}){
   }
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib};
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
     const D=+p.diametro>0 ? +p.diametro/100 : Math.cbrt(4*V/1000/(0.9*Math.PI));   // vaso alto ~0,9 × diametro

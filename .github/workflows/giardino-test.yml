@@ -1,0 +1,39 @@
+# Giardino · prove automatiche a ogni modifica (repository pubblico: minuti gratuiti).
+# Controlla che la pagina pubblicata sia ricostruita dai sorgenti, poi prova modello, funzioni del sito
+# (dati, Claude, Telegram, bot, Siri) e interfaccia nel browser da 320 a 430 px.
+name: Giardino · prove
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["giardino/**", "giardino-netlify/**", ".github/workflows/giardino-test.yml"]
+  pull_request:
+    paths: ["giardino/**", "giardino-netlify/**", ".github/workflows/giardino-test.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: giardino-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: giardino-netlify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: La pagina pubblicata corrisponde ai sorgenti
+        run: |
+          node ../giardino/build-app.mjs
+          git diff --exit-code -- public netlify/lib || { echo "::error::Esegui node giardino/build-app.mjs e fai il commit dei file generati"; exit 1; }
+      - name: Playwright e Chromium
+        working-directory: giardino-netlify/test
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Prove
+        run: npm test

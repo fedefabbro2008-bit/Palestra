@@ -12,9 +12,11 @@ App: **https://giardino-fede.netlify.app/**
 |---|---|---|
 | App | `giardino-netlify/public/index.html` (costruita da `giardino/app.src.html` + `giardino/netlify-shim.js`), `manifest.webmanifest`, `sw.js`, icone | 4 schede: **Oggi** (meteo, cosa innaffiare con Fatto / Era umida / Salta, prossimi giorni), **Piante**, **Diario**, **Impostazioni** (posizione, Telegram, Claude, vacanza, misure, meteo a mano, sincronizzazione, backup); meteo diretto da Open-Meteo; schermo bloccato (niente zoom), nessuno scorrimento laterale da 320 px in su; installabile sulla Home e utilizzabile offline (le modifiche partono al ritorno della rete) |
 | Calcolo | `giardino/modello.mjs` (copiato in `giardino-netlify/netlify/lib/`) | bilancio idrico in litri per vaso o aiuola; 36 specie in 6 gruppi (orto, aromatiche, frutti, fiori, in casa, altro) |
-| Dati | `netlify/functions/dati.mjs` → Netlify Blobs | salvataggio con codice di sincronizzazione; chiave per Claude; collegamento del bot |
+| Dati | `netlify/functions/dati.mjs` → Netlify Blobs | salvataggio con codice di sincronizzazione (nell'intestazione `x-giardino-code`, mai nell'indirizzo); chiave per Claude; collegamento del bot |
 | Claude | `netlify/functions/mcp.mjs` → `/mcp/<chiave>` | connettore MCP: `giardino`, `diario`, `salva_piano`, `registra`, `modifica_pianta`, `vacanza` |
-| Telegram | `netlify/functions/telegram.mjs` (webhook) + `bot.mjs` (ogni ora) | pulsanti istantanei; comandi /oggi /fatto /settimana /vacanza /aiuto; piano del mattino; la sera promemoria di ciò che manca e avvisi (gelo ora per ora, caldo, vento); riepilogo la domenica; backup come file ogni mese |
+| Telegram | `netlify/functions/telegram.mjs` (webhook) + `bot.mjs` (ogni ora) | pulsanti **Annaffiato** / **Terreno ancora umido** (al mattino anche Salto); comandi /oggi /fatto [zona] /settimana /vacanza /aiuto; piano del mattino; la sera promemoria di ciò che manca e avvisi (gelo ora per ora, caldo, vento); riepilogo la domenica; backup come file ogni mese |
+| Siri | `netlify/functions/siri.mjs` → `/api/siri/oggi` e `/api/siri/fatto[?zona=…]` | Comandi Rapidi “Ho innaffiato” e “Cosa innaffio oggi”: risposta in testo da far leggere a Siri; codice nell'intestazione `x-giardino-code` |
+| Prove | `giardino-netlify/test/`, `.github/workflows/giardino-test.yml` | a ogni modifica su GitHub: pagina ricostruita dai sorgenti, modello, funzioni del sito, interfaccia nel browser da 320 a 430 px |
 
 Il promemoria del mattino usa il piano salvato da Claude se copre il giorno, altrimenti il calcolo automatico.
 Meteo: dati giornalieri e, in una richiesta a parte, umidità del suolo (piante in piena terra) e temperature ora per ora della notte (gelo).
@@ -33,12 +35,18 @@ GitHub `fedefabbro2008-bit/Palestra`, branch `main`, **Base directory `giardino-
    claude.ai → Impostazioni → Connettori → Aggiungi connettore personalizzato (nome Giardino, URL copiato).
 3. Impostazioni → **Telegram**: crea il bot con @BotFather, incolla il token, premi Collega, poi Avvia sul bot.
 4. Impostazioni → **Backup** per salvare un file da reimportare dopo un cambio di versione o di telefono.
+5. Facoltativo: Impostazioni → **Siri e Comandi Rapidi** per dire “Ehi Siri, ho innaffiato”.
+
+Le piante si possono dividere in **zone** (Balcone, Orto…): in Oggi ogni zona ha il suo “Tutte annaffiate”,
+su Telegram `/fatto balcone` segna solo quella zona. Elenchi e specie sono in ordine alfabetico; la specie si cerca scrivendone il nome.
 
 ## Modifiche al codice
 
 Modifica `giardino/app.src.html`, `giardino/modello.mjs` o `giardino/netlify-shim.js`, poi `node giardino/build-app.mjs`
 e push su `main`. Nessuna chiave API a pagamento: Claude lavora solo attraverso il connettore.
-Il branch `giardino-dati` (dati del vecchio bot su GitHub) non serve più e si può eliminare.
+
+Prove in locale (dalla cartella `giardino-netlify`, con Playwright installato in `test/`): `npm test`.
+Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 
 ## Come si calcola (vasi)
 

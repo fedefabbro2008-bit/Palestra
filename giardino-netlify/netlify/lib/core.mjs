@@ -16,6 +16,9 @@ export const reply = (body, status = 200, extra = {}) => new Response(JSON.strin
 const ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 export function newToken(n = 26) { const b = new Uint8Array(n); crypto.getRandomValues(b); return Array.from(b, (x) => ALPHA[x & 31]).join(""); }
 export function cleanCode(raw) { const c = String(raw || "").trim().toUpperCase(); return /^[A-Z0-9-]{16,64}$/.test(c) ? c : null; }
+// Il codice di sincronizzazione arriva nell'intestazione x-giardino-code, così non finisce negli indirizzi (e nei log).
+// ?code= resta accettato solo per le copie vecchie dell'app ancora aperte sui telefoni.
+export const codiceDa = (request) => cleanCode(request.headers.get("x-giardino-code") || new URL(request.url).searchParams.get("code"));
 export const siteUrl = (req) => (globalThis.Netlify?.env?.get("URL")) || new URL(req.url).origin;
 
 /* ---------------- Dati ---------------- */
@@ -93,19 +96,32 @@ const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toLocaleString("it
 export const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const corto = (s) => { s = String(s || ""); return s.length > 18 ? s.slice(0, 17) + "…" : s; };
 export const TIPI = { f: "fatto", s: "saltato", u: "umido", a: "secco", c: "concime" };
-export const ETICHETTE = { fatto: "innaffiata", saltato: "saltata", umido: "era ancora umida", secco: "era secca, innaffiata", concime: "concimata" };
+export const ETICHETTE = { fatto: "annaffiata", saltato: "saltata", umido: "terreno ancora umido", secco: "era secca, annaffiata", concime: "concimata" };
+export const ESITI = ["fatto", "secco", "umido", "saltato"];
+const conZona = (p) => M.zonaDi(p) ? ` <i>(${esc(M.zonaDi(p))})</i>` : "";
+// Pulsanti per una pianta: “Annaffiato” e “Terreno ancora umido” su righe intere (si leggono bene sul telefono);
+// il nome serve solo se nel messaggio ci sono più piante; “Salto” solo nel messaggio del mattino.
+export function pulsantiAcqua(p, oggi, { conNome = true, salto = true, secca = false } = {}) {
+  const n = conNome ? " · " + corto(p.nome) : "";
+  const r1 = [{ text: (secca ? "🏜 Era secca: annaffiato" : "✅ Annaffiato") + n, callback_data: `g|${oggi}|${p.id}|${secca ? "a" : "f"}` }];
+  const r2 = [{ text: "💦 Terreno ancora umido", callback_data: `g|${oggi}|${p.id}|u` }];
+  if (salto && !secca) r2.push({ text: "⏭ Salto", callback_data: `g|${oggi}|${p.id}|s` });
+  return [r1, r2];
+}
 
 export function messaggioMattina(data, ap, oggi, { prova = false } = {}) {
   const imp = { ...IMP_DEF, ...(data.impostazioni || {}) }, d0 = ap.fut[0], lat = data.location?.lat;
-  const righe = { innaffia: [], controlla: [], concime: [] }, tastiera = [];
-  for (const p of data.plants) {
-    const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
+  const righe = { innaffia: [], controlla: [], concime: [] }, tastiera = [], piante = M.pianteOrdinate(data.plants);
+  const azione = (p) => ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
+  const conNome = piante.filter((p) => ["innaffia", "controlla"].includes(azione(p)?.azione)).length > 1;
+  for (const p of piante) {
+    const g = azione(p);
     if (g?.azione === "innaffia") {
-      righe.innaffia.push(`💧 <b>${esc(p.nome)}</b>: ${fmt(g.litri, g.litri < 2 ? 2 : 1)} L (${esc(M.dose(g.litri, imp))}), ${esc(g.momento)}\n      <i>${esc(g.motivo)}</i>`);
-      tastiera.push([{ text: "✅ " + corto(p.nome), callback_data: `g|${oggi}|${p.id}|f` }, { text: "💧 Era umida", callback_data: `g|${oggi}|${p.id}|u` }, { text: "⏭ Salto", callback_data: `g|${oggi}|${p.id}|s` }]);
+      righe.innaffia.push(`💧 <b>${esc(p.nome)}</b>${conZona(p)}: ${fmt(g.litri, g.litri < 2 ? 2 : 1)} L (${esc(M.dose(g.litri, imp))}), ${esc(g.momento)}\n      <i>${esc(g.motivo)}</i>`);
+      tastiera.push(...pulsantiAcqua(p, oggi, { conNome }));
     } else if (g?.azione === "controlla") {
-      righe.controlla.push(`👆 <b>${esc(p.nome)}</b>: ${esc(g.motivo)}`);
-      tastiera.push([{ text: "🏜 " + corto(p.nome) + " secca", callback_data: `g|${oggi}|${p.id}|a` }, { text: "💧 Umida, non serve", callback_data: `g|${oggi}|${p.id}|u` }]);
+      righe.controlla.push(`👆 <b>${esc(p.nome)}</b>${conZona(p)}: ${esc(g.motivo)}`);
+      tastiera.push(...pulsantiAcqua(p, oggi, { conNome, secca: true }));
     }
     const c = M.concime(p, { oggi, lat, eventi: data.eventi });
     if (c.inStagione && c.dovuto && !M.inVacanza(data.vacanza, oggi)) {
@@ -122,10 +138,10 @@ export function messaggioMattina(data, ap, oggi, { prova = false } = {}) {
   const daFare = righe.innaffia.length + righe.controlla.length + righe.concime.length;
   if (!daFare) msg += `\nOggi non c'è niente da fare. 🌤\n`;
   for (const a of (ap.piano.avvisi || []).slice(0, 3)) msg += `\n⚠️ ${esc(a)}`;
-  const prossimi = ap.fut.slice(1, 4).map((d) => { const n = data.plants.filter((p) => ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((g) => g.data === d.date && g.azione === "innaffia")).length;
+  const prossimi = ap.fut.slice(1, 4).map((d) => { const n = piante.filter((p) => ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((g) => g.data === d.date && g.azione === "innaffia")).length;
     return new Date(d.date + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short" }) + " " + (n ? n + " 💧" : "–"); }).join(" · ");
   msg += `\n\nProssimi giorni: ${prossimi}`;
-  if (tastiera.length && !prova) msg += `\n<i>Se non premi nulla considero fatte le innaffiature.</i>`;
+  if (tastiera.length && !prova) msg += `\n<i>Se non premi nulla, domani le conto come annaffiate.</i>`;
   msg += `\n<i>Piano: ${esc(ap.fonte)}</i>`;
   return { msg, tastiera, daFare };
 }
@@ -149,7 +165,7 @@ const dl = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("it-IT", { we
 export function messaggioSettimana(data, ap) {
   const imp = { ...IMP_DEF, ...(data.impostazioni || {}) };
   const L = [`📅 <b>Prossimi 7 giorni</b> · piano: ${esc(ap.fonte)}`];
-  for (const p of data.plants) {
+  for (const p of M.pianteOrdinate(data.plants)) {
     const x = ap.piano.piante.find((y) => y.id === p.id); if (!x) continue;
     const g = x.giorni.filter((y) => y.azione !== "salta").map((y) => `${dl(y.data)} ${y.azione === "innaffia" ? fmt(y.litri, y.litri < 2 ? 2 : 1) + " L" : "👆"}`);
     L.push(`\n<b>${esc(p.nome)}</b>: ${g.length ? esc(g.join(" · ")) : "niente da fare"}`);
@@ -162,7 +178,7 @@ export function riepilogoSettimana(data, oggi) {
   const lat = data.location?.lat, da = M.addDays(oggi, -6);
   const L = [`📊 <b>La settimana del giardino</b> (${esc(dl(da))} – ${esc(dl(oggi))})`];
   let tot = 0;
-  for (const p of data.plants) {
+  for (const p of M.pianteOrdinate(data.plants)) {
     const e = M.eventiValidi(data.eventi, p.id).filter((x) => x.data >= da && x.data <= oggi), f = e.filter((x) => x.tipo === "fatto" || x.tipo === "secco");
     const litri = f.reduce((s, x) => s + (+x.litri || 0), 0); tot += litri;
     const um = e.filter((x) => x.tipo === "umido").length, se = e.filter((x) => x.tipo === "secco").length, cal = M.calibrazione(data.eventi, p.id, oggi);
@@ -170,7 +186,7 @@ export function riepilogoSettimana(data, oggi) {
     L.push(`• <b>${esc(p.nome)}</b>: ${f.length} ${f.length === 1 ? "volta" : "volte"}, ${fmt(litri)} L${nota}`);
   }
   L.push(`\nTotale: <b>${fmt(tot)} L</b>`);
-  const conc = data.plants.map((p) => ({ p, c: M.concime(p, { oggi, lat, eventi: data.eventi }) })).filter((x) => x.c.inStagione && x.c.tra <= 7);
+  const conc = M.pianteOrdinate(data.plants).map((p) => ({ p, c: M.concime(p, { oggi, lat, eventi: data.eventi }) })).filter((x) => x.c.inStagione && x.c.tra <= 7);
   if (conc.length) L.push("\n🌱 Concime nei prossimi giorni: " + conc.map((x) => esc(x.p.nome) + (x.c.tra <= 0 ? " (già da fare)" : " (tra " + x.c.tra + " g)")).join(", "));
   return L.join("\n");
 }
@@ -188,8 +204,44 @@ export async function inviaFile(token, chat_id, nome, testo, didascalia) {
 }
 export const COMANDI = [
   { command: "oggi", description: "Il piano di oggi, con i pulsanti" },
-  { command: "fatto", description: "Segna come innaffiate tutte le piante di oggi" },
+  { command: "fatto", description: "Segna come annaffiate le piante di oggi (es. /fatto balcone)" },
   { command: "settimana", description: "I prossimi 7 giorni" },
   { command: "vacanza", description: "Es. /vacanza 10/8 20/8 oppure /vacanza no" },
   { command: "aiuto", description: "Cosa sa fare il bot" }
 ];
+
+/* ---------------- “Fatto” per tutte le piante di oggi (comando /fatto e Siri) ---------------- */
+// Segna come annaffiate le piante che oggi il piano dice di innaffiare (tutte o di una zona) e che non hanno già una risposta.
+export async function segnaFatte(st, code, ap, oggi, { zona = "", fonte = "telegram" } = {}) {
+  const z = String(zona || "").trim().toLowerCase(), fatte = [];
+  await aggiorna(st, code, (d) => {
+    fatte.length = 0;
+    for (const p of M.pianteOrdinate(d.plants)) {
+      if (z && M.zonaDi(p).toLowerCase() !== z) continue;
+      const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
+      if (g?.azione !== "innaffia" || d.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo))) continue;
+      d.eventi.push({ id: `${fonte === "siri" ? "sr" : "tg"}-f-${oggi}-${p.id}`, plantId: p.id, tipo: "fatto", data: oggi, fonte, ts: new Date().toISOString(), litri: g.litri });
+      fatte.push(p.nome);
+    }
+    if (!fatte.length) return false;
+  });
+  return fatte;
+}
+// Testo da far leggere a Siri: cosa innaffiare oggi (tutte le piante o una zona).
+const parlato = (s) => String(s).replace(/≈\s*/g, "circa ").replace(/(\d)½/g, "$1 e mezzo").replace(/½/g, "mezzo").replace(/¼/g, "un quarto").replace(/¾/g, "tre quarti");
+export function testoOggi(data, ap, oggi, { zona = "" } = {}) {
+  const imp = { ...IMP_DEF, ...(data.impostazioni || {}) }, z = String(zona || "").trim().toLowerCase();
+  const inn = [], ctrl = []; let fatte = 0;
+  for (const p of M.pianteOrdinate(data.plants)) {
+    if (z && M.zonaDi(p).toLowerCase() !== z) continue;
+    const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
+    const segnata = data.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo));
+    if (g?.azione === "innaffia") { if (segnata) fatte++; else inn.push(`${p.nome}, ${fmt(g.litri, g.litri < 2 ? 2 : 1)} litri, ${parlato(M.dose(g.litri, imp))}`); }
+    else if (g?.azione === "controlla" && !segnata) ctrl.push(p.nome);
+  }
+  const out = [];
+  if (inn.length) out.push("Da innaffiare oggi: " + inn.join("; ") + ".");
+  if (ctrl.length) out.push("Da controllare con un dito: " + ctrl.join(", ") + ".");
+  if (!out.length) out.push(fatte ? "Hai già innaffiato tutto quello che serviva oggi." : "Oggi non c'è niente da innaffiare" + (zona ? " in " + zona : "") + ".");
+  return out.join(" ");
+}
