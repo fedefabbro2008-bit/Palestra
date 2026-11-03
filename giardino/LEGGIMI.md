@@ -29,7 +29,7 @@ Finché i secret mancano, il bot non manda nulla ma la modalità `aggiorna` port
 
 ## Modifiche
 
-- App: modifica `app.src.html` o `modello.mjs`, poi `node giardino/build-app.mjs trig_01LQKQB7vmmYWJt9BcYnua6S`
+- App: modifica `app.src.html` o `modello.mjs`, poi `node giardino/build-app.mjs trig_01X5wMh37S8utkokjf8pJUdv`
   e ripubblica `giardino-app.html` sullo stesso artifact.
 - Bot: `notifica.mjs` usa direttamente `modello.mjs`.
 
