@@ -1,9 +1,64 @@
 {
   "esempio": true,
-  "posizione": { "nome": "Milano", "lat": 45.4643, "lon": 9.1895 },
+  "posizione": {
+    "nome": "Milano",
+    "lat": 45.4643,
+    "lon": 9.1895
+  },
   "piante": [
-    { "id": "limone", "nome": "Limone in terrazzo", "specie": "agrumi", "fase": "riposo", "colt": "vaso", "vaso": 45, "area": null, "num": 1, "espo": "sole", "dove": "riparato", "ultima": "", "note": "" },
-    { "id": "rosmarino", "nome": "Rosmarino", "specie": "rosmarino", "fase": "vegetativa", "colt": "terra", "vaso": null, "area": null, "num": 2, "espo": "sole", "dove": "aperto", "ultima": "", "note": "" },
-    { "id": "lattughe", "nome": "Lattughe autunnali", "specie": "lattuga", "fase": "piantina", "colt": "rialzata", "vaso": null, "area": 1.2, "num": 12, "espo": "mezzombra", "dove": "aperto", "ultima": "", "note": "" }
+    {
+      "id": "limone",
+      "nome": "Limone in terrazzo",
+      "specie": "agrumi",
+      "fase": "riposo",
+      "num": 1,
+      "colt": "vaso",
+      "vaso": 45,
+      "diametro": 45,
+      "consociate": [],
+      "area": null,
+      "luce": 7,
+      "dove": "riparato",
+      "ultima": "",
+      "note": ""
+    },
+    {
+      "id": "aromatiche",
+      "nome": "Fioriera aromatiche",
+      "specie": "rosmarino",
+      "fase": "vegetativa",
+      "num": 1,
+      "colt": "vaso",
+      "vaso": 8,
+      "diametro": null,
+      "consociate": [
+        {
+          "specie": "prezzemolo",
+          "fase": "vegetativa",
+          "num": 2
+        }
+      ],
+      "area": null,
+      "luce": 5,
+      "dove": "aperto",
+      "ultima": "",
+      "note": ""
+    },
+    {
+      "id": "pothos",
+      "nome": "Pothos in salotto",
+      "specie": "appartamento",
+      "fase": "vegetativa",
+      "num": 1,
+      "colt": "vaso",
+      "vaso": 3,
+      "diametro": 17,
+      "consociate": [],
+      "area": null,
+      "luce": 2,
+      "dove": "interno",
+      "ultima": "",
+      "note": ""
+    }
   ]
 }

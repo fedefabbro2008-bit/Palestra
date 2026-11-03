@@ -25,8 +25,23 @@ Il workflow pianificato parte solo dal branch principale (`main`).
 ## Piante
 
 Modifica `piante.json` (oppure copia il testo dalla scheda Telegram dell'app Giardino).
-Campi di ogni pianta: `specie` (pomodoro, zucchina, peperone, melanzana, lattuga, fagiolo, fragola,
-basilico, prezzemolo, rosmarino, lavanda, agrumi, olivo, rosa, ortensia, geranio, prato, succulenta,
-appartamento, altro), `fase` (germinazione, piantina, vegetativa, fioritura, fruttificazione,
-maturazione, riposo), `colt` (vaso, terra, rialzata), `vaso` in litri, `area` in m² (facoltativa),
-`num`, `espo` (sole, mezzombra, ombra), `dove` (aperto, riparato, interno), `ultima` (AAAA-MM-GG).
+Campi di ogni pianta:
+- `specie`: pomodoro, zucchina, peperone, melanzana, lattuga, fagiolo, fragola, basilico, prezzemolo,
+  rosmarino, lavanda, agrumi, olivo, rosa, ortensia, geranio, prato, succulenta, appartamento, altro
+- `fase`: germinazione, piantina, vegetativa, fioritura, fruttificazione, maturazione, riposo
+- `num`: numero di piante della voce
+- `colt`: vaso, terra, rialzata
+- `vaso`: volume in litri; `diametro`: cm in alto (facoltativo, altrimenti stimato dal volume)
+- `consociate`: altre piante nello stesso vaso, es. `[{"specie":"basilico","fase":"vegetativa","num":2}]`
+- `luce`: ore di luce diretta al giorno (0–14); in casa, ore di luce forte vicino alla finestra
+- `dove`: aperto, riparato (niente pioggia), interno (in casa: niente pioggia, consumo legato alla luce)
+- `area`: m² di chioma o aiuola (facoltativo); `ultima`: AAAA-MM-GG
+
+## Come si calcola (vasi)
+
+- Acqua disponibile = 25% del volume del vaso, ridotta del 6% per ogni pianta in più (radici), minimo 60%.
+- Si innaffia quando è consumata la quota che regge la pianta più delicata del vaso.
+- Consumo giornaliero (L) = ET₀ × (Σ Kc × chioma di ogni pianta + 0,15 × superficie del terriccio) × fattore luce.
+  Fattore luce = 0,35 + 0,65 × ore/8 (fino a 9 h). In casa ET₀ = 0,8 + 0,15 × ore di luce.
+- Pioggia utile nel vaso = (pioggia − 1,5 mm) × superficie del vaso × 0,8; zero se riparato o in casa.
+- Dose = acqua consumata + 10%, cioè finché esce un po' dal foro.
