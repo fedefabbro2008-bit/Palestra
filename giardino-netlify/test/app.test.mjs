@@ -102,6 +102,43 @@ test("flusso completo a 390 px", async (t) => {
   assert.deepEqual(nuove, [["Aglio", "orto", "aglio", 12, 0], ["Zucchine", "orto", "zucchina", 30, 1]]);
   assert.deepEqual(await page.locator("#plantList .zhead span").allTextContents(), ["orto", "Senza zona"]);
 
+  // pianta in casa: temperature per stagione (solo per chi è in casa), uguali per tutte se richiesto
+  await page.evaluate(() => { document.querySelectorAll("#plantList details.plant").forEach((d) => (d.open = true)); });
+  await page.click('#plantList details.plant:has-text("Pothos") [data-edit]');
+  assert.ok(await page.isVisible("#pf-t-inverno"));
+  assert.equal(await page.inputValue("#pf-t-estate"), "26");
+  await page.fill("#pf-t-inverno", "16"); await page.check("#pf-t-tutte"); await page.click("button[type=submit]");
+  assert.deepEqual(await page.evaluate(() => S.plants.find((p) => p.nome.startsWith("Pothos")).tcasa), { inverno: 16, primavera: 21, estate: 26, autunno: 21 });
+  assert.match(await page.textContent('#plantList details.plant:has-text("Pothos") .facts'), /In casa oggi≈ \d+ °C/);
+  await page.evaluate(() => { document.querySelectorAll("#plantList details.plant").forEach((d) => (d.open = true)); });
+  await page.click('#plantList details.plant:has-text("Limone") [data-edit]');
+  assert.ok(!(await page.isVisible("#pf-t-inverno")), "fuori casa niente temperature");
+  await page.click("#cancelPlantBtn");
+
+  // scheda: prima il calendario automatico, poi quella scritta da Claude con la tabella dei mesi
+  await page.evaluate(() => { document.querySelectorAll("#plantList details.plant").forEach((d) => (d.open = true)); });
+  await page.click('#plantList details.plant:has-text("Aglio") [data-scheda]');
+  assert.ok(await page.isVisible("#schedaPanel"));
+  assert.match(await page.textContent("#schBody"), /Calendario dalla semina al raccolto/);
+  assert.ok((await page.locator("#schBody table.mesi tr").count()) >= 8);
+  assert.equal(await page.locator("#schBody table.mesi tr.ora").count(), 1, "il mese corrente è evidenziato");
+  assert.match(await page.textContent("#schBody"), /Raccolta: /);
+  assert.ok(await page.isVisible("#schBody [data-copia]"));
+  const codice = await page.evaluate(() => window.GiardinoNet.codice());
+  await quando(page, () => !localStorage.getItem("giardino:net:pending"));
+  const sul = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": codice } }))).text()).data;
+  const conScheda = sul.plants.map((p) => (p.nome === "Aglio" ? { ...p, scheda: { aggiornata: new Date().toISOString(), specie: "aglio", data_semina: p.data_semina, descrizione: "Si pianta in autunno.",
+    condizioni: { luce: "Pieno sole" }, stagioni: { inverno: "Resiste al freddo", estate: "Si raccoglie" }, fasi: [{ quando: "Settimane 1–3", fase: "Radicazione", cosa: "Niente acqua" }],
+    calendario: [{ mese: OGGI.slice(0, 7), fase: "Radicazione" }, { mese: "2027-06", fase: "Raccolta", raccolta: true }], frutti: "Raccolta a giugno", consigli: ["Poca acqua"] } } : p));
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": codice, "content-type": "application/json" }, body: JSON.stringify({ changes: { plants: conScheda } }) }));
+  await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+  await quando(page, () => document.querySelector("#schBody").textContent.includes("Scheda di Claude"));
+  const testoScheda = await page.textContent("#schBody");
+  for (const t of ["Si pianta in autunno.", "Condizioni ideali", "Pieno sole", "Nelle stagioni", "Settimane 1–3 · Radicazione", "Calendario dei mesi", "Raccolta a giugno", "Poca acqua"]) assert.ok(testoScheda.includes(t), t);
+  assert.equal(await page.locator("#schBody table.mesi tr").count(), 2);
+  assert.ok(!(await page.isVisible("#schBody [data-copia]")), "niente richiesta a Claude se la scheda c'è");
+  await page.click("#schChiudi");
+
   // Oggi con le zone: sezione per zona
   await page.click("#tab-oggi");
   assert.ok((await page.locator("#todayList .zhead span").allTextContents()).includes("orto"));
@@ -147,10 +184,13 @@ test("niente fuori schermo, chiaro e scuro, da 320 a 430 px", async (t) => {
     await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODICE);
     const page = await ctx.newPage(); await page.goto(SITO); await pronta(page);
     await quando(page, () => document.querySelectorAll("#todayList .task, #restList .lrow").length > 0);
-    for (const vista of ["oggi", "piante", "diario", "impostazioni", "modulo"]) {
+    for (const vista of ["oggi", "piante", "diario", "impostazioni", "modulo", "scheda"]) {
       if (vista === "modulo") {
         await page.click("#tab-piante"); await page.evaluate(() => { document.querySelector("#plantList details.plant").open = true; });
         await page.click("#plantList details.plant >> nth=0 >> [data-edit]"); await page.click("#pf-specie-btn"); await page.evaluate(() => { document.querySelector("#pf-more").open = true; });
+      } else if (vista === "scheda") {
+        await page.click("#cancelPlantBtn"); await page.evaluate(() => { document.querySelectorAll("#plantList details.plant").forEach((d) => (d.open = true)); });
+        await page.click('#plantList details.plant:has-text("Aglio") [data-scheda]');
       } else await page.click("#tab-" + vista);
       await page.evaluate(() => document.querySelectorAll("section.view:not([hidden]) details").forEach((d) => (d.open = true))); await page.waitForTimeout(150);
       const fuori = await page.evaluate(() => {

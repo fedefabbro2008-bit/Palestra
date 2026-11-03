@@ -222,6 +222,29 @@ label.check input{flex:none;width:22px;height:22px;margin-top:1px;accent-color:v
 .zhead>span{font-size:.78rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:0}
 .zhead .btn{flex:none}
 
+/* scheda della pianta */
+.voci{display:flex;flex-direction:column;background:var(--surface-2);border-radius:12px;padding:2px 12px}
+.voci>div{display:flex;flex-direction:column;gap:1px;padding:8px 0;border-top:1px solid var(--line);font-size:.9rem}
+.voci>div:first-child{border-top:0}
+.voci b{font-weight:700}
+.voci span{color:var(--muted)}
+.voci .ora b::after{content:" · adesso";color:var(--water);font-weight:700}
+h3.sez{font-size:1rem;font-weight:800;margin:6px 0 -2px}
+table.mesi{width:100%;border-collapse:collapse;font-size:.9rem}
+table.mesi tr{border-top:1px solid var(--line)}
+table.mesi tr:first-child{border-top:0}
+table.mesi th{width:5.9em;text-align:left;vertical-align:top;padding:9px 8px 9px 0;font-weight:700;white-space:nowrap}
+table.mesi td{vertical-align:top;padding:9px 0}
+table.mesi td b{font-weight:700}
+table.mesi td span{display:block;color:var(--muted);font-size:.85rem}
+table.mesi td span.tag{display:inline-block;font-size:.72rem}
+table.mesi td span.tag.racc{color:var(--leaf)} table.mesi td span.tag:not(.racc){color:var(--warn)}
+table.mesi tr.ora th{color:var(--water)}
+table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
+.tag{display:inline-block;margin-left:6px;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:999px;vertical-align:1px;background:var(--warn-soft);color:var(--warn)}
+.tag.racc{background:var(--leaf-soft);color:var(--leaf)}
+.pbtn{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+
 /* diario */
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column}
@@ -346,6 +369,10 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
       <div class="row between"><h2 class="headline" id="plantCount">Le tue piante</h2><button class="btn primary small" id="addPlantBtn" type="button">+ Aggiungi</button></div>
       <div id="plantList" class="stack"></div>
     </div>
+    <div class="card stack" id="schedaPanel" hidden>
+      <div class="row between"><h2 id="schTitolo">Scheda</h2><button class="btn small ghost" type="button" id="schChiudi">Chiudi</button></div>
+      <div id="schBody" class="stack"></div>
+    </div>
     <div class="card" id="plantFormPanel" hidden>
       <form id="plantForm" class="form" autocomplete="off" novalidate>
         <div class="row between"><h2 id="plantFormTitle">Nuova pianta</h2><button class="btn small ghost" type="button" id="cancelPlantBtn">Annulla</button></div>
@@ -385,6 +412,16 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
             <label><input type="radio" name="dove" value="riparato">Fuori, al riparo</label>
             <label><input type="radio" name="dove" value="interno">In casa</label>
           </div>
+        </div>
+        <div class="field pf-casa-only"><span class="flabel">Temperatura in casa (°C)</span>
+          <div class="grid2">
+            <div class="field"><label for="pf-t-inverno">❄️ Inverno</label><input type="text" id="pf-t-inverno" data-stagione="inverno" inputmode="decimal"></div>
+            <div class="field"><label for="pf-t-primavera">🌷 Primavera</label><input type="text" id="pf-t-primavera" data-stagione="primavera" inputmode="decimal"></div>
+            <div class="field"><label for="pf-t-estate">☀️ Estate</label><input type="text" id="pf-t-estate" data-stagione="estate" inputmode="decimal"></div>
+            <div class="field"><label for="pf-t-autunno">🍂 Autunno</label><input type="text" id="pf-t-autunno" data-stagione="autunno" inputmode="decimal"></div>
+          </div>
+          <label class="check"><input type="checkbox" id="pf-t-tutte"><span>Uguale per tutte le piante in casa</span></label>
+          <span class="hint">Nella stanza dove sta la pianta. Più fa caldo più beve: a 26 °C circa il 30% in più che a 20 °C. Vicino a un termosifone conta 2–3 gradi in più.</span>
         </div>
         <div class="field"><label for="pf-fase">Fase di crescita</label><select id="pf-fase"></select><span class="hint" id="pf-fase-hint"></span></div>
         <div class="field pf-auto-ann"><label for="pf-semina">Seminata o trapiantata il</label><input type="date" id="pf-semina"></div>
@@ -615,7 +652,14 @@ function applicaLocale(b){
   const via=new Set(b.remove||[]); d.eventi=(d.eventi||[]).filter(e=>!via.has(e.id));
   for(const e of b.add||[]) if(!d.eventi.some(x=>x.id===e.id)) d.eventi.push({...e,fonte:'app'});
 }
-const pronto=()=>primo||(primo=scarica().then(r=>{ if(inAttesa){ clearTimeout(attesaT); attesaT=setTimeout(svuota,1000); } return r; }));
+const pronto=()=>primo||(primo=scarica().then(r=>{ applicato=server?.rev??null; if(inAttesa){ clearTimeout(attesaT); attesaT=setTimeout(svuota,1000); } return r; }));
+// Porta sullo schermo i dati del server (anche le modifiche di Claude, Telegram o di un altro telefono arrivate insieme
+// alla risposta di un salvataggio), ma solo se nel frattempo non hai cambiato niente: altrimenti alla prossima risposta.
+let applicato=null;
+function allinea(){
+  if(!server || server.rev===applicato || inAttesa || window.scrittureInSospeso?.() || typeof window.applyMain!=='function') return;
+  applicato=server.rev; window.applyMain(docs.giardino); window.renderAll?.();
+}
 
 /* Le modifiche partono come differenze: campi cambiati ed eventi aggiunti/tolti. Il server le unisce a quelle di Claude e Telegram. */
 // le modifiche non ancora salvate restano anche sul telefono: se l'app si chiude offline, partono alla prossima apertura
@@ -627,7 +671,7 @@ function invia(diff){
 }
 function svuota(keepalive){
   const body=inAttesa; inAttesa=null; if(!body) return coda;
-  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
+  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); allinea(); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
     .catch(e=>{ inAttesa=unisci(body,inAttesa||{changes:{},add:[],remove:[]}); LSset('pending',JSON.stringify(inAttesa));
       stato(navigator.onLine===false?'Sei offline: le modifiche restano sul telefono e partono appena torna la rete.':'Non salvato sul server ('+e.message+'): riprovo tra poco.', navigator.onLine!==false);
       clearTimeout(attesaT); attesaT=setTimeout(svuota,30000); });
@@ -690,11 +734,9 @@ function doc(path){
 async function aggiorna(forza){
   await window.salvaSubito?.();          // prima partono le modifiche fatte nell'app da meno di mezzo secondo
   if(inAttesa) await svuota(); else await coda;
-  const rev=server?.rev;
   await scarica(); await caricaMeteo(!!forza);
   ['meteo_bot','eventi_bot','piano'].forEach(emit);
-  // i dati del server sostituiscono quelli sullo schermo solo se nel frattempo non hai cambiato niente
-  if(server?.rev!==rev && typeof window.applyMain==='function' && !inAttesa && !window.scrittureInSospeso?.()){ window.applyMain(docs.giardino); window.renderAll?.(); }
+  allinea();
 }
 window.GiardinoNet={
   codice:()=>code,
@@ -761,7 +803,7 @@ const SPECIE = {
   patata:{nome:'Patata',cat:'orto',ico:'🥔',kc:[0.5,0.75,1.15,0.75,0.3],area:0.20,radici:0.5,p:0.35,ann:true,ciclo:[20,35,55,75,null,115],trap:0,gelo:0,conc:{V:30},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
   carota:{nome:'Carota / rapa',cat:'orto',ico:'🥕',kc:[0.7,0.85,1.05,0.95,0.3],area:0.01,radici:0.4,p:0.35,ann:true,ciclo:[14,35,70,null,null,100],trap:0,gelo:-3,conc:{V:30},concTipo:'concime povero di azoto',rinvaso:0},
   ravanello:{nome:'Ravanello',cat:'orto',ico:'🌱',kc:[0.7,0.8,0.9,0.85,0.3],area:0.01,radici:0.2,p:0.30,ann:true,ciclo:[5,12,25,null,null,35],trap:0,gelo:-2,conc:{},concTipo:'',rinvaso:0},
-  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
+  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',fasiNomi:{piantina:'Germoglio e prime foglie',fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
   cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
   // Aromatiche
   basilico:{nome:'Basilico',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,1.0,0.9,0.3],area:0.05,radici:0.25,p:0.30,ann:true,ciclo:[10,30,90,120,null,150],trap:30,gelo:8,conc:{V:21},concTipo:'concime liquido per aromatiche',rinvaso:0},
@@ -830,7 +872,30 @@ function faseEffettiva(p, oggi, lat){
 const LUCE_DA_ESPO = {sole:8, mezzombra:4, ombra:2};
 function luceOre(p){ const h=Number(p.luce); return p.luce!=null && p.luce!=='' && isFinite(h) ? Math.max(0,Math.min(14,h)) : (LUCE_DA_ESPO[p.espo] ?? 6); }
 const fattoreLuce = h => 0.35 + 0.65*Math.min(h,9)/8;   // 0 h → 35%, 8 h → 100%, 9+ h → 108%
-const et0Casa = h => 0.8 + 0.15*Math.min(h,12);          // mm/giorno in casa, dipende dalla finestra
+// In casa (mm/giorno): una parte viene dalla luce della finestra, una dall'aria. Più la stanza è calda, più l'aria
+// “tira” acqua (deficit di vapore, proporzionale alla pressione di saturazione) e più la luce fa traspirare
+// (fattore di Priestley-Taylor). A 20 °C vale come prima: 0,8 + 0,15 × ore di luce.
+const esat = T => 0.6108*Math.exp(17.27*T/(T+237.3));                 // kPa
+const ptay = T => { const D=4098*esat(T)/(T+237.3)**2; return D/(D+0.066); };
+const et0Casa = (h, T=20) => 0.8*esat(T)/esat(20) + 0.15*Math.min(h,12)*ptay(T)/ptay(20);
+
+/* ---------------- Temperatura in casa per stagione ---------------- */
+// valori tipici se l'utente non li indica: riscaldamento d'inverno, caldo d'estate
+const STAGIONI = ['inverno','primavera','estate','autunno'];
+const TCASA_DEF = {inverno:20, primavera:21, estate:26, autunno:21};
+const tcasaValida = v => { const n=Number(v); return v!=null && v!=='' && isFinite(n) && n>=5 && n<=35 ? n : null; };
+// temperature della stanza di una pianta, con i valori tipici al posto di quelli mancanti
+function tempCasa(p){ const t=p?.tcasa||{}; return Object.fromEntries(STAGIONI.map(s=>[s, tcasaValida(t[s]) ?? TCASA_DEF[s]])); }
+// temperatura di un giorno: passa gradualmente da una stagione all'altra (metà gennaio, aprile, luglio, ottobre);
+// nell'emisfero sud le stagioni sono spostate di sei mesi
+function tempCasaGiorno(tc, iso, lat){
+  const d=new Date(iso+'T12:00:00'); let g=Math.floor((d-new Date(d.getFullYear(),0,0))/864e5);
+  if(lat!=null && lat<0) g=(g+183)%365||365;
+  if(g<15) g+=365;
+  const P=[[15,tc.inverno],[105,tc.primavera],[196,tc.estate],[288,tc.autunno],[380,tc.inverno]];
+  for(let i=0;i<P.length-1;i++){ const [a,ta]=P[i], [b,tb]=P[i+1]; if(g>=a && g<=b) return ta+(tb-ta)*(g-a)/(b-a); }
+  return tc.inverno;
+}
 
 // ET0 di Hargreaves (FAO-56 eq. 52) da temperature e latitudine, corretta per nuvole e pioggia
 function et0Hargreaves(day, lat){
@@ -890,7 +955,8 @@ function params(p, ctx={}){
   }
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib};
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib,
+    oggi, lat:ctx.lat, tcasa:interno?tempCasa(p):null};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
     const D=+p.diametro>0 ? +p.diametro/100 : Math.cbrt(4*V/1000/(0.9*Math.PI));   // vaso alto ~0,9 × diametro
@@ -902,7 +968,8 @@ function params(p, ctx={}){
   const tawL=sp.radici*fa.radici*(p.colt==='rialzata'?0.8:1)*120*area;            // 120 mm per metro di terreno medio
   return {...base,vaso:false,chioma,area,tawL,rawL:tawL*pMin,pMin,lPerMm:kcA/chioma*area*fl*calib,pioggiaArea:area*0.85};
 }
-const consumoL = (k,d) => k.interno ? et0Casa(k.h)*k.lPerMm : (d?.et0||0)*k.lPerMm;
+// in casa conta la temperatura della stanza in quel giorno (d.date; senza data, oggi)
+const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat))*k.lPerMm : (d?.et0||0)*k.lPerMm;
 const pioggiaL = (p,k,d) => p.dove!=='aperto' ? 0 : Math.max(0,(d?.rain||0)-1.5)*k.pioggiaArea;
 
 /* ---------------- Piano locale (bilancio idrico giorno per giorno) ----------------
@@ -1050,6 +1117,30 @@ function datiOrari(h, oggi, ora){
   return {suolo, notte:notte.length?notte:null};
 }
 const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
+
+/* ---------------- Calendario dei mesi (automatico, dal modello) ----------------
+   Annuali con data di semina/trapianto: un mese per riga dalla semina alla fine del ciclo.
+   Perenni: l'anno tipico, da gennaio a dicembre. Per ogni mese: fase, se fa frutti, se è tempo di raccolta. */
+const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+function calendarioAuto(p, lat){
+  const sp=SPECIE[p.specie]||SPECIE.altro, bulbo=!!sp.fasiNomi?.fruttificazione;
+  const voce=(mese,fase)=>({mese, fase, nome:nomeFase(p.specie,fase), frutti:fase==='fruttificazione'&&!bulbo, raccolta:fase==='maturazione'});
+  if(sp.ann){
+    if(!p.data_semina) return {tipo:null, mesi:[]};
+    const inizio=p.data_semina, eta0=p.tipo_data==='trapianto'?sp.trap:0;
+    const ultimo=addDays(inizio, Math.max(0, sp.ciclo.filter(x=>x!=null).pop()-eta0-1));
+    const mesi=[]; let y=+inizio.slice(0,4), m=+inizio.slice(5,7);
+    while(mesi.length<18){
+      const mm=y+'-'+String(m).padStart(2,'0'); if(mm>ultimo.slice(0,7)) break;
+      let giorno = mm===inizio.slice(0,7) ? inizio : mm+'-15'; if(giorno>ultimo) giorno=ultimo;
+      mesi.push(voce(mm, faseEffettiva({...p, fase:'auto'}, giorno, lat).fase));
+      if(++m>12){ m=1; y++; }
+    }
+    return {tipo:'ciclo', mesi};
+  }
+  const cal=sp.cal||SPECIE.altro.cal;
+  return {tipo:'anno', mesi:MESI.map((_,i)=>voce(String(i+1).padStart(2,'0'), DA_LETTERA[cal[lat!=null&&lat<0?(i+6)%12:i]]))};
+}
 
 
 /* ================= Niente zoom =================
@@ -1442,6 +1533,7 @@ function renderVacanza(){
 }
 function renderPiante(AP){
   const L=$('#plantList');
+  if(schedaId){ const p=S.plants.find(x=>x.id===schedaId); if(p) setHTML($('#schBody'),htmlScheda(p)); else closeScheda(); }
   $('#plantCount').textContent=S.plants.length?'Le tue piante ('+S.plants.length+')':'Le tue piante';
   if(!ready){ setHTML(L,'<div class="empty">Caricamento…</div>'); return; }
   if(!S.plants.length){ setHTML(L,'<div class="card empty">Nessuna pianta. Tocca <b>+ Aggiungi</b> per iniziare.</div>'); return; }
@@ -1458,6 +1550,7 @@ function renderPiante(AP){
     const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
       ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],['Quindi',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
     if(altri) facts.push(['Nel vaso anche',altri]);
+    if(k.interno) facts.push(['In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
     if(k.faseNota) notes.push(['warn','Fase: '+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
@@ -1469,7 +1562,7 @@ function renderPiante(AP){
     return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ic leaf" aria-hidden="true">${esc(icoDi(p))}</span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
       <div class="pbody"><div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
       ${notes.length?'<ul class="notes">'+notes.map(([cls,x])=>`<li class="${cls}">${esc(x)}</li>`).join('')+'</ul>':''}
-      <button class="btn wide" type="button" data-edit="${esc(p.id)}">Modifica</button></div></details>`;
+      <div class="pbtn"><button class="btn" type="button" data-scheda="${esc(p.id)}">📖 Scheda</button><button class="btn" type="button" data-edit="${esc(p.id)}">Modifica</button></div></div></details>`;
   }).join(''));
 }
 function renderMeteoSet(){
@@ -1548,6 +1641,59 @@ function drawChart(giorni,val){
   box.querySelectorAll('.hit').forEach(el=>{ el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('click',()=>show(el)); el.addEventListener('mouseleave',()=>tip.hidden=true); });
 }
 
+/* ================= Scheda della pianta (scritta da Claude) e calendario dei mesi ================= */
+const FASE_ICO={germinazione:'🌱',piantina:'🌿',vegetativa:'🍃',fioritura:'🌸',fruttificazione:'🍅',maturazione:'🧺',riposo:'💤'};
+const STAG_ICO={inverno:'❄️ Inverno',primavera:'🌷 Primavera',estate:'☀️ Estate',autunno:'🍂 Autunno'};
+const COND_ICO={luce:'☀️ Luce',temperatura:'🌡️ Temperatura',terreno:'🪨 Terreno',acqua:'💧 Acqua',umidita:'💨 Umidità',concime:'🌱 Concime'};
+const meseNome = m => /^\d{4}-\d{2}$/.test(m) ? new Date(m+'-15T12:00:00').toLocaleDateString('it-IT',{month:'short',year:'numeric'}) : (MESI[+m-1]||m);
+const meseOra = m => m===today().slice(0,7) || m===today().slice(5,7);
+function stagioneDi(iso,lat){ let m=+iso.slice(5,7)-1; if(lat!=null&&lat<0) m=(m+6)%12; return ['inverno','inverno','primavera','primavera','primavera','estate','estate','estate','autunno','autunno','autunno','inverno'][m]; }
+const schedaVecchia = p => !!p.scheda && (p.scheda.specie!==p.specie || (p.scheda.data_semina||'')!==(p.data_semina||''));
+function tabellaMesi(righe){
+  return '<table class="mesi"><tbody>'+righe.map(r=>`<tr class="${meseOra(r.mese)?'ora':''}"><th scope="row">${esc(meseNome(r.mese))}</th><td><b>${esc(r.fase)}</b>${r.frutti?'<span class="tag">frutti</span>':''}${r.raccolta?'<span class="tag racc">raccolta</span>':''}${r.nota?'<span>'+esc(r.nota)+'</span>':''}</td></tr>`).join('')+'</tbody></table>';
+}
+function periodo(righe,chiave){ const m=righe.filter(r=>r[chiave]).map(r=>meseNome(r.mese)); return m.length?(m.length>1?m[0]+' – '+m[m.length-1]:m[0]):''; }
+function htmlScheda(p){
+  const sp=SPECIE[p.specie]||SPECIE.altro, sc=p.scheda, vecchia=schedaVecchia(p), lat=S.location?.lat, ora=stagioneDi(today(),lat);
+  let h=`<div class="sub">${esc(sp.ico+' '+sp.nome)}${p.data_semina?' · '+(p.tipo_data==='trapianto'?'trapiantata':'seminata')+' il '+esc(new Date(p.data_semina+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'})):''}</div>`;
+  if(sc && !vecchia){
+    h+=`<div><span class="chip leaf">Scheda di Claude · ${esc(dataBreve(String(sc.aggiornata).slice(0,10)))}</span></div>`;
+    if(sc.descrizione) h+=`<p>${esc(sc.descrizione)}</p>`;
+    const c=Object.keys(COND_ICO).filter(k=>sc.condizioni?.[k]);
+    if(c.length) h+='<h3 class="sez">Condizioni ideali</h3><div class="voci">'+c.map(k=>`<div><b>${COND_ICO[k]}</b><span>${esc(sc.condizioni[k])}</span></div>`).join('')+'</div>';
+    const st=Object.keys(STAG_ICO).filter(k=>sc.stagioni?.[k]);
+    if(st.length) h+='<h3 class="sez">Nelle stagioni</h3><div class="voci">'+st.map(k=>`<div class="${k===ora?'ora':''}"><b>${STAG_ICO[k]}</b><span>${esc(sc.stagioni[k])}</span></div>`).join('')+'</div>';
+    if(sc.fasi?.length) h+='<h3 class="sez">Fasi di crescita</h3><div class="voci">'+sc.fasi.map(f=>`<div><b>${esc(f.quando)} · ${esc(f.fase)}</b>${f.cosa?'<span>'+esc(f.cosa)+'</span>':''}</div>`).join('')+'</div>';
+    const righe=[...(sc.calendario||[])].sort((a,b)=>a.mese<b.mese?-1:1);
+    if(righe.length) h+='<h3 class="sez">Calendario dei mesi</h3>'+tabellaMesi(righe);
+    const fr=sc.frutti||[periodo(righe,'frutti')&&'Frutti: '+periodo(righe,'frutti'), periodo(righe,'raccolta')&&'Raccolta: '+periodo(righe,'raccolta')].filter(Boolean).join(' · ');
+    if(fr) h+=`<div class="alert info">${ICON.info}<div><b>Frutti e raccolto</b><br>${esc(fr)}</div></div>`;
+    if(sc.consigli?.length) h+='<h3 class="sez">Consigli</h3><ul class="notes">'+sc.consigli.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+  } else {
+    // calendario automatico dal modello, finché Claude non scrive la scheda
+    const cal=calendarioAuto(p,lat);
+    if(cal.mesi.length){
+      // nella fase dei frutti (o del bulbo) l'icona è quella della pianta: 🍅, 🍋, 🧄…
+      const righe=cal.mesi.map(m=>({mese:m.mese, fase:(m.fase==='fruttificazione'?sp.ico:(FASE_ICO[m.fase]||''))+' '+m.nome, frutti:m.frutti, raccolta:m.raccolta}));
+      h+='<h3 class="sez">'+(cal.tipo==='ciclo'?'Calendario dalla semina al raccolto':'Calendario di un anno tipico')+'</h3><p class="hint">Stimato dall\'app con le fasi della specie.</p>'+tabellaMesi(righe);
+      const fr=[periodo(righe,'frutti')&&'Frutti: '+periodo(righe,'frutti'), periodo(righe,'raccolta')&&'Raccolta: '+periodo(righe,'raccolta')].filter(Boolean).join(' · ');
+      if(fr) h+=`<div class="alert info">${ICON.info}<div><b>Frutti e raccolto</b><br>${esc(fr)}</div></div>`;
+    } else h+='<p class="sub">Aggiungi la data di semina o di trapianto (Modifica) per vedere il calendario dei mesi.</p>';
+  }
+  if(!sc || vecchia){
+    const testo=(vecchia?'Aggiorna':'Compila')+' la scheda della pianta «'+p.nome+'» nell\'app Giardino.';
+    h+=`<div class="alert info">${ICON.info}<div class="stack"><span>${vecchia?'La scheda di Claude è stata scritta per un\'altra specie o data di semina.':'Claude può scrivere la scheda completa: condizioni ideali, come sta nelle stagioni, fasi di crescita settimana per settimana, frutti.'} In una chat con il connettore Giardino scrivi: <b>“${esc(testo)}”</b></span><div><button class="btn small" type="button" data-copia="${esc(testo)}">Copia la richiesta</button></div></div></div>`;
+  }
+  return h;
+}
+let schedaId=null;
+function openScheda(id){
+  const p=S.plants.find(x=>x.id===id); if(!p) return;
+  schedaId=id; $('#schTitolo').textContent=icoDi(p)+' '+p.nome; $('#schBody').innerHTML=htmlScheda(p);
+  $('#plantListBox').hidden=true; $('#plantFormPanel').hidden=true; $('#schedaPanel').hidden=false; window.scrollTo({top:0});
+}
+function closeScheda(){ schedaId=null; $('#schedaPanel').hidden=true; $('#plantListBox').hidden=false; }
+
 /* ================= Modulo pianta ================= */
 let editingId=null;
 const optSpecie = v => specieOrdinate().map(([k,s])=>`<option value="${k}" ${k===v?'selected':''}>${esc((s.ico?s.ico+' ':'')+s.nome)}</option>`).join('');
@@ -1590,6 +1736,7 @@ function markQuick(sel,attr,v){ const n=numOrNull(v); document.querySelectorAll(
 function syncForm(){
   const vaso=radioVal('colt')==='vaso';
   document.querySelectorAll('.pf-vaso-only').forEach(el=>el.hidden=!vaso);
+  document.querySelectorAll('.pf-casa-only').forEach(el=>el.hidden=radioVal('dove')!=='interno');
   const specie=$('#pf-specie').value, sp=SPECIE[specie], auto=$('#pf-fase').value==='auto', ann=!!sp?.ann;
   document.querySelectorAll('.pf-auto-ann').forEach(el=>el.hidden=!(auto&&ann));
   let hint='';
@@ -1616,9 +1763,14 @@ function openForm(id){
   $('#pf-more').open=!!(id && ((p.consociate||[]).length || p.note || +p.num>1 || +p.area>0 || +p.diametro>0));
   $('#deletePlantBtn').hidden=!id; $('#deleteConfirm').hidden=true;
   $('#plantListBox').hidden=true; $('#plantFormPanel').hidden=false;
+  // temperature in casa: quelle della pianta, altrimenti quelle di un'altra pianta in casa, altrimenti i valori tipici
+  const altra=S.plants.find(x=>x.id!==p.id&&x.dove==='interno'&&x.tcasa), tc=tempCasa(p.tcasa?p:(altra||{}));
+  document.querySelectorAll('[data-stagione]').forEach(i=>i.value=numIn(tc[i.dataset.stagione]));
+  const firme=new Set(S.plants.filter(x=>x.id!==p.id&&x.dove==='interno').map(x=>JSON.stringify(tempCasa(x))));
+  $('#pf-t-tutte').checked=firme.size<=1;
   syncForm(); window.scrollTo({top:0});
 }
-function closeForm(){ $('#plantFormPanel').hidden=true; $('#plantListBox').hidden=false; editingId=null; }
+function closeForm(){ $('#plantFormPanel').hidden=true; $('#schedaPanel').hidden=true; $('#plantListBox').hidden=false; editingId=null; }
 function submitForm(e){
   e.preventDefault();
   const nome=$('#pf-nome').value.trim(); if(!nome){ $('#pf-nome').focus(); toast('Scrivi un nome per la pianta'); return; }
@@ -1633,6 +1785,10 @@ function submitForm(e){
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
     luce:luce==null?6:Math.max(0,Math.min(14,luce)), dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
     data_rinvaso:colt==='vaso'?($('#pf-rinvaso').value||''):'', note:$('#pf-note').value.trim().slice(0,500)};
+  if(data.dove==='interno'){
+    data.tcasa=Object.fromEntries([...document.querySelectorAll('[data-stagione]')].map(i=>[i.dataset.stagione, tcasaValida(numOrNull(i.value)) ?? TCASA_DEF[i.dataset.stagione]]));
+    if($('#pf-t-tutte').checked) S.plants.forEach(x=>{ if(x.id!==editingId && x.dove==='interno') x.tcasa={...data.tcasa}; });
+  }
   if(editingId){ const p=S.plants.find(x=>x.id===editingId); if(p){ Object.assign(p,data); delete p.example; delete p.espo; } }
   else S.plants.push({id:uid(),...data});
   saveMain(); closeForm(); renderAll(); toast('Pianta salvata');
@@ -1720,7 +1876,9 @@ function wire(){
   $('#vacClear').addEventListener('click',()=>{ S.vacanza=null; $('#vacDal').value=''; $('#vacAl').value=''; saveMain(); renderAll(); toast('Vacanza annullata'); });
   $('#vacCopy').addEventListener('click',async()=>{ toast(await copyText(vacText())?'Istruzioni copiate: incollale in un messaggio':'Copia non riuscita'); });
   $('#addPlantBtn').addEventListener('click',()=>openForm(null));
-  $('#plantList').addEventListener('click',e=>{ const b=e.target.closest('[data-edit]'); if(b) openForm(b.dataset.edit); });
+  $('#plantList').addEventListener('click',e=>{ const b=e.target.closest('[data-edit]'); if(b) openForm(b.dataset.edit); const sc=e.target.closest('[data-scheda]'); if(sc) openScheda(sc.dataset.scheda); });
+  $('#schChiudi').addEventListener('click',closeScheda);
+  $('#schBody').addEventListener('click',async e=>{ const b=e.target.closest('[data-copia]'); if(b) toast(await copyText(b.dataset.copia)?'Copiato: incollalo nella chat di Claude':'Copia non riuscita'); });
   $('#plantForm').addEventListener('submit',submitForm);
   $('#plantForm').addEventListener('change',e=>{
     // nelle piante dello stesso vaso, i nomi delle fasi seguono la specie scelta
@@ -1810,7 +1968,7 @@ function importaBackup(){
 }
 
 /* ================= Claude (connettore), Telegram, codice ================= */
-const PROMPTS=['Fammi il piano di innaffiatura della settimana e salvalo.','Ti mando una foto della pianta: ha troppa o poca acqua? Se serve correggi il calcolo.','Ieri ho bagnato tutte le piante tranne il basilico: registralo.','Parto dal 10 al 20 agosto: imposta la vacanza e dimmi chi resiste.','Aggiungi un vaso da 20 litri con un pomodoro trapiantato oggi, 8 ore di sole.'];
+const PROMPTS=['Fammi il piano di innaffiatura della settimana e salvalo.','Compila la scheda delle mie piante che non ce l\'hanno, con il calendario dei mesi.','Ti mando una foto della pianta: ha troppa o poca acqua? Se serve correggi il calcolo.','Ieri ho bagnato tutte le piante tranne il basilico: registralo.','Parto dal 10 al 20 agosto: imposta la vacanza e dimmi chi resiste.','Aggiungi un vaso da 20 litri con un pomodoro trapiantato oggi, 8 ore di sole.'];
 function renderMcp(s){
   const on=!!s?.active;
   $('#mcpBox').hidden=!on; $('#mcpOn').hidden=on;

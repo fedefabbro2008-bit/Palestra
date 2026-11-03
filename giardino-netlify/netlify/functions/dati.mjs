@@ -29,7 +29,7 @@ export default async (request) => {
     const changes = body && typeof body.changes === "object" && body.changes ? body.changes : {};
     const add = Array.isArray(body?.add) ? body.add : [], remove = new Set(Array.isArray(body?.remove) ? body.remove.map(String) : []);
     const out = await aggiorna(st, code, (d) => {
-      for (const k of CAMPI) if (Object.prototype.hasOwnProperty.call(changes, k)) d[k] = changes[k];
+      for (const k of CAMPI) if (Object.prototype.hasOwnProperty.call(changes, k)) d[k] = k === "plants" ? conSchede(changes.plants, d.plants) : changes[k];
       if (remove.size) d.eventi = d.eventi.filter((e) => !(remove.has(String(e.id)) && e.fonte === "app"));
       for (const e of add) if (e && e.id && !d.eventi.some((x) => x.id === e.id)) d.eventi.push({ ...e, fonte: "app" });
     });
@@ -39,6 +39,18 @@ export default async (request) => {
     return reply({ error: e?.message || "errore" }, 500);
   }
 };
+
+// La scheda di ogni pianta la scrive Claude sul server: se l'app manda le piante senza scheda, o con una più vecchia,
+// resta quella più recente (l'app può essere rimasta indietro di qualche minuto).
+function conSchede(nuove, vecchie) {
+  if (!Array.isArray(nuove)) return nuove;
+  const prima = new Map((Array.isArray(vecchie) ? vecchie : []).map((p) => [p?.id, p?.scheda]));
+  return nuove.map((p) => {
+    if (!p || typeof p !== "object") return p;
+    const a = p.scheda, b = prima.get(p.id), s = !a ? b : !b ? a : String(a.aggiornata || "") >= String(b.aggiornata || "") ? a : b;
+    return s ? { ...p, scheda: s } : p;
+  });
+}
 
 async function opMcp(request, st, code) {
   const mkey = "m-" + code;

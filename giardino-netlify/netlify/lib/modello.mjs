@@ -33,7 +33,7 @@ export const SPECIE = {
   patata:{nome:'Patata',cat:'orto',ico:'🥔',kc:[0.5,0.75,1.15,0.75,0.3],area:0.20,radici:0.5,p:0.35,ann:true,ciclo:[20,35,55,75,null,115],trap:0,gelo:0,conc:{V:30},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
   carota:{nome:'Carota / rapa',cat:'orto',ico:'🥕',kc:[0.7,0.85,1.05,0.95,0.3],area:0.01,radici:0.4,p:0.35,ann:true,ciclo:[14,35,70,null,null,100],trap:0,gelo:-3,conc:{V:30},concTipo:'concime povero di azoto',rinvaso:0},
   ravanello:{nome:'Ravanello',cat:'orto',ico:'🌱',kc:[0.7,0.8,0.9,0.85,0.3],area:0.01,radici:0.2,p:0.30,ann:true,ciclo:[5,12,25,null,null,35],trap:0,gelo:-2,conc:{},concTipo:'',rinvaso:0},
-  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
+  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',fasiNomi:{piantina:'Germoglio e prime foglie',fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
   cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
   // Aromatiche
   basilico:{nome:'Basilico',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,1.0,0.9,0.3],area:0.05,radici:0.25,p:0.30,ann:true,ciclo:[10,30,90,120,null,150],trap:30,gelo:8,conc:{V:21},concTipo:'concime liquido per aromatiche',rinvaso:0},
@@ -102,7 +102,30 @@ export function faseEffettiva(p, oggi, lat){
 const LUCE_DA_ESPO = {sole:8, mezzombra:4, ombra:2};
 export function luceOre(p){ const h=Number(p.luce); return p.luce!=null && p.luce!=='' && isFinite(h) ? Math.max(0,Math.min(14,h)) : (LUCE_DA_ESPO[p.espo] ?? 6); }
 export const fattoreLuce = h => 0.35 + 0.65*Math.min(h,9)/8;   // 0 h → 35%, 8 h → 100%, 9+ h → 108%
-export const et0Casa = h => 0.8 + 0.15*Math.min(h,12);          // mm/giorno in casa, dipende dalla finestra
+// In casa (mm/giorno): una parte viene dalla luce della finestra, una dall'aria. Più la stanza è calda, più l'aria
+// “tira” acqua (deficit di vapore, proporzionale alla pressione di saturazione) e più la luce fa traspirare
+// (fattore di Priestley-Taylor). A 20 °C vale come prima: 0,8 + 0,15 × ore di luce.
+const esat = T => 0.6108*Math.exp(17.27*T/(T+237.3));                 // kPa
+const ptay = T => { const D=4098*esat(T)/(T+237.3)**2; return D/(D+0.066); };
+export const et0Casa = (h, T=20) => 0.8*esat(T)/esat(20) + 0.15*Math.min(h,12)*ptay(T)/ptay(20);
+
+/* ---------------- Temperatura in casa per stagione ---------------- */
+// valori tipici se l'utente non li indica: riscaldamento d'inverno, caldo d'estate
+export const STAGIONI = ['inverno','primavera','estate','autunno'];
+export const TCASA_DEF = {inverno:20, primavera:21, estate:26, autunno:21};
+export const tcasaValida = v => { const n=Number(v); return v!=null && v!=='' && isFinite(n) && n>=5 && n<=35 ? n : null; };
+// temperature della stanza di una pianta, con i valori tipici al posto di quelli mancanti
+export function tempCasa(p){ const t=p?.tcasa||{}; return Object.fromEntries(STAGIONI.map(s=>[s, tcasaValida(t[s]) ?? TCASA_DEF[s]])); }
+// temperatura di un giorno: passa gradualmente da una stagione all'altra (metà gennaio, aprile, luglio, ottobre);
+// nell'emisfero sud le stagioni sono spostate di sei mesi
+export function tempCasaGiorno(tc, iso, lat){
+  const d=new Date(iso+'T12:00:00'); let g=Math.floor((d-new Date(d.getFullYear(),0,0))/864e5);
+  if(lat!=null && lat<0) g=(g+183)%365||365;
+  if(g<15) g+=365;
+  const P=[[15,tc.inverno],[105,tc.primavera],[196,tc.estate],[288,tc.autunno],[380,tc.inverno]];
+  for(let i=0;i<P.length-1;i++){ const [a,ta]=P[i], [b,tb]=P[i+1]; if(g>=a && g<=b) return ta+(tb-ta)*(g-a)/(b-a); }
+  return tc.inverno;
+}
 
 // ET0 di Hargreaves (FAO-56 eq. 52) da temperature e latitudine, corretta per nuvole e pioggia
 export function et0Hargreaves(day, lat){
@@ -162,7 +185,8 @@ export function params(p, ctx={}){
   }
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib};
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib,
+    oggi, lat:ctx.lat, tcasa:interno?tempCasa(p):null};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
     const D=+p.diametro>0 ? +p.diametro/100 : Math.cbrt(4*V/1000/(0.9*Math.PI));   // vaso alto ~0,9 × diametro
@@ -174,7 +198,8 @@ export function params(p, ctx={}){
   const tawL=sp.radici*fa.radici*(p.colt==='rialzata'?0.8:1)*120*area;            // 120 mm per metro di terreno medio
   return {...base,vaso:false,chioma,area,tawL,rawL:tawL*pMin,pMin,lPerMm:kcA/chioma*area*fl*calib,pioggiaArea:area*0.85};
 }
-export const consumoL = (k,d) => k.interno ? et0Casa(k.h)*k.lPerMm : (d?.et0||0)*k.lPerMm;
+// in casa conta la temperatura della stanza in quel giorno (d.date; senza data, oggi)
+export const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat))*k.lPerMm : (d?.et0||0)*k.lPerMm;
 export const pioggiaL = (p,k,d) => p.dove!=='aperto' ? 0 : Math.max(0,(d?.rain||0)-1.5)*k.pioggiaArea;
 
 /* ---------------- Piano locale (bilancio idrico giorno per giorno) ----------------
@@ -322,3 +347,27 @@ export function datiOrari(h, oggi, ora){
   return {suolo, notte:notte.length?notte:null};
 }
 export const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
+
+/* ---------------- Calendario dei mesi (automatico, dal modello) ----------------
+   Annuali con data di semina/trapianto: un mese per riga dalla semina alla fine del ciclo.
+   Perenni: l'anno tipico, da gennaio a dicembre. Per ogni mese: fase, se fa frutti, se è tempo di raccolta. */
+export const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+export function calendarioAuto(p, lat){
+  const sp=SPECIE[p.specie]||SPECIE.altro, bulbo=!!sp.fasiNomi?.fruttificazione;
+  const voce=(mese,fase)=>({mese, fase, nome:nomeFase(p.specie,fase), frutti:fase==='fruttificazione'&&!bulbo, raccolta:fase==='maturazione'});
+  if(sp.ann){
+    if(!p.data_semina) return {tipo:null, mesi:[]};
+    const inizio=p.data_semina, eta0=p.tipo_data==='trapianto'?sp.trap:0;
+    const ultimo=addDays(inizio, Math.max(0, sp.ciclo.filter(x=>x!=null).pop()-eta0-1));
+    const mesi=[]; let y=+inizio.slice(0,4), m=+inizio.slice(5,7);
+    while(mesi.length<18){
+      const mm=y+'-'+String(m).padStart(2,'0'); if(mm>ultimo.slice(0,7)) break;
+      let giorno = mm===inizio.slice(0,7) ? inizio : mm+'-15'; if(giorno>ultimo) giorno=ultimo;
+      mesi.push(voce(mm, faseEffettiva({...p, fase:'auto'}, giorno, lat).fase));
+      if(++m>12){ m=1; y++; }
+    }
+    return {tipo:'ciclo', mesi};
+  }
+  const cal=sp.cal||SPECIE.altro.cal;
+  return {tipo:'anno', mesi:MESI.map((_,i)=>voce(String(i+1).padStart(2,'0'), DA_LETTERA[cal[lat!=null&&lat<0?(i+6)%12:i]]))};
+}

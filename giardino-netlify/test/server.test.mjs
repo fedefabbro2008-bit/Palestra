@@ -42,7 +42,7 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   KEY = (await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "on" } })).body.token;
   assert.match(KEY, /^[A-Z2-7]{26}$/);
   assert.equal((await rpc("initialize", { protocolVersion: "2025-06-18" })).result.serverInfo.name, "giardino");
-  assert.equal((await rpc("tools/list")).result.tools.length, 6);
+  assert.equal((await rpc("tools/list")).result.tools.length, 7);
   const g = (await strumento("giardino")).content[0].text;
   const ordine = ["Basilico", "Pomodoro", "Zucchine", "Aglio"].map((n) => g.indexOf("**" + n + "**"));
   assert.ok(ordine.every((x, i) => x > 0 && (!i || x > ordine[i - 1])), "piante per zona e in ordine alfabetico");
@@ -51,6 +51,28 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(m.isError, false);
   assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").zona, "Orto");
   assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { colore: "rosso" } })).isError, true);
+  // temperatura in casa
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { tcasa: { inverno: 18 } } })).isError, false);
+  assert.deepEqual((await leggiDati()).plants.find((p) => p.id === "agl").tcasa, { inverno: 18 });
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { tcasa: { estate: 50 } } })).isError, true);
+  // scheda della pianta
+  assert.match((await strumento("giardino")).content[0].text, /\*\*Aglio\*\*[\s\S]*?scheda: DA COMPILARE/);
+  const sc = await strumento("salva_scheda", { pianta: "agl", descrizione: "Bulbo da piantare in autunno.", condizioni: { luce: "Pieno sole", acqua: "Poca" },
+    stagioni: { inverno: "Cresce piano, resiste al gelo" }, calendario: [{ mese: OGGI.slice(0, 7), fase: "Radicazione", nota: "Niente acqua se piove" }, { mese: "2027-06", fase: "Raccolta", raccolta: true }, { mese: "13", fase: "x" }] });
+  assert.equal(sc.isError, false);
+  const agl = (await leggiDati()).plants.find((p) => p.id === "agl");
+  assert.equal(agl.scheda.calendario.length, 2, "il mese 13 viene scartato");
+  assert.equal(agl.scheda.specie, "aglio");
+  assert.match((await strumento("giardino")).content[0].text, /scheda: compilata il/);
+  assert.equal((await strumento("salva_scheda", { pianta: "agl", calendario: [] })).isError, true);
+  // l'app manda le piante senza scheda (o con una più vecchia): la scheda di Claude resta
+  const piante = (await leggiDati()).plants.map(({ scheda, ...p }) => (p.id === "bas" ? { ...p, note: "dall'app" } : p));
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: piante } } });
+  let d = await leggiDati();
+  assert.equal(d.plants.find((p) => p.id === "bas").note, "dall'app");
+  assert.equal(d.plants.find((p) => p.id === "agl").scheda.descrizione, "Bulbo da piantare in autunno.");
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d.plants.map((p) => (p.id === "agl" ? { ...p, scheda: { ...p.scheda, descrizione: "vecchia", aggiornata: "2020-01-01T00:00:00Z" } } : p)) } } });
+  assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").scheda.descrizione, "Bulbo da piantare in autunno.");
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
   assert.equal((await strumento("vacanza", { annulla: true })).isError, true);
   assert.equal((await call(mcp, "/mcp/AAAAAAAAAAAAAAAAAAAAAAAAAA", { method: "POST", body: { jsonrpc: "2.0", id: 1, method: "ping" } })).status, 401);

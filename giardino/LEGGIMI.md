@@ -37,6 +37,11 @@ GitHub `fedefabbro2008-bit/Palestra`, branch `main`, **Base directory `giardino-
 4. Impostazioni → **Backup** per salvare un file da reimportare dopo un cambio di versione o di telefono.
 5. Facoltativo: Impostazioni → **Siri e Comandi Rapidi** per dire “Ehi Siri, ho innaffiato”.
 
+Ogni pianta ha una **Scheda** (Piante → pianta → Scheda): finché Claude non la scrive, l'app mostra il calendario dei mesi
+stimato dal modello (dalla semina al raccolto per ortaggi e annuali, l'anno tipico per le perenni). Claude la compila con il
+connettore (`salva_scheda`): descrizione, condizioni ideali, stagioni, fasi di crescita per settimane o mesi, calendario dei mesi
+con frutti e raccolta, consigli. Se cambi specie o data di semina, la scheda risulta da aggiornare.
+
 Le piante si possono dividere in **zone** (Balcone, Orto…): in Oggi ogni zona ha il suo “Tutte annaffiate”,
 su Telegram `/fatto balcone` segna solo quella zona. Elenchi e specie sono in ordine alfabetico; la specie si cerca scrivendone il nome.
 
@@ -53,7 +58,10 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - Acqua disponibile = 25% del volume del vaso, ridotta del 6% per ogni pianta in più (radici), minimo 60%.
 - Si innaffia quando è consumata la quota che regge la pianta più delicata del vaso.
 - Consumo giornaliero (L) = ET₀ × (Σ Kc × chioma + 0,15 × superficie del terriccio) × fattore luce × correzione appresa.
-  Fattore luce = 0,35 + 0,65 × ore/8 (fino a 9 h). In casa ET₀ = 0,8 + 0,15 × ore di luce.
+  Fattore luce = 0,35 + 0,65 × ore/8 (fino a 9 h).
+- In casa ET₀ = 0,8 × eₛ(T)/eₛ(20) + 0,15 × ore di luce × PT(T)/PT(20): eₛ = pressione di vapore saturo (aria più calda, più secca),
+  PT = fattore di Priestley-Taylor Δ/(Δ+γ). T = temperatura della stanza indicata per stagione (tipica: inverno 20, primavera 21,
+  estate 26, autunno 21 °C), interpolata giorno per giorno tra metà gennaio, aprile, luglio e ottobre. A 20 °C vale 0,8 + 0,15 × ore.
 - Correzione appresa: −10% per ogni "era ancora umida", +12% per ogni "era secca" (ultimi 60 giorni, tra 0,5 e 2).
 - Piena terra all'aperto: se nessuno ha innaffiato negli ultimi 3 giorni, il punto di partenza è l'umidità reale del suolo
   (Open-Meteo, 0–27 cm; capacità di campo 0,32, appassimento 0,12 m³/m³).

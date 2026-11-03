@@ -47,7 +47,14 @@ function applicaLocale(b){
   const via=new Set(b.remove||[]); d.eventi=(d.eventi||[]).filter(e=>!via.has(e.id));
   for(const e of b.add||[]) if(!d.eventi.some(x=>x.id===e.id)) d.eventi.push({...e,fonte:'app'});
 }
-const pronto=()=>primo||(primo=scarica().then(r=>{ if(inAttesa){ clearTimeout(attesaT); attesaT=setTimeout(svuota,1000); } return r; }));
+const pronto=()=>primo||(primo=scarica().then(r=>{ applicato=server?.rev??null; if(inAttesa){ clearTimeout(attesaT); attesaT=setTimeout(svuota,1000); } return r; }));
+// Porta sullo schermo i dati del server (anche le modifiche di Claude, Telegram o di un altro telefono arrivate insieme
+// alla risposta di un salvataggio), ma solo se nel frattempo non hai cambiato niente: altrimenti alla prossima risposta.
+let applicato=null;
+function allinea(){
+  if(!server || server.rev===applicato || inAttesa || window.scrittureInSospeso?.() || typeof window.applyMain!=='function') return;
+  applicato=server.rev; window.applyMain(docs.giardino); window.renderAll?.();
+}
 
 /* Le modifiche partono come differenze: campi cambiati ed eventi aggiunti/tolti. Il server le unisce a quelle di Claude e Telegram. */
 // le modifiche non ancora salvate restano anche sul telefono: se l'app si chiude offline, partono alla prossima apertura
@@ -59,7 +66,7 @@ function invia(diff){
 }
 function svuota(keepalive){
   const body=inAttesa; inAttesa=null; if(!body) return coda;
-  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
+  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); allinea(); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
     .catch(e=>{ inAttesa=unisci(body,inAttesa||{changes:{},add:[],remove:[]}); LSset('pending',JSON.stringify(inAttesa));
       stato(navigator.onLine===false?'Sei offline: le modifiche restano sul telefono e partono appena torna la rete.':'Non salvato sul server ('+e.message+'): riprovo tra poco.', navigator.onLine!==false);
       clearTimeout(attesaT); attesaT=setTimeout(svuota,30000); });
@@ -122,11 +129,9 @@ function doc(path){
 async function aggiorna(forza){
   await window.salvaSubito?.();          // prima partono le modifiche fatte nell'app da meno di mezzo secondo
   if(inAttesa) await svuota(); else await coda;
-  const rev=server?.rev;
   await scarica(); await caricaMeteo(!!forza);
   ['meteo_bot','eventi_bot','piano'].forEach(emit);
-  // i dati del server sostituiscono quelli sullo schermo solo se nel frattempo non hai cambiato niente
-  if(server?.rev!==rev && typeof window.applyMain==='function' && !inAttesa && !window.scrittureInSospeso?.()){ window.applyMain(docs.giardino); window.renderAll?.(); }
+  allinea();
 }
 window.GiardinoNet={
   codice:()=>code,
