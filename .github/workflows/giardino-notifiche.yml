@@ -1,0 +1,49 @@
+name: Giardino - notifiche innaffiatura
+
+on:
+  schedule:
+    # Ogni giorno alle 05:17 UTC = 06:17 ora solare / 07:17 ora legale in Italia
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      invia_sempre:
+        description: "Invia il messaggio anche se oggi non c'è niente da innaffiare (per provare)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: giardino-notifiche
+  cancel-in-progress: false
+
+jobs:
+  notifica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Calcola il piano e invia su Telegram
+        run: node giardino/notifica.mjs
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          INVIA_SEMPRE: ${{ inputs.invia_sempre }}
+
+      - name: Salva le innaffiature notificate
+        run: |
+          if [ -n "$(git status --porcelain giardino/stato.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add giardino/stato.json
+            git commit -m "Giardino: aggiorna innaffiature notificate"
+            git push
+          fi
