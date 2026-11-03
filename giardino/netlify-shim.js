@@ -91,7 +91,8 @@ async function meteo(lat,lon){
 async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
   const c=LSjson('meteo');
-  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3){ docs.meteo_bot=c; return; }
+  // previsioni valide un'ora e solo nello stesso giorno: il polling ogni 2 minuti non le riscarica
+  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ docs.meteo_bot=c; return; }
   try{ docs.meteo_bot=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(docs.meteo_bot)); }
   catch(e){ docs.meteo_bot=c; stato('Meteo non disponibile: uso gli ultimi dati salvati.'); }
 }
@@ -117,10 +118,10 @@ function doc(path){
 }
 
 /* ---------------- API per l'app ---------------- */
-async function aggiorna(){
+async function aggiorna(forza){
   if(inAttesa) await svuota(); else await coda;
   const rev=server?.rev;
-  await scarica(); await caricaMeteo(true);
+  await scarica(); await caricaMeteo(!!forza);
   ['meteo_bot','eventi_bot','piano'].forEach(emit);
   if(server?.rev!==rev && typeof window.applyMain==='function'){ window.applyMain(docs.giardino); window.renderAll?.(); }
 }
@@ -137,8 +138,8 @@ window.GiardinoNet={
   }
 };
 // aggiorna da solo quando torni sull'app e ogni 2 minuti mentre è aperta (risposte di Telegram, modifiche di Claude)
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') aggiorna(); });
-setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(); },120000);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); });
+setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },120000);
 window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 window.addEventListener('pagehide',()=>{ if(inAttesa&&navigator.onLine!==false){ try{ if(navigator.sendBeacon?.(API+'?code='+encodeURIComponent(code),new Blob([JSON.stringify(inAttesa)],{type:'application/json'}))){ inAttesa=null; LSset('pending',null); } }catch(e){} } });

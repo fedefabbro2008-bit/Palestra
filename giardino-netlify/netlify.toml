@@ -2,7 +2,7 @@
 #   /api/dati           dati dell'app, chiave del connettore, collegamento del bot
 #   /mcp/<chiave>       connettore MCP per Claude
 #   /api/telegram/*     webhook del bot Telegram (pulsanti immediati)
-#   bot (pianificata)   ogni 15 minuti: messaggio del mattino e avviso della sera
+#   bot (pianificata)   ogni ora: messaggio del mattino, avviso della sera, riepilogo e backup
 [build]
   publish = "public"
   functions = "netlify/functions"

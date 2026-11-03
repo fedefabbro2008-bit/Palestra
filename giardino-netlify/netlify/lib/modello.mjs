@@ -15,29 +15,52 @@ const meseDi = iso => new Date(iso+'T12:00:00').getMonth();
         [germinazione, piantina, vegetativa, fioritura, fruttificazione, maturazione] (null = fase assente)
    trap: età tipica della piantina al trapianto (giorni)
    cal: fase per mese (gen→dic) per le perenni: R riposo, V vegetativa, F fioritura, T fruttificazione, M maturazione
-   gelo: minima (°C) sotto cui la pianta all'aperto soffre; conc: giorni tra concimazioni per fase; rinvaso: anni */
+   gelo: minima (°C) sotto cui la pianta all'aperto soffre; conc: giorni tra concimazioni per fase; rinvaso: anni
+   cat: gruppo nell'elenco dell'app (CATEGORIE); ico: emoji della scheda */
 export const SPECIE = {
-  pomodoro:{nome:'Pomodoro',kc:[0.6,0.85,1.15,0.8,0.3],area:0.30,radici:0.6,p:0.40,ann:true,ciclo:[10,40,75,95,145,175],trap:40,gelo:5,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
-  zucchina:{nome:'Zucchina',kc:[0.5,0.75,1.0,0.8,0.3],area:0.80,radici:0.6,p:0.50,ann:true,ciclo:[7,21,40,55,100,120],trap:21,gelo:5,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
-  peperone:{nome:'Peperone / peperoncino',kc:[0.6,0.8,1.05,0.9,0.3],area:0.20,radici:0.5,p:0.30,ann:true,ciclo:[12,50,85,105,155,185],trap:50,gelo:6,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
-  melanzana:{nome:'Melanzana',kc:[0.6,0.8,1.05,0.9,0.3],area:0.30,radici:0.6,p:0.45,ann:true,ciclo:[12,50,90,110,160,190],trap:50,gelo:6,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
-  lattuga:{nome:'Lattuga / insalate',kc:[0.7,0.85,1.0,0.95,0.3],area:0.06,radici:0.3,p:0.30,ann:true,ciclo:[7,25,50,null,null,75],trap:25,gelo:-2,conc:{V:21},concTipo:'concime azotato leggero',rinvaso:0},
-  fagiolo:{nome:'Fagiolo / fagiolino',kc:[0.5,0.75,1.05,0.9,0.3],area:0.15,radici:0.5,p:0.45,ann:true,ciclo:[7,20,40,50,80,95],trap:0,gelo:4,conc:{},concTipo:'',rinvaso:0},
-  fragola:{nome:'Fragola',kc:[0.4,0.6,0.85,0.75,0.3],area:0.08,radici:0.25,p:0.20,cal:'RRVFTTVVVVRR',gelo:-5,conc:{V:30,F:14,T:14},concTipo:'concime per piccoli frutti',rinvaso:2},
-  basilico:{nome:'Basilico',kc:[0.6,0.8,1.0,0.9,0.3],area:0.05,radici:0.25,p:0.30,ann:true,ciclo:[10,30,90,120,null,150],trap:30,gelo:8,conc:{V:21},concTipo:'concime liquido per aromatiche',rinvaso:0},
-  prezzemolo:{nome:'Prezzemolo / erbe tenere',kc:[0.6,0.8,0.95,0.9,0.4],area:0.05,radici:0.3,p:0.35,ann:true,ciclo:[20,50,200,null,null,260],trap:40,gelo:-5,conc:{V:30},concTipo:'concime liquido per aromatiche',rinvaso:0},
-  rosmarino:{nome:'Rosmarino / salvia / timo',kc:[0.35,0.4,0.5,0.45,0.25],area:0.25,radici:0.6,p:0.65,cal:'RRFFVVVVVVRR',gelo:-8,conc:{V:60,F:60},concTipo:'poco concime organico',rinvaso:2},
-  lavanda:{nome:'Lavanda',kc:[0.35,0.4,0.5,0.45,0.25],area:0.30,radici:0.6,p:0.65,cal:'RRVVVFFVVVRR',gelo:-10,conc:{V:60},concTipo:'poco concime organico',rinvaso:2},
-  agrumi:{nome:'Agrumi (limone, arancio…)',kc:[0.65,0.65,0.7,0.7,0.45],area:0.60,radici:0.8,p:0.50,cal:'RRVFFTTTTMMR',gelo:3,conc:{V:20,F:20,T:20},concTipo:'concime per agrumi',rinvaso:3},
-  olivo:{nome:'Olivo',kc:[0.5,0.55,0.65,0.65,0.4],area:1.50,radici:1.0,p:0.65,cal:'RRVVFTTTTMMR',gelo:-5,conc:{V:45,F:45},concTipo:'concime organico',rinvaso:3},
-  rosa:{nome:'Rosa',kc:[0.6,0.75,0.9,0.8,0.35],area:0.35,radici:0.5,p:0.45,cal:'RRVVFFFVFVRR',gelo:-10,conc:{V:15,F:15},concTipo:'concime per rose',rinvaso:3},
-  ortensia:{nome:'Ortensia',kc:[0.7,0.9,1.1,0.9,0.35],area:0.50,radici:0.4,p:0.35,cal:'RRRVVFFFVVRR',gelo:-5,conc:{V:15,F:15},concTipo:'concime per acidofile',rinvaso:2},
-  geranio:{nome:'Geranio / fiori da balcone',kc:[0.6,0.75,0.9,0.8,0.35],area:0.08,radici:0.25,p:0.40,cal:'RRVVFFFFFVRR',gelo:2,conc:{V:15,F:15},concTipo:'concime liquido per piante fiorite',rinvaso:1},
-  prato:{nome:'Prato (indica la superficie)',kc:[0.8,0.85,0.95,0.9,0.6],area:10,radici:0.2,p:0.40,cal:'RRVVVVVVVVRR',gelo:-15,conc:{V:60},concTipo:'concime per prato',rinvaso:0},
-  succulenta:{nome:'Succulenta / cactus',kc:[0.25,0.3,0.35,0.3,0.1],area:0.04,radici:0.2,p:0.85,cal:'RRVVVVVVVVRR',gelo:3,conc:{V:30},concTipo:'concime per cactacee a metà dose',rinvaso:3},
-  appartamento:{nome:'Pianta da appartamento',kc:[0.5,0.6,0.7,0.6,0.4],area:0.10,radici:0.3,p:0.50,cal:'RRVVVVVVVVRR',gelo:10,conc:{V:30},concTipo:'concime liquido per piante verdi',rinvaso:2},
-  altro:{nome:'Altra pianta',kc:[0.5,0.7,0.85,0.7,0.35],area:0.25,radici:0.5,p:0.50,cal:'RRVVFVVVVVRR',gelo:2,conc:{V:30,F:30},concTipo:'concime universale',rinvaso:2}
+  // Orto
+  pomodoro:{nome:'Pomodoro',cat:'orto',ico:'🍅',kc:[0.6,0.85,1.15,0.8,0.3],area:0.30,radici:0.6,p:0.40,ann:true,ciclo:[10,40,75,95,145,175],trap:40,gelo:5,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
+  zucchina:{nome:'Zucchina',cat:'orto',ico:'🥒',kc:[0.5,0.75,1.0,0.8,0.3],area:0.80,radici:0.6,p:0.50,ann:true,ciclo:[7,21,40,55,100,120],trap:21,gelo:5,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
+  cetriolo:{nome:'Cetriolo',cat:'orto',ico:'🥒',kc:[0.6,0.8,1.0,0.75,0.3],area:0.35,radici:0.7,p:0.50,ann:true,ciclo:[7,21,40,55,90,110],trap:21,gelo:6,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
+  melone:{nome:'Melone / anguria',cat:'orto',ico:'🍉',kc:[0.5,0.75,1.0,0.75,0.3],area:1.00,radici:0.8,p:0.40,ann:true,ciclo:[8,25,50,65,100,120],trap:25,gelo:7,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
+  peperone:{nome:'Peperone / peperoncino',cat:'orto',ico:'🌶️',kc:[0.6,0.8,1.05,0.9,0.3],area:0.20,radici:0.5,p:0.30,ann:true,ciclo:[12,50,85,105,155,185],trap:50,gelo:6,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
+  melanzana:{nome:'Melanzana',cat:'orto',ico:'🍆',kc:[0.6,0.8,1.05,0.9,0.3],area:0.30,radici:0.6,p:0.45,ann:true,ciclo:[12,50,90,110,160,190],trap:50,gelo:6,conc:{V:21,F:14,T:14},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
+  lattuga:{nome:'Lattuga / insalate',cat:'orto',ico:'🥬',kc:[0.7,0.85,1.0,0.95,0.3],area:0.06,radici:0.3,p:0.30,ann:true,ciclo:[7,25,50,null,null,75],trap:25,gelo:-2,conc:{V:21},concTipo:'concime azotato leggero',rinvaso:0},
+  spinaci:{nome:'Spinaci / bietola / rucola',cat:'orto',ico:'🥬',kc:[0.7,0.85,1.0,0.95,0.3],area:0.04,radici:0.35,p:0.20,ann:true,ciclo:[8,25,55,null,null,80],trap:30,gelo:-6,conc:{V:21},concTipo:'concime azotato leggero',rinvaso:0},
+  cavolo:{nome:'Cavolo / broccolo / cavolfiore',cat:'orto',ico:'🥦',kc:[0.7,0.85,1.05,0.95,0.3],area:0.25,radici:0.5,p:0.45,ann:true,ciclo:[7,35,100,null,null,150],trap:35,gelo:-6,conc:{V:21},concTipo:'concime azotato',rinvaso:0},
+  fagiolo:{nome:'Fagiolo / fagiolino',cat:'orto',ico:'🌱',kc:[0.5,0.75,1.05,0.9,0.3],area:0.15,radici:0.5,p:0.45,ann:true,ciclo:[7,20,40,50,80,95],trap:0,gelo:4,conc:{},concTipo:'',rinvaso:0},
+  pisello:{nome:'Pisello / fava',cat:'orto',ico:'🌱',kc:[0.5,0.75,1.15,1.05,0.3],area:0.06,radici:0.6,p:0.35,ann:true,ciclo:[10,30,55,70,95,115],trap:0,gelo:-5,conc:{},concTipo:'',rinvaso:0},
+  patata:{nome:'Patata',cat:'orto',ico:'🥔',kc:[0.5,0.75,1.15,0.75,0.3],area:0.20,radici:0.5,p:0.35,ann:true,ciclo:[20,35,55,75,null,115],trap:0,gelo:0,conc:{V:30},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
+  carota:{nome:'Carota / rapa',cat:'orto',ico:'🥕',kc:[0.7,0.85,1.05,0.95,0.3],area:0.01,radici:0.4,p:0.35,ann:true,ciclo:[14,35,70,null,null,100],trap:0,gelo:-3,conc:{V:30},concTipo:'concime povero di azoto',rinvaso:0},
+  ravanello:{nome:'Ravanello',cat:'orto',ico:'🌱',kc:[0.7,0.8,0.9,0.85,0.3],area:0.01,radici:0.2,p:0.30,ann:true,ciclo:[5,12,25,null,null,35],trap:0,gelo:-2,conc:{},concTipo:'',rinvaso:0},
+  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
+  cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
+  // Aromatiche
+  basilico:{nome:'Basilico',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,1.0,0.9,0.3],area:0.05,radici:0.25,p:0.30,ann:true,ciclo:[10,30,90,120,null,150],trap:30,gelo:8,conc:{V:21},concTipo:'concime liquido per aromatiche',rinvaso:0},
+  prezzemolo:{nome:'Prezzemolo / erbe tenere',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,0.95,0.9,0.4],area:0.05,radici:0.3,p:0.35,ann:true,ciclo:[20,50,200,null,null,260],trap:40,gelo:-5,conc:{V:30},concTipo:'concime liquido per aromatiche',rinvaso:0},
+  menta:{nome:'Menta / melissa',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,1.0,0.9,0.4],area:0.10,radici:0.3,p:0.40,cal:'RRVVVFFVVVRR',gelo:-10,conc:{V:30},concTipo:'concime liquido per aromatiche',rinvaso:1},
+  rosmarino:{nome:'Rosmarino / salvia / timo',cat:'aromatiche',ico:'🌿',kc:[0.35,0.4,0.5,0.45,0.25],area:0.25,radici:0.6,p:0.65,cal:'RRFFVVVVVVRR',gelo:-8,conc:{V:60,F:60},concTipo:'poco concime organico',rinvaso:2},
+  lavanda:{nome:'Lavanda',cat:'aromatiche',ico:'🌿',kc:[0.35,0.4,0.5,0.45,0.25],area:0.30,radici:0.6,p:0.65,cal:'RRVVVFFVVVRR',gelo:-10,conc:{V:60},concTipo:'poco concime organico',rinvaso:2},
+  // Frutti
+  fragola:{nome:'Fragola',cat:'frutti',ico:'🍓',kc:[0.4,0.6,0.85,0.75,0.3],area:0.08,radici:0.25,p:0.20,cal:'RRVFTTVVVVRR',gelo:-5,conc:{V:30,F:14,T:14},concTipo:'concime per piccoli frutti',rinvaso:2},
+  agrumi:{nome:'Agrumi (limone, arancio…)',cat:'frutti',ico:'🍋',kc:[0.65,0.65,0.7,0.7,0.45],area:0.60,radici:0.8,p:0.50,cal:'RRVFFTTTTMMR',gelo:3,conc:{V:20,F:20,T:20},concTipo:'concime per agrumi',rinvaso:3},
+  olivo:{nome:'Olivo',cat:'frutti',ico:'🫒',kc:[0.5,0.55,0.65,0.65,0.4],area:1.50,radici:1.0,p:0.65,cal:'RRVVFTTTTMMR',gelo:-5,conc:{V:45,F:45},concTipo:'concime organico',rinvaso:3},
+  vite:{nome:'Vite / uva',cat:'frutti',ico:'🍇',kc:[0.3,0.5,0.7,0.45,0.2],area:1.50,radici:1.0,p:0.45,cal:'RRRVFTTTMVRR',gelo:-15,conc:{V:45},concTipo:'concime organico',rinvaso:3},
+  fruttiferi:{nome:'Albero da frutto (melo, pesco…)',cat:'frutti',ico:'🍎',kc:[0.45,0.6,0.95,0.75,0.35],area:3.00,radici:1.2,p:0.50,cal:'RRFVVTTTMMRR',gelo:-15,conc:{V:45,F:45},concTipo:'concime per alberi da frutto',rinvaso:3},
+  // Fiori, arbusti e prato
+  rosa:{nome:'Rosa',cat:'fiori',ico:'🌹',kc:[0.6,0.75,0.9,0.8,0.35],area:0.35,radici:0.5,p:0.45,cal:'RRVVFFFVFVRR',gelo:-10,conc:{V:15,F:15},concTipo:'concime per rose',rinvaso:3},
+  ortensia:{nome:'Ortensia',cat:'fiori',ico:'💠',kc:[0.7,0.9,1.1,0.9,0.35],area:0.50,radici:0.4,p:0.35,cal:'RRRVVFFFVVRR',gelo:-5,conc:{V:15,F:15},concTipo:'concime per acidofile',rinvaso:2},
+  geranio:{nome:'Geranio / fiori da balcone',cat:'fiori',ico:'🌺',kc:[0.6,0.75,0.9,0.8,0.35],area:0.08,radici:0.25,p:0.40,cal:'RRVVFFFFFVRR',gelo:2,conc:{V:15,F:15},concTipo:'concime liquido per piante fiorite',rinvaso:1},
+  arbusto:{nome:'Arbusto / siepe',cat:'fiori',ico:'🌳',kc:[0.5,0.6,0.7,0.6,0.35],area:0.60,radici:0.7,p:0.50,cal:'RRVVFFVVVVRR',gelo:-10,conc:{V:45,F:45},concTipo:'concime universale a lenta cessione',rinvaso:3},
+  felce:{nome:'Felce',cat:'fiori',ico:'🌿',kc:[0.7,0.9,1.0,0.9,0.5],area:0.15,radici:0.25,p:0.30,cal:'RRVVVVVVVVRR',gelo:-5,conc:{V:30},concTipo:'concime liquido per piante verdi a metà dose',rinvaso:2},
+  prato:{nome:'Prato (indica la superficie)',cat:'fiori',ico:'☘️',kc:[0.8,0.85,0.95,0.9,0.6],area:10,radici:0.2,p:0.40,cal:'RRVVVVVVVVRR',gelo:-15,conc:{V:60},concTipo:'concime per prato',rinvaso:0},
+  // In casa
+  appartamento:{nome:'Pianta da appartamento',cat:'casa',ico:'🪴',kc:[0.5,0.6,0.7,0.6,0.4],area:0.10,radici:0.3,p:0.50,cal:'RRVVVVVVVVRR',gelo:10,conc:{V:30},concTipo:'concime liquido per piante verdi',rinvaso:2},
+  orchidea:{nome:'Orchidea',cat:'casa',ico:'🌸',kc:[0.3,0.4,0.45,0.4,0.3],area:0.05,radici:0.15,p:0.60,cal:'VFFFVVVVVVVV',gelo:12,conc:{V:14,F:21},concTipo:'concime per orchidee a metà dose',rinvaso:2},
+  succulenta:{nome:'Succulenta / cactus',cat:'casa',ico:'🌵',kc:[0.25,0.3,0.35,0.3,0.1],area:0.04,radici:0.2,p:0.85,cal:'RRVVVVVVVVRR',gelo:3,conc:{V:30},concTipo:'concime per cactacee a metà dose',rinvaso:3},
+  altro:{nome:'Altra pianta',cat:'altro',ico:'🌱',kc:[0.5,0.7,0.85,0.7,0.35],area:0.25,radici:0.5,p:0.50,cal:'RRVVFVVVVVRR',gelo:2,conc:{V:30,F:30},concTipo:'concime universale',rinvaso:2}
 };
+export const CATEGORIE = {orto:'Orto', aromatiche:'Aromatiche', frutti:'Frutti', fiori:'Fiori, arbusti e prato', casa:'In casa', altro:'Altro'};
 export const FASI = {
   germinazione:{nome:'Semina / germinazione',kc:0,radici:0.25,p:0.20,l:'G'},
   piantina:{nome:'Piantina / trapianto',kc:0,radici:0.45,p:0.30,l:'P'},
@@ -220,7 +243,7 @@ export function avvisiDomani(piante, domani, notte){
     let testo='Minima di '+fmtN(minima)+' °C';
     if(oraria){
       const soglia=Math.max(...fredde.map(gelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
-      testo='Stanotte minima di '+fmtN(minima)+' °C verso le '+piu.ora+(sotto.length>1?' (sotto '+fmtN(soglia)+' °C dalle '+sotto[0].ora+' alle '+sotto[sotto.length-1].ora+')':'');
+      testo='Stanotte minima di '+fmtN(minima)+' °C verso le '+piu.ora+':00'+(sotto.length>1?' (sotto '+fmtN(soglia)+' °C dalle '+sotto[0].ora+':00 alle '+sotto[sotto.length-1].ora+':00)':'');
     }
     out.push({tipo:'gelo', testo:testo+': porta al riparo o copri con tessuto non tessuto '+fredde.map(p=>p.nome).join(', ')+'.', piante:fredde.map(p=>p.id)});
   }
