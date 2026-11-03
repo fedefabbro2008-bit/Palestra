@@ -1,8 +1,8 @@
 {
- "aggiornato": "2026-11-03T12:05:00.362Z",
+ "aggiornato": "2026-11-03T12:17:37.959Z",
  "meteo": {
   "source": "open-meteo",
-  "updatedAt": "2026-11-03T12:05:00.361Z",
+  "updatedAt": "2026-11-03T12:17:37.958Z",
   "lat": 45.4643,
   "lon": 9.1895,
   "days": [
@@ -109,7 +109,7 @@
   ]
  },
  "piano": {
-  "createdAt": "2026-11-03T12:05:00.361Z",
+  "createdAt": "2026-11-03T12:17:37.958Z",
   "source": "bot",
   "fonte": "stima locale",
   "lat": 45.4643,
