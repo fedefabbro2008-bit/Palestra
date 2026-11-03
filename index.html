@@ -472,6 +472,10 @@ main{
   background:none; border:none; color:var(--text-faint); align-self:end;
   width:32px; height:36px; display:flex; align-items:center; justify-content:center;
 }
+.ex-side-btn{width:100%; margin-top:8px; padding:9px; border-radius:8px; border:1px dashed var(--border-input); background:none; color:var(--text-faint); font-size:11.5px;
+  display:flex; align-items:center; justify-content:center; gap:6px; text-align:center;}
+.ex-side-btn.on{border-style:solid; color:var(--text);}
+.ex-side-btn .ic{width:14px; height:14px; flex:0 0 auto;}
 .ex-circuit-btn{
   width:100%; margin-top:8px; padding:9px; border-radius:8px; border:1px dashed var(--border-input);
   background:none; color:var(--text-faint); font-size:11.5px;
@@ -935,6 +939,11 @@ body.kb-open main{scroll-padding-top:calc(var(--head-h, 0px) + 12px);}
 }
 .sess-ex.show-meta .sess-ex-head .sess-meta-btn{color:var(--accent-hi);}
 /* metadati: neutri, non colorati — il colore resta all'accento attivo */
+.sess-side-btn{flex-shrink:0; min-height:34px; padding:6px 12px; border-radius:100px; border:1px solid var(--border); background:var(--card-2); color:var(--text-dim); font:inherit; font-size:13px; display:inline-flex; align-items:center; gap:5px;}
+.sess-side-btn.on{border-color:var(--text-dim); color:var(--text);}
+.sess-side-btn .ic{width:14px; height:14px;}
+.es-side{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); margin:-2px 0 10px; line-height:1.35;}
+.es-side input{width:18px; height:18px; flex:0 0 auto; accent-color:var(--accent);}
 .sess-ex-sub select{
   font-size:16px; color:var(--text-dim); background:var(--card-2); border:1px solid var(--border);
   border-radius:100px; padding:6px 11px; flex-shrink:0; max-width:46%; min-height:34px;
@@ -1078,7 +1087,7 @@ body.light .timer-bar{box-shadow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px
 .hint-done{display:block; font-style:normal; font-size:11px; color:var(--text-faint); margin-top:4px;}
 /* sostituisci esercizio */
 .sess-set-actions > *{min-width:0;}
-@media (max-width:359px){
+@media (max-width:389px){   /* fino a 389 px: "Aggiungi serie" con l'icona andava a capo */
   .sess-set-actions .sess-add-set .ic,.sess-set-actions .sess-wu-btn .ic{display:none;}
   .sess-set-actions .sess-add-set,.sess-set-actions .sess-wu-btn{padding:10px 6px; font-size:12px;}
   .sess-set-actions .sess-sub-btn{flex-basis:40px;}
@@ -1559,6 +1568,16 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 .sync-code b{flex:1; min-width:0; font-size:13.5px; overflow-wrap:normal; word-break:keep-all; letter-spacing:.02em; line-height:1.45;}
 .sync-code .btn{flex:0 0 auto; padding:8px 14px; min-height:0;}
 .sync-st.err{color:var(--danger); border-color:var(--danger);}
+/* connettore per Claude: indirizzo lungo che va a capo dove serve */
+.bk-status[hidden]{display:none;}   /* display:flex ignorava hidden: restava un riquadro vuoto */
+.mcp-on{width:100%;}
+.mcp-url{display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-box,14px);}
+.mcp-url > span{flex:1 0 100%; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint);}
+.mcp-url b{flex:1; min-width:0; font-size:12px; line-height:1.45; overflow-wrap:anywhere; color:var(--text);}
+.mcp-url .btn{flex:0 0 auto; padding:8px 14px; min-height:0;}
+.mcp-adv{margin-top:4px; font-size:12px; color:var(--text-dim); line-height:1.5;}
+.mcp-adv summary{cursor:pointer; color:var(--text-dim); padding:6px 0; font-weight:600;}
+.mcp-adv p{margin:4px 0 8px;} .mcp-adv b.mono{overflow-wrap:anywhere; color:var(--text);}
 .sync-st.warn{color:var(--warn);}
 </style>
 </head>
@@ -1655,7 +1674,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Questa settimana <span class="sub">ultimi 7 giorni</span><button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoWeek"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoWeek"><p>Ultimi 7 giorni, oggi compreso.</p><p><b>Anello</b>: allenamenti fatti su quelli previsti dalla scheda (una seduta per giornata). Rosso sotto il 75%, verde dal 75% al 100%, azzurro se ne fai più del previsto. Una riserva vale come la giornata che sostituisce.</p><p>Le frecce confrontano con i 7 giorni prima. <b>Peso sollevato</b>: kg × ripetizioni di tutte le serie, riscaldamento compreso.</p><p><b>Serie di lavoro</b>: non contano le serie di riscaldamento (R), lo stretching e i riscaldamenti generici. L'<b>RPE medio</b> compare solo se lo registri (Impostazioni).</p><p><b>Serie per muscolo</b>: tutti i muscoli, anche quelli che la scheda non allena, prima quelli più indietro; il principale conta 1 serie, il secondario ½; il numero è arrotondato. Le tacche sulla barra sono l'obiettivo settimanale (minimo e massimo), scritto anche a destra. <b>Tocca un muscolo</b> per vedere serie dirette e da secondario.</p><p><b>Record</b> ed <b>esercizi fermi</b> (nessun progresso nelle ultime 3 sedute): tocca il riquadro per vedere quali. L'elenco dei record della settimana è anche in fondo alla pagina.</p></div>
+      <div class="card-info" id="infoWeek"><p>Ultimi 7 giorni, oggi compreso.</p><p><b>Anello</b>: allenamenti fatti su quelli previsti dalla scheda (una seduta per giornata). Rosso sotto il 75%, verde dal 75% al 100%, azzurro se ne fai più del previsto. Una riserva vale come la giornata che sostituisce.</p><p>Le frecce confrontano con i 7 giorni prima. <b>Peso sollevato</b>: kg × ripetizioni di tutte le serie, riscaldamento compreso; negli esercizi <b>per lato</b> contano i due lati.</p><p><b>Serie di lavoro</b>: non contano le serie di riscaldamento (R), lo stretching e i riscaldamenti generici. L'<b>RPE medio</b> compare solo se lo registri (Impostazioni).</p><p><b>Serie per muscolo</b>: tutti i muscoli, anche quelli che la scheda non allena, prima quelli più indietro; il principale conta 1 serie, il secondario ½; il numero è arrotondato. Le tacche sulla barra sono l'obiettivo settimanale (minimo e massimo), scritto anche a destra. <b>Tocca un muscolo</b> per vedere serie dirette e da secondario.</p><p><b>Record</b> ed <b>esercizi fermi</b> (nessun progresso nelle ultime 3 sedute): tocca il riquadro per vedere quali. L'elenco dei record della settimana è anche in fondo alla pagina.</p></div>
       <div id="volSummary"></div>
       <div id="volList"></div>
       <div id="weekTiles"></div>
@@ -1725,7 +1744,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 7-7"/><path d="M15 8h5v5"/></svg>Progressione esercizio<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoProg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoProg"><p><b>Carico</b>: il kg più alto della seduta. <b>Rip./Sec.</b>: la serie migliore a quel carico. Le serie di riscaldamento (R) non contano.</p><p><b>Kg totali</b>: il peso sollevato nella seduta, kg × ripetizioni di tutte le serie, riscaldamento compreso.</p><p><b>Massimale stimato</b>: il peso che potresti sollevare una volta sola, calcolato dalla serie migliore (kg × (1 + ripetizioni/30), serie da 1 a 12 ripetizioni). Serve a confrontare sedute con carichi e ripetizioni diversi.</p><p>Tra parentesi nel menu: quante sedute hai registrato per quell'esercizio.</p></div>
+      <div class="card-info" id="infoProg"><p><b>Carico</b>: il kg più alto della seduta. <b>Rip./Sec.</b>: la serie migliore a quel carico. Le serie di riscaldamento (R) non contano.</p><p><b>Kg totali</b>: il peso sollevato nella seduta, kg × ripetizioni di tutte le serie, riscaldamento compreso (per lato: i due lati).</p><p><b>Massimale stimato</b>: il peso che potresti sollevare una volta sola, calcolato dalla serie migliore (kg × (1 + ripetizioni/30), serie da 1 a 12 ripetizioni). Serve a confrontare sedute con carichi e ripetizioni diversi.</p><p>Tra parentesi nel menu: quante sedute hai registrato per quell'esercizio.</p></div>
       <div class="chart-head">
         <select class="exercise-picker" id="progPicker"></select>
         <select id="progMetric" title="Metrica">
@@ -1746,7 +1765,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Analisi con Claude<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoAi"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoAi"><p>Prepara un riepilogo delle ultime 4 settimane (scheda, allenamenti, volume, record) da incollare in una chat con Claude per avere un'analisi e consigli.</p></div>
+      <div class="card-info" id="infoAi"><p>Prepara un riepilogo delle ultime 4 settimane (scheda, allenamenti, volume, record) da incollare in una chat con Claude per avere un'analisi e consigli.</p><p>Senza copia e incolla: collega Claude una volta sola da <b>Impostazioni → Claude legge i tuoi allenamenti</b> (serve la sincronizzazione).</p></div>
       <div class="btn-row"><button class="btn primary" id="aiSummaryBtn" style="flex:1;"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>Prepara riepilogo</button></div>
     </div>
 
@@ -1775,7 +1794,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 7-7"/><path d="M15 8h5v5"/></svg>Progressione esercizio<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoPlanProg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoPlanProg"><p>Come nel Mese, ma solo con le sedute di questa scheda.</p><p><b>Carico</b>: il kg più alto della seduta. <b>Rip./Sec.</b>: la serie migliore a quel carico. Le serie di riscaldamento (R) non contano.</p><p><b>Kg totali</b>: il peso sollevato nella seduta, kg × ripetizioni di tutte le serie, riscaldamento compreso.</p><p><b>Massimale stimato</b>: il peso che potresti sollevare una volta sola, calcolato dalla serie migliore (kg × (1 + ripetizioni/30), serie da 1 a 12 ripetizioni).</p><p>Tra parentesi nel menu: quante sedute di quell'esercizio ci sono nella scheda.</p></div>
+      <div class="card-info" id="infoPlanProg"><p>Come nel Mese, ma solo con le sedute di questa scheda.</p><p><b>Carico</b>: il kg più alto della seduta. <b>Rip./Sec.</b>: la serie migliore a quel carico. Le serie di riscaldamento (R) non contano.</p><p><b>Kg totali</b>: il peso sollevato nella seduta, kg × ripetizioni di tutte le serie, riscaldamento compreso (per lato: i due lati).</p><p><b>Massimale stimato</b>: il peso che potresti sollevare una volta sola, calcolato dalla serie migliore (kg × (1 + ripetizioni/30), serie da 1 a 12 ripetizioni).</p><p>Tra parentesi nel menu: quante sedute di quell'esercizio ci sono nella scheda.</p></div>
       <div class="chart-head">
         <select class="exercise-picker" id="planProgPicker" aria-label="Esercizio"></select>
         <select id="planProgMetric" title="Metrica" aria-label="Metrica">
@@ -1815,7 +1834,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Analisi con Claude<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoPlanAi"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoPlanAi"><p>Prepara un riepilogo di tutta la scheda (dal primo giorno a oggi: allenamenti, volume per settimana, record, esercizi fermi) da incollare in una chat con Claude per un'analisi completa.</p></div>
+      <div class="card-info" id="infoPlanAi"><p>Prepara un riepilogo di tutta la scheda (dal primo giorno a oggi: allenamenti, volume per settimana, record, esercizi fermi) da incollare in una chat con Claude per un'analisi completa.</p><p>Senza copia e incolla: collega Claude una volta sola da <b>Impostazioni → Claude legge i tuoi allenamenti</b> (serve la sincronizzazione).</p></div>
       <div class="btn-row"><button class="btn primary" id="planAiBtn" style="flex:1;"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>Prepara riepilogo della scheda</button></div>
     </div>
 
@@ -1970,7 +1989,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card" id="syncCard">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 00-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0014.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>Più dispositivi e senza rete<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoSync"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoSync"><p><b>Sincronizzazione</b>: scheda, storico e impostazioni (tema, animazioni, RPE, sfondo, testo per Claude) uguali su iPhone, iPad, Android e computer. Attivala su un dispositivo, copia il codice e inseriscilo sugli altri con <b>Ho già un codice</b>: i dati si uniscono, non si sovrascrivono. Poi si sincronizza da solo a ogni modifica, quando apri l'app e appena torna la rete; durante un allenamento aspetta che finisca.</p><p>Il <b>codice è la chiave</b> dei tuoi dati: chi lo conosce li legge e li modifica. Non condividerlo.</p><p><b>Senza rete</b>: l'app resta salvata sul dispositivo e si apre anche in palestra senza campo; se la rete è lenta, dopo 3 secondi apre la copia salvata. Le versioni nuove arrivano da sole quando c'è rete.</p><p>Per funzionare su Netlify servono, accanto a index.html, anche <b>sw.js</b>, <b>netlify.toml</b>, <b>package.json</b> e la cartella <b>netlify/functions</b> con sync.mjs.</p></div>
+      <div class="card-info" id="infoSync"><p><b>Sincronizzazione</b>: scheda, storico e impostazioni (tema, animazioni, RPE, sfondo, testo per Claude) uguali su iPhone, iPad, Android e computer. Attivala su un dispositivo, copia il codice e inseriscilo sugli altri con <b>Ho già un codice</b>: i dati si uniscono, non si sovrascrivono. Poi si sincronizza da solo a ogni modifica, quando apri l'app e appena torna la rete; durante un allenamento aspetta che finisca.</p><p>Il <b>codice è la chiave</b> dei tuoi dati: chi lo conosce li legge e li modifica. Non condividerlo.</p><p><b>Senza rete</b>: l'app resta salvata sul dispositivo e si apre anche in palestra senza campo; se la rete è lenta, dopo 3 secondi apre la copia salvata. Le versioni nuove arrivano da sole quando c'è rete.</p><p>Per funzionare su Netlify servono, accanto a index.html, anche <b>sw.js</b>, <b>netlify.toml</b>, <b>package.json</b> e la cartella <b>netlify/functions</b> con sync.mjs e mcp.mjs.</p></div>
       <div id="syncOff">
         <p class="sync-intro">Stessi dati su tutti i tuoi dispositivi.</p>
         <div class="btn-grid">
@@ -1991,6 +2010,29 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
         </div>
       </div>
       <div class="bk-status" id="offlineStatus"></div>
+    </div>
+
+    <div class="card" id="mcpCard" hidden>
+      <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Claude legge i tuoi allenamenti<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoMcp"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
+      <div class="card-info" id="infoMcp"><p>Con un <b>connettore</b> Claude legge da solo scheda, allenamenti, serie per muscolo, record ed esercizi fermi: in una chat chiedi «com'è andata questa settimana?» e risponde con i tuoi dati, senza copia e incolla. Può solo <b>leggere</b>: non cambia e non cancella niente.</p><p>Legge i dati <b>sincronizzati</b>, cioè l'ultima sincronizzazione (di solito pochi secondi dopo ogni modifica; durante l'allenamento aspetta che finisca).</p><p>La <b>chiave</b> serve solo a leggere ed è diversa dal codice di sincronizzazione: con lei non si scrive e non si risale al codice. Chi ha l'indirizzo legge i tuoi allenamenti, quindi non condividerlo. <b>Nuova chiave</b> fa smettere subito quella di prima, <b>Disattiva</b> la toglie.</p><p>In Claude i connettori personalizzati ci sono anche col piano gratuito (uno solo).</p></div>
+      <div id="mcpOff">
+        <p class="sync-intro">Claude legge scheda e allenamenti da solo, senza copia e incolla. Solo lettura.</p>
+        <button class="btn primary mcp-on" id="mcpOnBtn" type="button">Collega Claude</button>
+      </div>
+      <div id="mcpOn" hidden>
+        <div class="mcp-url"><span>Indirizzo del connettore</span><b id="mcpUrl" class="mono"></b><button class="btn" id="mcpCopyBtn" type="button">Copia</button></div>
+        <ol class="clock-steps">
+          <li>In Claude: <b>Personalizza → Connettori → + Aggiungi → Aggiungi connettore personalizzato</b>.</li>
+          <li>Nome <b>Palestra</b>, incolla l'indirizzo, scegli <b>Nessun accesso</b> e tocca <b>Aggiungi</b>.</li>
+          <li>In una chat chiedi per esempio: <i>«Analizza i miei allenamenti dell'ultimo mese»</i>.</li>
+        </ol>
+        <details class="mcp-adv"><summary>Più sicuro: la chiave fuori dall'indirizzo</summary>
+          <p>Come indirizzo usa <b class="mono" id="mcpBase"></b> e in <b>Request headers</b> aggiungi <b>Authorization</b> con questo valore: <b class="mono" id="mcpBearer"></b></p>
+          <button class="btn" id="mcpCopyKeyBtn" type="button">Copia il valore</button>
+        </details>
+        <div class="btn-grid" style="margin-top:12px;"><button class="btn" id="mcpNewBtn" type="button">Nuova chiave</button><button class="btn danger" id="mcpOffBtn" type="button">Disattiva</button></div>
+      </div>
+      <div class="bk-status sync-st" id="mcpStatus" hidden></div>
     </div>
 
     <div class="card">
@@ -2212,6 +2254,16 @@ function secOf(e){
   const m = e && e.muscle, x = e && e.secondary;
   return (x && x!=='Altro' && x!==m && MUSCLES.includes(x) && m!=='Altro' && MUSCLES.includes(m)) ? x : null;
 }
+/* esercizio fatto un lato alla volta (un braccio, una gamba): le ripetizioni (o i secondi) scritte sono di ogni lato,
+   quindi peso sollevato, ripetizioni totali e durata contano i due lati. Le serie per muscolo no: una serie per lato
+   è una serie per quel muscolo. Di default lo dice il nome ("… (per lato)"); l'opzione dell'esercizio lo cambia,
+   e si salva solo quando è diversa da quello che dice il nome */
+const SIDE_RX = /\bper\s+lato\b/i;
+function sideOf(e){ return !!e && (typeof e.perSide==='boolean' ? e.perSide : SIDE_RX.test(String(e.name||''))); }
+/* peso sollevato di un elenco di serie: kg × ripetizioni (a tempo e a distanza i kg di ogni serie), × 2 se per lato */
+function tonOf(detail, type, side){ return (detail||[]).reduce((a,d)=> a + num(d.kg)*((type||'reps')==='reps' ? num(d.val) : 1), 0) * (side ? 2 : 1); }
+/* perSide salvato solo se diverso dal nome (così rinominando "… (per lato)" segue il nome) */
+function tidySide(e){ if(typeof e.perSide!=='boolean' || e.perSide===SIDE_RX.test(String(e.name||''))) delete e.perSide; return e; }
 const MUSCLE_TARGET = { Petto:[10,20], Schiena:[10,20], Spalle:[8,16], Bicipiti:[6,14], Tricipiti:[6,14], Addominali:[6,12], Quadricipiti:[8,16], Femorale:[6,12], Glutei:[6,12], Polpacci:[6,12], Altro:[0,999] };
 
 // tipo di esercizio: cosa si misura in ogni serie
@@ -2283,7 +2335,7 @@ function cleanPlanEx(e){
   e.rest = Math.min(3600, Math.max(0, Math.round(num(e.rest))));
   e.reps = e.reps==null ? '' : String(e.reps);
   e.name = String(e.name==null ? '' : e.name).trim() || 'Esercizio';
-  return e;
+  return tidySide(e);
 }
 
 /* ============================================================
@@ -2553,7 +2605,9 @@ function normalizeLogs(raw){
           sets: hasWarm ? detail.filter(d=>!d.w).length : (setsCount || detail.length),
           kg, val,
           // il tonnellaggio è tutto il peso sollevato, riscaldamento compreso (salvataggi vecchi ricalcolati)
-          tonnage: (e.tonnage!=null && !hasWarm) ? Math.max(0, num(e.tonnage)) : detail.reduce((a,d)=>a+d.kg*(type==='reps'?d.val:1),0),
+          // per lato: sempre ricalcolato (un valore salvato da una versione che non lo sapeva conterebbe un lato solo)
+          tonnage: (e.tonnage!=null && !hasWarm && !sideOf(e)) ? Math.max(0, num(e.tonnage)) : tonOf(detail, type, sideOf(e)),
+          ...(typeof e.perSide==='boolean' && e.perSide!==SIDE_RX.test(name) ? { perSide:e.perSide } : {}),
           detail
         });
       });
@@ -2611,7 +2665,7 @@ function recalcEntry(e){
   e.kg = main.length ? Math.max(...main.map(d=>num(d.kg))) : 0;
   e.val = main.length ? Math.max(...main.filter(d=>num(d.kg)===e.kg).map(d=>num(d.val))) : 0;
   // tonnellaggio: tutto il peso sollevato, anche nelle serie di riscaldamento
-  e.tonnage = (e.detail||[]).reduce((a,d)=>a+num(d.kg)*(e.type==='reps'?num(d.val):1),0);
+  e.tonnage = tonOf(e.detail, e.type, sideOf(e));
   return e;
 }
 /* elenco cronologico piatto di tutte le sessioni */
@@ -2742,7 +2796,8 @@ function compactEntry(e){
   if(num(e.sets)!==setsCalc) o.sets = e.sets;
   if(num(e.kg)!==0) o.kg = e.kg;   // le versioni precedenti leggono il peso così com'è (0 se manca)
   o.val = e.val;
-  const tonCalc = det.reduce((a,d)=> a + num(d.kg)*(type==='reps' ? num(d.val) : 1), 0);
+  if(typeof e.perSide==='boolean' && e.perSide!==SIDE_RX.test(String(e.name||''))) o.perSide = e.perSide;
+  const tonCalc = tonOf(det, type, sideOf(e));
   if(hasWarm || Math.abs(num(e.tonnage) - tonCalc) > 1e-9) o.tonnage = e.tonnage;
   o.detail = det.map(d=>{
     if(!d || typeof d!=='object') return d;
@@ -3100,7 +3155,7 @@ if(IS_ANDROID){
   document.getElementById('fileBackupToggle').setAttribute('aria-label', 'Scarica il backup a fine allenamento');
 }
 /* impostazioni: prima stavano in fondo a Stats, mescolate ai grafici */
-function openSettings(){ refreshNotifUI(); renderSync(); renderBackupBanner(); renderAutoBackupInfo(); autoBackupInfo().then(renderAutoBackupInfo); document.getElementById('settingsSheet').classList.add('show'); }
+function openSettings(){ refreshNotifUI(); renderSync(); try{ if(sync && sync.code) mcpRun(null); }catch(e){} renderBackupBanner(); renderAutoBackupInfo(); autoBackupInfo().then(renderAutoBackupInfo); document.getElementById('settingsSheet').classList.add('show'); }
 function closeSettings(){ document.getElementById('settingsSheet').classList.remove('show'); }
 document.getElementById('settingsBtn').addEventListener('click', openSettings);
 document.getElementById('settingsClose').addEventListener('click', closeSettings);
@@ -3726,6 +3781,7 @@ function renderExList(){
         <button class="ex-timer-btn" data-i="${i}" title="Timer" aria-label="Timer">${ic('stopwatch')}</button>
         <button class="ex-del" data-i="${i}" title="Elimina" aria-label="Elimina">${ic('x')}</button>
       </div>
+      <button type="button" class="ex-side-btn${sideOf(e)?' on':''}" data-i="${i}" aria-pressed="${sideOf(e)}">${ic('swap')}${sideOf(e) ? 'Ripetizioni per lato · tocca per togliere' : 'Un lato alla volta? Ripetizioni per lato'}</button>
       ${i<day.exercises.length-1 ? `<button class="ex-circuit-btn ${linked?'on':''}" data-i="${i}">${ic('link')}${linked ? 'In '+linkWord(day.exercises, i)+' col successivo — tocca per separare' : 'Unisci col successivo (superset)'}</button>` : ''}`;
     if(inGroup){
       div.classList.add('in-group'); row.classList.add('in-group');
@@ -3808,6 +3864,11 @@ function renderExList(){
       startTimerDirect(e.name, num(e.rest)>0 ? num(e.rest) : 90);
     });
   });
+  list.querySelectorAll('.ex-side-btn').forEach(b=> b.addEventListener('click', ()=>{
+    const e = day.exercises[+b.dataset.i]; if(!e) return;
+    e.perSide = !sideOf(e); tidySide(e);
+    persist('days'); renderExList();
+  }));
   list.querySelectorAll('.ex-circuit-btn').forEach(b=>{
     b.addEventListener('click', ()=>{
       const i=+b.dataset.i;
@@ -3900,6 +3961,7 @@ function renderExRead(list, day){
       }
       const bits = [];
       bits.push(escapeHtml(planSetsLabel(e, T)));
+      if(sideOf(e) && !SIDE_RX.test(e.name)) bits.push('per lato');
       if(num(e.kg)>0) bits.push(fn(e.kg)+' kg');
       if(!linked && num(e.rest)>0) bits.push('rec. '+num(e.rest)+'s');
       row.innerHTML = `<span class="er-num">${b.label}</span>
@@ -3946,6 +4008,7 @@ function openExerciseSheet(planEx){
   document.getElementById('exSheetName').textContent = planEx.name;
   document.getElementById('exSheetSub').textContent =
     `${planSetsLabel(planEx, T)}${planEx.muscle!=='Altro' ? ' · '+planEx.muscle+(secOf(planEx)?' + '+secOf(planEx):'') : ''}`
+    + (sideOf(planEx) && !SIDE_RX.test(planEx.name) ? ' · per lato' : '')
     + (num(planEx.rest)>0 ? ` · recupero ${num(planEx.rest)}s` : '');
 
   const body = document.getElementById('exSheetBody');
@@ -4355,7 +4418,7 @@ function sessionExercisesFor(day, forEta){
       }
       if(nW) sets.unshift(...planWarmRows(e, nW, count, prev, sets));
       return {
-        exId:e.id, name:e.name, muscle:e.muscle, secondary:e.secondary||null, phase: phaseOf(e),
+        exId:e.id, name:e.name, muscle:e.muscle, secondary:e.secondary||null, phase: phaseOf(e), perSide: sideOf(e),
         type: EX_TYPES[e.type]?e.type:'reps',
         rest: (e.rest==null || e.rest==='') ? 90 : Math.max(0, num(e.rest)), linkNext: !!e.linkNext,
         plan: { sets:count, reps:e.reps },
@@ -4393,7 +4456,7 @@ function startSessionTicker(){
 function sessionTonnage(){
   if(!session) return 0;
   let t=0;
-  session.exercises.forEach(exx=> exx.sets.forEach(s=>{ if(s.done) t += num(s.kg) * (exx.type==='reps' ? num(s.val) : 1); }));
+  session.exercises.forEach(exx=>{ t += tonOf(exx.sets.filter(s=>s.done), exx.type, sideOf(exx)); });
   return t;
 }
 /* una serie di riscaldamento non fatta è facoltativa quando l'esercizio è già iniziato */
@@ -4433,11 +4496,11 @@ function updateSessionElapsed(){
 const ETA_REP_S = 3, ETA_SETUP_S = 15, ETA_CHANGE_S = 90, ETA_LINK_S = 20;
 let etaCache = null, etaOpen = false;
 const medianOf = a=>{ if(!a.length) return null; const b=[...a].sort((x,y)=>x-y); const m=b.length>>1; return b.length%2 ? b[m] : (b[m-1]+b[m])/2; };
-function etaSetSec(type, s){
-  const v = Math.max(0, num(s.val));
-  if(type==='time') return Math.min(600, v) + 10;
-  if(type==='dist') return Math.min(900, v*0.4) + 10;
-  return Math.min(40, v||8)*ETA_REP_S + ETA_SETUP_S;
+function etaSetSec(type, s, side){
+  const v = Math.max(0, num(s.val)), k = side ? 2 : 1;   // per lato: le ripetizioni (o i secondi) si fanno due volte
+  if(type==='time') return Math.min(600, v)*k + 10;
+  if(type==='dist') return Math.min(900, v*0.4)*k + 10;
+  return Math.min(40, v||8)*ETA_REP_S*k + ETA_SETUP_S;
 }
 /* serie spuntate DOPO averle fatte: 3 o più spunte di fila a meno di 8 s l'una dall'altra (es. 12/10: chest press e
    lat machine spuntate tutte insieme). I loro orari non sono quelli veri: non contano per Recuperi, ritmo personale e stime.
@@ -4478,7 +4541,7 @@ function etaProfile(){
         if(w[i].t==='d') continue;   // drop set: si fa subito, senza recupero
         if(B.has(w[i]) || B.has(w[i-1])) continue;   // spuntate dopo: orari non veri
         const g = (num(w[i].at)-num(w[i-1].at))/1000;
-        if(g>15 && g<1200){ const r = g - etaSetSec(e.type, w[i]); (cyc[exKey(e)] = cyc[exKey(e)]||[]).push(r); (cycN[e.name] = cycN[e.name]||[]).push(r); }
+        if(g>15 && g<1200){ const r = g - etaSetSec(e.type, w[i], sideOf(e)); (cyc[exKey(e)] = cyc[exKey(e)]||[]).push(r); (cycN[e.name] = cycN[e.name]||[]).push(r); }
       }
     });
     spans.sort((a,b)=>a[0]-b[0]);
@@ -4510,7 +4573,7 @@ function estimateRemaining(exercises, now, opts){
       const d = exx.sets.filter(x=>x.done && x.at).sort((a,b)=>num(a.at)-num(b.at));
       for(let i=1;i<d.length;i++){
         if(kindOf(d[i])==='d' || B.has(d[i]) || B.has(d[i-1])) continue;
-        const act = (num(d[i].at)-num(d[i-1].at))/1000, mod = etaSetSec(exx.type, d[i]) + (exx.linkNext ? ETA_LINK_S : etaRest(exx, d[i-1].warm, prof));
+        const act = (num(d[i].at)-num(d[i-1].at))/1000, mod = etaSetSec(exx.type, d[i], sideOf(exx)) + (exx.linkNext ? ETA_LINK_S : etaRest(exx, d[i-1].warm, prof));
         if(act>5 && act<1800 && mod>0) rs.push(act/mod);
       }
     });
@@ -4529,7 +4592,7 @@ function estimateRemaining(exercises, now, opts){
     for(let r=0; r<rounds; r++){
       const inRound = gr.filter(x=>x.sets[r]);
       inRound.forEach((x, k)=>{
-        setS += etaSetSec(x.exx.type, x.sets[r]); nSets++;
+        setS += etaSetSec(x.exx.type, x.sets[r], sideOf(x.exx)); nSets++;
         if(k<inRound.length-1){ chS += ETA_LINK_S; nCh++; }
       });
       if(r<rounds-1){   // recupero dopo il giro (o dopo la serie, se l'esercizio è da solo)
@@ -4927,10 +4990,10 @@ function subCandidates(exx){
     const last = v.items[v.items.length-1], e = last.e, w = workDetail(e.detail);
     const top = w.length ? w.reduce((a,d)=> (num(d.kg)>num(a.kg) || (num(d.kg)===num(a.kg) && num(d.val)>num(a.val))) ? d : a, w[0]) : null;
     const T = EX_TYPES[e.type]||EX_TYPES.reps;
-    return { name:v.label, muscle:v.muscle, secondary:e.secondary||null, type:e.type, exId:e.exId||null, group, mg:v.muscle,
+    return { name:v.label, muscle:v.muscle, secondary:e.secondary||null, type:e.type, exId:e.exId||null, perSide: sideOf(e), group, mg:v.muscle,
       meta: (group==='rec' ? '' : musc(v.muscle, e.secondary)+' · ')+(top ? 'ultima volta '+setTxt(top.kg, top.val, T)+' · ' : 'fatto il ')+dm(last.iso) };
   };
-  const planC = (e, d, group)=> ({ name:e.name, muscle:e.muscle, secondary:e.secondary||null, type:e.type, exId:e.id, reps:e.reps, group, mg:e.muscle,
+  const planC = (e, d, group)=> ({ name:e.name, muscle:e.muscle, secondary:e.secondary||null, type:e.type, exId:e.id, reps:e.reps, perSide: sideOf(e), group, mg:e.muscle,
     meta: group==='rec' ? 'in scheda · '+dayLbl(d) : dayLbl(d)+' · '+(e.muscle==='Altro' ? PHASE_LBL[phaseOf(e)] : musc(e.muscle, secOf(e)))+' · '+e.reps });
   const libC = (mm, [name,sec,reps,type], group, safe)=> ({ name, muscle:mm, secondary:sec||null, type:type||'reps', exId:null, reps, group, mg:mm,
     meta: (group==='rec' ? 'consigliato · ' : (safe ? 'ok per ginocchio e polso · ' : ''))+(group==='rec' ? '' : musc(mm, sec)+' · ')+reps });
@@ -4998,7 +5061,7 @@ function applySubstitute(ei, c){
   if(nW) sets.unshift(...planWarmRows(eLike, nW, count, prev, sets));
   const h = hintFor(eLike, prev);
   const origName = old.subOf || old.name;
-  const nx = { exId:id, adhoc:true, subOf: normName(origName)===k ? null : origName, name, muscle:eLike.muscle, secondary:eLike.secondary, type, phase: old.phase || 'main',
+  const nx = { exId:id, adhoc:true, subOf: normName(origName)===k ? null : origName, name, muscle:eLike.muscle, secondary:eLike.secondary, type, perSide: sideOf(c), phase: old.phase || 'main',
     rest: old.rest, linkNext: !!old.linkNext, plan:{ sets:count, reps:eLike.reps }, hint:h.hint, hintKind:h.kind, hintAct:h.act||null,
     prevRef: det, prevIso: prev ? prev.iso : null, sets };
   if(anyDone){
@@ -5235,15 +5298,16 @@ function renderSessionList(){
           ${MUSCLES.map(m=>`<option ${m===exx.muscle?'selected':''}>${m}</option>`).join('')}
         </select>
         <select class="sess-secondary-select" data-ei="${ei}">
-          <option value="">+ secondario: nessuno</option>
-          ${MUSCLES.map(m=>`<option ${m===exx.secondary?'selected':''}>${m}</option>`).join('')}
+          <option value="">Secondario</option>
+          ${MUSCLES.map(m=>`<option value="${m}" ${m===exx.secondary?'selected':''}>+ ${m}</option>`).join('')}
         </select>
         <select class="sess-type-select" data-ei="${ei}" title="Cosa misuri">
           ${Object.keys(EX_TYPES).map(t=>`<option value="${t}" ${t===exx.type?'selected':''}>${EX_TYPES[t].long}</option>`).join('')}
         </select>
+        <button type="button" class="sess-side-btn${sideOf(exx)?' on':''}" data-ei="${ei}" aria-pressed="${sideOf(exx)}" title="Ripetizioni (o secondi) di ogni lato: il peso sollevato conta i due lati">${sideOf(exx) ? ic('check')+'Per lato' : 'Per lato'}</button>
         ${!exx.linkNext ? `<div class="sess-rest-field"><label>Rec.</label><input type="text" inputmode="numeric" autocomplete="off" class="sess-rest-input" data-ei="${ei}" value="${num(exx.rest)}"><span>s</span></div>` : ''}
       </div>
-      <div class="sess-col-head"><span>Serie</span><span>Prec</span><span>Kg</span><span>${T.short}</span>${state.settings.showRpe?'<span>RPE</span>':''}<span></span></div>
+      <div class="sess-col-head"><span>Serie</span><span>Prec</span><span>Kg</span><span>${T.short}${sideOf(exx)?'/lato':''}</span>${state.settings.showRpe?'<span>RPE</span>':''}<span></span></div>
       ${rows}
       <div class="sess-set-actions">
         <button class="sess-add-set" data-ei="${ei}">${ic('plus')}Aggiungi serie</button>
@@ -5316,6 +5380,11 @@ function renderSessionList(){
   bindInput('.sess-muscle-select', el=>{ session.exercises[+el.dataset.ei].muscle = el.value; });
   bindInput('.sess-secondary-select', el=>{ session.exercises[+el.dataset.ei].secondary = el.value || null; });
   bindInput('.sess-rest-input', el=>{ session.exercises[+el.dataset.ei].rest = Math.max(0, Math.round(num(el.value))); });
+  list.querySelectorAll('.sess-side-btn').forEach(b=> b.addEventListener('click', ()=>{
+    const x = session.exercises[+b.dataset.ei]; if(!x) return;
+    x.perSide = !sideOf(x); saveSession(); renderSession(); updateSessionElapsed();
+    infoToast(x.perSide ? 'Per lato: scrivi le ripetizioni di un lato, il peso sollevato conta i due lati' : 'Ripetizioni totali, non per lato', 2600);
+  }));
   list.querySelectorAll('.sess-type-select').forEach(el=> el.addEventListener('input', ()=>{
     session.exercises[+el.dataset.ei].type = el.value; saveSession(); renderSession();
   }));
@@ -5465,7 +5534,7 @@ document.getElementById('sessAddExBtn').addEventListener('click', ()=>{
   if(!session) return;
   // va in Allenamento: prima dello stretching, se c'è
   const nx = {
-    exId: uid(), adhoc:true, name:'Nuovo esercizio', muscle:'Petto', secondary:null, type:'reps', phase:'main',
+    exId: uid(), adhoc:true, name:'Nuovo esercizio', muscle:'Petto', secondary:null, type:'reps', phase:'main', perSide:false,
     rest:90, linkNext:false, plan:{sets:1, reps:'8-10'}, hint:'', prevRef:[], prevIso:null,
     sets:[{kg:0, val:8, rpe:null, done:false, at:null}]
   };
@@ -5555,7 +5624,8 @@ function buildEntries(sess){
       type: exx.type,
       sets: work.length,
       kg: maxKg, val: best,
-      tonnage: done.reduce((a,s)=> a + num(s.kg)*(exx.type==='reps'?num(s.val):1), 0),   // riscaldamento compreso: è peso sollevato
+      tonnage: tonOf(done, exx.type, sideOf(exx)),   // riscaldamento compreso: è peso sollevato; per lato i due lati
+      ...(sideOf(exx)!==SIDE_RX.test(name) ? { perSide: sideOf(exx) } : {}),
       detail: done.map(s=>{ const d={ kg:num(s.kg), val:num(s.val), rpe:s.rpe==null?null:num(s.rpe), at:s.at||null }; if(s.warm) d.w=true; else if(kindOf(s)) d.t=kindOf(s); return d; })
     };
   }).filter(Boolean);
@@ -5727,11 +5797,11 @@ function sessionFromRecord(rec){
       const x = exs[i], workDone = sets.filter(st=>!st.warm).length;
       used.add(x);
       x.sets = sets.concat(x.sets.filter(st=>!st.warm).slice(workDone));
-      x.muscle = e.muscle; x.secondary = e.secondary || null;
+      x.muscle = e.muscle; x.secondary = e.secondary || null; x.perSide = sideOf(e);
     } else {
       // fuori scheda: nella sua sezione (dal nome, per gli allenamenti vecchi "Stretching · …"); se non è stretching, prima dello stretching
       const ph = inferPhase({ name:e.name, muscle:e.muscle });
-      const nx = { exId:e.exId || uid(), adhoc:true, name:e.name, muscle:e.muscle, secondary:e.secondary||null, type:e.type, phase:ph,
+      const nx = { exId:e.exId || uid(), adhoc:true, name:e.name, muscle:e.muscle, secondary:e.secondary||null, type:e.type, phase:ph, perSide: sideOf(e),
         rest:90, linkNext:false, plan:{ sets:sets.filter(st=>!st.warm).length, reps:'' }, prevRef:[], prevIso:null, sets };
       used.add(nx);
       const at = ph==='cool' ? -1 : exs.findIndex(x=> x.phase==='cool');
@@ -5932,7 +6002,7 @@ function renderDayDetail(){
       const rest = avgRestOf(e, s);
       return `<div class="det-row"><div class="det-name">${escapeHtml(e.name)}</div>
         <div class="det-sets mono">${det}</div>
-        <div class="det-meta">${e.sets ? e.sets+' serie' : 'riscaldamento'}${e.tonnage>0?' · '+fmtTon(e.tonnage):''}${rest?' · rec. reale ~'+rest+'s':''}</div></div>`;
+        <div class="det-meta">${e.sets ? e.sets+' serie' : 'riscaldamento'}${sideOf(e) && !SIDE_RX.test(e.name) ? ' · per lato' : ''}${e.tonnage>0?' · '+fmtTon(e.tonnage):''}${rest?' · rec. reale ~'+rest+'s':''}</div></div>`;
     }).join('');
     return `<div class="det-sess">
       <div class="det-head"><b>${escapeHtml(s.dayName||('Giorno '+s.dayKey))}</b>
@@ -6001,6 +6071,7 @@ function renderEditSession(){
       <div class="es-head"><b>${escapeHtml(e.name)}</b><button type="button" class="es-del-ex" data-ei="${ei}" aria-label="Togli ${escapeHtml(e.name)}">${ic('trash')}</button></div>
       <div class="es-musc"><label>Muscolo<select data-ei="${ei}" data-f="muscle">${opts(e.muscle)}</select></label>
         <label>Secondario<select data-ei="${ei}" data-f="secondary">${opts(e.secondary, true)}</select></label></div>
+      <label class="es-side"><input type="checkbox" data-ei="${ei}" data-f="perSide"${sideOf(e)?' checked':''}>Per lato: ripetizioni di ogni lato (il peso sollevato conta i due lati)</label>
       <div class="es-sh"><span>Serie</span><span>Kg</span><span>${escapeHtml(T.short)}</span><span></span></div>
       ${e.detail.map((d,di)=>{ const k = detKind(d), n = d.w ? 0 : ++wn; return `<div class="es-set${d.w?' warm':''}${k?' k-'+k:''}">
         <button type="button" class="es-w" data-ei="${ei}" data-di="${di}" aria-label="${d.w ? 'Riscaldamento' : 'Serie '+n+(k?', '+SET_KINDS[k].name:'')}: tocca per cambiare il tipo">${d.w ? 'R' : k ? SET_KINDS[k].l : n}</button>
@@ -6019,6 +6090,7 @@ document.getElementById('esList').addEventListener('input', ev=>{
 document.getElementById('esList').addEventListener('change', ev=>{
   const el = ev.target; if(!esCtx || !el.dataset || !el.dataset.f) return;
   const e = esCtx.draft.entries[+el.dataset.ei]; if(!e) return;
+  if(el.dataset.f==='perSide'){ e.perSide = !!el.checked; return; }
   e[el.dataset.f] = el.value || null;
 });
 document.getElementById('esList').addEventListener('click', async ev=>{
@@ -6249,7 +6321,7 @@ function renderPrCard(cfg, entriesIdx){
 }
 let monthOff = 0, monthWeekSel = null, monthOpen = null;   // mese mostrato, settimana toccata, elenco aperto (record/fermi)   // 0 = mese in corso, -1 = quello prima, ...
 /* ripetizioni delle serie di lavoro (esercizi a ripetizioni, non riscaldamento né stretching) */
-function entryReps(e){ if(e.muscle==='Altro' || (e.type && e.type!=='reps')) return 0; return workDetail(e.detail).reduce((a,d)=>a+num(d.val),0); }
+function entryReps(e){ if(e.muscle==='Altro' || (e.type && e.type!=='reps')) return 0; return workDetail(e.detail).reduce((a,d)=>a+num(d.val),0) * (sideOf(e) ? 2 : 1); }
 function monthStats(fromI, toI){
   let n=0, sets=0, ton=0, min=0, reps=0;
   const vol={}, sec={}; MUSCLES.forEach(m=>{ vol[m]=0; sec[m]=0; });
@@ -6693,7 +6765,7 @@ function restGapsIn(s, en, type){
     const a = num(w[i-1].at), z = num(w[i].at), g = (z-a)/1000;
     if(others.some(t=> t>a && t<z) || w[i].t==='d') continue;   // dentro c'è un altro esercizio, o è un drop set
     if(B.has(w[i]) || B.has(w[i-1])) continue;   // spuntate dopo: orari non veri
-    if(g>15 && g<1200) out.push(Math.max(0, g - etaSetSec(en.type||type, w[i])));
+    if(g>15 && g<1200) out.push(Math.max(0, g - etaSetSec(en.type||type, w[i], sideOf(en))));
   }
   return out;
 }
@@ -6990,7 +7062,7 @@ function dayTonData(dayKey, metric, range){
   common = common || new Set();
   const names = {}, allKeys = new Set();
   sess.forEach(({s})=> s.entries.filter(useful).forEach(e=>{ names[exKey(e)] = e.name; allKeys.add(exKey(e)); }));
-  const valOf = e=> metric==='kg' ? num(e.tonnage) : (e.detail||[]).reduce((a,d)=>a+num(d.val),0);
+  const valOf = e=> metric==='kg' ? num(e.tonnage) : (e.detail||[]).reduce((a,d)=>a+num(d.val),0) * (sideOf(e) ? 2 : 1);
   const pts = sess.map(({iso,s})=>({ iso, id:String(s.id), v: s.entries.filter(e=>useful(e) && common.has(exKey(e))).reduce((a,e)=>a+valOf(e),0) }));
   const excluded = [...allKeys].filter(k=>!common.has(k)).map(k=>names[k]);
   return { pts, common:[...common].map(k=>names[k]), excluded };
@@ -7086,19 +7158,19 @@ function buildAiSummary(range){
   if(!pastRange) Object.keys(state.days).forEach(k=>{
     const d = state.days[k];
     L.push('### '+d.name+(d.spare ? ' (riserva: solo quando ho poco tempo)' : ''));
-    d.exercises.forEach((e,i)=>{ const T=EX_TYPES[e.type]||EX_TYPES.reps; L.push('- '+(phaseOf(e)!=='main' ? PHASE_LBL[phaseOf(e)]+' · ' : '')+e.name+': '+planSetsLabel(e, T)+(num(e.rest)>0?', recupero '+num(e.rest)+'s':'')+(e.linkNext?' (in '+linkWord(d.exercises, i)+' col successivo)':'')+' — '+e.muscle+(secOf(e)?' + '+secOf(e):'')); });
+    d.exercises.forEach((e,i)=>{ const T=EX_TYPES[e.type]||EX_TYPES.reps; L.push('- '+(phaseOf(e)!=='main' ? PHASE_LBL[phaseOf(e)]+' · ' : '')+e.name+': '+planSetsLabel(e, T)+(sideOf(e) && !SIDE_RX.test(e.name) ? ' per lato' : '')+(num(e.rest)>0?', recupero '+num(e.rest)+'s':'')+(e.linkNext?' (in '+linkWord(d.exercises, i)+' col successivo)':'')+' — '+e.muscle+(secOf(e)?' + '+secOf(e):'')); });
   });
   L.push('');
   const recent = allSessions().filter(({iso})=> fromIso(iso)>=since && iso<=toI);
   L.push('## Allenamenti ('+recent.length+' dal '+dm(isoOf(since))+' al '+dm(toI)+')');
-  L.push('Formato serie: kg×ripetizioni (o secondi). R = serie di riscaldamento (escluse dal conteggio serie).');
+  L.push('Formato serie: kg×ripetizioni (o secondi). R = serie di riscaldamento (escluse dal conteggio serie). F = cedimento, D = drop set, A = AMRAP. "Per lato": ripetizioni di ogni lato (il peso sollevato conta i due lati).');
   recent.forEach(({iso,s})=>{
     const dur = s.endedAt ? Math.round((s.endedAt-s.startedAt)/60000) : null;
     L.push('### '+dm(iso)+' · '+(s.dayName||('Giorno '+s.dayKey))+(dur!=null?' · '+dur+' min':''));
     s.entries.forEach(e=>{
       const T=EX_TYPES[e.type]||EX_TYPES.reps;
       const sets = e.detail.map(d=>(d.w?'R ':'')+(detKind(d)?SET_KINDS[detKind(d)].l+' ':'')+(d.kg>0?fn(d.kg)+'×':'')+fn(d.val)+T.unit+(d.rpe?' @RPE'+fn(d.rpe):'')).join(', ');
-      L.push('- '+e.name+': '+(sets||(e.sets+' serie')));
+      L.push('- '+e.name+(sideOf(e) && !SIDE_RX.test(e.name) ? ' (per lato)' : '')+': '+(sets||(e.sets+' serie')));
     });
     if(s.note && s.note.trim()) L.push('  Nota: '+s.note.trim());
   });
@@ -7478,14 +7550,14 @@ document.getElementById('exportSchedaBtn').addEventListener('click', ()=>{
                  days:state.days, contentVersion:state.settings.contentVersion }, 'palestra-scheda-'+todayISO()+'.json', false, 'Scheda esportata');
 });
 document.getElementById('exportCsvBtn').addEventListener('click', ()=>{
-  const rows=[['data','ora','giornata','esercizio','muscolo','secondario','tipo','serie_n','kg','valore','unita','rpe','tonnellaggio_serie','riscaldamento','tipo_serie']];
+  const rows=[['data','ora','giornata','esercizio','muscolo','secondario','tipo','serie_n','kg','valore','unita','rpe','tonnellaggio_serie','riscaldamento','tipo_serie','per_lato']];
   allSessions().forEach(({iso,s})=> s.entries.forEach(e=>{
     const T=EX_TYPES[e.type]||EX_TYPES.reps;
     // numeri con la virgola: col separatore ";" Excel e Numbers in italiano li leggono come numeri
     const n2 = v => String(Math.round(num(v)*100)/100).replace('.', ',');
     let wn = 0;
     e.detail.forEach((d,i)=> rows.push([iso, hhmm(s.startedAt), s.dayName||s.dayKey, e.name, e.muscle, e.secondary||'', e.type,
-      d.w ? 'R' : ++wn, n2(d.kg), n2(d.val), T.unit||'rip', d.rpe==null?'':n2(d.rpe), n2(d.kg*(e.type==='reps'?d.val:1)), d.w?'sì':'', d.w ? 'riscaldamento' : detKind(d) ? SET_KINDS[detKind(d)].name.toLowerCase() : 'normale']));
+      d.w ? 'R' : ++wn, n2(d.kg), n2(d.val), T.unit||'rip', d.rpe==null?'':n2(d.rpe), n2(tonOf([d], e.type, sideOf(e))), d.w?'sì':'', d.w ? 'riscaldamento' : detKind(d) ? SET_KINDS[detKind(d)].name.toLowerCase() : 'normale', sideOf(e)?'sì':'']));
   }));
   const cell = c=>{
     let s=String(c);
@@ -7567,7 +7639,7 @@ function sanitizeDays(raw){
         type: EX_TYPES[x.type]?x.type:guessType(x.reps),
         sets:num(x.sets) || (num(x.warmups)>=1 && x.sets!=null && x.sets!=='' ? 0 : 3), warmups:num(x.warmups),
         reps:String(x.reps==null?'':x.reps), kg:num(x.kg), rest:num(x.rest),
-        linkNext: !!x.linkNext, ...(PHASES.includes(x.phase) ? {phase:x.phase} : {}) })) };
+        linkNext: !!x.linkNext, ...(PHASES.includes(x.phase) ? {phase:x.phase} : {}), ...(typeof x.perSide==='boolean' ? {perSide:x.perSide} : {}) })) };
     normalizeLinks(days[k]);
   });
   return days;
@@ -8404,6 +8476,7 @@ function renderSync(){
   }
   const os = document.getElementById('offlineStatus');
   if(os) setText(os, swState==='ok' ? 'Si apre anche senza rete: l\'app è salvata su questo dispositivo.' : swState==='wait' ? 'Si apre anche senza rete dalla prossima apertura.' : 'Apertura senza rete non attiva: serve il file sw.js accanto a index.html (vedi la spiegazione).');
+  renderMcp();
 }
 async function syncEnable(code, join){
   if(join){
@@ -8442,11 +8515,79 @@ document.getElementById('syncCopyBtn').addEventListener('click', ()=>{
   try{ navigator.clipboard.writeText(sync.code).then(done, ()=> showToast(sync.code, null, null, 8000)); }catch(e){ showToast(sync.code, null, null, 8000); }
 });
 document.getElementById('syncOffBtn').addEventListener('click', async ()=>{
-  const yes = await customConfirm('Smetti di sincronizzare questo dispositivo? I dati restano qui e sugli altri; per ricollegarlo ti servirà il codice.', 'Disattiva', 'Annulla');
+  // Claude collegato: la chiave resta sul server (vale per il codice, non per questo telefono): lo si dice
+  const yes = await customConfirm('Smetti di sincronizzare questo dispositivo? I dati restano qui e sugli altri; per ricollegarlo ti servirà il codice.'
+    + (mcp && mcp.state==='on' ? '\n\nClaude resta collegato e continua a leggere i dati sincronizzati: per scollegarlo tocca prima Disattiva in «Claude legge i tuoi allenamenti».' : ''), 'Disattiva', 'Annulla');
   if(!yes) return;
   sync = {}; try{ localStorage.removeItem(SYNC_LS); }catch(e){}
+  mcp = { state:'unknown', token:null, busy:false, msg:'', kind:'' };
   syncMsg = ''; renderSync(); showToast('Sincronizzazione disattivata su questo dispositivo');
 });
+
+/* ===================== CLAUDE LEGGE I TUOI ALLENAMENTI (connettore MCP) =====================
+   Una chiave di sola lettura legata al codice di sincronizzazione, creata dal server (sync.mjs, op=mcp): Claude la usa
+   per leggere i dati sincronizzati da /mcp (mcp.mjs). Qui si crea, si cambia e si revoca.
+   var (non let): renderSync la legge e può essere chiamata prima che questa parte del codice sia eseguita */
+var mcp = { state:'unknown', token:null, busy:false, msg:'', kind:'' };
+async function mcpReq(action){
+  const url = SYNC_API+'?code='+encodeURIComponent(sync.code)+'&op=mcp';
+  const r = await fetch(url, action ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ action }), cache:'no-store' } : { cache:'no-store' });
+  let j = null; try{ j = await r.json(); }catch(e){}
+  // 404 col nostro messaggio = codice senza dati; 404 senza = la funzione non è pubblicata
+  if(!r.ok) throw new Error(r.status===404 ? (j && j.error ? 'nodata' : 'nofn') : (j && j.error) || 'http '+r.status);
+  return j || {};
+}
+function mcpErrMsg(e){
+  return e.message==='nofn' ? 'Il server non risponde: pubblica anche la cartella netlify con mcp.mjs (vedi «Più dispositivi e senza rete»).'
+    : e.message==='nodata' ? 'Prima sincronizza almeno una volta (Sincronizza ora), poi riprova.'
+    : (navigator.onLine===false || e instanceof TypeError) ? 'Serve la rete: riprova quando sei connesso.' : 'Non riuscito ('+e.message+'). Riprova.';
+}
+/* action: null = solo stato (all'apertura delle Impostazioni, in silenzio se fallisce), 'on' | 'new' | 'off' */
+async function mcpRun(action){
+  if(!sync || !sync.code || mcp.busy) return;
+  if(!/^https?:$/.test(location.protocol)){ if(action){ mcp.msg = 'Funziona solo con l\'app pubblicata (Netlify).'; mcp.kind = 'warn'; renderMcp(); } return; }
+  mcp.busy = true; if(action){ mcp.msg = 'Un momento…'; mcp.kind = ''; } renderMcp();
+  try{
+    const j = await mcpReq(action);
+    mcp.state = j.active && j.token ? 'on' : 'off'; mcp.token = mcp.state==='on' ? String(j.token) : null;
+    mcp.msg = action==='new' ? 'Chiave cambiata: in Claude togli il connettore Palestra e aggiungilo di nuovo con questo indirizzo.' : ''; mcp.kind = action==='new' ? 'warn' : '';
+    if(action==='on') infoToast('Fatto: copia l\'indirizzo e aggiungilo in Claude come connettore', 3500);
+    if(action==='off') infoToast('Claude non legge più i tuoi allenamenti', 3000);
+  }catch(e){ if(action){ mcp.msg = mcpErrMsg(e); mcp.kind = 'err'; } }
+  finally{ mcp.busy = false; renderMcp(); }
+}
+function renderMcp(){
+  const card = document.getElementById('mcpCard'); if(!card || !mcp) return;
+  const on = !!(sync && sync.code);
+  card.hidden = !on; if(!on) return;
+  const active = mcp.state==='on' && !!mcp.token;
+  document.getElementById('mcpOff').hidden = active;
+  document.getElementById('mcpOn').hidden = !active;
+  if(active){
+    const base = location.origin+'/mcp';
+    setHTML(document.getElementById('mcpUrl'), escapeHtml(base+'/'+mcp.token).replace(/\//g, '/<wbr>'));   // va a capo dopo le barre
+    setText(document.getElementById('mcpBase'), base);
+    setText(document.getElementById('mcpBearer'), 'Bearer '+mcp.token);
+  }
+  ['mcpOnBtn','mcpNewBtn','mcpOffBtn'].forEach(id=>{ const b = document.getElementById(id); if(b) b.disabled = mcp.busy; });
+  const st = document.getElementById('mcpStatus');
+  st.hidden = !mcp.msg; setText(st, mcp.msg); st.className = 'bk-status sync-st'+(mcp.kind ? ' '+mcp.kind : '');
+}
+function copyText(t, okMsg){
+  const fail = ()=> showToast(t, null, null, 9000);   // copia non riuscita: il testo resta a schermo da copiare a mano
+  try{ navigator.clipboard.writeText(t).then(()=> infoToast(okMsg, 2600), fail); }catch(e){ fail(); }
+}
+document.getElementById('mcpOnBtn').addEventListener('click', ()=> mcpRun('on'));
+document.getElementById('mcpNewBtn').addEventListener('click', async ()=>{
+  if(!(await customConfirm('Nuova chiave? Quella di adesso smette subito di funzionare: in Claude dovrai rimettere il connettore con il nuovo indirizzo.', 'Nuova chiave', 'Annulla'))) return;
+  mcpRun('new');
+});
+document.getElementById('mcpOffBtn').addEventListener('click', async ()=>{
+  if(!(await customConfirm('Scollegare Claude? Non potrà più leggere i tuoi allenamenti finché non lo ricolleghi (con un indirizzo nuovo).', 'Disattiva', 'Annulla'))) return;
+  mcpRun('off');
+});
+document.getElementById('mcpCopyBtn').addEventListener('click', ()=>{ if(mcp.token) copyText(location.origin+'/mcp/'+mcp.token, 'Indirizzo copiato: incollalo in Claude, Connettori → Aggiungi connettore personalizzato'); });
+document.getElementById('mcpCopyKeyBtn').addEventListener('click', ()=>{ if(mcp.token) copyText('Bearer '+mcp.token, 'Valore copiato: incollalo in Request headers, alla voce Authorization'); });
 window.addEventListener('online', ()=>{ if(sync.code) syncSoon(500); });
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && sync.code && Date.now()-syncLastTry > 20000) syncSoon(300); });
 swInit();
