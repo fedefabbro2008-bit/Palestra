@@ -1,50 +1,43 @@
 # Giardino
 
 Piano di innaffiatura personalizzato (specie, fase di crescita, vaso, luce, zona, meteo) con promemoria su Telegram.
-**Funziona senza abbonamento Claude**: Claude si usa via API (Claude Haiku 5.5, effort alto), pagando solo l'uso.
+**Tutto gratuito**: sito su Netlify (piano gratuito), meteo Open-Meteo, Telegram, e Claude che ragiona nella chat
+di claude.ai attraverso un connettore personalizzato, come per l'app Palestra.
 
-## Pezzi
+App: **https://giardino-fede.netlify.app/**
 
-| Pezzo | Dove | Cosa fa |
+## Come è fatto
+
+| Pezzo | File | Cosa fa |
 |---|---|---|
-| **App** | https://fedefabbro2008-bit.github.io/Palestra/giardino/ (GitHub Pages, file `index.html`) | piante, piano, diario, vacanza, diagnosi da foto, backup. Meteo diretto da Open-Meteo. |
-| **Modello** | `modello.mjs` | bilancio idrico in litri, condiviso da app e bot |
-| **Bot** | `notifica.mjs` + `.github/workflows/giardino-notifiche.yml` (ogni 15 min) | legge i pulsanti Telegram; dalle 7 manda il piano se c'è da fare; dalle 19 avvisa di gelo, caldo, vento |
-| **Dati** | branch `giardino-dati` | `app.json` (dati completi dell'app), `piante.json` + `eventi.json` (per il bot), `stato.json` + `per-app.json` (scritti dal bot) |
+| App | `giardino-netlify/public/index.html` (costruita da `giardino/app.src.html` + `giardino/netlify-shim.js`) | piante, piano, diario, vacanza, backup; meteo diretto da Open-Meteo |
+| Calcolo | `giardino/modello.mjs` (copiato in `giardino-netlify/netlify/lib/`) | bilancio idrico in litri per vaso o aiuola |
+| Dati | `netlify/functions/dati.mjs` → Netlify Blobs | salvataggio con codice di sincronizzazione; chiave per Claude; collegamento del bot |
+| Claude | `netlify/functions/mcp.mjs` → `/mcp/<chiave>` | connettore MCP: `giardino`, `diario`, `salva_piano`, `registra`, `modifica_pianta`, `vacanza` |
+| Telegram | `netlify/functions/telegram.mjs` (webhook) + `bot.mjs` (ogni 15 min) | pulsanti istantanei; piano del mattino; avviso della sera |
 
-L'app salva su GitHub a ogni modifica (un commit sul branch dei dati) e il bot li usa al giro successivo.
-"Aggiorna ora" avvia il bot in modalità `aggiorna` e riporta nell'app piano e risposte di Telegram.
+Il promemoria del mattino usa il piano salvato da Claude se copre il giorno, altrimenti il calcolo automatico.
 
-## Configurazione (una volta)
+## Pubblicazione su Netlify (una volta)
 
-**App** (scheda Impostazioni → Collegamenti; le chiavi restano solo nel browser):
-1. Chiave API Anthropic: console.anthropic.com → API Keys (serve un piccolo credito prepagato).
-2. Token GitHub fine-grained: github.com/settings/personal-access-tokens/new → solo il repo Palestra →
-   permessi **Contents** e **Actions** in lettura e scrittura.
+Sito già creato: `giardino-fede` (Netlify). Collega il repository così ogni push pubblica da solo:
+Netlify → progetto **giardino-fede** → Project configuration → Build & deploy → **Link repository** →
+GitHub `fedefabbro2008-bit/Palestra`, branch `main`, **Base directory `giardino-netlify`**
+(publish `public` e functions `netlify/functions` sono già in `netlify.toml`).
 
-**Telegram**:
-1. @BotFather → `/newbot` → copia il token. Apri il bot e premi Avvia.
-2. Repo → Settings → Secrets and variables → Actions: secret `TELEGRAM_BOT_TOKEN`.
-3. Actions → "Giardino - notifiche innaffiatura" → Run workflow (`prova`): nel registro trovi l'id della chat →
-   secret `TELEGRAM_CHAT_ID` → di nuovo Run workflow.
-4. Facoltativo: secret `ANTHROPIC_API_KEY` perché anche il bot faccia rifinire il piano a Claude
-   (`CLAUDE_MODEL` default `claude-haiku-5-5`, `CLAUDE_EFFORT` default `high`, come variabili del repo).
+## Uso (una volta)
 
-## Backup
-
-Impostazioni → Backup → "Scarica il backup" crea `giardino-backup-AAAA-MM-GG.json` (posizione, piante, impostazioni,
-diario, piano; senza chiavi). Nella nuova versione o su un altro dispositivo: "Importa un backup".
-
-## Costi
-
-- GitHub Actions, GitHub Pages, Telegram, Open-Meteo: gratis.
-- Claude Haiku 5.5 via API: $0,10 / $0,50 per milione di token in ingresso / uscita. Un piano costa
-  indicativamente meno di 1 centesimo; la diagnosi da foto un paio di millesimi.
+1. Apri l'app, imposta il comune e aggiungi le piante.
+2. Impostazioni → **Claude** → Crea il collegamento → copia l'indirizzo →
+   claude.ai → Impostazioni → Connettori → Aggiungi connettore personalizzato (nome Giardino, URL copiato).
+3. Impostazioni → **Telegram**: crea il bot con @BotFather, incolla il token, premi Collega, poi Avvia sul bot.
+4. Impostazioni → **Backup** per salvare un file da reimportare dopo un cambio di versione o di telefono.
 
 ## Modifiche al codice
 
-Modifica `app.src.html`, `modello.mjs` o `standalone.js`, poi `node giardino/build-app.mjs` e fai push su main:
-GitHub Pages pubblica `giardino/index.html` in automatico. (`giardino-app.html` è la vecchia versione per claude.ai.)
+Modifica `giardino/app.src.html`, `giardino/modello.mjs` o `giardino/netlify-shim.js`, poi `node giardino/build-app.mjs`
+e push su `main`. (`giardino/giardino-app.html` è la vecchia versione per claude.ai; `giardino/versione-api.html`
+la variante con chiave API a pagamento; `giardino/notifica.mjs` il vecchio bot per GitHub Actions: non più usati.)
 
 ## Come si calcola (vasi)
 

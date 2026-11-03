@@ -206,7 +206,13 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
       <div id="cellDetail" class="detail" hidden></div>
     </div>
 
-    <div class="panel stack">
+    <div class="panel stack solo-net">
+      <h2>Chiedi a Claude</h2>
+      <p class="small" style="margin:0">Il piano qui sopra è il calcolo automatico, oppure quello che Claude ha salvato. In una chat di Claude con il connettore Giardino attivo puoi chiedere, per esempio:</p>
+      <div class="stack" id="prompts"></div>
+      <p class="small muted" style="margin:0" id="mcpHint">Se non l'hai ancora fatto, collega Claude nella scheda Impostazioni.</p>
+    </div>
+    <div class="panel stack no-net">
       <h2>Genera il piano con Claude</h2>
       <div class="field">
         <label for="extraNotes">Note per questa settimana (facoltative)</label>
@@ -318,7 +324,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
     <div class="panel stack">
       <div class="row between"><h2>Previsioni</h2><span class="src" id="wxSrc2"></span></div>
       <p class="small muted" style="margin:0" id="wxExplain">Ogni mattina il bot porta qui le previsioni reali di Open-Meteo. Se mancano o vuoi aggiornarle, Claude può leggere uno screenshot della tua app meteo.</p>
-      <div class="row">
+      <div class="row no-net">
         <label class="btn primary" for="wxImg" id="wxImgLbl">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8 5l1.5-2h5L16 5"/></svg>
           Da screenshot
@@ -357,6 +363,43 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
 
   <!-- BOT -->
   <section class="view" id="view-bot" hidden>
+    <div class="panel stack solo-net">
+      <div class="row between"><h2>Claude</h2><span id="mcpChip"></span></div>
+      <p class="small" style="margin:0">Claude legge le tue piante, il meteo e il piano attraverso un <b>connettore</b>, come per la Palestra: gratis, con il tuo account. In chat gli chiedi il piano della settimana, gli mandi la foto di una pianta, gli dici cosa hai fatto, e lui aggiorna l'app e i promemoria.</p>
+      <div class="row"><button class="btn primary" id="mcpOn" type="button">Crea il collegamento</button></div>
+      <div class="stack" id="mcpBox" hidden>
+        <div class="field"><label for="mcpUrl">Indirizzo del connettore</label><input type="text" id="mcpUrl" readonly style="font-family:var(--f-mono);font-size:.85rem"></div>
+        <div class="row"><button class="btn" id="mcpCopy" type="button">Copia l'indirizzo</button><a class="btn ghost" href="https://claude.ai/settings/connectors" target="_blank" rel="noopener">Apri i connettori di Claude</a></div>
+        <ol class="steps small">
+          <li>Su claude.ai (o nell'app Claude): Impostazioni → <b>Connettori</b> → <b>Aggiungi connettore personalizzato</b>.</li>
+          <li>Nome <b>Giardino</b>, URL: incolla l'indirizzo qui sopra. Nessuna autenticazione.</li>
+          <li>In una chat attiva il connettore e chiedi: <i>“Fammi il piano di innaffiatura della settimana e salvalo”</i>.</li>
+        </ol>
+        <label class="row" style="gap:8px;cursor:pointer"><input type="checkbox" id="mcpWrite"> <span>Claude può modificare (salvare il piano, registrare innaffiature, aggiungere o cambiare piante, vacanza)</span></label>
+        <div class="row"><button class="btn small ghost" id="mcpNew" type="button">Nuovo indirizzo</button><button class="btn small ghost" id="mcpOff" type="button" style="color:var(--danger)">Scollega Claude</button></div>
+      </div>
+      <div id="mcpStatus" class="small muted" aria-live="polite"></div>
+    </div>
+    <div class="panel stack solo-net">
+      <div class="row between"><h2>Telegram</h2><span id="tgChip"></span></div>
+      <p class="small" style="margin:0">Ogni mattina ti scrive solo se c'è da innaffiare, controllare o concimare, con i pulsanti <b>Fatto</b>, <b>Era umida</b>, <b>Salto</b>; la sera ti avvisa se domani arrivano gelo, caldo o vento. Gratis.</p>
+      <ol class="steps small" id="tgSteps">
+        <li>Su Telegram apri <b>@BotFather</b>, invia <code>/newbot</code>, scegli un nome e copia il <b>token</b>.</li>
+        <li>Incollalo qui sotto e premi <b>Collega</b>.</li>
+        <li>Apri il tuo bot e premi <b>Avvia</b>.</li>
+      </ol>
+      <div class="row" style="flex-wrap:nowrap"><input type="text" id="tgToken" autocomplete="off" spellcheck="false" placeholder="123456789:AA…" style="font-family:var(--f-mono)" aria-label="Token del bot"><button class="btn primary" id="tgSet" type="button">Collega</button></div>
+      <div class="row"><a class="btn ghost" href="https://t.me/BotFather" target="_blank" rel="noopener">Apri @BotFather</a><a class="btn ghost" id="tgOpen" href="#" target="_blank" rel="noopener" hidden>Apri il tuo bot</a><button class="btn ghost" id="tgTest" type="button" hidden>Invia un messaggio di prova</button><button class="btn ghost small" id="tgOff" type="button" hidden style="color:var(--danger)">Scollega</button></div>
+      <div id="tgStatus" class="small muted" aria-live="polite"></div>
+    </div>
+    <div class="panel stack solo-net">
+      <h2>Codice di sincronizzazione</h2>
+      <p class="small" style="margin:0">Le piante si salvano sul server con questo codice. Per usare l'app su un altro telefono o computer, inserisci lì lo stesso codice. Tienilo per te: chi lo conosce vede e modifica il tuo giardino.</p>
+      <div class="row" style="flex-wrap:nowrap"><input type="text" id="netCode" readonly style="font-family:var(--f-mono);font-size:.85rem" aria-label="Codice"><button class="btn" id="netCopy" type="button">Copia</button></div>
+      <details><summary class="small" style="cursor:pointer">Usa un codice di un altro dispositivo</summary>
+        <div class="row" style="flex-wrap:nowrap;margin-top:8px"><input type="text" id="netOther" placeholder="GRD-…" style="font-family:var(--f-mono)" aria-label="Altro codice"><button class="btn" id="netUse" type="button">Usa</button></div></details>
+      <div id="netStatus" class="small muted" aria-live="polite"></div>
+    </div>
     <div class="panel stack solo-sa">
       <h2>Collegamenti</h2>
       <p class="small" style="margin:0">Questa versione non richiede un abbonamento Claude. Usa la tua chiave API Anthropic (paghi solo l'uso: con Claude Haiku 5.5 pochi millesimi di dollaro a piano) e un token GitHub per mandare le piante al bot. Le chiavi restano solo in questo browser.</p>
@@ -384,6 +427,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
     <div class="panel stack">
       <div class="row between"><h2>Sincronizzazione</h2><span id="syncChip"></span></div>
       <p class="small solo-art" style="margin:0">Ogni mattina alle 6:37 Claude porta le tue piante al bot Telegram e riporta qui meteo reale, piano e pulsanti premuti. Puoi farlo partire anche ora.</p>
+      <p class="small solo-net" style="margin:0">Ogni modifica si salva sul server e arriva subito a Claude e al bot. L'app si aggiorna da sola ogni 2 minuti e quando la riapri; “Aggiorna ora” lo fa subito.</p>
       <p class="small solo-sa" style="margin:0">Le piante arrivano al bot appena le salvi. Il meteo reale arriva qui direttamente da Open-Meteo. “Aggiorna ora” fa ricalcolare il piano al bot e riporta qui le risposte date su Telegram.</p>
       <div class="row"><button class="btn primary" id="syncBtn" type="button">Sincronizza ora</button></div>
       <div id="syncStatus" class="small muted" aria-live="polite"></div>
@@ -398,7 +442,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
       </div>
       <div class="row"><button class="btn" id="impSave" type="button">Salva</button><span class="small muted" id="impEx"></span></div>
     </div>
-    <div class="panel stack">
+    <div class="panel stack no-net">
       <h2>Promemoria su Telegram</h2>
       <p style="margin:0">Ogni mattina ti scrive <b>solo se c'è da innaffiare, controllare o concimare</b>, con pulsanti <b>Fatto</b>, <b>Era umida</b>, <b>Salto</b>. Le tue risposte correggono i calcoli per ogni pianta. La sera ti avvisa se domani arrivano gelo, caldo forte o vento.</p>
       <ol class="steps small">
@@ -413,7 +457,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
         <a class="btn" href="https://github.com/fedefabbro2008-bit/Palestra/actions" target="_blank" rel="noopener">Actions</a>
       </div>
     </div>
-    <details class="panel">
+    <details class="panel no-net">
       <summary style="cursor:pointer;font-weight:700">Cosa riceve il bot (piante.json)</summary>
       <pre class="json" id="cfgJson" style="margin-top:10px"></pre>
       <div class="row" style="margin-top:10px"><button class="btn small" id="cfgCopy" type="button">Copia</button></div>
@@ -699,8 +743,9 @@ function autonomia(p, {oggi, lat, eventi, fut=[]}={}){
 
 
 /* ================= Costanti dell'app ================= */
-const STANDALONE = 'false'==='true';
-const TRIGGER_ID = "trig_01X5wMh37S8utkokjf8pJUdv";
+const MODE = 'artifact';
+const STANDALONE = MODE!=='artifact', NETLIFY = MODE==='netlify';
+const TRIGGER_ID = "";
 const SYNC_SESSION = "session_01WPDxmqiuSo7wZJoVm9CY74", SYNC_ENV = "env_01VyxiXuTkVdJfLs7YMuKQ11";
 const SYNC_PROMPT = "Esegui la sincronizzazione dell'app \"Giardino\" con il bot Telegram. Lavora senza chiedere conferme. Non toccare il branch main, non aprire pull request, non scrivere commenti su GitHub, non modificare altro.\n\nRiferimenti\n- Artifact: https://claude.ai/artifact/16YMCT8C97DJJQMWC7aaVw. Database privato dell'utente: collezione \"data/users/me\" (strumento ArtifactData con questo url).\n- Repository fedefabbro2008-bit/Palestra (clone locale). I dati del bot stanno nel branch \"giardino-dati\", alla radice: piante.json, eventi.json, stato.json, per-app.json.\n- Workflow: giardino-notifiche.yml su main (GitHub MCP actions_run_trigger oppure `gh workflow run giardino-notifiche.yml -R fedefabbro2008-bit/Palestra --ref main -f modo=aggiorna`).\n\nPassi\n1. ArtifactData \"get\", collection \"data/users/me\", doc_id \"giardino\", con out_dir in una cartella temporanea. Se il documento non esiste, oppure export_bot manca, oppure export_bot.posizione è null, oppure export_bot.piante è vuoto: non toccare i file delle piante e vai al passo 3.\n2. Aggiorna il branch giardino-dati (git fetch, checkout pulito di origin/giardino-dati in una cartella temporanea con git worktree): piante.json = campo export_bot; eventi.json = campo eventi_app ([] se manca). Scrivili con uno script node (JSON.stringify indentazione 2 + newline finale): non ricopiare i dati a mano. Se nulla è cambiato niente commit; altrimenti commit \"Giardino: sincronizza piante dall'app\" e push su giardino-dati (se rifiutato: pull --rebase e riprova).\n3. Avvia il workflow con modo = \"aggiorna\" sul ref main e attendi che finisca (stato ogni ~30 secondi, massimo 8 minuti). Se fallisce, annota il motivo dal log e continua.\n4. git fetch origin giardino-dati e leggi per-app.json. Se esiste, scrivi nel database dell'artifact, collezione \"data/users/me\", con un'unica ArtifactData \"batch\" (per i documenti già esistenti leggi prima la version e passala come if_version), con file_path da file preparati con node: \"meteo_bot\" = campo meteo (salta se null); \"piano_bot\" = campo piano (salta se null); \"eventi_bot\" = {\"aggiornato\": campo aggiornato, \"eventi\": campo eventi}.\n5. Rimuovi le cartelle temporanee e concludi con al massimo 3 righe: piante sincronizzate (o perché no), esito del workflow, documenti aggiornati nell'app.";
 const DOVE = {aperto:"All'aperto", riparato:'Riparato dalla pioggia', interno:'In casa / serra'};
@@ -826,14 +871,16 @@ async function boot(){
   }
   ready=true; renderAll(); renderClaude(); renderSync();
 }
-document.querySelectorAll('.solo-sa').forEach(el=>el.hidden=!STANDALONE);
+document.querySelectorAll('.solo-sa').forEach(el=>el.hidden=MODE!=='pages');
 document.querySelectorAll('.solo-art').forEach(el=>el.hidden=STANDALONE);
+document.querySelectorAll('.solo-net').forEach(el=>el.hidden=!NETLIFY);
+document.querySelectorAll('.no-net').forEach(el=>el.hidden=NETLIFY);
 function renderClaude(){
   const ok=!!sample;
-  ['#genBtn','#wxEstimate','#wxPasteToggle','#wxPasteGo','#locSet'].forEach(s=>{ const b=$(s); if(b) b.disabled=!ok; });
+  ['#genBtn','#wxEstimate','#wxPasteToggle','#wxPasteGo','#locSet'].forEach(s=>{ const b=$(s); if(b) b.disabled=!ok&&!(NETLIFY&&s==='#locSet'); });
   $('#wxImgLbl').style.opacity=ok?'':'0.55'; $('#wxImg').disabled=!ok;
   document.querySelectorAll('[data-diag]').forEach(b=>b.disabled=!ok);
-  if(!ok && ready) $('#genStatus').textContent='Claude non è disponibile in questa vista: il piano usa il calcolo automatico.';
+  if(!ok && ready && !NETLIFY) $('#genStatus').textContent='Claude non è disponibile in questa vista: il piano usa il calcolo automatico.';
 }
 
 /* ================= Eventi (diario) ================= */
@@ -963,6 +1010,14 @@ async function wxEstimate(){
 async function setLocation(){
   const q=$('#locInput').value.trim(); if(!q) return;
   const info=$('#locInfo');
+  if(NETLIFY){
+    $('#locSet').disabled=true; info.innerHTML=spin('Cerco “'+q+'”…');
+    try{ const r=await window.GiardinoNet.geocodifica(q); if(!r){ info.textContent='Luogo non trovato: prova con il nome del comune.'; return; }
+      S.location=r; $('#locInput').value=''; info.textContent=''; saveMain(); renderAll(); toast('Posizione impostata'); }
+    catch(e){ info.textContent='Ricerca non riuscita: controlla la connessione.'; }
+    finally{ $('#locSet').disabled=false; }
+    return;
+  }
   if(!sample){ info.textContent='Claude non è disponibile per cercare il comune in questa vista.'; return; }
   $('#locSet').disabled=true; info.innerHTML=spin('Cerco “'+q+'”…');
   try{
@@ -1048,6 +1103,7 @@ async function diagnose(files){
 /* ================= Sincronizzazione con il bot ================= */
 async function syncNow(){
   const st=$('#syncStatus');
+  if(NETLIFY){ $('#syncBtn').disabled=true; st.innerHTML=spin('Aggiorno…'); try{ await window.GiardinoNet.aggiorna(); st.textContent='Aggiornato.'; }catch(e){ st.textContent='Non riuscito: '+e.message; } finally{ $('#syncBtn').disabled=false; } return; }
   if(STANDALONE){
     $('#syncBtn').disabled=true; st.innerHTML=spin('Salvo e avvio il bot…');
     try{ const r=await window.GiardinoSA.sync(m=>st.innerHTML=spin(m)); st.textContent=r==='ok'?'Fatto: piano e risposte di Telegram aggiornati.':'Il bot ci sta mettendo più del solito: i dati arriveranno al prossimo aggiornamento.'; }
@@ -1072,6 +1128,7 @@ async function syncNow(){
 }
 function renderSync(){
   if(STANDALONE) $('#syncBtn').textContent='Aggiorna ora';
+  if(NETLIFY){ const t=[W.bot?.updatedAt, EB.aggiornato].filter(Boolean).sort().pop(); $('#syncChip').innerHTML=t?'<span class="chip leaf">'+esc(new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))+'</span>':''; $('#syncBtn').disabled=false; return; }
   const last=[W.bot?.updatedAt, EB.aggiornato, P.bot?.createdAt].filter(Boolean).sort().pop();
   $('#syncChip').innerHTML = last ? '<span class="chip leaf">ultima '+esc(new Date(last).toLocaleString('it-IT',{weekday:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}))+'</span>' : '<span class="chip">mai</span>';
   $('#syncBtn').disabled = !mcp;
@@ -1247,7 +1304,7 @@ function renderPiante(){
       <div class="small muted" style="margin-top:6px">Ultima innaffiatura: ${(()=>{const u=ultimaInnaffiatura(p,c.eventi);return u?esc(dataBreve(u)):'non indicata';})()}${pp?' · questa settimana <b class="num">'+fmt(pp.fabbisogno_settimanale_litri)+' L</b>':''}</div>
       ${pp?.consigli?.length?'<ul class="tips">'+pp.consigli.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':''}
       ${diag}
-    </div><div class="side"><button class="btn small" type="button" data-edit="${esc(p.id)}">Modifica</button><button class="btn small ghost" type="button" data-diag="${esc(p.id)}" ${sample?'':'disabled'}>Valuta da foto</button></div></div>`;
+    </div><div class="side"><button class="btn small" type="button" data-edit="${esc(p.id)}">Modifica</button>${NETLIFY?'':`<button class="btn small ghost" type="button" data-diag="${esc(p.id)}" ${sample?'':'disabled'}>Valuta da foto</button>`}</div></div>`;
   }).join('');
 }
 function renderMeteo(){
@@ -1520,7 +1577,7 @@ function importaBackup(){
 function wireExtra(){
   $('#bkSave').addEventListener('click',scaricaBackup);
   $('#bkFile').addEventListener('change',e=>leggiBackup(e.target.files[0]));
-  if(!STANDALONE) return;
+  if(MODE!=='pages') return;
   const k=window.GiardinoSA.chiavi();
   $('#saApi').placeholder=k.api?'Salvata ✓ (scrivi per cambiarla)':'sk-ant-…';
   $('#saGh').placeholder=k.gh?'Salvato ✓ (scrivi per cambiarlo)':'github_pat_…';
@@ -1535,5 +1592,46 @@ function wireExtra(){
   if(!k.api||!k.gh) showNote('info','Per far funzionare Claude e il bot inserisci la chiave API e il token GitHub nella scheda Impostazioni.');
 }
 
-wire(); wireExtra(); boot();
+/* ================= Versione Netlify: Claude (connettore), Telegram, codice ================= */
+const PROMPTS=['Fammi il piano di innaffiatura della settimana per il mio giardino e salvalo.','Ti mando una foto del limone: ha troppa o poca acqua? Se serve correggi il calcolo.',"Ieri ho bagnato tutte le piante tranne il basilico: registralo.",'Parto dal 10 al 20 agosto: imposta la vacanza e dimmi chi resiste.','Aggiungi un vaso da 20 litri con un pomodoro trapiantato oggi, 8 ore di sole.'];
+function renderMcp(s){
+  const on=!!s?.active;
+  $('#mcpBox').hidden=!on; $('#mcpOn').hidden=on;
+  $('#mcpChip').innerHTML=on?'<span class="chip leaf">collegato</span>':'<span class="chip">non collegato</span>';
+  $('#mcpHint').hidden=on;
+  if(on){ $('#mcpUrl').value=location.origin+'/mcp/'+s.token; $('#mcpWrite').checked=!!s.write; }
+}
+function renderTg(s){
+  const on=!!s?.configured;
+  $('#tgChip').innerHTML=!on?'<span class="chip">non collegato</span>':s.collegato?'<span class="chip leaf">@'+esc(s.username)+'</span>':'<span class="chip warn">premi Avvia</span>';
+  $('#tgOpen').hidden=!on; if(on) $('#tgOpen').href='https://t.me/'+encodeURIComponent(s.username); $('#tgOpen').textContent=on?'Apri @'+s.username:'';
+  $('#tgTest').hidden=!(on&&s.collegato); $('#tgOff').hidden=!on;
+  $('#tgStatus').textContent=!on?'':s.collegato?'Collegato: ricevi il piano ogni mattina alle '+S.impostazioni.ora_mattina+'.':'Ora apri @'+s.username+' su Telegram e premi Avvia, poi torna qui.';
+}
+function wireNetlify(){
+  if(!NETLIFY) return;
+  const N=window.GiardinoNet;
+  $('#netCode').value=N.codice();
+  $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
+  $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });
+  $('#prompts').innerHTML=PROMPTS.map((t,i)=>`<div class="row" style="flex-wrap:nowrap;align-items:flex-start"><span class="small" style="flex:1">“${esc(t)}”</span><button class="btn small ghost" type="button" data-prompt="${i}">Copia</button></div>`).join('');
+  $('#prompts').addEventListener('click',async e=>{ const b=e.target.closest('[data-prompt]'); if(b) toast(await copyText(PROMPTS[+b.dataset.prompt])?'Copiato: incollalo nella chat di Claude':'Copia non riuscita'); });
+  const mcpAct=async(a,extra)=>{ $('#mcpStatus').innerHTML=spin('…'); try{ renderMcp(await N.mcp(a,extra)); $('#mcpStatus').textContent=''; }catch(e){ $('#mcpStatus').textContent=e.message; } };
+  N.mcp().then(renderMcp).catch(()=>{});
+  $('#mcpOn').addEventListener('click',()=>mcpAct('on'));
+  $('#mcpNew').addEventListener('click',()=>mcpAct('new'));
+  $('#mcpOff').addEventListener('click',()=>mcpAct('off'));
+  $('#mcpWrite').addEventListener('change',e=>mcpAct('write',{on:e.target.checked}));
+  $('#mcpCopy').addEventListener('click',async()=>toast(await copyText($('#mcpUrl').value,$('#mcpUrl'))?'Indirizzo copiato':'Seleziona e copia a mano'));
+  const tgAct=async(a,extra)=>{ $('#tgStatus').innerHTML=spin('…'); try{ const r=await N.telegram(a,extra); if(a==='test') { $('#tgStatus').textContent='Messaggio inviato: guarda Telegram.'; return; } renderTg(r); }catch(e){ $('#tgStatus').textContent=e.message; } };
+  N.telegram().then(renderTg).catch(()=>{});
+  $('#tgSet').addEventListener('click',async()=>{ const t=$('#tgToken').value.trim(); if(!t) return; await tgAct('token',{token:t}); $('#tgToken').value=''; });
+  $('#tgTest').addEventListener('click',()=>tgAct('test'));
+  $('#tgOff').addEventListener('click',()=>tgAct('off'));
+  // dopo "Avvia" su Telegram, quando torni sull'app lo stato si aggiorna
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') N.telegram().then(renderTg).catch(()=>{}); });
+  $('#wxExplain').textContent='Le previsioni reali arrivano da Open-Meteo e si aggiornano da sole. Puoi correggere a mano ogni valore.';
+}
+
+wire(); wireExtra(); wireNetlify(); boot();
 </script>

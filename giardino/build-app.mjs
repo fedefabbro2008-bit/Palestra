@@ -1,6 +1,6 @@
 // Costruisce l'app pubblicata come artifact: app.src.html + modello.mjs → giardino-app.html
 // Uso: node giardino/build-app.mjs [id-attività-pianificata]
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -14,13 +14,14 @@ const out = src.replace('/*@@MODELLO@@*/', () => modello).replace("'@@TRIGGER_ID
   .replace("'@@SYNC_SESSION@@'", () => JSON.stringify(process.env.GIARDINO_SYNC_SESSION || 'session_01WPDxmqiuSo7wZJoVm9CY74'))
   .replace("'@@SYNC_ENV@@'", () => JSON.stringify(process.env.GIARDINO_SYNC_ENV || 'env_01VyxiXuTkVdJfLs7YMuKQ11'))
   .replace("'@@SYNC_PROMPT@@'", () => JSON.stringify(syncPrompt).replace(/</g,'\\u003c'));
-await writeFile(join(DIR,'giardino-app.html'), out.replace("'@@STANDALONE@@'", "'false'"));
+await writeFile(join(DIR,'giardino-app.html'), out.replace("'@@MODE@@'", "'artifact'"));
 // Versione autonoma per GitHub Pages: niente abbonamento Claude (standalone.js sostituisce le funzioni di claude.ai)
 const shim = await readFile(join(DIR,'standalone.js'),'utf8');
-const sa = out.replace("'@@STANDALONE@@'", "'true'");
+const pagina = (mode, shimSrc) => {
+  const sa = out.replace("'@@MODE@@'", JSON.stringify(mode));
 const cut = sa.indexOf('<div class="wrap">');
-const head = sa.slice(0,cut), body = sa.slice(cut).replace('<script>', () => '<script>\n'+shim+'\n</script>\n<script>');
-await writeFile(join(DIR,'index.html'), `<!DOCTYPE html>
+const head = sa.slice(0,cut), body = sa.slice(cut).replace('<script>', () => '<script>\n'+shimSrc+'\n</script>\n<script>');
+  return `<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8">
@@ -34,6 +35,15 @@ ${head}</head>
 ${body}
 </body>
 </html>
-`);
-console.log('Scritto giardino/index.html (versione autonoma, GitHub Pages)');
+`;
+};
+await writeFile(join(DIR,'versione-api.html'), pagina('pages', shim));
+console.log('Scritto giardino/versione-api.html (variante con chiave API a pagamento, non usata)');
+await writeFile(join(DIR,'index.html'), `<!DOCTYPE html>\n<html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Giardino</title>\n<meta http-equiv="refresh" content="0; url=https://giardino-fede.netlify.app/"></head>\n<body style="font:16px system-ui,sans-serif;padding:24px"><p>L'app Giardino è su <a href="https://giardino-fede.netlify.app/">giardino-fede.netlify.app</a>.</p></body></html>\n`);
+// Versione Netlify (gratuita): app + funzioni in giardino-netlify/
+const NET = join(DIR,'..','giardino-netlify');
+await mkdir(join(NET,'public'),{recursive:true}); await mkdir(join(NET,'netlify','lib'),{recursive:true});
+await writeFile(join(NET,'public','index.html'), pagina('netlify', await readFile(join(DIR,'netlify-shim.js'),'utf8')));
+await copyFile(join(DIR,'modello.mjs'), join(NET,'netlify','lib','modello.mjs'));
+console.log('Scritto giardino-netlify/public/index.html e netlify/lib/modello.mjs');
 console.log('Scritto giardino/giardino-app.html'+(trigger?' (attività '+trigger+')':' (senza attività pianificata)'));

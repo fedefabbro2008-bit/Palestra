@@ -1,0 +1,25 @@
+# Giardino su Netlify (piano gratuito): app statica in public/, funzioni in netlify/functions/
+#   /api/dati           dati dell'app, chiave del connettore, collegamento del bot
+#   /mcp/<chiave>       connettore MCP per Claude
+#   /api/telegram/*     webhook del bot Telegram (pulsanti immediati)
+#   bot (pianificata)   ogni 15 minuti: messaggio del mattino e avviso della sera
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
