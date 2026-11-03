@@ -10,9 +10,10 @@ e promemoria su Telegram.
 | **App** | artifact `https://claude.ai/artifact/16YMCT8C97DJJQMWC7aaVw` (sorgente `app.src.html`, build `giardino-app.html`) | piante, piano, diario, vacanza, diagnosi da foto; il piano lo genera Claude dal tuo account |
 | **Modello** | `modello.mjs` | bilancio idrico in litri, condiviso da app e bot (fasi automatiche, calibrazione, concime, rinvaso, dosi, avvisi) |
 | **Bot** | `notifica.mjs` + `.github/workflows/giardino-notifiche.yml` (ogni 15 min) | legge i pulsanti Telegram; dalle 7 manda il piano del giorno se c'è da fare; dalle 19 avvisa di gelo, caldo, vento per domani |
-| **Sincronizzazione** | attività pianificata di Claude, ogni giorno alle 06:37 (e dal pulsante "Sincronizza ora" dell'app) | porta le piante dall'app a `piante.json`/`eventi.json`, avvia il bot in modalità `aggiorna`, riporta nell'app meteo reale, piano e pulsanti premuti (`per-app.json`) |
+| **Sincronizzazione** | attività pianificata di Claude, ogni giorno alle 06:37 (e dal pulsante "Sincronizza ora" dell'app) | porta le piante dall'app al branch `giardino-dati`, avvia il bot in modalità `aggiorna`, riporta nell'app meteo reale, piano e pulsanti premuti (`per-app.json`) |
 
-File scritti dal bot: `stato.json` (memoria: offset Telegram, eventi, ultimo piano) e `per-app.json` (dati per l'app).
+I dati stanno nel branch **`giardino-dati`** (così `main` non riceve commit automatici): `piante.json` ed `eventi.json` (dall'app),
+`stato.json` (memoria del bot: offset Telegram, eventi, ultimo piano) e `per-app.json` (dati per l'app).
 Se non premi nessun pulsante, il giorno dopo il bot considera fatte le innaffiature notificate.
 
 ## Configurazione di Telegram (una volta)

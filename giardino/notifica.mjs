@@ -16,7 +16,9 @@ import { dirname, join } from 'node:path';
 import * as M from './modello.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const F = { piante:join(DIR,'piante.json'), eventi:join(DIR,'eventi.json'), stato:join(DIR,'stato.json'), perApp:join(DIR,'per-app.json') };
+// I dati stanno nel branch giardino-dati (cartella indicata da GIARDINO_DATI); senza variabile, accanto allo script.
+const DATI = process.env.GIARDINO_DATI || DIR;
+const F = { piante:join(DATI,'piante.json'), eventi:join(DATI,'eventi.json'), stato:join(DATI,'stato.json'), perApp:join(DATI,'per-app.json') };
 const MODO = (process.env.MODO||'auto').trim() || 'auto';
 const fmt=(n,d=1)=>(Math.round(n*10**d)/10**d).toLocaleString('it-IT');
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));

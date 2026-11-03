@@ -25,7 +25,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Codice (main)
+        uses: actions/checkout@v4
+
+      - name: Dati del giardino (branch giardino-dati)
+        uses: actions/checkout@v4
+        with:
+          ref: giardino-dati
+          path: dati
 
       - uses: actions/setup-node@v4
         with:
@@ -34,6 +41,7 @@ jobs:
       - name: Pulsanti, piano e messaggi Telegram
         run: node giardino/notifica.mjs
         env:
+          GIARDINO_DATI: dati
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -41,14 +49,15 @@ jobs:
           MODO: ${{ inputs.modo || 'auto' }}
 
       - name: Salva lo stato del bot
+        working-directory: dati
         run: |
-          git add giardino/stato.json giardino/per-app.json 2>/dev/null || true
+          git add -A
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "Giardino: aggiorna stato del bot"
             for i in 1 2 3; do
-              git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break
+              git pull --rebase origin giardino-dati && git push origin HEAD:giardino-dati && break
               sleep $((i*5))
             done
           fi
