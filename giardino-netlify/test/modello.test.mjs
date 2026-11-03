@@ -66,3 +66,13 @@ test("calendario dei mesi: dalla semina al raccolto, oppure l'anno tipico", () =
   assert.equal(lim.tipo, "anno"); assert.equal(lim.mesi.length, 12); assert.ok(lim.mesi.some((m) => m.frutti));
   assert.deepEqual(M.calendarioAuto({ specie: "basilico" }, 44), { tipo: null, mesi: [] });
 });
+
+test("vasi piccoli: la chioma non supera circa il doppio del vaso (niente acqua tutti i giorni a un vasetto)", () => {
+  const p = { id: "c", specie: "appartamento", fase: "auto", colt: "vaso", vaso: 0.3, diametro: 7, num: 1, luce: 1, dove: "interno" };
+  const k = M.params(p, { oggi: "2026-11-03", lat: 44 });
+  assert.ok(k.chioma <= 4 * Math.PI * 0.035 ** 2 + 1e-9);
+  const giorni = k.rawL / M.consumoL(k, { date: "2026-11-03" });
+  assert.ok(giorni > 3 && giorni < 10, "ogni 3-10 giorni, non tutti i giorni: " + giorni.toFixed(1));
+  const conArea = M.params({ ...p, area: 0.1 }, { oggi: "2026-11-03", lat: 44 });
+  assert.equal(conArea.chioma, 0.1, "se la superficie è indicata vale quella");
+});

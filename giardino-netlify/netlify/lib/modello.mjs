@@ -191,6 +191,9 @@ export function params(p, ctx={}){
     const V=Math.max(0.3,+p.vaso||10);
     const D=+p.diametro>0 ? +p.diametro/100 : Math.cbrt(4*V/1000/(0.9*Math.PI));   // vaso alto ~0,9 × diametro
     const Apot=Math.PI*(D/2)**2;
+    // in vaso la chioma è al massimo larga circa il doppio del vaso: senza superficie indicata, quella tipica della specie
+    // si riduce (una pianta da appartamento in un vasetto da 7 cm non ha la chioma di 30×30 cm)
+    if(!(+p.area>0)){ const max=4*Apot; if(chioma>max){ kcA*=max/chioma; chioma=max; } }
     const tawL=0.25*V*Math.max(0.6,1-0.06*(nTot-1));                              // più radici, meno acqua trattenuta
     return {...base,vaso:true,V,D,Apot,chioma,area:Math.max(Apot,chioma),tawL,rawL:tawL*pMin,pMin,lPerMm:(kcA+0.15*Apot)*fl*calib,pioggiaArea:Apot*0.8};
   }

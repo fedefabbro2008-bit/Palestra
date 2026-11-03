@@ -56,6 +56,7 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 ## Come si calcola (vasi)
 
 - Acqua disponibile = 25% del volume del vaso, ridotta del 6% per ogni pianta in più (radici), minimo 60%.
+- Chioma: quella tipica della specie (o la superficie indicata); in vaso al massimo 4 × la superficie del vaso (chioma larga circa il doppio del vaso).
 - Si innaffia quando è consumata la quota che regge la pianta più delicata del vaso.
 - Consumo giornaliero (L) = ET₀ × (Σ Kc × chioma + 0,15 × superficie del terriccio) × fattore luce × correzione appresa.
   Fattore luce = 0,35 + 0,65 × ore/8 (fino a 9 h).
