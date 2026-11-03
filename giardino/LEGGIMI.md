@@ -36,8 +36,8 @@ GitHub `fedefabbro2008-bit/Palestra`, branch `main`, **Base directory `giardino-
 ## Modifiche al codice
 
 Modifica `giardino/app.src.html`, `giardino/modello.mjs` o `giardino/netlify-shim.js`, poi `node giardino/build-app.mjs`
-e push su `main`. (`giardino/giardino-app.html` è la vecchia versione per claude.ai; `giardino/versione-api.html`
-la variante con chiave API a pagamento; `giardino/notifica.mjs` il vecchio bot per GitHub Actions: non più usati.)
+e push su `main`. (`giardino/giardino-app.html` è la vecchia versione per claude.ai, non più usata.)
+Nessuna chiave API a pagamento: Claude lavora solo attraverso il connettore.
 
 ## Come si calcola (vasi)
 

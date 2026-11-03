@@ -15,8 +15,6 @@ const out = src.replace('/*@@MODELLO@@*/', () => modello).replace("'@@TRIGGER_ID
   .replace("'@@SYNC_ENV@@'", () => JSON.stringify(process.env.GIARDINO_SYNC_ENV || 'env_01VyxiXuTkVdJfLs7YMuKQ11'))
   .replace("'@@SYNC_PROMPT@@'", () => JSON.stringify(syncPrompt).replace(/</g,'\\u003c'));
 await writeFile(join(DIR,'giardino-app.html'), out.replace("'@@MODE@@'", "'artifact'"));
-// Versione autonoma per GitHub Pages: niente abbonamento Claude (standalone.js sostituisce le funzioni di claude.ai)
-const shim = await readFile(join(DIR,'standalone.js'),'utf8');
 const pagina = (mode, shimSrc) => {
   const sa = out.replace("'@@MODE@@'", JSON.stringify(mode));
 const cut = sa.indexOf('<div class="wrap">');
@@ -37,8 +35,6 @@ ${body}
 </html>
 `;
 };
-await writeFile(join(DIR,'versione-api.html'), pagina('pages', shim));
-console.log('Scritto giardino/versione-api.html (variante con chiave API a pagamento, non usata)');
 await writeFile(join(DIR,'index.html'), `<!DOCTYPE html>\n<html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Giardino</title>\n<meta http-equiv="refresh" content="0; url=https://giardino-fede.netlify.app/"></head>\n<body style="font:16px system-ui,sans-serif;padding:24px"><p>L'app Giardino è su <a href="https://giardino-fede.netlify.app/">giardino-fede.netlify.app</a>.</p></body></html>\n`);
 // Versione Netlify (gratuita): app + funzioni in giardino-netlify/
 const NET = join(DIR,'..','giardino-netlify');

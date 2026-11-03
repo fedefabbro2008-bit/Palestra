@@ -400,19 +400,6 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
         <div class="row" style="flex-wrap:nowrap;margin-top:8px"><input type="text" id="netOther" placeholder="GRD-…" style="font-family:var(--f-mono)" aria-label="Altro codice"><button class="btn" id="netUse" type="button">Usa</button></div></details>
       <div id="netStatus" class="small muted" aria-live="polite"></div>
     </div>
-    <div class="panel stack solo-sa">
-      <h2>Collegamenti</h2>
-      <p class="small" style="margin:0">Questa versione non richiede un abbonamento Claude. Usa la tua chiave API Anthropic (paghi solo l'uso: con Claude Haiku 5.5 pochi millesimi di dollaro a piano) e un token GitHub per mandare le piante al bot. Le chiavi restano solo in questo browser.</p>
-      <div class="field"><label for="saApi">Chiave API Anthropic</label><input type="text" id="saApi" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" style="font-family:var(--f-mono)"><span class="hint">Creala su console.anthropic.com → API Keys, dopo aver aggiunto un credito (bastano pochi euro).</span></div>
-      <div class="field"><label for="saGh">Token GitHub</label><input type="text" id="saGh" autocomplete="off" spellcheck="false" placeholder="github_pat_…" style="font-family:var(--f-mono)"><span class="hint">github.com → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: solo <b>Palestra</b>. Permessi: <b>Contents</b> e <b>Actions</b> in lettura e scrittura.</span></div>
-      <div class="row">
-        <button class="btn primary" id="saSave" type="button">Salva</button>
-        <button class="btn ghost" id="saTest" type="button">Prova i collegamenti</button>
-        <a class="btn ghost" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Crea il token</a>
-        <a class="btn ghost" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Chiavi API</a>
-      </div>
-      <div id="saStatus" class="small muted" aria-live="polite"></div>
-    </div>
     <div class="panel stack">
       <h2>Backup</h2>
       <p class="small" style="margin:0">Un file con posizione, piante, impostazioni, diario e piano. Scaricalo prima di cambiare versione dell'app o dispositivo, poi importalo nella nuova. Le chiavi non sono incluse.</p>
@@ -428,8 +415,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
       <div class="row between"><h2>Sincronizzazione</h2><span id="syncChip"></span></div>
       <p class="small solo-art" style="margin:0">Ogni mattina alle 6:37 Claude porta le tue piante al bot Telegram e riporta qui meteo reale, piano e pulsanti premuti. Puoi farlo partire anche ora.</p>
       <p class="small solo-net" style="margin:0">Ogni modifica si salva sul server e arriva subito a Claude e al bot. L'app si aggiorna da sola ogni 2 minuti e quando la riapri; “Aggiorna ora” lo fa subito.</p>
-      <p class="small solo-sa" style="margin:0">Le piante arrivano al bot appena le salvi. Il meteo reale arriva qui direttamente da Open-Meteo. “Aggiorna ora” fa ricalcolare il piano al bot e riporta qui le risposte date su Telegram.</p>
-      <div class="row"><button class="btn primary" id="syncBtn" type="button">Sincronizza ora</button></div>
+     <div class="row"><button class="btn primary" id="syncBtn" type="button">Sincronizza ora</button></div>
       <div id="syncStatus" class="small muted" aria-live="polite"></div>
     </div>
     <div class="panel stack">
@@ -610,7 +596,6 @@ async function boot(){
   }
   ready=true; renderAll(); renderClaude(); renderSync();
 }
-document.querySelectorAll('.solo-sa').forEach(el=>el.hidden=MODE!=='pages');
 document.querySelectorAll('.solo-art').forEach(el=>el.hidden=STANDALONE);
 document.querySelectorAll('.solo-net').forEach(el=>el.hidden=!NETLIFY);
 document.querySelectorAll('.no-net').forEach(el=>el.hidden=NETLIFY);
@@ -692,8 +677,6 @@ function errCopy(e){
     case 'prompt_too_large': return 'Troppi dati in una volta: riduci le piante o il testo incollato.';
     case 'refused': return 'Claude ha rifiutato la richiesta: riformula le note.';
     case 'session_expired': return 'Sessione scaduta: ricarica la pagina.';
-    case 'no_key': return 'Manca la chiave API Anthropic: inseriscila nella scheda Impostazioni.';
-    case 'bad_key': return 'Chiave API Anthropic non valida o senza credito: controllala nella scheda Impostazioni.';
     case 'network': return 'Claude non è raggiungibile: controlla la connessione.';
     default: return 'Claude non è raggiungibile ora ('+(e?.code||'errore')+'). Riprova più tardi.';
   }
@@ -843,13 +826,6 @@ async function diagnose(files){
 async function syncNow(){
   const st=$('#syncStatus');
   if(NETLIFY){ $('#syncBtn').disabled=true; st.innerHTML=spin('Aggiorno…'); try{ await window.GiardinoNet.aggiorna(); st.textContent='Aggiornato.'; }catch(e){ st.textContent='Non riuscito: '+e.message; } finally{ $('#syncBtn').disabled=false; } return; }
-  if(STANDALONE){
-    $('#syncBtn').disabled=true; st.innerHTML=spin('Salvo e avvio il bot…');
-    try{ const r=await window.GiardinoSA.sync(m=>st.innerHTML=spin(m)); st.textContent=r==='ok'?'Fatto: piano e risposte di Telegram aggiornati.':'Il bot ci sta mettendo più del solito: i dati arriveranno al prossimo aggiornamento.'; }
-    catch(e){ st.textContent='Non riuscito: '+(e.message||e); }
-    finally{ $('#syncBtn').disabled=false; }
-    return;
-  }
   if(!mcp||SYNC_SESSION.startsWith('@@')){ st.textContent='La sincronizzazione manuale non è disponibile in questa vista: avviene comunque ogni mattina alle 6:37.'; return; }
   let ultima=0; try{ ultima=+localStorage.getItem('giardino:sync')||0; }catch(e){}
   if(Date.now()-ultima<10*60e3){ st.textContent='Sincronizzazione già richiesta da poco: i dati arrivano qui da soli entro qualche minuto.'; return; }
@@ -1316,19 +1292,7 @@ function importaBackup(){
 function wireExtra(){
   $('#bkSave').addEventListener('click',scaricaBackup);
   $('#bkFile').addEventListener('change',e=>leggiBackup(e.target.files[0]));
-  if(MODE!=='pages') return;
-  const k=window.GiardinoSA.chiavi();
-  $('#saApi').placeholder=k.api?'Salvata ✓ (scrivi per cambiarla)':'sk-ant-…';
-  $('#saGh').placeholder=k.gh?'Salvato ✓ (scrivi per cambiarlo)':'github_pat_…';
-  $('#saSave').addEventListener('click',()=>{
-    const a=$('#saApi').value, g=$('#saGh').value;
-    window.GiardinoSA.salvaChiavi(a||null, g||null); $('#saApi').value=''; $('#saGh').value='';
-    const k=window.GiardinoSA.chiavi();
-    $('#saApi').placeholder=k.api?'Salvata ✓ (scrivi per cambiarla)':'sk-ant-…'; $('#saGh').placeholder=k.gh?'Salvato ✓ (scrivi per cambiarlo)':'github_pat_…';
-    $('#saStatus').textContent='Salvato. Ricarica la pagina per leggere i tuoi dati da GitHub.'; if(k.gh) saveMain();
-  });
-  $('#saTest').addEventListener('click',async()=>{ $('#saStatus').innerHTML=spin('Provo…'); $('#saStatus').textContent=await window.GiardinoSA.prova(); });
-  if(!k.api||!k.gh) showNote('info','Per far funzionare Claude e il bot inserisci la chiave API e il token GitHub nella scheda Impostazioni.');
+  return;
 }
 
 /* ================= Versione Netlify: Claude (connettore), Telegram, codice ================= */
