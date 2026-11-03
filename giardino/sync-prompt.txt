@@ -1,0 +1,13 @@
+Esegui la sincronizzazione dell'app "Giardino" con il bot Telegram. Lavora senza chiedere conferme. Non toccare il branch main, non aprire pull request, non scrivere commenti su GitHub, non modificare altro.
+
+Riferimenti
+- Artifact: https://claude.ai/artifact/16YMCT8C97DJJQMWC7aaVw. Database privato dell'utente: collezione "data/users/me" (strumento ArtifactData con questo url).
+- Repository fedefabbro2008-bit/Palestra (clone locale). I dati del bot stanno nel branch "giardino-dati", alla radice: piante.json, eventi.json, stato.json, per-app.json.
+- Workflow: giardino-notifiche.yml su main (GitHub MCP actions_run_trigger oppure `gh workflow run giardino-notifiche.yml -R fedefabbro2008-bit/Palestra --ref main -f modo=aggiorna`).
+
+Passi
+1. ArtifactData "get", collection "data/users/me", doc_id "giardino", con out_dir in una cartella temporanea. Se il documento non esiste, oppure export_bot manca, oppure export_bot.posizione è null, oppure export_bot.piante è vuoto: non toccare i file delle piante e vai al passo 3.
+2. Aggiorna il branch giardino-dati (git fetch, checkout pulito di origin/giardino-dati in una cartella temporanea con git worktree): piante.json = campo export_bot; eventi.json = campo eventi_app ([] se manca). Scrivili con uno script node (JSON.stringify indentazione 2 + newline finale): non ricopiare i dati a mano. Se nulla è cambiato niente commit; altrimenti commit "Giardino: sincronizza piante dall'app" e push su giardino-dati (se rifiutato: pull --rebase e riprova).
+3. Avvia il workflow con modo = "aggiorna" sul ref main e attendi che finisca (stato ogni ~30 secondi, massimo 8 minuti). Se fallisce, annota il motivo dal log e continua.
+4. git fetch origin giardino-dati e leggi per-app.json. Se esiste, scrivi nel database dell'artifact, collezione "data/users/me", con un'unica ArtifactData "batch" (per i documenti già esistenti leggi prima la version e passala come if_version), con file_path da file preparati con node: "meteo_bot" = campo meteo (salta se null); "piano_bot" = campo piano (salta se null); "eventi_bot" = {"aggiornato": campo aggiornato, "eventi": campo eventi}.
+5. Rimuovi le cartelle temporanee e concludi con al massimo 3 righe: piante sincronizzate (o perché no), esito del workflow, documenti aggiornati nell'app.

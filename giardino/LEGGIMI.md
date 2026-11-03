@@ -10,7 +10,7 @@ e promemoria su Telegram.
 | **App** | artifact `https://claude.ai/artifact/16YMCT8C97DJJQMWC7aaVw` (sorgente `app.src.html`, build `giardino-app.html`) | piante, piano, diario, vacanza, diagnosi da foto; il piano lo genera Claude dal tuo account |
 | **Modello** | `modello.mjs` | bilancio idrico in litri, condiviso da app e bot (fasi automatiche, calibrazione, concime, rinvaso, dosi, avvisi) |
 | **Bot** | `notifica.mjs` + `.github/workflows/giardino-notifiche.yml` (ogni 15 min) | legge i pulsanti Telegram; dalle 7 manda il piano del giorno se c'è da fare; dalle 19 avvisa di gelo, caldo, vento per domani |
-| **Sincronizzazione** | attività pianificata di Claude, ogni giorno alle 06:37 (e dal pulsante "Sincronizza ora" dell'app) | porta le piante dall'app al branch `giardino-dati`, avvia il bot in modalità `aggiorna`, riporta nell'app meteo reale, piano e pulsanti premuti (`per-app.json`) |
+| **Sincronizzazione** | attività pianificata `trig_01X5wMh37S8utkokjf8pJUdv` (ogni giorno alle 06:37) che scrive nella sessione Claude dedicata `session_01WPDxmqiuSo7wZJoVm9CY74` ("Giardino – sincronizzazione giornaliera", con il repository collegato); il pulsante "Sincronizza ora" dell'app prenota un'esecuzione singola nella stessa sessione con il testo di `sync-prompt.txt` | porta le piante dall'app al branch `giardino-dati`, avvia il bot in modalità `aggiorna`, riporta nell'app meteo reale, piano e pulsanti premuti (`per-app.json`) |
 
 I dati stanno nel branch **`giardino-dati`** (così `main` non riceve commit automatici): `piante.json` ed `eventi.json` (dall'app),
 `stato.json` (memoria del bot: offset Telegram, eventi, ultimo piano) e `per-app.json` (dati per l'app).
@@ -29,7 +29,7 @@ Finché i secret mancano, il bot non manda nulla ma la modalità `aggiorna` port
 
 ## Modifiche
 
-- App: modifica `app.src.html` o `modello.mjs`, poi `node giardino/build-app.mjs trig_01X5wMh37S8utkokjf8pJUdv`
+- App: modifica `app.src.html`, `modello.mjs` o `sync-prompt.txt`, poi `node giardino/build-app.mjs trig_01X5wMh37S8utkokjf8pJUdv`
   e ripubblica `giardino-app.html` sullo stesso artifact.
 - Bot: `notifica.mjs` usa direttamente `modello.mjs`.
 
@@ -42,3 +42,9 @@ Finché i secret mancano, il bot non manda nulla ma la modalità `aggiorna` port
 - Correzione appresa: −10% per ogni "era ancora umida", +12% per ogni "era secca" (ultimi 60 giorni, tra 0,5 e 2).
 - Pioggia utile nel vaso = (pioggia − 1,5 mm) × superficie del vaso × 0,8; zero se riparato o in casa.
 - Dose = acqua consumata + 10%, cioè finché esce un po' dal foro.
+
+## Note sulla sincronizzazione
+
+- Non archiviare la sessione "Giardino – sincronizzazione giornaliera": l'attività scrive lì perché è l'unica con accesso al repository.
+- Ogni esecuzione usa un po' del tuo utilizzo di Claude (modello Sonnet, pochi centesimi di dollaro a listino).
+- Il testo dell'attività giornaliera si modifica dalla sessione dedicata.

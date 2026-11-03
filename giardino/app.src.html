@@ -359,7 +359,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
   <section class="view" id="view-bot" hidden>
     <div class="panel stack">
       <div class="row between"><h2>Sincronizzazione</h2><span id="syncChip"></span></div>
-      <p class="small" style="margin:0">Ogni mattina Claude porta le tue piante al bot Telegram e riporta qui meteo reale, piano e pulsanti premuti. Puoi farlo partire anche ora.</p>
+      <p class="small" style="margin:0">Ogni mattina alle 6:37 Claude porta le tue piante al bot Telegram e riporta qui meteo reale, piano e pulsanti premuti. Puoi farlo partire anche ora.</p>
       <div class="row"><button class="btn primary" id="syncBtn" type="button">Sincronizza ora</button></div>
       <div id="syncStatus" class="small muted" aria-live="polite"></div>
     </div>
@@ -414,6 +414,8 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
 
 /* ================= Costanti dell'app ================= */
 const TRIGGER_ID = '@@TRIGGER_ID@@';
+const SYNC_SESSION = '@@SYNC_SESSION@@', SYNC_ENV = '@@SYNC_ENV@@';
+const SYNC_PROMPT = '@@SYNC_PROMPT@@';
 const DOVE = {aperto:"All'aperto", riparato:'Riparato dalla pioggia', interno:'In casa / serra'};
 const COLT = {vaso:'Vaso', terra:'Piena terra', rialzata:'Aiuola rialzata'};
 const COND = ['sereno','poco nuvoloso','nuvoloso','pioggia','temporale','neve','nebbia'];
@@ -754,15 +756,20 @@ async function diagnose(files){
 /* ================= Sincronizzazione con il bot ================= */
 async function syncNow(){
   const st=$('#syncStatus');
-  if(!mcp||!TRIGGER_ID||TRIGGER_ID.startsWith('@@')){ st.textContent='La sincronizzazione manuale non è disponibile in questa vista: avviene comunque ogni mattina.'; return; }
-  $('#syncBtn').disabled=true; st.innerHTML=spin('Avvio la sincronizzazione…');
+  if(!mcp||SYNC_SESSION.startsWith('@@')){ st.textContent='La sincronizzazione manuale non è disponibile in questa vista: avviene comunque ogni mattina alle 6:37.'; return; }
+  let ultima=0; try{ ultima=+localStorage.getItem('giardino:sync')||0; }catch(e){}
+  if(Date.now()-ultima<10*60e3){ st.textContent='Sincronizzazione già richiesta da poco: i dati arrivano qui da soli entro qualche minuto.'; return; }
+  $('#syncBtn').disabled=true; st.innerHTML=spin('Prenoto la sincronizzazione…');
   try{
-    await mcp.callTool('Claude Code Remote','fire_trigger',{trigger_id:TRIGGER_ID, text:'Sincronizzazione richiesta dall\'app Giardino.'});
-    st.textContent='Avviata. In 2–5 minuti meteo, piano e risposte di Telegram compaiono qui da soli; il bot riceve le piante aggiornate.';
+    // un'esecuzione singola fra ~90 secondi nella sessione che ha accesso al repository
+    await mcp.callTool('Claude Code Remote','create_trigger',{name:'Giardino – sincronizzazione richiesta dall\'app', prompt:SYNC_PROMPT+'\n\nRichiesta dal pulsante "Sincronizza ora" dell\'app.',
+      run_once_at:new Date(Date.now()+90e3).toISOString(), persistent_session_id:SYNC_SESSION, environment_id:SYNC_ENV, initiation:'human_request'});
+    try{ localStorage.setItem('giardino:sync',String(Date.now())); }catch(e){}
+    st.textContent='Prenotata: parte fra circa un minuto e mezzo. In 3–6 minuti meteo, piano e risposte di Telegram compaiono qui da soli e il bot riceve le piante aggiornate.';
   }catch(e){
-    const m={not_granted:'Hai negato l\'accesso al connettore: puoi riattivarlo dal menu Autorizzazioni dell\'artifact.',server_not_connected:'Il connettore Claude Code Remote non è collegato al tuo account.',tool_error:'L\'avvio non è riuscito: '+(e.message||'')};
-    st.textContent=m[e?.code]||('Non sono riuscito ad avviarla ('+(e?.code||'errore')+'). Avviene comunque ogni mattina.');
-  }finally{ $('#syncBtn').disabled=false; }
+    const m={not_granted:'Hai negato l\'accesso al connettore: puoi riattivarlo dal menu Autorizzazioni dell\'artifact.',server_not_connected:'Il connettore Claude Code Remote non è collegato al tuo account.',tool_error:'La prenotazione non è riuscita: '+(e.message||'')};
+    st.textContent=(m[e?.code]||('Non sono riuscito a prenotarla ('+(e?.code||'errore')+').'))+' La sincronizzazione avviene comunque ogni mattina alle 6:37.';
+  }finally{ $('#syncBtn').disabled=!mcp; }
 }
 function renderSync(){
   const last=[W.bot?.updatedAt, EB.aggiornato, P.bot?.createdAt].filter(Boolean).sort().pop();
