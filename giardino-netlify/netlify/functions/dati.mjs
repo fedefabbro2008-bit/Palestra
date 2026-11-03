@@ -1,4 +1,4 @@
-import { store, reply, cleanCode, newToken, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina } from "../lib/core.mjs";
+import { store, reply, cleanCode, newToken, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
@@ -75,6 +75,7 @@ async function opTelegram(request, st, code) {
     if (!/^\d{5,}:[A-Za-z0-9_-]{30,}$/.test(token)) return reply({ error: "Il token non sembra quello di @BotFather (numeri, due punti, lettere)." }, 400);
     let me; try { me = await tg(token, "getMe"); } catch { return reply({ error: "Telegram non riconosce questo token: copialo di nuovo da @BotFather." }, 400); }
     const secret = newToken(32);
+    await tg(token, "setMyCommands", { commands: COMANDI }, { ignora: true });
     await tg(token, "setWebhook", { url: siteUrl(request) + "/api/telegram/" + secret, secret_token: secret, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
     if (t?.secret) await st.delete("w-" + t.secret);
     await st.setJSON("w-" + secret, { code });

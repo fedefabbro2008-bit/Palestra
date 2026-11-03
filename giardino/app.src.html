@@ -100,7 +100,7 @@ table.week th.today{color:var(--water)}
 .notes{margin:6px 0 0;padding-left:18px;font-size:.9rem}
 .notes li.warn{color:var(--warn)}
 .tips{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:.92rem}
-.diag{margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.92rem;background:var(--surface)}
+
 form.edit{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 form.edit .full{grid-column:1/-1}
 .field{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -179,8 +179,8 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
       <ol class="steps">
         <li id="ob1"><b>Posizione</b>: scrivi il tuo comune nella scheda Meteo.</li>
         <li id="ob2"><b>Piante</b>: aggiungi specie, vaso, ore di luce.</li>
-        <li id="ob3"><b>Meteo</b>: arriva in automatico dal bot, oppure carica uno screenshot della tua app meteo.</li>
-        <li id="ob4"><b>Piano</b>: premi “Genera piano”.</li>
+        <li id="ob3"><b>Meteo</b>: arriva da solo da Open-Meteo appena imposti il comune.</li>
+        <li id="ob4"><b>Piano</b>: è già pronto qui sotto; per un piano ragionato chiedilo a Claude con il connettore.</li>
       </ol>
       <div class="row">
         <button class="btn primary" type="button" data-goto="meteo">Inizia dalla posizione</button>
@@ -206,30 +206,16 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
       <div id="cellDetail" class="detail" hidden></div>
     </div>
 
-    <div class="panel stack solo-net">
+    <div class="panel stack">
       <h2>Chiedi a Claude</h2>
       <p class="small" style="margin:0">Il piano qui sopra è il calcolo automatico, oppure quello che Claude ha salvato. In una chat di Claude con il connettore Giardino attivo puoi chiedere, per esempio:</p>
       <div class="stack" id="prompts"></div>
       <p class="small muted" style="margin:0" id="mcpHint">Se non l'hai ancora fatto, collega Claude nella scheda Impostazioni.</p>
-    </div>
-    <div class="panel stack no-net">
-      <h2>Genera il piano con Claude</h2>
-      <div class="field">
-        <label for="extraNotes">Note per questa settimana (facoltative)</label>
-        <textarea id="extraNotes" placeholder="Es. ho appena concimato i pomodori; uso acqua piovana; il limone ha le foglie arricciate."></textarea>
-      </div>
       <div class="row">
-        <button class="btn primary" id="genBtn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
-          <span>Genera piano</span>
-        </button>
-        <button class="btn ghost" id="stopBtn" type="button" hidden>Interrompi</button>
         <button class="btn ghost" id="localBtn" type="button">Usa il calcolo automatico</button>
         <button class="btn ghost" id="copyBtn" type="button">Copia piano</button>
       </div>
-      <div id="genStatus" class="small muted" aria-live="polite"></div>
     </div>
-
     <div class="panel stack" id="vacPanel">
       <div class="row between"><h2>Vacanza</h2><span id="vacChip"></span></div>
       <p class="small muted" style="margin:0">Indica quando sei via: il piano ti fa bagnare a fondo il giorno prima, calcola quanti giorni resiste ogni pianta e prepara le istruzioni per chi bagna al posto tuo.</p>
@@ -251,7 +237,6 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
     <div class="panel stack">
       <div class="row between"><h2>Le tue piante</h2><button class="btn primary small" id="addPlantBtn" type="button">+ Aggiungi</button></div>
       <div id="plantList"></div>
-      <input type="file" id="diagImg" accept="image/*" hidden>
     </div>
     <div class="panel" id="plantFormPanel" hidden>
       <h2 id="plantFormTitle" style="margin-bottom:12px">Nuova pianta</h2>
@@ -323,24 +308,9 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
     </div>
     <div class="panel stack">
       <div class="row between"><h2>Previsioni</h2><span class="src" id="wxSrc2"></span></div>
-      <p class="small muted" style="margin:0" id="wxExplain">Ogni mattina il bot porta qui le previsioni reali di Open-Meteo. Se mancano o vuoi aggiornarle, Claude può leggere uno screenshot della tua app meteo.</p>
-      <div class="row no-net">
-        <label class="btn primary" for="wxImg" id="wxImgLbl">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8 5l1.5-2h5L16 5"/></svg>
-          Da screenshot
-        </label>
-        <input type="file" id="wxImg" accept="image/*" multiple hidden>
-        <button class="btn" id="wxPasteToggle" type="button">Incolla testo</button>
-        <button class="btn" id="wxEstimate" type="button">Stima per la stagione</button>
-        <button class="btn ghost" id="wxStop" type="button" hidden>Interrompi</button>
-      </div>
-      <div class="stack" id="wxPasteWrap" hidden>
-        <textarea id="wxPaste" placeholder="Incolla le previsioni copiate da un sito o da un'app meteo"></textarea>
-        <div class="row"><button class="btn" id="wxPasteGo" type="button">Estrai i dati</button></div>
-      </div>
-      <div id="wxStatus" class="small muted" aria-live="polite"></div>
+      <p class="small muted" style="margin:0" id="wxExplain">Le previsioni reali arrivano da Open-Meteo e si aggiornano da sole. Puoi correggere a mano ogni valore.</p>
       <div class="grid-scroll"><table class="wxedit" id="wxEdit"></table></div>
-      <span class="hint">Puoi correggere a mano ogni valore: le modifiche valgono finché il bot non porta previsioni più recenti. ET₀ (acqua persa per evaporazione e traspirazione) per i dati inseriti qui è calcolata con la formula di Hargreaves.</span>
+      <span class="hint">Le correzioni a mano valgono finché non arrivano previsioni più recenti. ET₀ (acqua persa per evaporazione e traspirazione) per i dati inseriti a mano è calcolata con la formula di Hargreaves.</span>
     </div>
   </section>
 
@@ -363,7 +333,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
 
   <!-- BOT -->
   <section class="view" id="view-bot" hidden>
-    <div class="panel stack solo-net">
+    <div class="panel stack">
       <div class="row between"><h2>Claude</h2><span id="mcpChip"></span></div>
       <p class="small" style="margin:0">Claude legge le tue piante, il meteo e il piano attraverso un <b>connettore</b>, come per la Palestra: gratis, con il tuo account. In chat gli chiedi il piano della settimana, gli mandi la foto di una pianta, gli dici cosa hai fatto, e lui aggiorna l'app e i promemoria.</p>
       <div class="row"><button class="btn primary" id="mcpOn" type="button">Crea il collegamento</button></div>
@@ -380,7 +350,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
       </div>
       <div id="mcpStatus" class="small muted" aria-live="polite"></div>
     </div>
-    <div class="panel stack solo-net">
+    <div class="panel stack">
       <div class="row between"><h2>Telegram</h2><span id="tgChip"></span></div>
       <p class="small" style="margin:0">Ogni mattina ti scrive solo se c'è da innaffiare, controllare o concimare, con i pulsanti <b>Fatto</b>, <b>Era umida</b>, <b>Salto</b>; la sera ti avvisa se domani arrivano gelo, caldo o vento. Gratis.</p>
       <ol class="steps small" id="tgSteps">
@@ -392,7 +362,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
       <div class="row"><a class="btn ghost" href="https://t.me/BotFather" target="_blank" rel="noopener">Apri @BotFather</a><a class="btn ghost" id="tgOpen" href="#" target="_blank" rel="noopener" hidden>Apri il tuo bot</a><button class="btn ghost" id="tgTest" type="button" hidden>Invia un messaggio di prova</button><button class="btn ghost small" id="tgOff" type="button" hidden style="color:var(--danger)">Scollega</button></div>
       <div id="tgStatus" class="small muted" aria-live="polite"></div>
     </div>
-    <div class="panel stack solo-net">
+    <div class="panel stack">
       <h2>Codice di sincronizzazione</h2>
       <p class="small" style="margin:0">Le piante si salvano sul server con questo codice. Per usare l'app su un altro telefono o computer, inserisci lì lo stesso codice. Tienilo per te: chi lo conosce vede e modifica il tuo giardino.</p>
       <div class="row" style="flex-wrap:nowrap"><input type="text" id="netCode" readonly style="font-family:var(--f-mono);font-size:.85rem" aria-label="Codice"><button class="btn" id="netCopy" type="button">Copia</button></div>
@@ -413,9 +383,8 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
     </div>
     <div class="panel stack">
       <div class="row between"><h2>Sincronizzazione</h2><span id="syncChip"></span></div>
-      <p class="small solo-art" style="margin:0">Ogni mattina alle 6:37 Claude porta le tue piante al bot Telegram e riporta qui meteo reale, piano e pulsanti premuti. Puoi farlo partire anche ora.</p>
-      <p class="small solo-net" style="margin:0">Ogni modifica si salva sul server e arriva subito a Claude e al bot. L'app si aggiorna da sola ogni 2 minuti e quando la riapri; “Aggiorna ora” lo fa subito.</p>
-     <div class="row"><button class="btn primary" id="syncBtn" type="button">Sincronizza ora</button></div>
+      <p class="small" style="margin:0">Ogni modifica si salva sul server e arriva subito a Claude e al bot. L'app si aggiorna da sola ogni 2 minuti e quando la riapri; “Aggiorna ora” lo fa subito.</p>
+     <div class="row"><button class="btn primary" id="syncBtn" type="button">Aggiorna ora</button></div>
       <div id="syncStatus" class="small muted" aria-live="polite"></div>
     </div>
     <div class="panel stack">
@@ -428,26 +397,6 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
       </div>
       <div class="row"><button class="btn" id="impSave" type="button">Salva</button><span class="small muted" id="impEx"></span></div>
     </div>
-    <div class="panel stack no-net">
-      <h2>Promemoria su Telegram</h2>
-      <p style="margin:0">Ogni mattina ti scrive <b>solo se c'è da innaffiare, controllare o concimare</b>, con pulsanti <b>Fatto</b>, <b>Era umida</b>, <b>Salto</b>. Le tue risposte correggono i calcoli per ogni pianta. La sera ti avvisa se domani arrivano gelo, caldo forte o vento.</p>
-      <ol class="steps small">
-        <li>Su Telegram apri <b>@BotFather</b>, invia <code>/newbot</code>, scegli un nome e copia il <b>token</b>.</li>
-        <li>Apri il tuo nuovo bot e premi <b>Avvia</b>.</li>
-        <li>Su GitHub, nel repo <b>Palestra</b>: Settings → Secrets and variables → Actions → <b>New repository secret</b>. Crea <code>TELEGRAM_BOT_TOKEN</code> con il token.</li>
-        <li>Actions → “Giardino - notifiche innaffiatura” → <b>Run workflow</b>. Nel registro trovi l'id della tua chat: crea il secret <code>TELEGRAM_CHAT_ID</code> con quel numero e rilancia. Ti arriva il primo messaggio.</li>
-      </ol>
-      <div class="row">
-        <a class="btn" href="https://t.me/BotFather" target="_blank" rel="noopener">Apri @BotFather</a>
-        <a class="btn" href="https://github.com/fedefabbro2008-bit/Palestra/settings/secrets/actions" target="_blank" rel="noopener">Secrets del repo</a>
-        <a class="btn" href="https://github.com/fedefabbro2008-bit/Palestra/actions" target="_blank" rel="noopener">Actions</a>
-      </div>
-    </div>
-    <details class="panel no-net">
-      <summary style="cursor:pointer;font-weight:700">Cosa riceve il bot (piante.json)</summary>
-      <pre class="json" id="cfgJson" style="margin-top:10px"></pre>
-      <div class="row" style="margin-top:10px"><button class="btn small" id="cfgCopy" type="button">Copia</button></div>
-    </details>
   </section>
 </div>
 
@@ -468,11 +417,6 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
 /*@@MODELLO@@*/
 
 /* ================= Costanti dell'app ================= */
-const MODE = '@@MODE@@';
-const STANDALONE = MODE!=='artifact', NETLIFY = MODE==='netlify';
-const TRIGGER_ID = '@@TRIGGER_ID@@';
-const SYNC_SESSION = '@@SYNC_SESSION@@', SYNC_ENV = '@@SYNC_ENV@@';
-const SYNC_PROMPT = '@@SYNC_PROMPT@@';
 const DOVE = {aperto:"All'aperto", riparato:'Riparato dalla pioggia', interno:'In casa / serra'};
 const COLT = {vaso:'Vaso', terra:'Piena terra', rialzata:'Aiuola rialzata'};
 const COND = ['sereno','poco nuvoloso','nuvoloso','pioggia','temporale','neve','nebbia'];
@@ -541,12 +485,11 @@ function persist(name, getData, delay=400){
     else { try{ localStorage.setItem('giardino:v2:'+name, JSON.stringify(snap)); }catch(e){} }
   },delay);
 }
-const saveMain = () => persist('giardino', ()=>({...S, export_bot:exportCfg(), updatedAt:new Date().toISOString()}));
+const saveMain = () => persist('giardino', ()=>({...S, updatedAt:new Date().toISOString()}));
 const saveMeteo = () => persist('meteo', ()=>W.manual||{});
 const savePiano = () => persist('piano', ()=>P.claude||{});
 function showNote(kind,msg){ const n=$('#saveNote'); n.className='alert '+(kind==='err'?'err':'info'); n.innerHTML=(kind==='err'?ICON.warn:ICON.info)+'<div>'+esc(msg)+'</div>'; n.hidden=false; }
 
-let sample=null, mcp=null;
 function applyMain(d){
   if(!d) return;
   S={location:d.location||null, plants:Array.isArray(d.plants)?d.plants:[], impostazioni:{...IMP_DEF,...(d.impostazioni||{})}, vacanza:d.vacanza||null, eventi_app:Array.isArray(d.eventi_app)?d.eventi_app:[]};
@@ -558,8 +501,6 @@ async function boot(){
   const timeout=ms=>new Promise(r=>setTimeout(()=>r('timeout'),ms));
   let db=null, user=null;
   if(C && typeof C.use==='function'){
-    C.use('sample').then(s=>{ sample=s; renderClaude(); }).catch(()=>{});
-    C.use('mcp').then(m=>{ mcp=m; renderSync(); }).catch(()=>{});
     try{ const r=await Promise.race([Promise.all([C.use('db'),C.use('user')]), timeout(10000)]); if(r!=='timeout') [db,user]=r; }catch(e){}
   }
   let loaded=false;
@@ -592,21 +533,10 @@ async function boot(){
       W.manual=JSON.parse(localStorage.getItem('giardino:v2:meteo')||'null');
       P.claude=JSON.parse(localStorage.getItem('giardino:v2:piano')||'null');
     }catch(e){}
-    showNote('info','Salvataggio solo su questo dispositivo: apri l\'app da claude.ai con il tuo account per ritrovare le piante ovunque e collegarle al bot.');
+    showNote('info','Salvataggio solo su questo dispositivo: il server non risponde.');
   }
-  ready=true; renderAll(); renderClaude(); renderSync();
+  ready=true; renderAll(); renderSync();
 }
-document.querySelectorAll('.solo-art').forEach(el=>el.hidden=STANDALONE);
-document.querySelectorAll('.solo-net').forEach(el=>el.hidden=!NETLIFY);
-document.querySelectorAll('.no-net').forEach(el=>el.hidden=NETLIFY);
-function renderClaude(){
-  const ok=!!sample;
-  ['#genBtn','#wxEstimate','#wxPasteToggle','#wxPasteGo','#locSet'].forEach(s=>{ const b=$(s); if(b) b.disabled=!ok&&!(NETLIFY&&s==='#locSet'); });
-  $('#wxImgLbl').style.opacity=ok?'':'0.55'; $('#wxImg').disabled=!ok;
-  document.querySelectorAll('[data-diag]').forEach(b=>b.disabled=!ok);
-  if(!ok && ready && !NETLIFY) $('#genStatus').textContent='Claude non è disponibile in questa vista: il piano usa il calcolo automatico.';
-}
-
 /* ================= Eventi (diario) ================= */
 const allEvents = () => [...S.eventi_app, ...EB.eventi.filter(e=>!S.eventi_app.some(a=>a.id===e.id))];
 function addEvent(plantId, tipo, extra={}){
@@ -633,7 +563,7 @@ function wxDays(){
 }
 const futDays = () => { const t=today(); return wxDays().filter(d=>d.date>=t && d.tmax!=null && d.tmin!=null).slice(0,7); };
 const pastDays = () => { const t=today(); return wxDays().filter(d=>d.date<t && d.date>=addDays(t,-3) && d.tmax!=null); };
-const SRC_LABEL={'open-meteo':STANDALONE?'Open-Meteo':'Open-Meteo (bot)',screenshot:'da screenshot',testo:'da testo incollato',stima:'stima climatica',manuale:'inserito a mano'};
+const SRC_LABEL={'open-meteo':'Open-Meteo',screenshot:'da screenshot',testo:'da testo incollato',stima:'stima climatica',manuale:'inserito a mano'};
 function srcChip(){
   const w=activeWeather(); if(!w) return '';
   return '<span class="chip '+(w.source==='stima'?'warn':'water')+'">'+esc(SRC_LABEL[w.source]||w.source||'')+'</span>'+(fresco(w)?'':' <span class="chip warn">da aggiornare</span>');
@@ -643,7 +573,8 @@ function srcChip(){
 const ctx = () => ({oggi:today(), lat:S.location?.lat, eventi:allEvents()});
 function localPlan(){
   const fut=futDays(); if(!fut.length||!S.plants.length) return null;
-  const pl=pianoLocale({piante:S.plants, past:pastDays(), fut, eventi:allEvents(), oggi:today(), lat:S.location?.lat, vacanza:S.vacanza});
+  const w=activeWeather();
+  const pl=pianoLocale({piante:S.plants, past:pastDays(), fut, eventi:allEvents(), oggi:today(), lat:S.location?.lat, vacanza:S.vacanza, suolo:w?.source==='open-meteo'?w.suolo??null:null});
   const rain=fut.reduce((a,d)=>a+(d.rain||0),0), minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
   pl.sintesi='Calcolo automatico: '+fmt(rain)+' mm di pioggia nei prossimi giorni, temperature tra '+fmt(minT)+' e '+fmt(maxT)+' °C.';
   return pl;
@@ -666,193 +597,26 @@ function schedaAcqua(p){
   return {k, uso, giorni: uso>0 ? k.rawL/uso : null};
 }
 
-/* ================= Claude: posizione, meteo, piano, diagnosi ================= */
-function errCopy(e){
-  switch(e?.code){
-    case 'not_granted': return 'Hai negato a questa pagina l\'accesso a Claude. Puoi riattivarlo dal menu Autorizzazioni dell\'artifact.';
-    case 'rate_limited': case 'queue_overflow': return 'Troppe richieste a Claude: riprova tra un minuto.';
-    case 'invalid_json': case 'empty_completion': return 'La risposta di Claude non era leggibile: riprova.';
-    case 'image_rejected': return 'Immagine non accettata: usa una foto JPEG o PNG.';
-    case 'images_unavailable': return 'Questa vista non può inviare immagini.';
-    case 'prompt_too_large': return 'Troppi dati in una volta: riduci le piante o il testo incollato.';
-    case 'refused': return 'Claude ha rifiutato la richiesta: riformula le note.';
-    case 'session_expired': return 'Sessione scaduta: ricarica la pagina.';
-    case 'network': return 'Claude non è raggiungibile: controlla la connessione.';
-    default: return 'Claude non è raggiungibile ora ('+(e?.code||'errore')+'). Riprova più tardi.';
-  }
-}
-let wxCtl=null;
-function wxBusy(on,msg){
-  ['#wxEstimate','#wxPasteToggle','#wxPasteGo'].forEach(s=>$(s).disabled=on||!sample);
-  $('#wxImg').disabled=on||!sample; $('#wxStop').hidden=!on;
-  $('#wxStatus').innerHTML = on ? spin(msg) : esc(msg||'');
-}
-const WX_SHAPE='Rispondi solo con un array JSON. Ogni elemento: {"data":"AAAA-MM-GG","condizione":"sereno|poco nuvoloso|nuvoloso|pioggia|temporale|neve|nebbia","tmax":numero,"tmin":numero,"pioggia_mm":numero,"prob_pioggia":numero 0-100 o null,"vento_kmh":numero o null}.';
-function datesContext(){ return 'Oggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+' ('+today()+'). Date dei prossimi 7 giorni: '+next7().map(d=>d+' ('+new Date(d+'T12:00:00').toLocaleDateString('it-IT',{weekday:'long'})+')').join(', ')+'.'; }
-function applyWeather(arr, source){
-  if(!Array.isArray(arr)) throw {code:'invalid_json'};
-  const map={}; (W.manual?.days||[]).forEach(d=>{ if(d.date>=addDays(today(),-3)) map[d.date]=d; });
-  let n=0;
-  for(const x of arr){
-    if(!x||!/^\d{4}-\d{2}-\d{2}$/.test(x.data||'')) continue;
-    const tmax=numOrNull(x.tmax), tmin=numOrNull(x.tmin); if(tmax==null||tmin==null) continue;
-    map[x.data]={date:x.data, cond:COND.includes(x.condizione)?x.condizione:'nuvoloso', tmax, tmin, rain:Math.max(0,numOrNull(x.pioggia_mm)||0), prob:numOrNull(x.prob_pioggia), wind:numOrNull(x.vento_kmh)};
-    n++;
-  }
-  if(!n) throw {code:'invalid_json'};
-  W.manual={source, updatedAt:new Date().toISOString(), days:Object.values(map).sort((a,b)=>a.date<b.date?-1:1)};
-  saveMeteo(); renderAll(); return n;
-}
-async function wxFromImages(files){
-  if(!sample||!files?.length) return;
-  wxCtl=new AbortController(); wxBusy(true,'Claude sta leggendo lo screenshot…');
-  try{
-    const arr=await sample.json('Le immagini sono screenshot di previsioni meteo giornaliere'+(S.location?' per '+S.location.name:'')+'. '+datesContext()+' Estrai i valori per ogni giorno visibile e associa ogni giorno alla data giusta (le app spesso mostrano solo il nome del giorno). Non inventare giorni che non sono visibili; se un valore non è leggibile usa null (per la pioggia usa 0 se il giorno non indica precipitazioni). '+WX_SHAPE,{images:Array.from(files), signal:wxCtl.signal});
-    wxBusy(false,'Lette le previsioni di '+applyWeather(arr,'screenshot')+' giorni dallo screenshot.');
-  }catch(e){ wxBusy(false, e?.code==='cancelled'?'':errCopy(e)); }
-  finally{ $('#wxImg').value=''; }
-}
-async function wxFromText(){
-  const txt=$('#wxPaste').value.trim(); if(!sample||!txt) return;
-  wxCtl=new AbortController(); wxBusy(true,'Claude sta leggendo il testo…');
-  try{
-    const arr=await sample.json('Ecco delle previsioni meteo copiate da un sito o da un\'app'+(S.location?' per '+S.location.name:'')+'. '+datesContext()+' Estrai i valori giornalieri; non inventare giorni assenti; usa null per i valori mancanti.\n\n'+WX_SHAPE+'\n\nTesto:\n'+txt.slice(0,20000),{signal:wxCtl.signal});
-    const n=applyWeather(arr,'testo'); $('#wxPaste').value=''; $('#wxPasteWrap').hidden=true; wxBusy(false,'Lette le previsioni di '+n+' giorni.');
-  }catch(e){ wxBusy(false, e?.code==='cancelled'?'':errCopy(e)); }
-}
-async function wxEstimate(){
-  if(!sample) return;
-  if(!S.location){ toast('Imposta prima la posizione'); return; }
-  wxCtl=new AbortController(); wxBusy(true,'Claude sta stimando il meteo tipico della stagione…');
-  try{
-    const arr=await sample.json('Stima il meteo TIPICO (medie climatiche, non una previsione) per '+S.location.name+' ('+S.location.detail+', lat '+S.location.lat+', altitudine '+(S.location.alt??'?')+' m). '+datesContext()+' Per ogni data usa temperature massime e minime medie del periodo, condizione più frequente, pioggia_mm = pioggia media giornaliera del mese, prob_pioggia = frequenza tipica dei giorni di pioggia in percentuale. '+WX_SHAPE,{signal:wxCtl.signal});
-    wxBusy(false,'Stima climatica per '+applyWeather(arr,'stima')+' giorni.');
-  }catch(e){ wxBusy(false, e?.code==='cancelled'?'':errCopy(e)); }
-}
+/* ================= Posizione (Open-Meteo) ================= */
 async function setLocation(){
   const q=$('#locInput').value.trim(); if(!q) return;
   const info=$('#locInfo');
-  if(NETLIFY){
-    $('#locSet').disabled=true; info.innerHTML=spin('Cerco “'+q+'”…');
-    try{ const r=await window.GiardinoNet.geocodifica(q); if(!r){ info.textContent='Luogo non trovato: prova con il nome del comune.'; return; }
-      S.location=r; $('#locInput').value=''; info.textContent=''; saveMain(); renderAll(); toast('Posizione impostata'); }
-    catch(e){ info.textContent='Ricerca non riuscita: controlla la connessione.'; }
-    finally{ $('#locSet').disabled=false; }
-    return;
-  }
-  if(!sample){ info.textContent='Claude non è disponibile per cercare il comune in questa vista.'; return; }
   $('#locSet').disabled=true; info.innerHTML=spin('Cerco “'+q+'”…');
-  try{
-    const r=await sample.json('Identifica questo luogo: "'+q.slice(0,120)+'". Se è ambiguo scegli il più noto in Italia. Rispondi solo con JSON: {"trovato":true,"nome":"Bergamo","dettaglio":"Lombardia, Italia","lat":45.698,"lon":9.677,"altitudine_m":249,"clima":"una frase sul clima tipico e sulla stagione attuale per il giardinaggio"} oppure {"trovato":false}.',{modelTier:'quick'});
-    if(!r?.trovato||typeof r.lat!=='number'||typeof r.lon!=='number'){ info.textContent='Luogo non trovato: prova con il nome del comune e la provincia.'; return; }
-    S.location={name:String(r.nome||q), detail:String(r.dettaglio||''), lat:+r.lat.toFixed(4), lon:+r.lon.toFixed(4), alt:numOrNull(r.altitudine_m), clima:String(r.clima||'')};
-    $('#locInput').value=''; info.textContent=''; saveMain(); renderAll(); toast('Posizione impostata');
-  }catch(e){ info.textContent=errCopy(e); }
-  finally{ $('#locSet').disabled=!sample; }
+  try{ const r=await window.GiardinoNet.geocodifica(q); if(!r){ info.textContent='Luogo non trovato: prova con il nome del comune.'; return; }
+    S.location=r; $('#locInput').value=''; info.textContent=''; saveMain(); renderAll(); toast('Posizione impostata'); }
+  catch(e){ info.textContent='Ricerca non riuscita: controlla la connessione.'; }
+  finally{ $('#locSet').disabled=false; }
 }
 
-const PLAN_RULES=`Sei un agronomo esperto di irrigazione di orti, giardini, balconi e piante in vaso. Il tuo piano viene mostrato come calendario in un'app.
-Ricevi in JSON: data di oggi, posizione, meteo giornaliero (fino a 3 giorni passati e i prossimi giorni, con pioggia, temperature, ET0), eventuale vacanza, piante e una stima locale da bilancio idrico in litri. Per ogni pianta hai: specie, fase di crescita (calcolata dalla data di semina o dalla stagione se indicato), numero, coltivazione; per i vasi volume, diametro, superficie del terriccio e altre piante nello stesso vaso; ore di luce diretta; ambiente (all'aperto, riparato o in casa); ultima innaffiatura; note; "calcolo_app" con acqua disponibile, soglia oltre cui innaffiare, consumo stimato di oggi e "correzione_appresa" (moltiplicatore imparato dalle risposte dell'utente: sotto 1 la pianta beveva meno del previsto). "fonte_meteo" indica se il meteo è reale o una stima climatica.
-Per ogni pianta (o vaso) decidi l'azione per ciascuna data di "date_piano" (una voce per data, in ordine):
-- parti dalla stima locale ma correggila con la tua conoscenza: esigenze della specie nella fase indicata, dormienza e stagione, clima della zona, gelate, caldo, vento, ristagni con piogge forti;
-- grandezza del vaso: i vasi piccoli o larghi e bassi si asciugano prima; non indicare mai più acqua di quanta il vaso possa trattenere (bagna finché esce dal foro, svuota il sottovaso);
-- luce: meno ore di sole diretto = meno consumo; in casa conta solo la luce della finestra e non arriva pioggia;
-- più piante nello stesso vaso: il consumo è la somma e la frequenza la decide la più delicata (segnala nei consigli convivenze sbagliate);
-- vacanza: nei giorni di assenza nessuno innaffia, salvo chi lo fa per l'utente quando la pianta non resiste; il giorno prima della partenza bagna a fondo;
-- "litri" = quantità totale per la voce; 0 se non si innaffia; "controlla" = verificare l'umidità con un dito;
-- "momento": "mattina presto", "sera", "metà giornata" o "indifferente" (se non si innaffia);
-- "motivo": al massimo 12 parole, concreto; "valutazione": una frase sullo stato idrico della pianta;
-- "consigli": da 1 a 3 consigli pratici legati a fase e meteo; "avvisi": solo eventi meteo rilevanti, lista vuota se nessuno.
-Usa gli "id" esattamente come li ricevi. Le note dell'utente descrivono la sua situazione. Scrivi in italiano.
-Rispondi solo con JSON in questa forma:
-{"sintesi":"2-3 frasi sulla settimana","avvisi":["..."],"piante":[{"id":"abc","valutazione":"...","fabbisogno_settimanale_litri":3.5,"giorni":[{"data":"AAAA-MM-GG","azione":"innaffia","litri":1.5,"momento":"mattina presto","motivo":"..."}],"consigli":["..."]}]}`;
-const slim=d=>({data:d.date,condizione:d.cond,tmax:d.tmax,tmin:d.tmin,pioggia_mm:d.rain,prob_pioggia:d.prob,vento_kmh:d.wind,et0_mm:d.et0});
-let genCtl=null;
-async function generatePlan(){
-  if(!sample) return;
-  if(!S.plants.length){ toast('Aggiungi almeno una pianta'); switchView('piante'); return; }
-  const fut=futDays();
-  if(!fut.length){ toast('Mancano le previsioni: aggiungile nella scheda Meteo'); switchView('meteo'); return; }
-  clearAlert('gen');
-  const btn=$('#genBtn'), st=$('#genStatus');
-  btn.disabled=true; $('#stopBtn').hidden=false; genCtl=new AbortController();
-  const t0=Date.now(); const tick=setInterval(()=>{ st.innerHTML=spin('Claude sta pianificando · '+Math.round((Date.now()-t0)/1000)+' s'); },500);
-  try{
-    const base=localPlan(), c=ctx();
-    const payload={oggi:today(), posizione:S.location, fonte_meteo:activeWeather()?.source||'', date_piano:fut.map(d=>d.date), vacanza:S.vacanza||null,
-      meteo_passato:pastDays().map(slim), meteo_previsto:fut.map(slim),
-      piante:S.plants.map(p=>{ const {k,uso}=schedaAcqua(p); return {id:p.id,nome:p.nome,specie:k.sp.nome,fase:k.fa.nome+(k.faseAuto?' (calcolata)':''),num:k.num,coltivazione:COLT[p.colt],
-        vaso:k.vaso?{volume_litri:+k.V.toFixed(1),diametro_cm:Math.round(k.D*100),superficie_terriccio_m2:+k.Apot.toFixed(3)}:null,
-        altre_piante_nel_vaso:k.membri.slice(1).map(m=>({specie:(SPECIE[m.specie]||SPECIE.altro).nome,fase:(FASI[m.fase]||FASI.vegetativa).nome,num:m.num})),
-        ore_luce_diretta:k.h, ambiente:DOVE[p.dove], ultima_innaffiatura:ultimaInnaffiatura(p,c.eventi)||'non indicata', note:p.note||'',
-        calcolo_app:{acqua_disponibile_litri:+k.tawL.toFixed(2),soglia_innaffiatura_litri:+k.rawL.toFixed(2),consumo_oggi_litri:+uso.toFixed(2),correzione_appresa:+k.calib.toFixed(2)}}; }),
-      stima_locale: base?base.piante.map(x=>({id:x.id,giorni:x.giorni.map(g=>({data:g.data,azione:g.azione,litri:g.litri}))})):null,
-      note_utente_settimana:$('#extraNotes').value.trim().slice(0,2000)};
-    const plan=await sample.json(PLAN_RULES+'\n\nDati:\n'+JSON.stringify(payload),{signal:genCtl.signal});
-    const clean=sanitizePlan(plan, fut.map(d=>d.date));
-    if(!clean) throw {code:'invalid_json'};
-    P.claude={createdAt:new Date().toISOString(), source:'claude', data:clean, plantsSig:plantsSig()};
-    savePiano(); renderAll(); st.textContent='Piano generato in '+Math.round((Date.now()-t0)/1000)+' s.'; toast('Piano aggiornato');
-  }catch(e){ st.textContent=''; if(e?.code!=='cancelled') showAlert('err',errCopy(e),'gen'); }
-  finally{ clearInterval(tick); btn.disabled=!sample; $('#stopBtn').hidden=true; }
-}
-function sanitizePlan(p, dates){
-  if(!p||!Array.isArray(p.piante)) return null;
-  const AZ=['innaffia','salta','controlla'], MO=['mattina presto','sera','metà giornata','indifferente'];
-  const piante=p.piante.filter(x=>x&&typeof x.id==='string'&&Array.isArray(x.giorni)).map(x=>{
-    const giorni=x.giorni.filter(g=>g&&dates.includes(g.data)).map(g=>({data:g.data, azione:AZ.includes(g.azione)?g.azione:'controlla',
-      litri:g.azione==='innaffia'?Math.max(0,+g.litri||0):0, momento:MO.includes(g.momento)?g.momento:'indifferente', motivo:String(g.motivo||'')}));
-    return {id:x.id, valutazione:String(x.valutazione||''), giorni, consigli:(Array.isArray(x.consigli)?x.consigli:[]).map(String).slice(0,3),
-      fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1)};
-  });
-  if(!piante.length) return null;
-  return {sintesi:String(p.sintesi||''), avvisi:(Array.isArray(p.avvisi)?p.avvisi:[]).map(String).slice(0,4), piante};
-}
-let diagPid=null; const diagRes={};
-async function diagnose(files){
-  const pid=diagPid; const p=S.plants.find(x=>x.id===pid); if(!sample||!p||!files?.length) return;
-  diagRes[pid]={loading:true}; renderPiante();
-  try{
-    const {k}=schedaAcqua(p);
-    const r=await sample.json('La foto mostra una pianta: '+p.nome+' ('+k.sp.nome+', fase '+k.fa.nome+', '+(k.vaso?'vaso da '+fmt(k.V,1)+' L':COLT[p.colt])+', '+fmt(k.h,1)+' ore di luce diretta, '+DOVE[p.dove]+', ultima innaffiatura '+(ultimaInnaffiatura(p,allEvents())||'non indicata')+'). Valuta come agronomo se mostra segni di troppa acqua (foglie gialle molli, marciume, muffa, terriccio fradicio), di poca acqua (foglie appassite secche, bordi bruciati, terriccio staccato dal vaso) o di un altro problema (parassiti, carenze, sole eccessivo). Se la foto non permette di capirlo, dillo. Rispondi solo con JSON: {"esito":"sana|troppa acqua|poca acqua|altro problema|non chiaro","sicurezza":"alta|media|bassa","segni":["cosa vedi, max 3"],"cosa_fare":["azioni concrete, max 3"]}.',{images:Array.from(files)});
-    if(!r||typeof r.esito!=='string') throw {code:'invalid_json'};
-    diagRes[pid]={esito:r.esito, sicurezza:String(r.sicurezza||''), segni:(r.segni||[]).map(String).slice(0,3), cosa_fare:(r.cosa_fare||[]).map(String).slice(0,3)};
-    addEvent(pid,'diagnosi',{nota:r.esito+(r.sicurezza?' (sicurezza '+r.sicurezza+')':'')});
-  }catch(e){ diagRes[pid]={errore:errCopy(e)}; }
-  finally{ $('#diagImg').value=''; renderAll(); }
-}
-
-/* ================= Sincronizzazione con il bot ================= */
+/* ================= Aggiornamento dal server ================= */
 async function syncNow(){
   const st=$('#syncStatus');
-  if(NETLIFY){ $('#syncBtn').disabled=true; st.innerHTML=spin('Aggiorno…'); try{ await window.GiardinoNet.aggiorna(); st.textContent='Aggiornato.'; }catch(e){ st.textContent='Non riuscito: '+e.message; } finally{ $('#syncBtn').disabled=false; } return; }
-  if(!mcp||SYNC_SESSION.startsWith('@@')){ st.textContent='La sincronizzazione manuale non è disponibile in questa vista: avviene comunque ogni mattina alle 6:37.'; return; }
-  let ultima=0; try{ ultima=+localStorage.getItem('giardino:sync')||0; }catch(e){}
-  if(Date.now()-ultima<10*60e3){ st.textContent='Sincronizzazione già richiesta da poco: i dati arrivano qui da soli entro qualche minuto.'; return; }
-  $('#syncBtn').disabled=true; st.innerHTML=spin('Prenoto la sincronizzazione…');
-  try{
-    // un'esecuzione singola fra ~90 secondi nella sessione che ha accesso al repository
-    await mcp.callTool('Claude Code Remote','create_trigger',{name:'Giardino – sincronizzazione richiesta dall\'app', prompt:SYNC_PROMPT+'\n\nRichiesta dal pulsante "Sincronizza ora" dell\'app.',
-      run_once_at:new Date(Date.now()+90e3).toISOString(), persistent_session_id:SYNC_SESSION, environment_id:SYNC_ENV, initiation:'human_request'});
-    try{ localStorage.setItem('giardino:sync',String(Date.now())); }catch(e){}
-    st.textContent='Prenotata: parte fra circa un minuto e mezzo. In 3–6 minuti meteo, piano e risposte di Telegram compaiono qui da soli e il bot riceve le piante aggiornate.';
-  }catch(e){
-    const m={not_granted:'Hai negato l\'accesso al connettore: puoi riattivarlo dal menu Autorizzazioni dell\'artifact.',server_not_connected:'Il connettore Claude Code Remote non è collegato al tuo account.',tool_error:'La prenotazione non è riuscita: '+(e.message||'')};
-    st.textContent=(m[e?.code]||('Non sono riuscito a prenotarla ('+(e?.code||'errore')+').'))+' La sincronizzazione avviene comunque ogni mattina alle 6:37.';
-  }finally{ $('#syncBtn').disabled=!mcp; }
+  $('#syncBtn').disabled=true; st.innerHTML=spin('Aggiorno…');
+  try{ await window.GiardinoNet.aggiorna(); st.textContent='Aggiornato.'; }catch(e){ st.textContent='Non riuscito: '+e.message; } finally{ $('#syncBtn').disabled=false; }
 }
 function renderSync(){
-  if(STANDALONE) $('#syncBtn').textContent='Aggiorna ora';
-  if(NETLIFY){ const t=[W.bot?.updatedAt, EB.aggiornato].filter(Boolean).sort().pop(); $('#syncChip').innerHTML=t?'<span class="chip leaf">'+esc(new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))+'</span>':''; $('#syncBtn').disabled=false; return; }
-  const last=[W.bot?.updatedAt, EB.aggiornato, P.bot?.createdAt].filter(Boolean).sort().pop();
-  $('#syncChip').innerHTML = last ? '<span class="chip leaf">ultima '+esc(new Date(last).toLocaleString('it-IT',{weekday:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}))+'</span>' : '<span class="chip">mai</span>';
-  $('#syncBtn').disabled = !mcp;
-}
-function exportCfg(){
-  return {posizione:S.location?{nome:S.location.name,lat:S.location.lat,lon:S.location.lon}:null, impostazioni:S.impostazioni, vacanza:S.vacanza||null,
-    piante:S.plants.map(p=>({id:p.id,nome:p.nome,specie:p.specie,fase:p.fase,data_semina:p.data_semina||'',tipo_data:p.tipo_data||'semina',num:p.num||1,colt:p.colt,
-      vaso:p.colt==='vaso'?(+p.vaso||null):null, diametro:p.colt==='vaso'?(+p.diametro||null):null, consociate:p.colt==='vaso'?(p.consociate||[]):[],
-      area:p.area??null, luce:luceOre(p), dove:p.dove, ultima:p.ultima||'', ultima_concime:p.ultima_concime||'', data_rinvaso:p.data_rinvaso||'', note:p.note||''}))};
+  const t=[W.bot?.updatedAt, EB.aggiornato].filter(Boolean).sort().pop();
+  $('#syncChip').innerHTML=t?'<span class="chip leaf">'+esc(new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))+'</span>':'';
 }
 
 /* ================= Render ================= */
@@ -896,7 +660,7 @@ function renderPiano(){
   else src.innerHTML='<span class="chip">Calcolo automatico</span>';
   document.querySelectorAll('#alerts [data-key="plan"]').forEach(n=>n.remove());
   const domani=futDays().find(d=>d.date===addDays(t,1));
-  const dom=avvisiDomani(S.plants,domani), tipi=new Set(dom.map(a=>a.tipo));
+  const dom=avvisiDomani(S.plants,domani,activeWeather()?.notte), tipi=new Set(dom.map(a=>a.tipo));
   const avvPiano=(AP?.data?.avvisi||[]).filter(a=>!(tipi.has('gelo')&&/minima|gelo|°C: proteggi/i.test(a)) && !(tipi.has('caldo')&&/caldo|massima/i.test(a)));
   const avv=[...avvPiano, ...dom.map(a=>'Domani: '+a.testo)];
   avv.slice().reverse().forEach(a=>{ const el=document.createElement('div'); el.className='alert'; el.dataset.key='plan'; el.innerHTML=ICON.warn+'<div>'+esc(a)+'</div>'; $('#alerts').appendChild(el); });
@@ -996,18 +760,6 @@ function renderPiante(){
     const cc=concime(p,c), rv=rinvaso(p,c);
     const notes=[]; if(k.faseNota) notes.push(['warn','Fase: '+k.faseNota]); if(cc.inStagione) notes.push([cc.dovuto?'warn':'','🌱 '+cc.testo]); rv.forEach(t=>notes.push(['warn','🪴 '+t]));
     if(Math.abs(k.calib-1)>0.01) notes.push(['','Appreso dalle tue risposte: '+(k.calib<1?'beve il '+Math.round((1-k.calib)*100)+'% in meno':'beve il '+Math.round((k.calib-1)*100)+'% in più')+' del previsto.']);
-    const dr=diagRes[p.id];
-    let diag='';
-    if(dr?.loading) diag='<div class="diag">'+spin('Claude sta guardando la foto…')+'</div>';
-    else if(dr?.errore) diag='<div class="diag">'+esc(dr.errore)+'</div>';
-    else if(dr){
-      const tone=dr.esito==='sana'?'leaf':dr.esito==='non chiaro'?'':'warn';
-      diag=`<div class="diag"><div class="row between"><b>Dalla foto</b><span class="chip ${tone}">${esc(dr.esito)}${dr.sicurezza?' · '+esc(dr.sicurezza):''}</span></div>
-        ${dr.segni.length?'<ul class="tips">'+dr.segni.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':''}
-        ${dr.cosa_fare.length?'<ul class="notes">'+dr.cosa_fare.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':''}
-        ${dr.esito==='troppa acqua'?`<div class="acts" style="margin-top:8px">${btnEv(p.id,'meno','Riduci l\'acqua del 10%',false)}</div>`:''}
-        ${dr.esito==='poca acqua'?`<div class="acts" style="margin-top:8px">${btnEv(p.id,'piu','Aumenta l\'acqua del 12%',false)}</div>`:''}</div>`;
-    }
     return `<div class="plant"><div style="min-width:0">
       <h3>${esc(p.nome)} ${p.example?'<span class="chip">esempio</span>':''}</h3>
       <div class="meta" style="margin-top:6px"><span class="chip leaf">${esc(k.fa.nome)}${k.faseAuto?' · auto':''}</span><span class="chip">${esc(k.sp.nome)}${k.num>1?' × '+k.num:''}</span>
@@ -1018,8 +770,7 @@ function renderPiante(){
       ${notes.length?'<ul class="notes">'+notes.map(([cls,t])=>`<li class="${cls}">${esc(t)}</li>`).join('')+'</ul>':''}
       <div class="small muted" style="margin-top:6px">Ultima innaffiatura: ${(()=>{const u=ultimaInnaffiatura(p,c.eventi);return u?esc(dataBreve(u)):'non indicata';})()}${pp?' · questa settimana <b class="num">'+fmt(pp.fabbisogno_settimanale_litri)+' L</b>':''}</div>
       ${pp?.consigli?.length?'<ul class="tips">'+pp.consigli.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':''}
-      ${diag}
-    </div><div class="side"><button class="btn small" type="button" data-edit="${esc(p.id)}">Modifica</button>${NETLIFY?'':`<button class="btn small ghost" type="button" data-diag="${esc(p.id)}" ${sample?'':'disabled'}>Valuta da foto</button>`}</div></div>`;
+    </div><div class="side"><button class="btn small" type="button" data-edit="${esc(p.id)}">Modifica</button></div></div>`;
   }).join('');
 }
 function renderMeteo(){
@@ -1089,7 +840,6 @@ function renderBot(){
   const i=S.impostazioni;
   $('#impB').value=i.bicchiere; $('#impA').value=i.annaffiatoio; $('#impM').value=i.ora_mattina; $('#impS').value=i.ora_sera;
   $('#impEx').textContent='Esempio: 1,2 L = '+dose(1.2,i)+'; 3 L = '+dose(3,i)+'.';
-  $('#cfgJson').textContent=JSON.stringify(exportCfg(),null,2);
 }
 
 /* ================= Form pianta ================= */
@@ -1169,7 +919,6 @@ function onEvent(pid,tipo){
   if(['fatto','secco','umido','saltato'].includes(tipo)) S.eventi_app=S.eventi_app.filter(e=>!(e.plantId===pid&&e.data===t&&['fatto','secco','umido','saltato'].includes(e.tipo)));
   let extra={};
   if(tipo==='fatto'||tipo==='secco'){ const g=activePlan()?.data?.piante.find(x=>x.id===pid)?.giorni.find(x=>x.data===t); extra.litri=g?.litri||+(params(p,ctx()).rawL*1.1).toFixed(2); }
-  if(tipo==='meno'||tipo==='piu'){ delete diagRes[pid]; }
   addEvent(pid,tipo,extra); renderAll();
   toast({fatto:'Segnata come innaffiata',secco:'Registrato: era secca',umido:'Registrato: era umida. La prossima volta conto meno acqua.',saltato:'Saltata',concime:'Concimazione registrata',meno:'Ridotta la stima d\'acqua del 10%',piu:'Aumentata la stima d\'acqua del 12%'}[tipo]||'Registrato');
 }
@@ -1189,8 +938,6 @@ function wire(){
       {id:uid(),nome:'Pothos in salotto',specie:'appartamento',fase:'vegetativa',colt:'vaso',vaso:3,diametro:17,consociate:[],area:null,num:1,luce:2,dove:'interno',ultima:'',note:'',example:true});
     saveMain(); renderAll(); toast('Aggiunte 3 piante di esempio: modificale o eliminale nella scheda Piante');
   });
-  $('#genBtn').addEventListener('click',generatePlan);
-  $('#stopBtn').addEventListener('click',()=>genCtl?.abort());
   $('#localBtn').addEventListener('click',()=>{ P.claude=null; savePiano(); clearAlert('gen'); renderAll(); toast('Uso il calcolo automatico'); });
   $('#copyBtn').addEventListener('click',async()=>{ const t=planText(); if(!t){toast('Nessun piano da copiare');return;} toast(await copyText(t)?'Piano copiato':'Copia non riuscita'); });
   $('#weekTable').addEventListener('click',e=>{ const c=e.target.closest('[data-cell]'); if(!c) return; selCell=selCell===c.dataset.cell?null:c.dataset.cell; renderWeek(activePlan()); });
@@ -1204,9 +951,7 @@ function wire(){
   $('#addPlantBtn').addEventListener('click',()=>openForm(null));
   $('#plantList').addEventListener('click',e=>{
     const b=e.target.closest('[data-edit]'); if(b) openForm(b.dataset.edit);
-    const d=e.target.closest('[data-diag]'); if(d&&sample){ diagPid=d.dataset.diag; $('#diagImg').click(); }
   });
-  $('#diagImg').addEventListener('change',e=>diagnose(e.target.files));
   $('#plantForm').addEventListener('submit',submitForm);
   $('#pf-fase').addEventListener('change',syncForm); $('#pf-specie').addEventListener('change',syncForm);
   document.querySelectorAll('input[name=colt]').forEach(r=>r.addEventListener('change',syncForm));
@@ -1219,11 +964,6 @@ function wire(){
   $('#deleteYes').addEventListener('click',()=>{ S.plants=S.plants.filter(p=>p.id!==editingId); saveMain(); closeForm(); renderAll(); toast('Pianta eliminata'); });
   $('#locSet').addEventListener('click',setLocation);
   $('#locInput').addEventListener('keydown',e=>{ if(e.key==='Enter') setLocation(); });
-  $('#wxImg').addEventListener('change',e=>wxFromImages(e.target.files));
-  $('#wxPasteToggle').addEventListener('click',()=>{ $('#wxPasteWrap').hidden=!$('#wxPasteWrap').hidden; });
-  $('#wxPasteGo').addEventListener('click',wxFromText);
-  $('#wxEstimate').addEventListener('click',wxEstimate);
-  $('#wxStop').addEventListener('click',()=>wxCtl?.abort());
   $('#wxEdit').addEventListener('change',e=>{
     const tr=e.target.closest('tr[data-date]'); if(!tr) return;
     const date=tr.dataset.date, f=e.target.dataset.f;
@@ -1242,7 +982,6 @@ function wire(){
     S.impostazioni={bicchiere:b>0?b:IMP_DEF.bicchiere, annaffiatoio:a>0?a:IMP_DEF.annaffiatoio, ora_mattina:m>=5&&m<=12?Math.round(m):IMP_DEF.ora_mattina, ora_sera:s>=16&&s<=22?Math.round(s):IMP_DEF.ora_sera};
     saveMain(); renderAll(); toast('Salvato');
   });
-  $('#cfgCopy').addEventListener('click',async()=>{ toast(await copyText(JSON.stringify(exportCfg(),null,2),$('#cfgJson'))?'Copiato':'Testo selezionato: copialo a mano'); });
   let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(!$('#view-diario').hidden) renderDiario(); },200); });
 }
 
@@ -1254,14 +993,10 @@ function backupDati(){
 }
 async function scaricaBackup(){
   const testo=JSON.stringify(backupDati(),null,2), nome='giardino-backup-'+today()+'.json';
-  if(STANDALONE){
-    const url=URL.createObjectURL(new Blob([testo],{type:'application/json'}));
-    const a=document.createElement('a'); a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),5000);
-    $('#bkStatus').textContent='Scaricato '+nome+' ('+S.plants.length+' piante, '+S.eventi_app.length+' voci di diario). Su iPhone lo trovi nell\'app File → Download.';
-  } else {
-    $('#bkStatus').textContent = await copyText(testo) ? 'Backup copiato negli appunti: incollalo in una nota o in un file .json.' : 'Copia non riuscita.';
-  }
+  const url=URL.createObjectURL(new Blob([testo],{type:'application/json'}));
+  const a=document.createElement('a'); a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  $('#bkStatus').textContent='Scaricato '+nome+' ('+S.plants.length+' piante, '+S.eventi_app.length+' voci di diario). Su iPhone lo trovi nell\'app File → Download.';
 }
 let bkPending=null;
 function leggiBackup(file){
@@ -1292,7 +1027,6 @@ function importaBackup(){
 function wireExtra(){
   $('#bkSave').addEventListener('click',scaricaBackup);
   $('#bkFile').addEventListener('change',e=>leggiBackup(e.target.files[0]));
-  return;
 }
 
 /* ================= Versione Netlify: Claude (connettore), Telegram, codice ================= */
@@ -1312,7 +1046,6 @@ function renderTg(s){
   $('#tgStatus').textContent=!on?'':s.collegato?'Collegato: ricevi il piano ogni mattina alle '+S.impostazioni.ora_mattina+'.':'Ora apri @'+s.username+' su Telegram e premi Avvia, poi torna qui.';
 }
 function wireNetlify(){
-  if(!NETLIFY) return;
   const N=window.GiardinoNet;
   $('#netCode').value=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
@@ -1333,7 +1066,6 @@ function wireNetlify(){
   $('#tgOff').addEventListener('click',()=>tgAct('off'));
   // dopo "Avvia" su Telegram, quando torni sull'app lo stato si aggiorna
   document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') N.telegram().then(renderTg).catch(()=>{}); });
-  $('#wxExplain').textContent='Le previsioni reali arrivano da Open-Meteo e si aggiornano da sole. Puoi correggere a mano ogni valore.';
 }
 
 wire(); wireExtra(); wireNetlify(); boot();

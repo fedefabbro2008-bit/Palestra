@@ -1,0 +1,16 @@
+{
+  "name": "Giardino",
+  "short_name": "Giardino",
+  "description": "Piano di innaffiatura per le tue piante, con meteo reale e promemoria su Telegram.",
+  "lang": "it",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eef2ee",
+  "theme_color": "#1b6a9e",
+  "icons": [
+    { "src": "/icona-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icona-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icona-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

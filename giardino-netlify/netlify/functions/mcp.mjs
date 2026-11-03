@@ -44,6 +44,7 @@ function descrivi(p, data, oggi, met) {
 async function toolGiardino(ctx) {
   const { data, met, oggi, ap } = await contesto(ctx), imp = { ...IMP_DEF, ...(data.impostazioni || {}) };
   const L = [`# Giardino — ${dl(oggi)} · ${data.location.name}${data.location.detail ? " (" + data.location.detail + ")" : ""}, lat ${fmt(data.location.lat, 3)}`];
+  if (met.suolo != null) L.push(`Umidità del suolo adesso (0–27 cm): ${fmt(met.suolo * 100, 0)}% in volume (usata per le piante in piena terra).`);
   if (data.vacanza) L.push(`Vacanza: dal ${data.vacanza.dal} al ${data.vacanza.al} (giorno del rientro).`);
   L.push("", "## Meteo (Open-Meteo, reale)", "giorno | cielo | min–max °C | pioggia mm (prob.) | ET0 mm | vento km/h");
   for (const d of met.days.filter((x) => x.date >= M.addDays(oggi, -3))) L.push(`${d.date === oggi ? "**oggi** " : ""}${dl(d.date)} | ${d.cond} | ${fmt(d.tmin, 0)}–${fmt(d.tmax, 0)} | ${fmt(d.rain)}${d.prob != null ? " (" + d.prob + "%)" : ""} | ${fmt(d.et0)} | ${fmt(d.wind, 0)}`);
@@ -56,7 +57,7 @@ async function toolGiardino(ctx) {
     L.push(`- ${p.nome}: ` + x.giorni.map((g) => `${dl(g.data)} ${g.azione === "innaffia" ? fmt(g.litri, 2) + " L (" + M.dose(g.litri, imp) + ")" : g.azione}`).join(" · "));
   }
   if (ap.fonte === "Claude") L.push("", "Calcolo automatico dell'app per confronto:", ...ap.base.piante.map((x) => `- ${data.plants.find((p) => p.id === x.id)?.nome}: ` + x.giorni.map((g) => `${dl(g.data)} ${g.azione === "innaffia" ? fmt(g.litri, 2) + " L" : g.azione}`).join(" · ")));
-  const avv = [...(ap.piano.avvisi || []), ...M.avvisiDomani(data.plants, met.days.find((d) => d.date === M.addDays(oggi, 1))).map((a) => "Domani: " + a.testo)];
+  const avv = [...(ap.piano.avvisi || []), ...M.avvisiDomani(data.plants, met.days.find((d) => d.date === M.addDays(oggi, 1)), met.notte).map((a) => "Domani: " + a.testo)];
   if (avv.length) L.push("", "## Avvisi", ...avv.map((a) => "- " + a));
   const rec = data.eventi.filter((e) => e.data >= M.addDays(oggi, -7)).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 25);
   if (rec.length) L.push("", "## Ultimi 7 giorni", ...rec.map((e) => `- ${e.data} ${data.plants.find((p) => p.id === e.plantId)?.nome || e.plantId}: ${e.tipo}${e.litri ? " " + fmt(+e.litri, 2) + " L" : ""}${e.nota ? " — " + e.nota : ""} (${e.fonte})`));

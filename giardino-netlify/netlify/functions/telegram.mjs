@@ -1,8 +1,9 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, TIPI, ETICHETTE } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, messaggioSettimana, TIPI, ETICHETTE, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · webhook di Telegram (/api/telegram/<segreto>).
    - /start dalla chat dell'utente: collega il bot a quella chat (solo la prima volta).
-   - /oggi: manda subito il piano di oggi.
+   - /oggi: manda subito il piano di oggi. /fatto: segna come innaffiate le piante di oggi. /settimana: i prossimi 7 giorni.
+   - /vacanza 10/8 20/8 (o /vacanza no). /aiuto: l'elenco dei comandi.
    - pulsanti dei messaggi (Fatto, Era umida, Salto, Secca, Concimata): registrati nel diario all'istante. */
 export const config = { path: "/api/telegram/*" };
 const ok = () => new Response("ok");
@@ -31,20 +32,57 @@ async function messaggio(st, tkey, t, code, m) {
   if (!t.chat_id) {
     if (!testo.startsWith("/start")) return;
     await st.setJSON(tkey, { ...t, chat_id: chat });
-    await tg(t.token, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: "✅ <b>Collegato a Giardino.</b>\nOgni mattina ti scrivo se c'è da innaffiare, controllare o concimare; la sera ti avviso se domani arrivano gelo, caldo o vento.\n\nScrivi /oggi per vedere subito il piano." });
+    await tg(t.token, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: "✅ <b>Collegato a Giardino.</b>\nOgni mattina ti scrivo se c'è da innaffiare, controllare o concimare. La sera ti ricordo quello che manca e ti avviso se domani arrivano gelo, caldo o vento; la domenica ti mando il riepilogo e una volta al mese il backup.\n\nScrivi /oggi per vedere subito il piano, /aiuto per tutti i comandi." });
     return;
   }
   if (chat !== t.chat_id) { await tg(t.token, "sendMessage", { chat_id: chat, text: "Questo bot è già collegato a un'altra chat." }, { ignora: true }); return; }
-  if (testo.startsWith("/oggi") || testo === "oggi") {
+  const comando = testo.split(/\s+/)[0].replace(/@.*$/, "");
+  const invia = (text, extra = {}) => tg(t.token, "sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
+  if (["/oggi", "oggi", "/fatto", "fatto", "/settimana", "settimana"].includes(comando)) {
     const cur = await leggi(st, code);
-    if (!cur?.data?.location || !cur.data.plants.length) { await tg(t.token, "sendMessage", { chat_id: chat, text: "Aggiungi la posizione e le piante nell'app Giardino." }); return; }
-    const met = await meteo(cur.data.location.lat, cur.data.location.lon), { oggi } = oraLocale(met.tz);
-    const { msg, tastiera } = messaggioMattina(cur.data, pianoAttivo(cur.data, met, oggi), oggi, { prova: true });
-    await tg(t.token, "sendMessage", { chat_id: chat, text: msg, parse_mode: "HTML", disable_web_page_preview: true, ...(tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {}) });
+    if (!cur?.data?.location || !cur.data.plants.length) { await invia("Aggiungi la posizione e le piante nell'app Giardino."); return; }
+    const met = await meteo(cur.data.location.lat, cur.data.location.lon), { oggi } = oraLocale(met.tz), ap = pianoAttivo(cur.data, met, oggi);
+    if (comando.endsWith("oggi")) {
+      const { msg, tastiera } = messaggioMattina(cur.data, ap, oggi, { prova: true });
+      await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {});
+    } else if (comando.endsWith("settimana")) await invia(messaggioSettimana(cur.data, ap));
+    else {
+      const fatte = [];
+      await aggiorna(st, code, (d) => {
+        for (const p of d.plants) {
+          const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
+          if (g?.azione !== "innaffia" || d.eventi.some((e) => e.plantId === p.id && e.data === oggi && ["fatto", "secco", "umido", "saltato"].includes(e.tipo))) continue;
+          d.eventi.push({ id: "tg-f-" + oggi + "-" + p.id, plantId: p.id, tipo: "fatto", data: oggi, fonte: "telegram", ts: new Date().toISOString(), litri: g.litri }); fatte.push(p.nome);
+        }
+        if (!fatte.length) return false;
+      });
+      await invia(fatte.length ? "✅ Segnate come innaffiate: " + fatte.join(", ") + "." : "Oggi non c'era niente da innaffiare, o l'avevi già segnato.");
+    }
     return;
   }
+  if (comando === "/vacanza") {
+    const arg = testo.slice(8).trim();
+    if (/^(no|annulla|off|stop)$/.test(arg)) { await aggiorna(st, code, (d) => { d.vacanza = null; }); await invia("🏡 Vacanza annullata."); return; }
+    const date = [...arg.matchAll(/(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?/g)].map((m) => leggiData(m)).filter(Boolean);
+    if (date.length !== 2 || date[1] <= date[0]) { await invia("Scrivi le date di partenza e di rientro, per esempio: <code>/vacanza 10/8 20/8</code>. Per annullare: <code>/vacanza no</code>."); return; }
+    await aggiorna(st, code, (d) => { d.vacanza = { dal: date[0], al: date[1] }; });
+    await invia(`🧳 Vacanza salvata: parti il ${fmtD(date[0])}, torni il ${fmtD(date[1])}. Il giorno prima ti ricordo di bagnare a fondo; nell'app vedi quanto resiste ogni pianta.`);
+    return;
+  }
+  if (comando === "/aiuto" || comando === "/help") { await invia("<b>Comandi</b>\n" + COMANDI.map((c) => "/" + c.command + " — " + c.description).join("\n") + "\n\nPer domande sulle piante o una foto da valutare, scrivi a Claude: ha il connettore Giardino."); return; }
   if (testo.startsWith("/start")) { await tg(t.token, "sendMessage", { chat_id: chat, text: "Sei già collegato. Scrivi /oggi per il piano di oggi." }); return; }
-  await tg(t.token, "sendMessage", { chat_id: chat, text: "Scrivi /oggi per il piano di oggi. Per domande sulle piante chiedi a Claude: ha il connettore Giardino." }, { ignora: true });
+  await tg(t.token, "sendMessage", { chat_id: chat, text: "Scrivi /aiuto per i comandi. Per domande sulle piante chiedi a Claude: ha il connettore Giardino." }, { ignora: true });
+}
+const fmtD = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("it-IT", { day: "numeric", month: "long" });
+function leggiData(m) {
+  const z = (n) => String(n).padStart(2, "0"), oggi = M.isoDate(new Date());
+  let y, mo, d;
+  if (m[1]) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else { d = +m[4]; mo = +m[5]; y = m[6] ? (+m[6] < 100 ? 2000 + +m[6] : +m[6]) : +oggi.slice(0, 4); }
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  let iso = `${y}-${z(mo)}-${z(d)}`;
+  if (!m[1] && !m[6] && iso < M.addDays(oggi, -1)) iso = `${y + 1}-${z(mo)}-${z(d)}`;   // date senza anno già passate: l'anno prossimo
+  return iso;
 }
 
 async function pulsante(st, t, code, cq) {

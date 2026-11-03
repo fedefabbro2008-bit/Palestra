@@ -36,21 +36,32 @@ function dalServer(){
 }
 let primo=null;
 function scarica(){
-  return api('GET').then(j=>{ server=j; LSset('cache',JSON.stringify(j)); dalServer(); stato('Sincronizzato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.'); return true; })
+  return api('GET').then(j=>{ server=j; if(inAttesa) applicaLocale(inAttesa); LSset('cache',JSON.stringify(j)); dalServer(); stato('Sincronizzato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.'); return true; })
     .catch(e=>{ dalServer(); stato('Server non raggiungibile ('+e.message+'): uso i dati salvati su questo dispositivo.'); return false; });
 }
-const pronto=()=>primo||(primo=scarica());
+// dati del server con sopra le modifiche locali non ancora inviate
+function applicaLocale(b){
+  const d=server.data=server.data||{...VUOTO};
+  for(const [k,v] of Object.entries(b.changes||{})) d[k]=v;
+  const via=new Set(b.remove||[]); d.eventi=(d.eventi||[]).filter(e=>!via.has(e.id));
+  for(const e of b.add||[]) if(!d.eventi.some(x=>x.id===e.id)) d.eventi.push({...e,fonte:'app'});
+}
+const pronto=()=>primo||(primo=scarica().then(r=>{ if(inAttesa){ clearTimeout(attesaT); attesaT=setTimeout(svuota,1000); } return r; }));
 
 /* Le modifiche partono come differenze: campi cambiati ed eventi aggiunti/tolti. Il server le unisce a quelle di Claude e Telegram. */
-let coda=Promise.resolve(), inAttesa=null, attesaT=null;
+// le modifiche non ancora salvate restano anche sul telefono: se l'app si chiude offline, partono alla prossima apertura
+let coda=Promise.resolve(), inAttesa=LSjson('pending'), attesaT=null;
+const unisci=(a,b)=>a?{changes:{...a.changes,...b.changes},add:[...a.add,...b.add],remove:[...a.remove,...b.remove]}:b;
 function invia(diff){
-  inAttesa=inAttesa?{changes:{...inAttesa.changes,...diff.changes},add:[...inAttesa.add,...diff.add],remove:[...inAttesa.remove,...diff.remove]}:diff;
+  inAttesa=unisci(inAttesa,diff); LSset('pending',JSON.stringify(inAttesa));
   clearTimeout(attesaT); attesaT=setTimeout(svuota,600);
 }
 function svuota(){
   const body=inAttesa; inAttesa=null; if(!body) return coda;
-  coda=coda.then(()=>api('POST',body)).then(j=>{ server=j; LSset('cache',JSON.stringify(j)); dalServer(); emit('eventi_bot'); emit('piano'); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
-    .catch(e=>{ inAttesa=inAttesa?{changes:{...body.changes,...inAttesa.changes},add:[...body.add,...inAttesa.add],remove:[...body.remove,...inAttesa.remove]}:body; stato('Non salvato sul server ('+e.message+'): riprovo tra poco.',true); clearTimeout(attesaT); attesaT=setTimeout(svuota,30000); });
+  coda=coda.then(()=>api('POST',body)).then(j=>{ server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
+    .catch(e=>{ inAttesa=unisci(body,inAttesa||{changes:{},add:[],remove:[]}); LSset('pending',JSON.stringify(inAttesa));
+      stato(navigator.onLine===false?'Sei offline: le modifiche restano sul telefono e partono appena torna la rete.':'Non salvato sul server ('+e.message+'): riprovo tra poco.', navigator.onLine!==false);
+      clearTimeout(attesaT); attesaT=setTimeout(svuota,30000); });
   return coda;
 }
 function diffGiardino(nuovo){
@@ -66,9 +77,16 @@ async function meteo(lat,lon){
   const q=new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',past_days:'3',forecast_days:'8',
     daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max'});
   const r=await fetch('https://api.open-meteo.com/v1/forecast?'+q); if(!r.ok) throw new Error('Open-Meteo '+r.status);
-  const d=(await r.json()).daily;
-  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,days:d.time.map((t,i)=>({date:t,cond:COND(d.weather_code[i]),tmax:d.temperature_2m_max[i],tmin:d.temperature_2m_min[i],
+  const j=await r.json(), d=j.daily;
+  const out={source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,suolo:null,notte:null,days:d.time.map((t,i)=>({date:t,cond:COND(d.weather_code[i]),tmax:d.temperature_2m_max[i],tmin:d.temperature_2m_min[i],
     rain:d.precipitation_sum[i]??0,prob:d.precipitation_probability_max[i],et0:d.et0_fao_evapotranspiration[i]??0,wind:d.wind_speed_10m_max[i]}))};
+  // umidità del suolo e temperature della notte (stessi calcoli del bot): se non arrivano, il resto funziona lo stesso
+  try{
+    const r2=await fetch('https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',forecast_days:'2',hourly:ORARIO_PARAMS}));
+    if(r2.ok){ const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+      Object.assign(out, datiOrari((await r2.json()).hourly, p.year+'-'+p.month+'-'+p.day, +p.hour)); }
+  }catch(e){}
+  return out;
 }
 async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
@@ -121,7 +139,9 @@ window.GiardinoNet={
 // aggiorna da solo quando torni sull'app e ogni 2 minuti mentre è aperta (risposte di Telegram, modifiche di Claude)
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') aggiorna(); });
 setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(); },120000);
-window.addEventListener('pagehide',()=>{ if(inAttesa){ const b=inAttesa; inAttesa=null; try{ navigator.sendBeacon?.(API+'?code='+encodeURIComponent(code),new Blob([JSON.stringify(b)],{type:'application/json'})); }catch(e){} } });
+window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
+if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
+window.addEventListener('pagehide',()=>{ if(inAttesa&&navigator.onLine!==false){ try{ if(navigator.sendBeacon?.(API+'?code='+encodeURIComponent(code),new Blob([JSON.stringify(inAttesa)],{type:'application/json'}))){ inAttesa=null; LSset('pending',null); } }catch(e){} } });
 
 const caps={ db:{doc, collection:()=>{ throw new Error('non disponibile'); }}, user:{ id:async()=>'locale', me:async()=>({id:'locale',name:''}) }, mcp:{} };
 window.claude={ use:async n=>caps[n]??null };

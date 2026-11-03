@@ -147,14 +147,20 @@ export const pioggiaL = (p,k,d) => p.dove!=='aperto' ? 0 : Math.max(0,(d?.rain||
 /* ---------------- Piano locale (bilancio idrico giorno per giorno) ----------------
    opts = {piante, past, fut, eventi, oggi, lat, vacanza:{dal, al}}  (al = giorno del rientro) */
 export function inVacanza(v, data){ return !!(v&&v.dal&&v.al&&data>=v.dal&&data<v.al); }
-export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza}){
+// Umidità del suolo (Open-Meteo, m³/m³, media 0–27 cm): per le piante in piena terra all'aperto sostituisce
+// la stima dei giorni passati, se nessuno le ha innaffiate negli ultimi 3 giorni. Terreno medio: capacità di campo 0,32, appassimento 0,12.
+const CAMPO=0.32, APPASS=0.12;
+export function deficitDaSuolo(theta){ return Math.max(0,Math.min(1,(CAMPO-theta)/(CAMPO-APPASS))); }
+export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
   const out={avvisi:[], piante:[]};
   if(!fut.length) return out;
   for(const p of piante){
     const k=params(p,{oggi,lat,eventi});
     const fatte=dateInnaffiate(p,eventi);
     let dep=k.rawL*0.5;
-    for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d))); if(fatte.has(d.date)) dep=0; }
+    const usaSuolo = suolo!=null && isFinite(suolo) && !k.vaso && p.dove==='aperto' && ![...fatte].some(d=>d>=addDays(oggi,-3));
+    if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
+    else for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d))); if(fatte.has(d.date)) dep=0; }
     if(fatte.has(oggi)) dep=0;
     const giorni=[];
     fut.forEach((d,i)=>{
@@ -203,11 +209,21 @@ export function dose(litri, imp={}){
 
 /* ---------------- Gelo, caldo, vento ---------------- */
 export function gelo(p){ const sp=SPECIE[p.specie]||SPECIE.altro; return sp.gelo+(p.colt==='vaso'?2:0); }   // le radici in vaso gelano prima
-export function avvisiDomani(piante, domani){
+// notte (facoltativa) = temperature orarie dalla sera di oggi alla mattina di domani: [{ora:'HH', t}]
+export function avvisiDomani(piante, domani, notte){
   if(!domani) return [];
   const out=[], fuori=piante.filter(p=>p.dove!=='interno');
-  const fredde=fuori.filter(p=>domani.tmin<=gelo(p));
-  if(fredde.length) out.push({tipo:'gelo', testo:'Minima di '+fmtN(domani.tmin)+' °C: porta al riparo o copri con tessuto non tessuto '+fredde.map(p=>p.nome).join(', ')+'.', piante:fredde.map(p=>p.id)});
+  const oraria = Array.isArray(notte) && notte.length ? notte : null;
+  const minima = oraria ? Math.min(...oraria.map(x=>x.t)) : domani.tmin;
+  const fredde=fuori.filter(p=>minima<=gelo(p));
+  if(fredde.length){
+    let testo='Minima di '+fmtN(minima)+' °C';
+    if(oraria){
+      const soglia=Math.max(...fredde.map(gelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
+      testo='Stanotte minima di '+fmtN(minima)+' °C verso le '+piu.ora+(sotto.length>1?' (sotto '+fmtN(soglia)+' °C dalle '+sotto[0].ora+' alle '+sotto[sotto.length-1].ora+')':'');
+    }
+    out.push({tipo:'gelo', testo:testo+': porta al riparo o copri con tessuto non tessuto '+fredde.map(p=>p.nome).join(', ')+'.', piante:fredde.map(p=>p.id)});
+  }
   if(domani.tmax>=33){
     const delicate=fuori.filter(p=>(p.colt==='vaso'&&(+p.vaso||10)<=10&&luceOre(p)>=5)||['lattuga','fragola','ortensia','basilico'].includes(p.specie));
     if(delicate.length) out.push({tipo:'caldo', testo:'Massima di '+fmtN(domani.tmax)+' °C: bagna all\'alba e sposta all\'ombra nel pomeriggio '+delicate.map(p=>p.nome).join(', ')+'.', piante:delicate.map(p=>p.id)});
@@ -259,3 +275,17 @@ export function autonomia(p, {oggi, lat, eventi, fut=[]}={}){
   const mediaOmbra = fut.length ? fut.reduce((a,d)=>a+consumoL(kOmbra,d),0)/fut.length : consumoL(kOmbra,{et0:3});
   return {giorni, giorniOmbra: mediaOmbra>0 ? kOmbra.tawL/mediaOmbra : Infinity, consumo:media, riserva:k.tawL, vaso:k.vaso};
 }
+
+/* ---------------- Dati orari di Open-Meteo: umidità del suolo adesso e temperature della notte ---------------- */
+// h = risposta "hourly" con time, temperature_2m, soil_moisture_0_to_1cm, _1_to_3cm, _3_to_9cm, _9_to_27cm; ora = ora locale
+export function datiOrari(h, oggi, ora){
+  if(!h||!Array.isArray(h.time)) return {suolo:null, notte:null};
+  const z=n=>String(n).padStart(2,'0'), i=h.time.indexOf(oggi+'T'+z(ora)+':00');
+  const strati=[['soil_moisture_0_to_1cm',1],['soil_moisture_1_to_3cm',2],['soil_moisture_3_to_9cm',6],['soil_moisture_9_to_27cm',18]];
+  let suolo=null;
+  if(i>=0){ let s=0,w=0; for(const [k,p] of strati){ const v=h[k]?.[i]; if(v!=null&&isFinite(v)){ s+=v*p; w+=p; } } if(w) suolo=+(s/w).toFixed(3); }
+  const da=oggi+'T18:00', a=addDays(oggi,1)+'T10:00';
+  const notte=h.time.map((t,j)=>({t:h.temperature_2m?.[j],ora:t.slice(11,13),k:t})).filter(x=>x.k>=da&&x.k<=a&&x.t!=null).map(({ora,t})=>({ora,t}));
+  return {suolo, notte:notte.length?notte:null};
+}
+export const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
