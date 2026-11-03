@@ -16,8 +16,8 @@ const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) e
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null};
 
 /* ---------------- server ---------------- */
-async function api(method, body, op){
-  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store'});
+async function api(method, body, op, keepalive){
+  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
   const j=await r.json().catch(()=>null);
   if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')'));
   return j;
@@ -57,9 +57,9 @@ function invia(diff){
   inAttesa=unisci(inAttesa,diff); LSset('pending',JSON.stringify(inAttesa));
   clearTimeout(attesaT); attesaT=setTimeout(svuota,600);
 }
-function svuota(){
+function svuota(keepalive){
   const body=inAttesa; inAttesa=null; if(!body) return coda;
-  coda=coda.then(()=>api('POST',body)).then(j=>{ server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
+  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
     .catch(e=>{ inAttesa=unisci(body,inAttesa||{changes:{},add:[],remove:[]}); LSset('pending',JSON.stringify(inAttesa));
       stato(navigator.onLine===false?'Sei offline: le modifiche restano sul telefono e partono appena torna la rete.':'Non salvato sul server ('+e.message+'): riprovo tra poco.', navigator.onLine!==false);
       clearTimeout(attesaT); attesaT=setTimeout(svuota,30000); });
@@ -120,11 +120,13 @@ function doc(path){
 
 /* ---------------- API per l'app ---------------- */
 async function aggiorna(forza){
+  await window.salvaSubito?.();          // prima partono le modifiche fatte nell'app da meno di mezzo secondo
   if(inAttesa) await svuota(); else await coda;
   const rev=server?.rev;
   await scarica(); await caricaMeteo(!!forza);
   ['meteo_bot','eventi_bot','piano'].forEach(emit);
-  if(server?.rev!==rev && typeof window.applyMain==='function'){ window.applyMain(docs.giardino); window.renderAll?.(); }
+  // i dati del server sostituiscono quelli sullo schermo solo se nel frattempo non hai cambiato niente
+  if(server?.rev!==rev && typeof window.applyMain==='function' && !inAttesa && !window.scrittureInSospeso?.()){ window.applyMain(docs.giardino); window.renderAll?.(); }
 }
 window.GiardinoNet={
   codice:()=>code,
@@ -139,12 +141,14 @@ window.GiardinoNet={
   }
 };
 // aggiorna da solo quando torni sull'app e ogni 2 minuti mentre è aperta (risposte di Telegram, modifiche di Claude)
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); });
+// app in background o chiusa: le modifiche in attesa partono subito, con keepalive (l'invio continua anche a pagina chiusa);
+// se non arrivano restano salvate sul telefono e ripartono alla prossima apertura
+function salvaPrimaDiUscire(){ Promise.resolve(window.salvaSubito?.()).then(()=>{ if(inAttesa&&navigator.onLine!==false) svuota(true); }).catch(()=>{}); }
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') salvaPrimaDiUscire(); else aggiorna(false).catch(()=>{}); });
 setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },120000);
 window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
-// chiudendo l'app con modifiche non ancora partite: invio “keepalive” (continua anche a pagina chiusa; sendBeacon non permette l'intestazione del codice)
-window.addEventListener('pagehide',()=>{ if(inAttesa&&navigator.onLine!==false){ try{ const b=JSON.stringify(inAttesa); if(b.length<60000){ fetch(API,{method:'POST',keepalive:true,headers:{'content-type':'application/json','x-giardino-code':code},body:b}).catch(()=>{}); inAttesa=null; LSset('pending',null); } }catch(e){} } });
+window.addEventListener('pagehide',salvaPrimaDiUscire);
 
 const caps={ db:{doc, collection:()=>{ throw new Error('non disponibile'); }}, user:{ id:async()=>'locale', me:async()=>({id:'locale',name:''}) }, mcp:{} };
 window.claude={ use:async n=>caps[n]??null };

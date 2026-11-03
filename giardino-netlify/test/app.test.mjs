@@ -123,11 +123,19 @@ test("flusso completo a 390 px", async (t) => {
   await page.click("#set-sync summary"); await page.click("#syncBtn");
   await quando(page, () => document.querySelector("#syncStatus").textContent === "Aggiornato.");
 
-  // sul server, e il codice mai negli indirizzi
+  // una modifica fatta un attimo prima dell'aggiornamento automatico non deve sparire,
+  // anche se nel frattempo un altro dispositivo (o Claude, o Telegram) ha cambiato i dati sul server
   CODICE = await page.evaluate(() => window.GiardinoNet.codice());
+  await page.evaluate(() => { S.plants.find((p) => p.nome === "Aglio").note = "non perdermi"; saveMain(); });
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": CODICE, "content-type": "application/json" }, body: JSON.stringify({ changes: { vacanza: null } }) }));
+  await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+  assert.equal(await page.evaluate(() => S.plants.find((p) => p.nome === "Aglio").note), "non perdermi", "modifica locale persa dall'aggiornamento");
+
+  // sul server, e il codice mai negli indirizzi
   await quando(page, () => !localStorage.getItem("giardino:net:pending"));
   const srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": CODICE } }))).text());
   assert.equal(srv.data.plants.length, 5);
+  assert.equal(srv.data.plants.find((p) => p.nome === "Aglio").note, "non perdermi");
   assert.deepEqual(conCodice, [], "il codice non deve stare negli indirizzi");
   assert.deepEqual(errori, []);
 });

@@ -634,14 +634,20 @@ let ready = false;
 const writers = {};
 function persist(name, getData, delay=400){
   if(!ready) return;
-  const w = writers[name] || (writers[name]={t:null,chain:Promise.resolve()});
+  const w = writers[name] || (writers[name]={t:null,run:null,chain:Promise.resolve()});
   clearTimeout(w.t);
-  w.t=setTimeout(()=>{
+  w.run=()=>{
+    w.t=null;
     const snap=JSON.parse(JSON.stringify(getData()));
     if(store.kind==='db') w.chain=w.chain.then(()=>store.refs[name].set(snap)).catch(e=>showNote('err','Salvataggio non riuscito ('+(e?.code||e?.message||'errore')+'). Le modifiche restano su questa schermata.'));
     else { try{ localStorage.setItem('giardino:v2:'+name, JSON.stringify(snap)); }catch(e){} }
-  },delay);
+  };
+  w.t=setTimeout(w.run,delay);
 }
+// Usate dalla sincronizzazione (netlify-shim.js): prima di scaricare i dati dal server, o quando l'app va in background,
+// le modifiche ancora in attesa partono subito; altrimenti la copia del server le sovrascriverebbe.
+function salvaSubito(){ for(const w of Object.values(writers)) if(w.t){ clearTimeout(w.t); w.run(); } return Promise.all(Object.values(writers).map(w=>w.chain)); }
+function scrittureInSospeso(){ return Object.values(writers).some(w=>w.t); }
 const saveMain = () => persist('giardino', ()=>({...S, updatedAt:new Date().toISOString()}));
 const saveMeteo = () => persist('meteo', ()=>W.manual||{});
 const savePiano = () => persist('piano', ()=>P.claude||{});
