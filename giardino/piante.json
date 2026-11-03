@@ -5,12 +5,19 @@
     "lat": 45.4643,
     "lon": 9.1895
   },
+  "impostazioni": {
+    "bicchiere": 0.25,
+    "annaffiatoio": 5,
+    "ora_mattina": 7,
+    "ora_sera": 19
+  },
+  "vacanza": null,
   "piante": [
     {
       "id": "limone",
       "nome": "Limone in terrazzo",
       "specie": "agrumi",
-      "fase": "riposo",
+      "fase": "auto",
       "num": 1,
       "colt": "vaso",
       "vaso": 45,
