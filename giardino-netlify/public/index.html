@@ -1945,7 +1945,8 @@ async function scaricaBackup(){
   try{
     const file=new File([testo],nome,{type:'application/json'});
     if(/iPhone|iPad|Android/i.test(navigator.userAgent) && navigator.canShare?.({files:[file]})){
-      await navigator.share({files:[file], title:'Backup Giardino'});
+      // solo il file: con un titolo o un testo, “Salva su File” di iPhone salva anche un .txt a parte
+      await navigator.share({files:[file]});
       $('#bkStatus').textContent='Backup pronto '+fine()+': se non l\'hai fatto, scegli “Salva su File”.'; return;
     }
   }catch(e){ if(e?.name==='AbortError') return; }

@@ -235,3 +235,21 @@ test("niente fuori schermo, chiaro e scuro, da 320 a 430 px", async (t) => {
     await ctx.close();
   }
 });
+
+test("backup su iPhone: si condivide solo il file JSON (niente .txt con il titolo)", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const ctx = await contesto(browser, { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" });
+  await ctx.addInitScript((c) => {
+    localStorage.setItem("giardino:net:code", c);
+    navigator.canShare = () => true;
+    navigator.share = (d) => { window.__condiviso = { chiavi: Object.keys(d), file: d.files?.map((f) => [f.name, f.type]) }; return Promise.resolve(); };
+  }, CODICE);
+  const page = await ctx.newPage(); await page.goto(SITO); await pronta(page);
+  await page.click("#tab-impostazioni"); await page.click("#set-bk summary"); await page.click("#bkSave");
+  await quando(page, () => !!window.__condiviso);
+  const c = await page.evaluate(() => window.__condiviso);
+  assert.deepEqual(c.chiavi, ["files"], "solo il file, senza titolo né testo");
+  assert.equal(c.file.length, 1);
+  assert.match(c.file[0][0], /^giardino-backup-\d{4}-\d{2}-\d{2}\.json$/);
+  assert.equal(c.file[0][1], "application/json");
+});
