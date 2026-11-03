@@ -1,0 +1,296 @@
+{
+ "aggiornato": "2026-11-03T12:05:00.362Z",
+ "meteo": {
+  "source": "open-meteo",
+  "updatedAt": "2026-11-03T12:05:00.361Z",
+  "lat": 45.4643,
+  "lon": 9.1895,
+  "days": [
+   {
+    "date": "2026-10-31",
+    "cond": "nebbia",
+    "tmax": 16.2,
+    "tmin": 7,
+    "rain": 0,
+    "prob": 0,
+    "et0": 1.38,
+    "wind": 6.1
+   },
+   {
+    "date": "2026-11-01",
+    "cond": "pioggia",
+    "tmax": 14.8,
+    "tmin": 7.5,
+    "rain": 0,
+    "prob": 8,
+    "et0": 1.52,
+    "wind": 14.5
+   },
+   {
+    "date": "2026-11-02",
+    "cond": "poco nuvoloso",
+    "tmax": 16.7,
+    "tmin": 4.8,
+    "rain": 0,
+    "prob": 0,
+    "et0": 1.57,
+    "wind": 8
+   },
+   {
+    "date": "2026-11-03",
+    "cond": "nuvoloso",
+    "tmax": 14.2,
+    "tmin": 5.3,
+    "rain": 0,
+    "prob": 18,
+    "et0": 1.24,
+    "wind": 5.4
+   },
+   {
+    "date": "2026-11-04",
+    "cond": "pioggia",
+    "tmax": 13.2,
+    "tmin": 9.5,
+    "rain": 0,
+    "prob": 15,
+    "et0": 1.02,
+    "wind": 8.1
+   },
+   {
+    "date": "2026-11-05",
+    "cond": "nuvoloso",
+    "tmax": 13.5,
+    "tmin": 7.7,
+    "rain": 0,
+    "prob": 10,
+    "et0": 0.95,
+    "wind": 5.7
+   },
+   {
+    "date": "2026-11-06",
+    "cond": "pioggia",
+    "tmax": 10.7,
+    "tmin": 6.6,
+    "rain": 7.3,
+    "prob": 39,
+    "et0": 0.51,
+    "wind": 5.6
+   },
+   {
+    "date": "2026-11-07",
+    "cond": "pioggia",
+    "tmax": 12.1,
+    "tmin": 7.4,
+    "rain": 2.1,
+    "prob": 31,
+    "et0": 0.81,
+    "wind": 3.7
+   },
+   {
+    "date": "2026-11-08",
+    "cond": "nuvoloso",
+    "tmax": 13.1,
+    "tmin": 6,
+    "rain": 0,
+    "prob": 37,
+    "et0": 1.02,
+    "wind": 3.8
+   },
+   {
+    "date": "2026-11-09",
+    "cond": "pioggia",
+    "tmax": 9.3,
+    "tmin": 6.3,
+    "rain": 0.9,
+    "prob": 58,
+    "et0": 0.3,
+    "wind": 4.5
+   }
+  ]
+ },
+ "piano": {
+  "createdAt": "2026-11-03T12:05:00.361Z",
+  "source": "bot",
+  "fonte": "stima locale",
+  "lat": 45.4643,
+  "lon": 9.1895,
+  "data": {
+   "sintesi": "Piano del bot con il meteo reale di Open-Meteo.",
+   "avvisi": [],
+   "piante": [
+    {
+     "id": "limone",
+     "valutazione": "",
+     "fabbisogno_settimanale_litri": 6.5,
+     "giorni": [
+      {
+       "data": "2026-11-03",
+       "azione": "controlla",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Tocca il terriccio: se asciutto a 2–3 cm, innaffia"
+      },
+      {
+       "data": "2026-11-04",
+       "azione": "controlla",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Tocca il terriccio: se asciutto a 2–3 cm, innaffia"
+      },
+      {
+       "data": "2026-11-05",
+       "azione": "innaffia",
+       "litri": 6.5,
+       "momento": "mattina presto",
+       "motivo": "Vaso asciutto al 53%, bagna finché esce dal foro"
+      },
+      {
+       "data": "2026-11-06",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-07",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-08",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-09",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      }
+     ],
+     "consigli": []
+    },
+    {
+     "id": "aromatiche",
+     "valutazione": "",
+     "fabbisogno_settimanale_litri": 1.2,
+     "giorni": [
+      {
+       "data": "2026-11-03",
+       "azione": "innaffia",
+       "litri": 1.22,
+       "momento": "mattina presto",
+       "motivo": "Vaso asciutto al 63%, bagna finché esce dal foro"
+      },
+      {
+       "data": "2026-11-04",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-05",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-06",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "La pioggia basta (~0,2 L utili)"
+      },
+      {
+       "data": "2026-11-07",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-08",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-09",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      }
+     ],
+     "consigli": []
+    },
+    {
+     "id": "pothos",
+     "valutazione": "",
+     "fabbisogno_settimanale_litri": 1,
+     "giorni": [
+      {
+       "data": "2026-11-03",
+       "azione": "innaffia",
+       "litri": 0.51,
+       "momento": "mattina presto",
+       "motivo": "Vaso asciutto al 62%, bagna finché esce dal foro"
+      },
+      {
+       "data": "2026-11-04",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-05",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-06",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-07",
+       "azione": "salta",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Terriccio ancora umido"
+      },
+      {
+       "data": "2026-11-08",
+       "azione": "controlla",
+       "litri": 0,
+       "momento": "indifferente",
+       "motivo": "Tocca il terriccio: se asciutto a 2–3 cm, innaffia"
+      },
+      {
+       "data": "2026-11-09",
+       "azione": "innaffia",
+       "litri": 0.46,
+       "momento": "mattina presto",
+       "motivo": "Vaso asciutto al 56%, bagna finché esce dal foro"
+      }
+     ],
+     "consigli": []
+    }
+   ]
+  }
+ },
+ "eventi": []
+}
