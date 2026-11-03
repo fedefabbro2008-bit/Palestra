@@ -1,50 +1,57 @@
 # Giardino
 
-Piano di innaffiatura personalizzato (specie, fase di crescita, vaso, luce, zona, meteo) con app su claude.ai
-e promemoria su Telegram.
+Piano di innaffiatura personalizzato (specie, fase di crescita, vaso, luce, zona, meteo) con promemoria su Telegram.
+**Funziona senza abbonamento Claude**: Claude si usa via API (Claude Haiku 5.5, effort alto), pagando solo l'uso.
 
-## Come funziona
+## Pezzi
 
 | Pezzo | Dove | Cosa fa |
 |---|---|---|
-| **App** | artifact `https://claude.ai/artifact/16YMCT8C97DJJQMWC7aaVw` (sorgente `app.src.html`, build `giardino-app.html`) | piante, piano, diario, vacanza, diagnosi da foto; il piano lo genera Claude dal tuo account |
-| **Modello** | `modello.mjs` | bilancio idrico in litri, condiviso da app e bot (fasi automatiche, calibrazione, concime, rinvaso, dosi, avvisi) |
-| **Bot** | `notifica.mjs` + `.github/workflows/giardino-notifiche.yml` (ogni 15 min) | legge i pulsanti Telegram; dalle 7 manda il piano del giorno se c'è da fare; dalle 19 avvisa di gelo, caldo, vento per domani |
-| **Sincronizzazione** | attività pianificata `trig_01X5wMh37S8utkokjf8pJUdv` (ogni giorno alle 06:37) che scrive nella sessione Claude dedicata `session_01WPDxmqiuSo7wZJoVm9CY74` ("Giardino – sincronizzazione giornaliera", con il repository collegato); il pulsante "Sincronizza ora" dell'app prenota un'esecuzione singola nella stessa sessione con il testo di `sync-prompt.txt` | porta le piante dall'app al branch `giardino-dati`, avvia il bot in modalità `aggiorna`, riporta nell'app meteo reale, piano e pulsanti premuti (`per-app.json`) |
+| **App** | https://fedefabbro2008-bit.github.io/Palestra/giardino/ (GitHub Pages, file `index.html`) | piante, piano, diario, vacanza, diagnosi da foto, backup. Meteo diretto da Open-Meteo. |
+| **Modello** | `modello.mjs` | bilancio idrico in litri, condiviso da app e bot |
+| **Bot** | `notifica.mjs` + `.github/workflows/giardino-notifiche.yml` (ogni 15 min) | legge i pulsanti Telegram; dalle 7 manda il piano se c'è da fare; dalle 19 avvisa di gelo, caldo, vento |
+| **Dati** | branch `giardino-dati` | `app.json` (dati completi dell'app), `piante.json` + `eventi.json` (per il bot), `stato.json` + `per-app.json` (scritti dal bot) |
 
-I dati stanno nel branch **`giardino-dati`** (così `main` non riceve commit automatici): `piante.json` ed `eventi.json` (dall'app),
-`stato.json` (memoria del bot: offset Telegram, eventi, ultimo piano) e `per-app.json` (dati per l'app).
-Se non premi nessun pulsante, il giorno dopo il bot considera fatte le innaffiature notificate.
+L'app salva su GitHub a ogni modifica (un commit sul branch dei dati) e il bot li usa al giro successivo.
+"Aggiorna ora" avvia il bot in modalità `aggiorna` e riporta nell'app piano e risposte di Telegram.
 
-## Configurazione di Telegram (una volta)
+## Configurazione (una volta)
 
-1. Telegram → **@BotFather** → `/newbot` → copia il **token**. Apri il bot e premi **Avvia**.
-2. GitHub → Settings → Secrets and variables → Actions → **New repository secret**: `TELEGRAM_BOT_TOKEN`.
-3. Actions → "Giardino - notifiche innaffiatura" → **Run workflow** (modo `prova`). Il job fallisce di proposito
-   e nel registro stampa l'id della tua chat: crea il secret `TELEGRAM_CHAT_ID` con quel numero.
-4. Run workflow di nuovo (`prova`): arriva il primo messaggio.
-5. Facoltativo: secret `ANTHROPIC_API_KEY` per far rifinire a Claude anche il piano del bot; variabile `CLAUDE_MODEL`.
+**App** (scheda Impostazioni → Collegamenti; le chiavi restano solo nel browser):
+1. Chiave API Anthropic: console.anthropic.com → API Keys (serve un piccolo credito prepagato).
+2. Token GitHub fine-grained: github.com/settings/personal-access-tokens/new → solo il repo Palestra →
+   permessi **Contents** e **Actions** in lettura e scrittura.
 
-Finché i secret mancano, il bot non manda nulla ma la modalità `aggiorna` porta comunque meteo e piano nell'app.
+**Telegram**:
+1. @BotFather → `/newbot` → copia il token. Apri il bot e premi Avvia.
+2. Repo → Settings → Secrets and variables → Actions: secret `TELEGRAM_BOT_TOKEN`.
+3. Actions → "Giardino - notifiche innaffiatura" → Run workflow (`prova`): nel registro trovi l'id della chat →
+   secret `TELEGRAM_CHAT_ID` → di nuovo Run workflow.
+4. Facoltativo: secret `ANTHROPIC_API_KEY` perché anche il bot faccia rifinire il piano a Claude
+   (`CLAUDE_MODEL` default `claude-haiku-5-5`, `CLAUDE_EFFORT` default `high`, come variabili del repo).
 
-## Modifiche
+## Backup
 
-- App: modifica `app.src.html`, `modello.mjs` o `sync-prompt.txt`, poi `node giardino/build-app.mjs trig_01X5wMh37S8utkokjf8pJUdv`
-  e ripubblica `giardino-app.html` sullo stesso artifact.
-- Bot: `notifica.mjs` usa direttamente `modello.mjs`.
+Impostazioni → Backup → "Scarica il backup" crea `giardino-backup-AAAA-MM-GG.json` (posizione, piante, impostazioni,
+diario, piano; senza chiavi). Nella nuova versione o su un altro dispositivo: "Importa un backup".
+
+## Costi
+
+- GitHub Actions, GitHub Pages, Telegram, Open-Meteo: gratis.
+- Claude Haiku 5.5 via API: $0,10 / $0,50 per milione di token in ingresso / uscita. Un piano costa
+  indicativamente meno di 1 centesimo; la diagnosi da foto un paio di millesimi.
+
+## Modifiche al codice
+
+Modifica `app.src.html`, `modello.mjs` o `standalone.js`, poi `node giardino/build-app.mjs` e fai push su main:
+GitHub Pages pubblica `giardino/index.html` in automatico. (`giardino-app.html` è la vecchia versione per claude.ai.)
 
 ## Come si calcola (vasi)
 
 - Acqua disponibile = 25% del volume del vaso, ridotta del 6% per ogni pianta in più (radici), minimo 60%.
 - Si innaffia quando è consumata la quota che regge la pianta più delicata del vaso.
-- Consumo giornaliero (L) = ET₀ × (Σ Kc × chioma di ogni pianta + 0,15 × superficie del terriccio) × fattore luce × correzione appresa.
+- Consumo giornaliero (L) = ET₀ × (Σ Kc × chioma + 0,15 × superficie del terriccio) × fattore luce × correzione appresa.
   Fattore luce = 0,35 + 0,65 × ore/8 (fino a 9 h). In casa ET₀ = 0,8 + 0,15 × ore di luce.
 - Correzione appresa: −10% per ogni "era ancora umida", +12% per ogni "era secca" (ultimi 60 giorni, tra 0,5 e 2).
 - Pioggia utile nel vaso = (pioggia − 1,5 mm) × superficie del vaso × 0,8; zero se riparato o in casa.
 - Dose = acqua consumata + 10%, cioè finché esce un po' dal foro.
-
-## Note sulla sincronizzazione
-
-- Non archiviare la sessione "Giardino – sincronizzazione giornaliera": l'attività scrive lì perché è l'unica con accesso al repository.
-- Ogni esecuzione usa un po' del tuo utilizzo di Claude (modello Sonnet, pochi centesimi di dollaro a listino).
-- Il testo dell'attività giornaliera si modifica dalla sessione dedicata.

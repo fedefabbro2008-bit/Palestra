@@ -357,9 +357,34 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
 
   <!-- BOT -->
   <section class="view" id="view-bot" hidden>
+    <div class="panel stack solo-sa">
+      <h2>Collegamenti</h2>
+      <p class="small" style="margin:0">Questa versione non richiede un abbonamento Claude. Usa la tua chiave API Anthropic (paghi solo l'uso: con Claude Haiku 5.5 pochi millesimi di dollaro a piano) e un token GitHub per mandare le piante al bot. Le chiavi restano solo in questo browser.</p>
+      <div class="field"><label for="saApi">Chiave API Anthropic</label><input type="text" id="saApi" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" style="font-family:var(--f-mono)"><span class="hint">Creala su console.anthropic.com → API Keys, dopo aver aggiunto un credito (bastano pochi euro).</span></div>
+      <div class="field"><label for="saGh">Token GitHub</label><input type="text" id="saGh" autocomplete="off" spellcheck="false" placeholder="github_pat_…" style="font-family:var(--f-mono)"><span class="hint">github.com → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: solo <b>Palestra</b>. Permessi: <b>Contents</b> e <b>Actions</b> in lettura e scrittura.</span></div>
+      <div class="row">
+        <button class="btn primary" id="saSave" type="button">Salva</button>
+        <button class="btn ghost" id="saTest" type="button">Prova i collegamenti</button>
+        <a class="btn ghost" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Crea il token</a>
+        <a class="btn ghost" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Chiavi API</a>
+      </div>
+      <div id="saStatus" class="small muted" aria-live="polite"></div>
+    </div>
+    <div class="panel stack">
+      <h2>Backup</h2>
+      <p class="small" style="margin:0">Un file con posizione, piante, impostazioni, diario e piano. Scaricalo prima di cambiare versione dell'app o dispositivo, poi importalo nella nuova. Le chiavi non sono incluse.</p>
+      <div class="row">
+        <button class="btn" id="bkSave" type="button">Scarica il backup</button>
+        <label class="btn ghost" for="bkFile">Importa un backup</label>
+        <input type="file" id="bkFile" accept=".json,application/json" hidden>
+      </div>
+      <div class="alert info" id="bkConfirm" hidden></div>
+      <div id="bkStatus" class="small muted" aria-live="polite"></div>
+    </div>
     <div class="panel stack">
       <div class="row between"><h2>Sincronizzazione</h2><span id="syncChip"></span></div>
-      <p class="small" style="margin:0">Ogni mattina alle 6:37 Claude porta le tue piante al bot Telegram e riporta qui meteo reale, piano e pulsanti premuti. Puoi farlo partire anche ora.</p>
+      <p class="small solo-art" style="margin:0">Ogni mattina alle 6:37 Claude porta le tue piante al bot Telegram e riporta qui meteo reale, piano e pulsanti premuti. Puoi farlo partire anche ora.</p>
+      <p class="small solo-sa" style="margin:0">Le piante arrivano al bot appena le salvi. Il meteo reale arriva qui direttamente da Open-Meteo. “Aggiorna ora” fa ricalcolare il piano al bot e riporta qui le risposte date su Telegram.</p>
       <div class="row"><button class="btn primary" id="syncBtn" type="button">Sincronizza ora</button></div>
       <div id="syncStatus" class="small muted" aria-live="polite"></div>
     </div>
@@ -402,7 +427,7 @@ nav.tabs .in{display:flex;width:100%;max-width:760px}
     <button class="tab" role="tab" id="tab-piante" data-view="piante" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21v-9"/><path d="M12 12C12 7 8.5 4 4 4c0 5 3.5 8 8 8z"/><path d="M12 14c0-4 3-6.5 8-6.5 0 4-3 6.5-8 6.5z"/></svg>Piante</button>
     <button class="tab" role="tab" id="tab-meteo" data-view="meteo" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z"/></svg>Meteo</button>
     <button class="tab" role="tab" id="tab-diario" data-view="diario" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11M9 8h6"/></svg>Diario</button>
-    <button class="tab" role="tab" id="tab-bot" data-view="bot" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 4L3 11l6 2 2 6 3-4 4 3z"/><path d="M9 13l12-9"/></svg>Telegram</button>
+    <button class="tab" role="tab" id="tab-bot" data-view="bot" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 4L3 11l6 2 2 6 3-4 4 3z"/><path d="M9 13l12-9"/></svg>Impostazioni</button>
   </div>
 </nav>
 <div class="toast" id="toast" role="status" hidden></div>
@@ -674,6 +699,7 @@ function autonomia(p, {oggi, lat, eventi, fut=[]}={}){
 
 
 /* ================= Costanti dell'app ================= */
+const STANDALONE = 'false'==='true';
 const TRIGGER_ID = "trig_01X5wMh37S8utkokjf8pJUdv";
 const SYNC_SESSION = "session_01WPDxmqiuSo7wZJoVm9CY74", SYNC_ENV = "env_01VyxiXuTkVdJfLs7YMuKQ11";
 const SYNC_PROMPT = "Esegui la sincronizzazione dell'app \"Giardino\" con il bot Telegram. Lavora senza chiedere conferme. Non toccare il branch main, non aprire pull request, non scrivere commenti su GitHub, non modificare altro.\n\nRiferimenti\n- Artifact: https://claude.ai/artifact/16YMCT8C97DJJQMWC7aaVw. Database privato dell'utente: collezione \"data/users/me\" (strumento ArtifactData con questo url).\n- Repository fedefabbro2008-bit/Palestra (clone locale). I dati del bot stanno nel branch \"giardino-dati\", alla radice: piante.json, eventi.json, stato.json, per-app.json.\n- Workflow: giardino-notifiche.yml su main (GitHub MCP actions_run_trigger oppure `gh workflow run giardino-notifiche.yml -R fedefabbro2008-bit/Palestra --ref main -f modo=aggiorna`).\n\nPassi\n1. ArtifactData \"get\", collection \"data/users/me\", doc_id \"giardino\", con out_dir in una cartella temporanea. Se il documento non esiste, oppure export_bot manca, oppure export_bot.posizione è null, oppure export_bot.piante è vuoto: non toccare i file delle piante e vai al passo 3.\n2. Aggiorna il branch giardino-dati (git fetch, checkout pulito di origin/giardino-dati in una cartella temporanea con git worktree): piante.json = campo export_bot; eventi.json = campo eventi_app ([] se manca). Scrivili con uno script node (JSON.stringify indentazione 2 + newline finale): non ricopiare i dati a mano. Se nulla è cambiato niente commit; altrimenti commit \"Giardino: sincronizza piante dall'app\" e push su giardino-dati (se rifiutato: pull --rebase e riprova).\n3. Avvia il workflow con modo = \"aggiorna\" sul ref main e attendi che finisca (stato ogni ~30 secondi, massimo 8 minuti). Se fallisce, annota il motivo dal log e continua.\n4. git fetch origin giardino-dati e leggi per-app.json. Se esiste, scrivi nel database dell'artifact, collezione \"data/users/me\", con un'unica ArtifactData \"batch\" (per i documenti già esistenti leggi prima la version e passala come if_version), con file_path da file preparati con node: \"meteo_bot\" = campo meteo (salta se null); \"piano_bot\" = campo piano (salta se null); \"eventi_bot\" = {\"aggiornato\": campo aggiornato, \"eventi\": campo eventi}.\n5. Rimuovi le cartelle temporanee e concludi con al massimo 3 righe: piante sincronizzate (o perché no), esito del workflow, documenti aggiornati nell'app.";
@@ -800,6 +826,8 @@ async function boot(){
   }
   ready=true; renderAll(); renderClaude(); renderSync();
 }
+document.querySelectorAll('.solo-sa').forEach(el=>el.hidden=!STANDALONE);
+document.querySelectorAll('.solo-art').forEach(el=>el.hidden=STANDALONE);
 function renderClaude(){
   const ok=!!sample;
   ['#genBtn','#wxEstimate','#wxPasteToggle','#wxPasteGo','#locSet'].forEach(s=>{ const b=$(s); if(b) b.disabled=!ok; });
@@ -834,7 +862,7 @@ function wxDays(){
 }
 const futDays = () => { const t=today(); return wxDays().filter(d=>d.date>=t && d.tmax!=null && d.tmin!=null).slice(0,7); };
 const pastDays = () => { const t=today(); return wxDays().filter(d=>d.date<t && d.date>=addDays(t,-3) && d.tmax!=null); };
-const SRC_LABEL={'open-meteo':'Open-Meteo (bot)',screenshot:'da screenshot',testo:'da testo incollato',stima:'stima climatica',manuale:'inserito a mano'};
+const SRC_LABEL={'open-meteo':STANDALONE?'Open-Meteo':'Open-Meteo (bot)',screenshot:'da screenshot',testo:'da testo incollato',stima:'stima climatica',manuale:'inserito a mano'};
 function srcChip(){
   const w=activeWeather(); if(!w) return '';
   return '<span class="chip '+(w.source==='stima'?'warn':'water')+'">'+esc(SRC_LABEL[w.source]||w.source||'')+'</span>'+(fresco(w)?'':' <span class="chip warn">da aggiornare</span>');
@@ -878,6 +906,9 @@ function errCopy(e){
     case 'prompt_too_large': return 'Troppi dati in una volta: riduci le piante o il testo incollato.';
     case 'refused': return 'Claude ha rifiutato la richiesta: riformula le note.';
     case 'session_expired': return 'Sessione scaduta: ricarica la pagina.';
+    case 'no_key': return 'Manca la chiave API Anthropic: inseriscila nella scheda Impostazioni.';
+    case 'bad_key': return 'Chiave API Anthropic non valida o senza credito: controllala nella scheda Impostazioni.';
+    case 'network': return 'Claude non è raggiungibile: controlla la connessione.';
     default: return 'Claude non è raggiungibile ora ('+(e?.code||'errore')+'). Riprova più tardi.';
   }
 }
@@ -1017,6 +1048,13 @@ async function diagnose(files){
 /* ================= Sincronizzazione con il bot ================= */
 async function syncNow(){
   const st=$('#syncStatus');
+  if(STANDALONE){
+    $('#syncBtn').disabled=true; st.innerHTML=spin('Salvo e avvio il bot…');
+    try{ const r=await window.GiardinoSA.sync(m=>st.innerHTML=spin(m)); st.textContent=r==='ok'?'Fatto: piano e risposte di Telegram aggiornati.':'Il bot ci sta mettendo più del solito: i dati arriveranno al prossimo aggiornamento.'; }
+    catch(e){ st.textContent='Non riuscito: '+(e.message||e); }
+    finally{ $('#syncBtn').disabled=false; }
+    return;
+  }
   if(!mcp||SYNC_SESSION.startsWith('@@')){ st.textContent='La sincronizzazione manuale non è disponibile in questa vista: avviene comunque ogni mattina alle 6:37.'; return; }
   let ultima=0; try{ ultima=+localStorage.getItem('giardino:sync')||0; }catch(e){}
   if(Date.now()-ultima<10*60e3){ st.textContent='Sincronizzazione già richiesta da poco: i dati arrivano qui da soli entro qualche minuto.'; return; }
@@ -1033,6 +1071,7 @@ async function syncNow(){
   }finally{ $('#syncBtn').disabled=!mcp; }
 }
 function renderSync(){
+  if(STANDALONE) $('#syncBtn').textContent='Aggiorna ora';
   const last=[W.bot?.updatedAt, EB.aggiornato, P.bot?.createdAt].filter(Boolean).sort().pop();
   $('#syncChip').innerHTML = last ? '<span class="chip leaf">ultima '+esc(new Date(last).toLocaleString('it-IT',{weekday:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}))+'</span>' : '<span class="chip">mai</span>';
   $('#syncBtn').disabled = !mcp;
@@ -1435,5 +1474,66 @@ function wire(){
   let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(!$('#view-diario').hidden) renderDiario(); },200); });
 }
 
-wire(); boot();
+/* ================= Backup ================= */
+function backupDati(){
+  return {app:'giardino', formato:1, creato:new Date().toISOString(),
+    giardino:{location:S.location, plants:S.plants, impostazioni:S.impostazioni, vacanza:S.vacanza, eventi_app:S.eventi_app},
+    meteo:W.manual||null, piano:P.claude||null};
+}
+async function scaricaBackup(){
+  const testo=JSON.stringify(backupDati(),null,2), nome='giardino-backup-'+today()+'.json';
+  if(STANDALONE){
+    const url=URL.createObjectURL(new Blob([testo],{type:'application/json'}));
+    const a=document.createElement('a'); a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    $('#bkStatus').textContent='Scaricato '+nome+' ('+S.plants.length+' piante, '+S.eventi_app.length+' voci di diario). Su iPhone lo trovi nell\'app File → Download.';
+  } else {
+    $('#bkStatus').textContent = await copyText(testo) ? 'Backup copiato negli appunti: incollalo in una nota o in un file .json.' : 'Copia non riuscita.';
+  }
+}
+let bkPending=null;
+function leggiBackup(file){
+  if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      if(d?.app!=='giardino'||!d.giardino||!Array.isArray(d.giardino.plants)) throw 0;
+      bkPending=d;
+      const box=$('#bkConfirm');
+      box.innerHTML=ICON.info+`<div class="stack"><span>Il backup del ${esc(new Date(d.creato).toLocaleString('it-IT',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}))} contiene <b>${d.giardino.plants.length} piante</b> e ${(d.giardino.eventi_app||[]).length} voci di diario. Sostituisce i dati attuali (${S.plants.length} piante).</span><div class="row"><button class="btn small primary" type="button" id="bkYes">Importa</button><button class="btn small ghost" type="button" id="bkNo">Annulla</button></div></div>`;
+      box.hidden=false;
+      $('#bkYes').onclick=importaBackup; $('#bkNo').onclick=()=>{ bkPending=null; box.hidden=true; };
+    }catch(e){ $('#bkStatus').textContent='Questo file non è un backup di Giardino.'; }
+    finally{ $('#bkFile').value=''; }
+  };
+  r.readAsText(file);
+}
+function importaBackup(){
+  const d=bkPending; if(!d) return;
+  applyMain(d.giardino);
+  W.manual=d.meteo||null; P.claude=d.piano||null;
+  saveMain(); saveMeteo(); savePiano();
+  bkPending=null; $('#bkConfirm').hidden=true;
+  renderAll(); $('#bkStatus').textContent='Importato: '+S.plants.length+' piante.'; toast('Backup importato');
+}
+function wireExtra(){
+  $('#bkSave').addEventListener('click',scaricaBackup);
+  $('#bkFile').addEventListener('change',e=>leggiBackup(e.target.files[0]));
+  if(!STANDALONE) return;
+  const k=window.GiardinoSA.chiavi();
+  $('#saApi').placeholder=k.api?'Salvata ✓ (scrivi per cambiarla)':'sk-ant-…';
+  $('#saGh').placeholder=k.gh?'Salvato ✓ (scrivi per cambiarlo)':'github_pat_…';
+  $('#saSave').addEventListener('click',()=>{
+    const a=$('#saApi').value, g=$('#saGh').value;
+    window.GiardinoSA.salvaChiavi(a||null, g||null); $('#saApi').value=''; $('#saGh').value='';
+    const k=window.GiardinoSA.chiavi();
+    $('#saApi').placeholder=k.api?'Salvata ✓ (scrivi per cambiarla)':'sk-ant-…'; $('#saGh').placeholder=k.gh?'Salvato ✓ (scrivi per cambiarlo)':'github_pat_…';
+    $('#saStatus').textContent='Salvato. Ricarica la pagina per leggere i tuoi dati da GitHub.'; if(k.gh) saveMain();
+  });
+  $('#saTest').addEventListener('click',async()=>{ $('#saStatus').innerHTML=spin('Provo…'); $('#saStatus').textContent=await window.GiardinoSA.prova(); });
+  if(!k.api||!k.gh) showNote('info','Per far funzionare Claude e il bot inserisci la chiave API e il token GitHub nella scheda Impostazioni.');
+}
+
+wire(); wireExtra(); boot();
 </script>

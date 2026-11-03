@@ -7,7 +7,7 @@
 //   3. dopo l'ora della sera (default 19) avvisa una volta se domani c'è gelo, caldo forte o vento;
 //   4. scrive stato.json (memoria del bot) e per-app.json (meteo, piano ed eventi da portare nell'app).
 //
-// Variabili: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (obbligatorie), ANTHROPIC_API_KEY, CLAUDE_MODEL (facoltative),
+// Variabili: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (obbligatorie), ANTHROPIC_API_KEY, CLAUDE_MODEL (default claude-haiku-5-5), CLAUDE_EFFORT (default high) (facoltative),
 //            MODO = auto | aggiorna (ricalcola senza inviare) | prova (invia subito il messaggio del mattino).
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -97,8 +97,8 @@ const SCHEMA={type:'object',additionalProperties:false,required:['avvisi','piant
       momento:{type:'string',enum:['mattina presto','sera','metà giornata','indifferente']},motivo:{type:'string'}}}}}}}}};
 const SYSTEM=`Sei un agronomo esperto di irrigazione di orti, giardini e piante in vaso. Ricevi in JSON posizione, meteo (giorni passati e 7 di previsione con ET0 FAO-56), piante (specie, fase di crescita, per i vasi volume, diametro e altre piante nello stesso vaso, ore di luce diretta, ambiente aperto/riparato/interno, ultima innaffiatura, calcolo dell'app in litri con la correzione appresa dalle risposte dell'utente), eventuale vacanza e una stima locale da bilancio idrico. Per ogni pianta o vaso decidi l'azione per ciascuno dei 7 giorni previsti (stesse date, in ordine): "innaffia" con i litri totali per la voce, "controlla" (verificare l'umidità con un dito) o "salta". Parti dalla stima locale e correggila con la tua conoscenza di specie, fase, stagione, clima locale, gelo, caldo e ristagni. Vasi piccoli si asciugano prima e non possono trattenere più della loro riserva; meno luce = meno consumo; in casa niente pioggia; con più piante nello stesso vaso il consumo si somma e decide la più delicata. Durante la vacanza nessuno innaffia: il giorno prima della partenza bagna a fondo. "motivo" al massimo 12 parole; "consigli" da 0 a 2 brevi; "avvisi" solo per eventi meteo rilevanti. Usa gli id ricevuti. Scrivi in italiano.`;
 async function pianoClaude(input){
-  const model=process.env.CLAUDE_MODEL||'claude-opus-5-5';
-  const body={model,max_tokens:16000,output_config:{effort:'medium',format:{type:'json_schema',schema:SCHEMA}},system:SYSTEM,messages:[{role:'user',content:JSON.stringify(input)}]};
+  const model=process.env.CLAUDE_MODEL||'claude-haiku-5-5';
+  const body={model,max_tokens:16000,output_config:{effort:process.env.CLAUDE_EFFORT||'high',format:{type:'json_schema',schema:SCHEMA}},system:SYSTEM,messages:[{role:'user',content:JSON.stringify(input)}]};
   const headers={'content-type':'application/json','x-api-key':process.env.ANTHROPIC_API_KEY,'anthropic-version':'2026-10-21'};
   if(model==='claude-opus-5-5'||model==='claude-sonnet-5-5'){ headers['anthropic-beta']='server-side-fallback-2026-07-01'; body.fallbacks='default'; }
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers,body:JSON.stringify(body)});
