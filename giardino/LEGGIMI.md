@@ -39,8 +39,12 @@ GitHub `fedefabbro2008-bit/Palestra`, branch `main`, **Base directory `giardino-
 
 Ogni pianta ha una **Scheda** (Piante → pianta → Scheda): finché Claude non la scrive, l'app mostra il calendario dei mesi
 stimato dal modello (dalla semina al raccolto per ortaggi e annuali, l'anno tipico per le perenni). Claude la compila con il
-connettore (`salva_scheda`): descrizione, condizioni ideali, stagioni, fasi di crescita per settimane o mesi, calendario dei mesi
-con frutti e raccolta, consigli. Se cambi specie o data di semina, la scheda risulta da aggiornare.
+connettore (`salva_scheda`, oppure `modifica_pianta` con `campi.scheda` se il client ha ancora l'elenco di strumenti vecchio):
+descrizione, condizioni ideali, stagioni, fasi di crescita per settimane o mesi, calendario dei mesi con frutti e raccolta, consigli.
+Lo strumento `giardino` spiega a Claude come scriverla quando manca. Se cambi specie o data di semina, la scheda risulta da aggiornare.
+
+Il piano di Claude copre circa 7 giorni (fin dove arrivano le previsioni): oltre l'ultimo giorno app e promemoria usano il calcolo
+automatico, e la sera prima dell'ultimo giorno Telegram invita ad aggiornarlo, con il pulsante «Apri Claude» (una volta per piano).
 
 Le piante si possono dividere in **zone** (Balcone, Orto…): in Oggi ogni zona ha il suo “Tutte annaffiate”,
 su Telegram `/fatto balcone` segna solo quella zona. Elenchi e specie sono in ordine alfabetico; la specie si cerca scrivendone il nome.

@@ -160,6 +160,21 @@ test("flusso completo a 390 px", async (t) => {
   await page.click("#set-sync summary"); await page.click("#syncBtn");
   await quando(page, () => document.querySelector("#syncStatus").textContent === "Aggiornato.");
 
+  // piano di Claude che finisce domani: l'app lo dice e dopo usa il calcolo automatico
+  {
+    const cod = await page.evaluate(() => window.GiardinoNet.codice());
+    await quando(page, () => !localStorage.getItem("giardino:net:pending"));
+    const domani = giorni[4], pid = await page.evaluate(() => S.plants.find((p) => p.nome === "Zucchine").id);
+    const piano = { createdAt: new Date().toISOString(), source: "claude", data: { sintesi: "", avvisi: [], piante: [{ id: pid, giorni: [OGGI, domani].map((data) => ({ data, azione: "salta", litri: 0, momento: "indifferente", motivo: "prova" })) }] } };
+    await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": cod, "content-type": "application/json" }, body: JSON.stringify({ changes: { piano_claude: piano } }) }));
+    await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+    await page.click("#tab-oggi");
+    await quando(page, () => document.querySelector("#planSrc").textContent.includes("Finisce domani"));
+    const giorniZucchine = await page.evaluate((id) => activePlan().data.piante.find((x) => x.id === id).giorni.length, pid);
+    assert.ok(giorniZucchine >= 7, "dopo la fine del piano di Claude: calcolo automatico");
+    await page.click("#localBtn");
+  }
+
   // una modifica fatta un attimo prima dell'aggiornamento automatico non deve sparire,
   // anche se nel frattempo un altro dispositivo (o Claude, o Telegram) ha cambiato i dati sul server
   CODICE = await page.evaluate(() => window.GiardinoNet.codice());
@@ -167,6 +182,17 @@ test("flusso completo a 390 px", async (t) => {
   await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": CODICE, "content-type": "application/json" }, body: JSON.stringify({ changes: { vacanza: null } }) }));
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
   assert.equal(await page.evaluate(() => S.plants.find((p) => p.nome === "Aglio").note), "non perdermi", "modifica locale persa dall'aggiornamento");
+
+  // subito dopo la riapertura dell'app, la modifica di una pianta esistente arriva al server
+  // (prima lo stato sullo schermo condivideva gli oggetti con la sincronizzazione e la modifica non partiva)
+  await page.reload(); await pronta(page);
+  await page.click("#tab-piante"); await page.evaluate(() => document.querySelectorAll("#plantList details.plant").forEach((d) => (d.open = true)));
+  await page.click('#plantList details.plant:has-text("Limone") [data-edit]');
+  await page.evaluate(() => { document.querySelector("#pf-more").open = true; }); await page.fill("#pf-note", "nota dopo la riapertura"); await page.click("button[type=submit]");
+  await quando(page, () => !scrittureInSospeso() && !localStorage.getItem("giardino:net:pending"));
+  await page.waitForTimeout(200);
+  const dopo = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": CODICE } }))).text()).data;
+  assert.equal(dopo.plants.find((p) => p.nome.startsWith("Limone")).note, "nota dopo la riapertura", "modifica dopo la riapertura non arrivata al server");
 
   // sul server, e il codice mai negli indirizzi
   await quando(page, () => !localStorage.getItem("giardino:net:pending"));

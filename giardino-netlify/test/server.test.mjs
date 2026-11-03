@@ -65,6 +65,13 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(agl.scheda.specie, "aglio");
   assert.match((await strumento("giardino")).content[0].text, /scheda: compilata il/);
   assert.equal((await strumento("salva_scheda", { pianta: "agl", calendario: [] })).isError, true);
+  // anche senza «salva_scheda» (elenco di strumenti vecchio nel client) la scheda si scrive con «modifica_pianta»
+  assert.match((await strumento("giardino")).content[0].text, /Come scrivere le schede[\s\S]*modifica_pianta/);
+  const mp = await strumento("modifica_pianta", { azione: "modifica", pianta: "zuc", campi: { scheda: { descrizione: "Ortaggio estivo.", calendario: [{ mese: 7, fase: "Frutti", frutti: true }] } } });
+  assert.equal(mp.isError, false, mp.content[0].text);
+  const zuc = (await leggiDati()).plants.find((p) => p.id === "zuc");
+  assert.equal(zuc.scheda.calendario[0].mese, "07"); assert.equal(zuc.scheda.specie, "zucchina"); assert.ok(zuc.scheda.aggiornata);
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "zuc", campi: { scheda: { descrizione: "senza calendario" } } })).isError, true);
   // l'app manda le piante senza scheda (o con una più vecchia): la scheda di Claude resta
   const piante = (await leggiDati()).plants.map(({ scheda, ...p }) => (p.id === "bas" ? { ...p, note: "dall'app" } : p));
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: piante } } });
@@ -154,4 +161,31 @@ test("Siri: codice in intestazione, piano di oggi a voce, «ho innaffiato» per 
   assert.match(r.body, /Ho segnato come annaffiate: Zucchine\./);
   assert.ok((await leggiDati()).eventi.some((e) => e.plantId === "zuc" && e.fonte === "siri"));
   assert.match((await call(siri, "/api/siri/fatto?zona=Orto", { method: "POST", headers: H })).body, /niente da innaffiare in Orto/);
+});
+
+test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calcolo automatico", async () => {
+  const { pianoAttivo, finePiano } = await import("../netlify/lib/core.mjs");
+  const domani = new Date(Date.parse(OGGI + "T12:00:00Z") + 864e5).toISOString().slice(0, 10);
+  const piano = { createdAt: new Date().toISOString(), source: "claude", data: { sintesi: "prova", avvisi: [], piante: [{ id: "zuc", giorni: [OGGI, domani].map((data) => ({ data, azione: "salta", litri: 0, momento: "indifferente", motivo: "prova" })) }] } };
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { piano_claude: piano } } });
+  assert.equal(finePiano(piano), domani);
+  // dopo l'ultimo giorno di Claude, i giorni vengono dal calcolo automatico
+  const d = await leggiDati(), met = { days: [], suolo: null };
+  const giorni = []; for (let i = -3; i < 8; i++) giorni.push(new Date(Date.parse(OGGI + "T12:00:00Z") + i * 864e5).toISOString().slice(0, 10));
+  met.days = giorni.map((date) => ({ date, cond: "sereno", tmax: 24, tmin: 12, rain: 0, prob: 5, et0: 4, wind: 10 }));
+  const ap = pianoAttivo(d, met, OGGI), zg = ap.piano.piante.find((x) => x.id === "zuc").giorni;
+  assert.equal(ap.fonte, "Claude");
+  assert.ok(zg.length >= 7 && zg.filter((g) => g.auto).length >= 5, "giorni automatici dopo la fine del piano");
+  // la sera: messaggio con il pulsante per aprire Claude, una volta sola
+  const st = getStore({ name: "giardino" }), t = await st.get("t-" + CODE, { type: "json" });
+  await st.setJSON("t-" + CODE, { ...t, ultimo_avviso_sera: null });
+  inviati.length = 0; await bot();
+  const msg = inviati.find((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude"));
+  assert.ok(msg, "avviso di fine piano");
+  assert.match(msg[1].text, /finisce domani/);
+  assert.match(msg[1].reply_markup.inline_keyboard[0][0].url, /^https:\/\/claude\.ai\/new\?q=/);
+  const t2 = await st.get("t-" + CODE, { type: "json" });
+  await st.setJSON("t-" + CODE, { ...t2, ultimo_avviso_sera: null });
+  inviati.length = 0; await bot();
+  assert.ok(!inviati.some((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude")), "non si ripete per lo stesso piano");
 });

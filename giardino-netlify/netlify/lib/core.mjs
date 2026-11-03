@@ -74,13 +74,18 @@ export function oraLocale(tz) {
 }
 
 /* ---------------- Piano attivo: quello di Claude se copre oggi, altrimenti il calcolo automatico ---------------- */
+// ultimo giorno programmato da Claude (le previsioni del meteo arrivano a circa 7 giorni)
+export function finePiano(pc) { let f = ""; for (const x of pc?.data?.piante || []) for (const g of x.giorni || []) if (g?.data > f) f = g.data; return f; }
 export function pianoAttivo(data, met, oggi) {
   const lat = data.location?.lat, past = met.days.filter((d) => d.date < oggi).slice(-3), fut = met.days.filter((d) => d.date >= oggi).slice(0, 7);
   const base = M.pianoLocale({ piante: data.plants, past, fut, eventi: data.eventi, oggi, lat, vacanza: data.vacanza, suolo: met.suolo });
   const pc = data.piano_claude;
   if (pc?.data?.piante?.some((x) => x.giorni?.some((g) => g.data === oggi))) {
     const ids = new Set(pc.data.piante.map((x) => x.id));
-    return { piano: { avvisi: pc.data.avvisi || [], sintesi: pc.data.sintesi || "", piante: [...pc.data.piante, ...base.piante.filter((x) => !ids.has(x.id))] }, fonte: "Claude", past, fut, base };
+    // oltre l'ultimo giorno del piano di Claude vale il calcolo automatico
+    const piante = pc.data.piante.map((x) => { const b = base.piante.find((y) => y.id === x.id); if (!b) return x; const date = new Set((x.giorni || []).map((g) => g.data));
+      return { ...x, giorni: [...(x.giorni || []), ...b.giorni.filter((g) => !date.has(g.data)).map((g) => ({ ...g, auto: true }))].sort((a, c) => (a.data < c.data ? -1 : 1)) }; });
+    return { piano: { avvisi: pc.data.avvisi || [], sintesi: pc.data.sintesi || "", piante: [...piante, ...base.piante.filter((x) => !ids.has(x.id))] }, fonte: "Claude", past, fut, base };
   }
   return { piano: { ...base, sintesi: "" }, fonte: "calcolo automatico", past, fut, base };
 }
@@ -201,6 +206,14 @@ export async function inviaFile(token, chat_id, nome, testo, didascalia) {
   fd.append("document", new Blob([testo], { type: "application/json" }), nome);
   const r = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, { method: "POST", body: fd });
   const j = await r.json().catch(() => ({})); if (!j.ok) throw new Error("Telegram sendDocument: " + (j.description || r.status));
+}
+// Il piano di Claude sta per finire (o è finito): messaggio con il pulsante per aprire Claude con la richiesta già scritta.
+export function messaggioFinePiano(fine, oggi) {
+  const quando = fine === oggi ? "finisce oggi" : fine > oggi ? "finisce domani" : "è finito " + dl(fine);
+  const testo = `📅 <b>Il piano di Claude ${quando}</b>${fine >= oggi ? " (" + esc(dl(fine)) + ")" : ""}.\nOltre quel giorno non ha programmato perché le previsioni del meteo si fermavano lì: chiedigli di aggiornarlo.\n` +
+    `Scrivigli: <i>«Fammi il piano di innaffiatura della settimana e salvalo.»</i>\nFinché non lo rifà, uso il calcolo automatico.`;
+  const url = "https://claude.ai/new?q=" + encodeURIComponent("Fammi il piano di innaffiatura della settimana per il mio giardino e salvalo.");
+  return { testo, tastiera: { inline_keyboard: [[{ text: "✨ Apri Claude", url }]] } };
 }
 export const COMANDI = [
   { command: "oggi", description: "Il piano di oggi, con i pulsanti" },

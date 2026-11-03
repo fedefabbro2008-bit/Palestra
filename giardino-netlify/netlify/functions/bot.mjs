@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, finePiano, messaggioFinePiano, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Per ogni bot Telegram collegato, all'ora locale:
@@ -8,6 +8,7 @@ import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMat
        · avvisi per domani (gelo con le temperature ora per ora della notte, caldo, vento);
        · la domenica, il riepilogo della settimana;
        · il primo giorno utile di ogni mese, il file di backup;
+       · se il piano di Claude finisce domani (o è già finito), una volta per piano, l'invito ad aggiornarlo;
    - le innaffiature notificate e rimaste senza risposta, il giorno dopo, si considerano fatte. */
 export const config = { schedule: "@hourly" };
 
@@ -72,6 +73,13 @@ async function uno(st, tkey) {
     if ((t.ultimo_backup || "").slice(0, 7) !== oggi.slice(0, 7)) {
       try { await inviaFile(t.token, t.chat_id, `giardino-backup-${oggi}.json`, JSON.stringify(backup(fresco), null, 2), "🗂 Backup mensile del Giardino: in caso di bisogno importalo dall'app (Impostazioni → Backup)."); next.ultimo_backup = oggi; }
       catch (e) { console.error("backup", e?.message); }
+    }
+    // 5. il piano di Claude sta per finire: lo dico una volta per piano, la sera prima dell'ultimo giorno (o appena me ne accorgo)
+    const pc = fresco.piano_claude, fine = finePiano(pc), idPiano = pc?.createdAt || fine;
+    if (fine && fine <= M.addDays(oggi, 1) && t.avviso_piano !== idPiano) {
+      const m = messaggioFinePiano(fine, oggi);
+      await invia(m.testo, { reply_markup: m.tastiera });
+      next.avviso_piano = idPiano;
     }
     next.ultimo_avviso_sera = oggi;
   }

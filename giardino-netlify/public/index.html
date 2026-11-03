@@ -1249,6 +1249,9 @@ function showNote(kind,msg){ const n=$('#saveNote'); n.className='alert '+(kind=
 
 function applyMain(d){
   if(!d) return;
+  // copia: lo stato sullo schermo non deve condividere oggetti con quello che la sincronizzazione usa per capire cosa è cambiato,
+  // altrimenti modificando una pianta cambierebbero entrambi e la modifica non partirebbe
+  d=JSON.parse(JSON.stringify(d));
   S={location:d.location||null, plants:Array.isArray(d.plants)?d.plants:[], impostazioni:{...IMP_DEF,...(d.impostazioni||{})}, vacanza:d.vacanza||null, eventi_app:Array.isArray(d.eventi_app)?d.eventi_app:[]};
   return d;
 }
@@ -1339,9 +1342,13 @@ function activePlan(){
   const best=cand[0];
   if(!best) return local?{source:'locale',data:local,stale:false}:null;
   const ids=new Set(best.data.piante.map(x=>x.id));
-  const piante=[...best.data.piante, ...(local?local.piante.filter(x=>!ids.has(x.id)):[])];
+  // oltre l'ultimo giorno del piano di Claude vale il calcolo automatico (prima comparivano giorni “niente da fare”)
+  let fine=''; best.data.piante.forEach(x=>(x.giorni||[]).forEach(g=>{ if(g.data>fine) fine=g.data; }));
+  const conAuto=best.data.piante.map(x=>{ const b=local?.piante.find(y=>y.id===x.id); if(!b) return x; const date=new Set((x.giorni||[]).map(g=>g.data));
+    return {...x, giorni:[...(x.giorni||[]), ...b.giorni.filter(g=>!date.has(g.data)).map(g=>({...g,auto:true}))].sort((a,c)=>a.data<c.data?-1:1)}; });
+  const piante=[...conAuto, ...(local?local.piante.filter(x=>!ids.has(x.id)):[])];
   const stale = best.source==='claude' ? (best.plantsSig && best.plantsSig!==plantsSig()) : false;
-  return {...best, data:{...best.data, piante}, stale};
+  return {...best, data:{...best.data, piante}, stale, fine};
 }
 function schedaAcqua(p){
   const k=params(p,ctx()), fut=futDays(), d0=fut[0]||{et0:3};
@@ -1498,7 +1505,11 @@ function renderWeek(AP){
     return `<details class="day" data-d="${d}"${aperti.has(d)?' open':''}><summary>${lab}<span class="dd">${pills}</span>${CHEV}</summary><ul class="why-list">${voci.map(({p,g})=>`<li><b>${esc(p.nome)}</b>: ${esc(g.motivo)}${g.azione==='innaffia'?' · '+esc(dose(g.litri,S.impostazioni)):''}</li>`).join('')}</ul></details>`;
   }).join(''));
   const src=$('#planSrc');
-  if(AP.source==='claude') src.innerHTML='Piano di <b>Claude</b> del '+esc(new Date(AP.createdAt).toLocaleString('it-IT',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+'.'+(AP.data.sintesi?' '+esc(AP.data.sintesi):'')+(AP.stale?' <span class="warn-t">Hai cambiato le piante: chiedigli di rifarlo.</span>':'');
+  if(AP.source==='claude'){
+    const finisce=AP.fine&&AP.fine<=addDays(t,1);
+    src.innerHTML='Piano di <b>Claude</b> del '+esc(new Date(AP.createdAt).toLocaleString('it-IT',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))+(AP.fine?', fino a '+esc(dayLabel(AP.fine).toLowerCase())+' (poi calcolo automatico)':'')+'.'+(AP.data.sintesi?' '+esc(AP.data.sintesi):'')
+      +(finisce?' <span class="warn-t">Finisce '+(AP.fine===t?'oggi':'domani')+': chiedi a Claude di aggiornarlo.</span>':'')+(AP.stale?' <span class="warn-t">Hai cambiato le piante: chiedigli di rifarlo.</span>':'');
+  }
   else if(AP.source==='bot') src.innerHTML='Piano del bot con il meteo reale.'+(AP.data.sintesi?' '+esc(AP.data.sintesi):'');
   else src.innerHTML='Calcolo automatico. '+esc(AP.data.sintesi||'')+' Tocca un giorno per vedere il perché.';
   $('#localBtn').hidden=AP.source!=='claude';
