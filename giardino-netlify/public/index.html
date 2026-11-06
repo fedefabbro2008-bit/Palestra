@@ -345,11 +345,11 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spinner{animation-duration:3s}.chev{transition:none}}
 /* Badge «Powered by Netlify» (piano gratuito, lo aggiunge Netlify come riquadro fisso in basso a destra): qui sta in alto,
-   centrato sopra l'intestazione, sotto la fotocamera; scorre via con la pagina e non copre le schede. L'app gli lascia
-   54 px in cima (--badge) solo quando c'è. L'iframe è 194×64 e la parte visibile è 3–181 × 3–51: si centra quella. */
-html.con-badge{--badge:54px}
+   centrato sotto la fotocamera e rimpicciolito al 70%, così occupa ~34 px; scorre via con la pagina e non copre le schede.
+   L'iframe è 194×64 e la parte visibile è 3–181 × 3–51: si centra quella. Lo spazio c'è solo quando c'è il badge. */
+html.con-badge{--badge:30px}
 #nl-badge-frame{position:absolute !important;top:calc(env(safe-area-inset-top,0px) + 2px) !important;bottom:auto !important;left:50% !important;right:auto !important;
-  transform:translateX(calc(-50% + 5px)) !important}
+  transform-origin:50% 0 !important;transform:translateX(calc(-50% + 3.5px)) scale(.7) !important}
 .lrow .mini{flex:none;display:flex;gap:4px} .lrow .mini .btn{min-width:40px;padding:6px 8px}
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:30}
 .sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 10px);width:min(560px,calc(100% - 24px));z-index:31;max-height:calc(100vh - 140px);overflow:auto}
