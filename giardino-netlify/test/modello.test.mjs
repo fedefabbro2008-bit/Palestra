@@ -76,3 +76,20 @@ test("vasi piccoli: la chioma non supera circa il doppio del vaso (niente acqua 
   const conArea = M.params({ ...p, area: 0.1 }, { oggi: "2026-11-03", lat: 44 });
   assert.equal(conArea.chioma, 0.1, "se la superficie è indicata vale quella");
 });
+
+test("veranda/serra: niente pioggia, temperature proprie, più sole che in casa; il vetro tiene 4 gradi", () => {
+  const base = { id: "s", specie: "pomodoro", fase: "vegetativa", colt: "vaso", vaso: 12, num: 1, luce: 6 };
+  const serra = M.params({ ...base, dove: "serra" }, { oggi: "2026-07-15", lat: 44 }), casa = M.params({ ...base, dove: "interno" }, { oggi: "2026-07-15", lat: 44 });
+  assert.ok(serra.interno && serra.serra);
+  assert.deepEqual(serra.tcasa, M.TSERRA_DEF);
+  assert.ok(M.consumoL(serra, { date: "2026-07-15" }) > M.consumoL(casa, { date: "2026-07-15" }), "in serra beve più che in casa");
+  assert.equal(M.pioggiaL({ ...base, dove: "serra" }, serra, { rain: 20 }), 0);
+  assert.equal(M.avvisiDomani([{ ...base, nome: "P", dove: "serra" }], { tmin: 5, tmax: 12 }, [{ ora: "04", t: 5 }]).length, 0, "5 °C fuori: in serra niente gelo");
+  assert.equal(M.avvisiDomani([{ ...base, nome: "P", dove: "serra" }], { tmin: 0, tmax: 8 }, [{ ora: "04", t: 0 }]).length, 1, "0 °C fuori: avviso anche in serra");
+});
+
+test("pioggia prevista pesata con la probabilità", () => {
+  assert.equal(M.pioggiaAttesa({ rain: 20, prob: 56 }).rain, 14);
+  assert.equal(M.pioggiaAttesa({ rain: 20, prob: 95 }).rain, 20);
+  assert.equal(M.pioggiaAttesa({ rain: 20 }).rain, 20);
+});

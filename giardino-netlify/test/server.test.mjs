@@ -177,15 +177,17 @@ test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calc
   assert.equal(ap.fonte, "Claude");
   assert.ok(zg.length >= 7 && zg.filter((g) => g.auto).length >= 5, "giorni automatici dopo la fine del piano");
   // la sera: messaggio con il pulsante per aprire Claude, una volta sola
+  // fuso in cui adesso sono le 12 (dopo il primo giro il bot salva il fuso del meteo finto, UTC)
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
   const st = getStore({ name: "giardino" }), t = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t, ultimo_avviso_sera: null });
+  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_avviso_sera: null });
   inviati.length = 0; await bot();
   const msg = inviati.find((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude"));
   assert.ok(msg, "avviso di fine piano");
   assert.match(msg[1].text, /finisce domani/);
   assert.match(msg[1].reply_markup.inline_keyboard[0][0].url, /^https:\/\/claude\.ai\/new\?q=/);
   const t2 = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t2, ultimo_avviso_sera: null });
+  await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_avviso_sera: null });
   inviati.length = 0; await bot();
   assert.ok(!inviati.some((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude")), "non si ripete per lo stesso piano");
 });

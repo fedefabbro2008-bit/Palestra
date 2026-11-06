@@ -145,12 +145,12 @@ window.GiardinoNet={
     return {name:x.name,detail:[x.admin1,x.country].filter(Boolean).join(', '),lat:+x.latitude.toFixed(4),lon:+x.longitude.toFixed(4),alt:x.elevation??null,clima:''};
   }
 };
-// aggiorna da solo quando torni sull'app e ogni 2 minuti mentre è aperta (risposte di Telegram, modifiche di Claude)
+// aggiorna da solo quando torni sull'app e ogni 5 minuti mentre è aperta e visibile (risposte di Telegram, modifiche di Claude)
 // app in background o chiusa: le modifiche in attesa partono subito, con keepalive (l'invio continua anche a pagina chiusa);
 // se non arrivano restano salvate sul telefono e ripartono alla prossima apertura
 function salvaPrimaDiUscire(){ Promise.resolve(window.salvaSubito?.()).then(()=>{ if(inAttesa&&navigator.onLine!==false) svuota(true); }).catch(()=>{}); }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') salvaPrimaDiUscire(); else aggiorna(false).catch(()=>{}); });
-setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },120000);
+setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },300000);
 window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 window.addEventListener('pagehide',salvaPrimaDiUscire);

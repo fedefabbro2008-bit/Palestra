@@ -5,6 +5,9 @@
 #   bot (pianificata)   ogni ora: messaggio del mattino, avviso della sera, riepilogo e backup
 [build]
   publish = "public"
+  # Ogni pubblicazione costa 15 crediti (piano Free: 300 al mese): si pubblica solo se è cambiato il sito
+  # (questa cartella, prove escluse). Uscita 0 = niente pubblicazione.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':(exclude)test'"
   functions = "netlify/functions"
 
 [functions]

@@ -392,18 +392,19 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
           <div class="seg" role="radiogroup" aria-labelledby="pf-dove-l">
             <label><input type="radio" name="dove" value="aperto">Sì, è fuori</label>
             <label><input type="radio" name="dove" value="riparato">Fuori, al riparo</label>
+            <label><input type="radio" name="dove" value="serra">Veranda / serra</label>
             <label><input type="radio" name="dove" value="interno">In casa</label>
           </div>
         </div>
-        <div class="field pf-casa-only"><span class="flabel">Temperatura in casa (°C)</span>
+        <div class="field pf-casa-only"><span class="flabel" id="pf-t-titolo">Temperatura in casa (°C)</span>
           <div class="grid2">
             <div class="field"><label for="pf-t-inverno">❄️ Inverno</label><input type="text" id="pf-t-inverno" data-stagione="inverno" inputmode="decimal"></div>
             <div class="field"><label for="pf-t-primavera">🌷 Primavera</label><input type="text" id="pf-t-primavera" data-stagione="primavera" inputmode="decimal"></div>
             <div class="field"><label for="pf-t-estate">☀️ Estate</label><input type="text" id="pf-t-estate" data-stagione="estate" inputmode="decimal"></div>
             <div class="field"><label for="pf-t-autunno">🍂 Autunno</label><input type="text" id="pf-t-autunno" data-stagione="autunno" inputmode="decimal"></div>
           </div>
-          <label class="check"><input type="checkbox" id="pf-t-tutte"><span>Uguale per tutte le piante in casa</span></label>
-          <span class="hint">Nella stanza dove sta la pianta. Più fa caldo più beve: a 26 °C circa il 30% in più che a 20 °C. Vicino a un termosifone conta 2–3 gradi in più.</span>
+          <label class="check"><input type="checkbox" id="pf-t-tutte"><span id="pf-t-tutte-l">Uguale per tutte le piante in casa</span></label>
+          <span class="hint" id="pf-t-hint">Nella stanza dove sta la pianta. Più fa caldo più beve: a 26 °C circa il 30% in più che a 20 °C. Vicino a un termosifone conta 2–3 gradi in più.</span>
         </div>
         <div class="field"><label for="pf-fase">Fase di crescita</label><select id="pf-fase"></select><span class="hint" id="pf-fase-hint"></span></div>
         <div class="field pf-auto-ann"><label for="pf-semina">Seminata o trapiantata il</label><input type="date" id="pf-semina"></div>
@@ -603,7 +604,10 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
 })();
 
 /* ================= Costanti dell'app ================= */
-const DOVE_BREVE = {aperto:"all'aperto", riparato:'al riparo', interno:'in casa'};
+const DOVE_BREVE = {aperto:"all'aperto", riparato:'al riparo', serra:'in veranda/serra', interno:'in casa'};
+// testi dei campi temperatura: casa o veranda/serra
+const TESTI_T = {interno:['Temperatura in casa (°C)','Uguale per tutte le piante in casa','Nella stanza dove sta la pianta. Più fa caldo più beve: a 26 °C circa il 30% in più che a 20 °C. Vicino a un termosifone conta 2–3 gradi in più.'],
+  serra:['Temperatura in veranda / serra (°C)','Uguale per tutte le piante in veranda / serra','Temperature medie di giorno. Non riscaldata: d\'inverno 8–12 °C, d\'estate anche 30–35 °C. Sotto vetro la pioggia non arriva e il sole fa bere di più: arieggia nelle giornate calde.']};
 const COLT = {vaso:'Vaso', terra:'Piena terra', rialzata:'Aiuola rialzata'};
 const IMP_DEF = {bicchiere:0.25, annaffiatoio:5, ora_mattina:7, ora_sera:19};
 const CHEV = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
@@ -965,7 +969,7 @@ function vacText(){
     const a=autonomia(p,{...ctx(),fut});
     if(a.giorni>=durata){ s+='\n• '+p.nome+': non serve, resiste.'; continue; }
     const ogni=Math.max(1,Math.floor(a.giorni*0.8));
-    s+='\n• '+p.nome+(p.dove==='interno'?' (in casa)':'')+': ogni '+ogni+' giorni, '+fmt(a.riserva,a.riserva<2?2:1)+' L ('+dose(a.riserva,S.impostazioni)+'), finché esce dal foro. Svuota il sottovaso dopo 20 minuti.';
+    s+='\n• '+p.nome+(p.dove==='interno'?' (in casa)':p.dove==='serra'?' (in veranda/serra)':'')+': ogni '+ogni+' giorni, '+fmt(a.riserva,a.riserva<2?2:1)+' L ('+dose(a.riserva,S.impostazioni)+'), finché esce dal foro. Svuota il sottovaso dopo 20 minuti.';
   }
   return s+'\n\nSe piove forte salta un turno per le piante all\'aperto. Grazie!';
 }
@@ -1007,7 +1011,7 @@ function renderPiante(AP){
     const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
       ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],['Quindi',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
     if(altri) facts.push(['Nel vaso anche',altri]);
-    if(k.interno) facts.push(['In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
+    if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
     if(k.faseNota) notes.push(['warn','Fase: '+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
@@ -1193,7 +1197,12 @@ function markQuick(sel,attr,v){ const n=numOrNull(v); document.querySelectorAll(
 function syncForm(){
   const vaso=radioVal('colt')==='vaso';
   document.querySelectorAll('.pf-vaso-only').forEach(el=>el.hidden=!vaso);
-  document.querySelectorAll('.pf-casa-only').forEach(el=>el.hidden=radioVal('dove')!=='interno');
+  const dv=radioVal('dove'), coperto=dv==='interno'||dv==='serra';
+  document.querySelectorAll('.pf-casa-only').forEach(el=>el.hidden=!coperto);
+  if(coperto){ const [t1,t2,t3]=TESTI_T[dv]; $('#pf-t-titolo').textContent=t1; $('#pf-t-tutte-l').textContent=t2; $('#pf-t-hint').textContent=t3;
+    // cambiando posto (casa ↔ veranda/serra) senza aver scritto nulla, propone le temperature di quel posto
+    if(syncForm.dove && syncForm.dove!==dv && ![...document.querySelectorAll('[data-stagione]')].some(i=>i.dataset.toccato)) riempiTemperature(dv); }
+  syncForm.dove=dv;
   const specie=$('#pf-specie').value, sp=SPECIE[specie], auto=$('#pf-fase').value==='auto', ann=!!sp?.ann;
   document.querySelectorAll('.pf-auto-ann').forEach(el=>el.hidden=!(auto&&ann));
   let hint='';
@@ -1221,11 +1230,14 @@ function openForm(id){
   $('#deletePlantBtn').hidden=!id; $('#deleteConfirm').hidden=true;
   $('#plantListBox').hidden=true; $('#plantFormPanel').hidden=false;
   // temperature in casa: quelle della pianta, altrimenti quelle di un'altra pianta in casa, altrimenti i valori tipici
-  const altra=S.plants.find(x=>x.id!==p.id&&x.dove==='interno'&&x.tcasa), tc=tempCasa(p.tcasa?p:(altra||{}));
-  document.querySelectorAll('[data-stagione]').forEach(i=>i.value=numIn(tc[i.dataset.stagione]));
-  const firme=new Set(S.plants.filter(x=>x.id!==p.id&&x.dove==='interno').map(x=>JSON.stringify(tempCasa(x))));
-  $('#pf-t-tutte').checked=firme.size<=1;
+  syncForm.dove=p.dove; riempiTemperature(p.dove==='serra'?'serra':'interno', p);
   syncForm(); window.scrollTo({top:0});
+}
+// temperature del modulo: quelle della pianta, altrimenti di un'altra pianta nello stesso posto, altrimenti i valori tipici
+function riempiTemperature(dov, p){
+  const id=editingId, propria=p&&p.dove===dov&&p.tcasa?p:null, altra=S.plants.find(x=>x.id!==id&&x.dove===dov&&x.tcasa), tc=tempCasa(propria||altra||{dove:dov});
+  document.querySelectorAll('[data-stagione]').forEach(i=>{ i.value=numIn(tc[i.dataset.stagione]); delete i.dataset.toccato; });
+  $('#pf-t-tutte').checked=new Set(S.plants.filter(x=>x.id!==id&&x.dove===dov).map(x=>JSON.stringify(tempCasa(x)))).size<=1;
 }
 function closeForm(){ $('#plantFormPanel').hidden=true; $('#schedaPanel').hidden=true; $('#plantListBox').hidden=false; editingId=null; }
 function submitForm(e){
@@ -1242,9 +1254,10 @@ function submitForm(e){
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
     luce:luce==null?6:Math.max(0,Math.min(14,luce)), dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
     data_rinvaso:colt==='vaso'?($('#pf-rinvaso').value||''):'', note:$('#pf-note').value.trim().slice(0,500)};
-  if(data.dove==='interno'){
-    data.tcasa=Object.fromEntries([...document.querySelectorAll('[data-stagione]')].map(i=>[i.dataset.stagione, tcasaValida(numOrNull(i.value)) ?? TCASA_DEF[i.dataset.stagione]]));
-    if($('#pf-t-tutte').checked) S.plants.forEach(x=>{ if(x.id!==editingId && x.dove==='interno') x.tcasa={...data.tcasa}; });
+  if(data.dove==='interno'||data.dove==='serra'){
+    const def=data.dove==='serra'?TSERRA_DEF:TCASA_DEF;
+    data.tcasa=Object.fromEntries([...document.querySelectorAll('[data-stagione]')].map(i=>[i.dataset.stagione, tcasaValida(numOrNull(i.value)) ?? def[i.dataset.stagione]]));
+    if($('#pf-t-tutte').checked) S.plants.forEach(x=>{ if(x.id!==editingId && x.dove===data.dove) x.tcasa={...data.tcasa}; });
   }
   if(editingId){ const p=S.plants.find(x=>x.id===editingId); if(p){ Object.assign(p,data); delete p.example; delete p.espo; } }
   else S.plants.push({id:uid(),...data});
@@ -1342,7 +1355,7 @@ function wire(){
     if(e.target.matches('[data-c=specie]')){ const f=e.target.closest('[data-cons]').querySelector('[data-c=fase]'); f.innerHTML=optFasi(f.value,{value:'',label:'Stessa fase'},e.target.value); }
     syncForm();
   });
-  $('#plantForm').addEventListener('input',e=>{ if(['pf-vaso','pf-luce','pf-semina'].includes(e.target.id)) syncForm(); });
+  $('#plantForm').addEventListener('input',e=>{ if(e.target.dataset.stagione) e.target.dataset.toccato='1'; if(['pf-vaso','pf-luce','pf-semina'].includes(e.target.id)) syncForm(); });
   document.querySelectorAll('[data-luce]').forEach(b=>b.addEventListener('click',()=>{ $('#pf-luce').value=b.dataset.luce; syncForm(); }));
   document.querySelectorAll('[data-vaso]').forEach(b=>b.addEventListener('click',()=>{ $('#pf-vaso').value=b.dataset.vaso; syncForm(); }));
   $('#pf-cons-add').addEventListener('click',()=>{ $('#pf-cons').insertAdjacentHTML('beforeend',consRow({})); });

@@ -410,18 +410,19 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
           <div class="seg" role="radiogroup" aria-labelledby="pf-dove-l">
             <label><input type="radio" name="dove" value="aperto">Sì, è fuori</label>
             <label><input type="radio" name="dove" value="riparato">Fuori, al riparo</label>
+            <label><input type="radio" name="dove" value="serra">Veranda / serra</label>
             <label><input type="radio" name="dove" value="interno">In casa</label>
           </div>
         </div>
-        <div class="field pf-casa-only"><span class="flabel">Temperatura in casa (°C)</span>
+        <div class="field pf-casa-only"><span class="flabel" id="pf-t-titolo">Temperatura in casa (°C)</span>
           <div class="grid2">
             <div class="field"><label for="pf-t-inverno">❄️ Inverno</label><input type="text" id="pf-t-inverno" data-stagione="inverno" inputmode="decimal"></div>
             <div class="field"><label for="pf-t-primavera">🌷 Primavera</label><input type="text" id="pf-t-primavera" data-stagione="primavera" inputmode="decimal"></div>
             <div class="field"><label for="pf-t-estate">☀️ Estate</label><input type="text" id="pf-t-estate" data-stagione="estate" inputmode="decimal"></div>
             <div class="field"><label for="pf-t-autunno">🍂 Autunno</label><input type="text" id="pf-t-autunno" data-stagione="autunno" inputmode="decimal"></div>
           </div>
-          <label class="check"><input type="checkbox" id="pf-t-tutte"><span>Uguale per tutte le piante in casa</span></label>
-          <span class="hint">Nella stanza dove sta la pianta. Più fa caldo più beve: a 26 °C circa il 30% in più che a 20 °C. Vicino a un termosifone conta 2–3 gradi in più.</span>
+          <label class="check"><input type="checkbox" id="pf-t-tutte"><span id="pf-t-tutte-l">Uguale per tutte le piante in casa</span></label>
+          <span class="hint" id="pf-t-hint">Nella stanza dove sta la pianta. Più fa caldo più beve: a 26 °C circa il 30% in più che a 20 °C. Vicino a un termosifone conta 2–3 gradi in più.</span>
         </div>
         <div class="field"><label for="pf-fase">Fase di crescita</label><select id="pf-fase"></select><span class="hint" id="pf-fase-hint"></span></div>
         <div class="field pf-auto-ann"><label for="pf-semina">Seminata o trapiantata il</label><input type="date" id="pf-semina"></div>
@@ -750,12 +751,12 @@ window.GiardinoNet={
     return {name:x.name,detail:[x.admin1,x.country].filter(Boolean).join(', '),lat:+x.latitude.toFixed(4),lon:+x.longitude.toFixed(4),alt:x.elevation??null,clima:''};
   }
 };
-// aggiorna da solo quando torni sull'app e ogni 2 minuti mentre è aperta (risposte di Telegram, modifiche di Claude)
+// aggiorna da solo quando torni sull'app e ogni 5 minuti mentre è aperta e visibile (risposte di Telegram, modifiche di Claude)
 // app in background o chiusa: le modifiche in attesa partono subito, con keepalive (l'invio continua anche a pagina chiusa);
 // se non arrivano restano salvate sul telefono e ripartono alla prossima apertura
 function salvaPrimaDiUscire(){ Promise.resolve(window.salvaSubito?.()).then(()=>{ if(inAttesa&&navigator.onLine!==false) svuota(true); }).catch(()=>{}); }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') salvaPrimaDiUscire(); else aggiorna(false).catch(()=>{}); });
-setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },120000);
+setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },300000);
 window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 window.addEventListener('pagehide',salvaPrimaDiUscire);
@@ -877,15 +878,19 @@ const fattoreLuce = h => 0.35 + 0.65*Math.min(h,9)/8;   // 0 h → 35%, 8 h → 
 // (fattore di Priestley-Taylor). A 20 °C vale come prima: 0,8 + 0,15 × ore di luce.
 const esat = T => 0.6108*Math.exp(17.27*T/(T+237.3));                 // kPa
 const ptay = T => { const D=4098*esat(T)/(T+237.3)**2; return D/(D+0.066); };
-const et0Casa = (h, T=20) => 0.8*esat(T)/esat(20) + 0.15*Math.min(h,12)*ptay(T)/ptay(20);
+// In veranda o serra la luce arriva dal tetto e dalle vetrate: la parte dovuta al sole conta il doppio che a una finestra di casa.
+const et0Casa = (h, T=20, serra=false) => 0.8*esat(T)/esat(20) + (serra?0.30:0.15)*Math.min(h,12)*ptay(T)/ptay(20);
+// al coperto (casa, veranda, serra): niente pioggia, temperatura scelta dall'utente
+const alCoperto = p => p?.dove==='interno' || p?.dove==='serra';
 
 /* ---------------- Temperatura in casa per stagione ---------------- */
 // valori tipici se l'utente non li indica: riscaldamento d'inverno, caldo d'estate
 const STAGIONI = ['inverno','primavera','estate','autunno'];
 const TCASA_DEF = {inverno:20, primavera:21, estate:26, autunno:21};
+const TSERRA_DEF = {inverno:10, primavera:20, estate:32, autunno:17};   // veranda o serra non riscaldata
 const tcasaValida = v => { const n=Number(v); return v!=null && v!=='' && isFinite(n) && n>=5 && n<=35 ? n : null; };
 // temperature della stanza di una pianta, con i valori tipici al posto di quelli mancanti
-function tempCasa(p){ const t=p?.tcasa||{}; return Object.fromEntries(STAGIONI.map(s=>[s, tcasaValida(t[s]) ?? TCASA_DEF[s]])); }
+function tempCasa(p){ const t=p?.tcasa||{}, def=p?.dove==='serra'?TSERRA_DEF:TCASA_DEF; return Object.fromEntries(STAGIONI.map(s=>[s, tcasaValida(t[s]) ?? def[s]])); }
 // temperatura di un giorno: passa gradualmente da una stagione all'altra (metà gennaio, aprile, luglio, ottobre);
 // nell'emisfero sud le stagioni sono spostate di sei mesi
 function tempCasaGiorno(tc, iso, lat){
@@ -947,7 +952,7 @@ function params(p, ctx={}){
   const fe=faseEffettiva(p, oggi, ctx.lat);
   const sp=SPECIE[p.specie]||SPECIE.altro, fa=FASI[fe.fase];
   const membri=membriVaso(p, fe.fase), nTot=membri.reduce((a,m)=>a+m.num,0);
-  const h=ctx.luce!=null?ctx.luce:luceOre(p), interno=p.dove==='interno', fl=interno?1:fattoreLuce(h);
+  const h=ctx.luce!=null?ctx.luce:luceOre(p), interno=alCoperto(p), serra=p.dove==='serra', fl=interno?1:fattoreLuce(h);
   let kcA=0, chioma=0, pMin=1;
   for(const m of membri){
     const s=SPECIE[m.specie]||SPECIE.altro, f=FASI[m.fase]||FASI.vegetativa, a=s.area*m.num;
@@ -955,7 +960,7 @@ function params(p, ctx={}){
   }
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib,
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
     oggi, lat:ctx.lat, tcasa:interno?tempCasa(p):null};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
@@ -972,8 +977,11 @@ function params(p, ctx={}){
   return {...base,vaso:false,chioma,area,tawL,rawL:tawL*pMin,pMin,lPerMm:kcA/chioma*area*fl*calib,pioggiaArea:area*0.85};
 }
 // in casa conta la temperatura della stanza in quel giorno (d.date; senza data, oggi)
-const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat))*k.lPerMm : (d?.et0||0)*k.lPerMm;
+const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra)*k.lPerMm : (d?.et0||0)*k.lPerMm;
 const pioggiaL = (p,k,d) => p.dove!=='aperto' ? 0 : Math.max(0,(d?.rain||0)-1.5)*k.pioggiaArea;
+// Pioggia prevista: conta quella attesa, non quella massima. Con probabilità 80% o più vale tutta, sotto in proporzione
+// (20 mm al 56% contano 14 mm): così una pioggia incerta non fa saltare un'innaffiatura che serve.
+const pioggiaAttesa = d => !d || d.prob==null ? d : {...d, rain:(d.rain||0)*Math.min(1,Math.max(0,d.prob)/80)};
 
 /* ---------------- Piano locale (bilancio idrico giorno per giorno) ----------------
    opts = {piante, past, fut, eventi, oggi, lat, vacanza:{dal, al}}  (al = giorno del rientro) */
@@ -995,7 +1003,7 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     if(fatte.has(oggi)) dep=0;
     const giorni=[];
     fut.forEach((d,i)=>{
-      const pl=pioggiaL(p,k,d);
+      const pl=pioggiaL(p,k,d.date>=oggi?pioggiaAttesa(d):d);
       let end=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pl));
       const next=fut[i+1], momento=d.tmin<=2&&!k.interno?'metà giornata':'mattina presto';
       const innaffia=(motivo,extra=1.1)=>{ const l=Math.max(0.05,end*(k.vaso?extra:1)); const g={data:d.date,azione:'innaffia',litri:+l.toFixed(l<2?2:1),momento,motivo}; end=0; return g; };
@@ -1008,7 +1016,7 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
       }
       else if(pl>=k.rawL*0.25 && pl>0.05 && end<k.rawL) g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'La pioggia basta (~'+fmtN(Math.min(pl,k.tawL))+' L utili)'};
       else if(end>=k.rawL){
-        const nr=next?pioggiaL(p,k,next):0;
+        const nr=next?pioggiaL(p,k,pioggiaAttesa(next)):0;
         if(next&&nr>=end*0.6&&(next.prob??0)>=60&&end<k.tawL*0.85) g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Rinvia: pioggia prevista domani ('+fmtN(next.rain)+' mm)'};
         else g=innaffia((k.vaso?'Vaso asciutto al ':'Riserva consumata al ')+Math.round(end/k.tawL*100)+'%'+(k.vaso?', bagna finché esce dal foro':''));
       }
@@ -1019,7 +1027,7 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     out.piante.push({id:p.id, valutazione:'', fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:[]});
   }
   const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
-  const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p));
+  const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
   if(freddo.length) out.avvisi.push('Minima fino a '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
   if(maxT>=33) out.avvisi.push('Caldo intenso (fino a '+fmtN(maxT)+' °C): innaffia all\'alba e controlla i vasi piccoli anche la sera.');
   return out;
@@ -1043,14 +1051,15 @@ function gelo(p){ const sp=SPECIE[p.specie]||SPECIE.altro; return sp.gelo+(p.col
 // notte (facoltativa) = temperature orarie dalla sera di oggi alla mattina di domani: [{ora:'HH', t}]
 function avvisiDomani(piante, domani, notte){
   if(!domani) return [];
-  const out=[], fuori=piante.filter(p=>p.dove!=='interno');
+  const out=[], fuori=piante.filter(p=>!alCoperto(p)), daGelo=piante.filter(p=>p.dove!=='interno');
   const oraria = Array.isArray(notte) && notte.length ? notte : null;
   const minima = oraria ? Math.min(...oraria.map(x=>x.t)) : domani.tmin;
-  const fredde=fuori.filter(p=>minima<=gelo(p));
+  const sogliaGelo=p=>gelo(p)-(p.dove==='serra'?4:0);   // il vetro della serra tiene circa 4 gradi
+  const fredde=daGelo.filter(p=>minima<=sogliaGelo(p));
   if(fredde.length){
     let testo='Minima di '+fmtN(minima)+' °C';
     if(oraria){
-      const soglia=Math.max(...fredde.map(gelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
+      const soglia=Math.max(...fredde.map(sogliaGelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
       testo='Stanotte minima di '+fmtN(minima)+' °C verso le '+piu.ora+':00'+(sotto.length>1?' (sotto '+fmtN(soglia)+' °C dalle '+sotto[0].ora+':00 alle '+sotto[sotto.length-1].ora+':00)':'');
     }
     out.push({tipo:'gelo', testo:testo+': porta al riparo o copri con tessuto non tessuto '+fredde.map(p=>p.nome).join(', ')+'.', piante:fredde.map(p=>p.id)});
@@ -1160,7 +1169,10 @@ function calendarioAuto(p, lat){
 })();
 
 /* ================= Costanti dell'app ================= */
-const DOVE_BREVE = {aperto:"all'aperto", riparato:'al riparo', interno:'in casa'};
+const DOVE_BREVE = {aperto:"all'aperto", riparato:'al riparo', serra:'in veranda/serra', interno:'in casa'};
+// testi dei campi temperatura: casa o veranda/serra
+const TESTI_T = {interno:['Temperatura in casa (°C)','Uguale per tutte le piante in casa','Nella stanza dove sta la pianta. Più fa caldo più beve: a 26 °C circa il 30% in più che a 20 °C. Vicino a un termosifone conta 2–3 gradi in più.'],
+  serra:['Temperatura in veranda / serra (°C)','Uguale per tutte le piante in veranda / serra','Temperature medie di giorno. Non riscaldata: d\'inverno 8–12 °C, d\'estate anche 30–35 °C. Sotto vetro la pioggia non arriva e il sole fa bere di più: arieggia nelle giornate calde.']};
 const COLT = {vaso:'Vaso', terra:'Piena terra', rialzata:'Aiuola rialzata'};
 const IMP_DEF = {bicchiere:0.25, annaffiatoio:5, ora_mattina:7, ora_sera:19};
 const CHEV = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
@@ -1522,7 +1534,7 @@ function vacText(){
     const a=autonomia(p,{...ctx(),fut});
     if(a.giorni>=durata){ s+='\n• '+p.nome+': non serve, resiste.'; continue; }
     const ogni=Math.max(1,Math.floor(a.giorni*0.8));
-    s+='\n• '+p.nome+(p.dove==='interno'?' (in casa)':'')+': ogni '+ogni+' giorni, '+fmt(a.riserva,a.riserva<2?2:1)+' L ('+dose(a.riserva,S.impostazioni)+'), finché esce dal foro. Svuota il sottovaso dopo 20 minuti.';
+    s+='\n• '+p.nome+(p.dove==='interno'?' (in casa)':p.dove==='serra'?' (in veranda/serra)':'')+': ogni '+ogni+' giorni, '+fmt(a.riserva,a.riserva<2?2:1)+' L ('+dose(a.riserva,S.impostazioni)+'), finché esce dal foro. Svuota il sottovaso dopo 20 minuti.';
   }
   return s+'\n\nSe piove forte salta un turno per le piante all\'aperto. Grazie!';
 }
@@ -1564,7 +1576,7 @@ function renderPiante(AP){
     const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
       ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],['Quindi',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
     if(altri) facts.push(['Nel vaso anche',altri]);
-    if(k.interno) facts.push(['In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
+    if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
     if(k.faseNota) notes.push(['warn','Fase: '+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
@@ -1750,7 +1762,12 @@ function markQuick(sel,attr,v){ const n=numOrNull(v); document.querySelectorAll(
 function syncForm(){
   const vaso=radioVal('colt')==='vaso';
   document.querySelectorAll('.pf-vaso-only').forEach(el=>el.hidden=!vaso);
-  document.querySelectorAll('.pf-casa-only').forEach(el=>el.hidden=radioVal('dove')!=='interno');
+  const dv=radioVal('dove'), coperto=dv==='interno'||dv==='serra';
+  document.querySelectorAll('.pf-casa-only').forEach(el=>el.hidden=!coperto);
+  if(coperto){ const [t1,t2,t3]=TESTI_T[dv]; $('#pf-t-titolo').textContent=t1; $('#pf-t-tutte-l').textContent=t2; $('#pf-t-hint').textContent=t3;
+    // cambiando posto (casa ↔ veranda/serra) senza aver scritto nulla, propone le temperature di quel posto
+    if(syncForm.dove && syncForm.dove!==dv && ![...document.querySelectorAll('[data-stagione]')].some(i=>i.dataset.toccato)) riempiTemperature(dv); }
+  syncForm.dove=dv;
   const specie=$('#pf-specie').value, sp=SPECIE[specie], auto=$('#pf-fase').value==='auto', ann=!!sp?.ann;
   document.querySelectorAll('.pf-auto-ann').forEach(el=>el.hidden=!(auto&&ann));
   let hint='';
@@ -1778,11 +1795,14 @@ function openForm(id){
   $('#deletePlantBtn').hidden=!id; $('#deleteConfirm').hidden=true;
   $('#plantListBox').hidden=true; $('#plantFormPanel').hidden=false;
   // temperature in casa: quelle della pianta, altrimenti quelle di un'altra pianta in casa, altrimenti i valori tipici
-  const altra=S.plants.find(x=>x.id!==p.id&&x.dove==='interno'&&x.tcasa), tc=tempCasa(p.tcasa?p:(altra||{}));
-  document.querySelectorAll('[data-stagione]').forEach(i=>i.value=numIn(tc[i.dataset.stagione]));
-  const firme=new Set(S.plants.filter(x=>x.id!==p.id&&x.dove==='interno').map(x=>JSON.stringify(tempCasa(x))));
-  $('#pf-t-tutte').checked=firme.size<=1;
+  syncForm.dove=p.dove; riempiTemperature(p.dove==='serra'?'serra':'interno', p);
   syncForm(); window.scrollTo({top:0});
+}
+// temperature del modulo: quelle della pianta, altrimenti di un'altra pianta nello stesso posto, altrimenti i valori tipici
+function riempiTemperature(dov, p){
+  const id=editingId, propria=p&&p.dove===dov&&p.tcasa?p:null, altra=S.plants.find(x=>x.id!==id&&x.dove===dov&&x.tcasa), tc=tempCasa(propria||altra||{dove:dov});
+  document.querySelectorAll('[data-stagione]').forEach(i=>{ i.value=numIn(tc[i.dataset.stagione]); delete i.dataset.toccato; });
+  $('#pf-t-tutte').checked=new Set(S.plants.filter(x=>x.id!==id&&x.dove===dov).map(x=>JSON.stringify(tempCasa(x)))).size<=1;
 }
 function closeForm(){ $('#plantFormPanel').hidden=true; $('#schedaPanel').hidden=true; $('#plantListBox').hidden=false; editingId=null; }
 function submitForm(e){
@@ -1799,9 +1819,10 @@ function submitForm(e){
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
     luce:luce==null?6:Math.max(0,Math.min(14,luce)), dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
     data_rinvaso:colt==='vaso'?($('#pf-rinvaso').value||''):'', note:$('#pf-note').value.trim().slice(0,500)};
-  if(data.dove==='interno'){
-    data.tcasa=Object.fromEntries([...document.querySelectorAll('[data-stagione]')].map(i=>[i.dataset.stagione, tcasaValida(numOrNull(i.value)) ?? TCASA_DEF[i.dataset.stagione]]));
-    if($('#pf-t-tutte').checked) S.plants.forEach(x=>{ if(x.id!==editingId && x.dove==='interno') x.tcasa={...data.tcasa}; });
+  if(data.dove==='interno'||data.dove==='serra'){
+    const def=data.dove==='serra'?TSERRA_DEF:TCASA_DEF;
+    data.tcasa=Object.fromEntries([...document.querySelectorAll('[data-stagione]')].map(i=>[i.dataset.stagione, tcasaValida(numOrNull(i.value)) ?? def[i.dataset.stagione]]));
+    if($('#pf-t-tutte').checked) S.plants.forEach(x=>{ if(x.id!==editingId && x.dove===data.dove) x.tcasa={...data.tcasa}; });
   }
   if(editingId){ const p=S.plants.find(x=>x.id===editingId); if(p){ Object.assign(p,data); delete p.example; delete p.espo; } }
   else S.plants.push({id:uid(),...data});
@@ -1899,7 +1920,7 @@ function wire(){
     if(e.target.matches('[data-c=specie]')){ const f=e.target.closest('[data-cons]').querySelector('[data-c=fase]'); f.innerHTML=optFasi(f.value,{value:'',label:'Stessa fase'},e.target.value); }
     syncForm();
   });
-  $('#plantForm').addEventListener('input',e=>{ if(['pf-vaso','pf-luce','pf-semina'].includes(e.target.id)) syncForm(); });
+  $('#plantForm').addEventListener('input',e=>{ if(e.target.dataset.stagione) e.target.dataset.toccato='1'; if(['pf-vaso','pf-luce','pf-semina'].includes(e.target.id)) syncForm(); });
   document.querySelectorAll('[data-luce]').forEach(b=>b.addEventListener('click',()=>{ $('#pf-luce').value=b.dataset.luce; syncForm(); }));
   document.querySelectorAll('[data-vaso]').forEach(b=>b.addEventListener('click',()=>{ $('#pf-vaso').value=b.dataset.vaso; syncForm(); }));
   $('#pf-cons-add').addEventListener('click',()=>{ $('#pf-cons').insertAdjacentHTML('beforeend',consRow({})); });

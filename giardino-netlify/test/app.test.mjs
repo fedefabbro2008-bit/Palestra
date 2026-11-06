@@ -113,6 +113,10 @@ test("flusso completo a 390 px", async (t) => {
   await page.evaluate(() => { document.querySelectorAll("#plantList details.plant").forEach((d) => (d.open = true)); });
   await page.click('#plantList details.plant:has-text("Limone") [data-edit]');
   assert.ok(!(await page.isVisible("#pf-t-inverno")), "fuori casa niente temperature");
+  await page.click("label:has(input[name=dove][value=serra])");
+  assert.ok(await page.isVisible("#pf-t-inverno"));
+  assert.match(await page.textContent("#pf-t-titolo"), /veranda/);
+  assert.equal(await page.inputValue("#pf-t-inverno"), "10", "valori tipici della serra");
   await page.click("#cancelPlantBtn");
 
   // scheda: prima il calendario automatico, poi quella scritta da Claude con la tabella dei mesi

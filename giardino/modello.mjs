@@ -107,15 +107,19 @@ export const fattoreLuce = h => 0.35 + 0.65*Math.min(h,9)/8;   // 0 h → 35%, 8
 // (fattore di Priestley-Taylor). A 20 °C vale come prima: 0,8 + 0,15 × ore di luce.
 const esat = T => 0.6108*Math.exp(17.27*T/(T+237.3));                 // kPa
 const ptay = T => { const D=4098*esat(T)/(T+237.3)**2; return D/(D+0.066); };
-export const et0Casa = (h, T=20) => 0.8*esat(T)/esat(20) + 0.15*Math.min(h,12)*ptay(T)/ptay(20);
+// In veranda o serra la luce arriva dal tetto e dalle vetrate: la parte dovuta al sole conta il doppio che a una finestra di casa.
+export const et0Casa = (h, T=20, serra=false) => 0.8*esat(T)/esat(20) + (serra?0.30:0.15)*Math.min(h,12)*ptay(T)/ptay(20);
+// al coperto (casa, veranda, serra): niente pioggia, temperatura scelta dall'utente
+export const alCoperto = p => p?.dove==='interno' || p?.dove==='serra';
 
 /* ---------------- Temperatura in casa per stagione ---------------- */
 // valori tipici se l'utente non li indica: riscaldamento d'inverno, caldo d'estate
 export const STAGIONI = ['inverno','primavera','estate','autunno'];
 export const TCASA_DEF = {inverno:20, primavera:21, estate:26, autunno:21};
+export const TSERRA_DEF = {inverno:10, primavera:20, estate:32, autunno:17};   // veranda o serra non riscaldata
 export const tcasaValida = v => { const n=Number(v); return v!=null && v!=='' && isFinite(n) && n>=5 && n<=35 ? n : null; };
 // temperature della stanza di una pianta, con i valori tipici al posto di quelli mancanti
-export function tempCasa(p){ const t=p?.tcasa||{}; return Object.fromEntries(STAGIONI.map(s=>[s, tcasaValida(t[s]) ?? TCASA_DEF[s]])); }
+export function tempCasa(p){ const t=p?.tcasa||{}, def=p?.dove==='serra'?TSERRA_DEF:TCASA_DEF; return Object.fromEntries(STAGIONI.map(s=>[s, tcasaValida(t[s]) ?? def[s]])); }
 // temperatura di un giorno: passa gradualmente da una stagione all'altra (metà gennaio, aprile, luglio, ottobre);
 // nell'emisfero sud le stagioni sono spostate di sei mesi
 export function tempCasaGiorno(tc, iso, lat){
@@ -177,7 +181,7 @@ export function params(p, ctx={}){
   const fe=faseEffettiva(p, oggi, ctx.lat);
   const sp=SPECIE[p.specie]||SPECIE.altro, fa=FASI[fe.fase];
   const membri=membriVaso(p, fe.fase), nTot=membri.reduce((a,m)=>a+m.num,0);
-  const h=ctx.luce!=null?ctx.luce:luceOre(p), interno=p.dove==='interno', fl=interno?1:fattoreLuce(h);
+  const h=ctx.luce!=null?ctx.luce:luceOre(p), interno=alCoperto(p), serra=p.dove==='serra', fl=interno?1:fattoreLuce(h);
   let kcA=0, chioma=0, pMin=1;
   for(const m of membri){
     const s=SPECIE[m.specie]||SPECIE.altro, f=FASI[m.fase]||FASI.vegetativa, a=s.area*m.num;
@@ -185,7 +189,7 @@ export function params(p, ctx={}){
   }
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,calib,
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
     oggi, lat:ctx.lat, tcasa:interno?tempCasa(p):null};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
@@ -202,8 +206,11 @@ export function params(p, ctx={}){
   return {...base,vaso:false,chioma,area,tawL,rawL:tawL*pMin,pMin,lPerMm:kcA/chioma*area*fl*calib,pioggiaArea:area*0.85};
 }
 // in casa conta la temperatura della stanza in quel giorno (d.date; senza data, oggi)
-export const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat))*k.lPerMm : (d?.et0||0)*k.lPerMm;
+export const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra)*k.lPerMm : (d?.et0||0)*k.lPerMm;
 export const pioggiaL = (p,k,d) => p.dove!=='aperto' ? 0 : Math.max(0,(d?.rain||0)-1.5)*k.pioggiaArea;
+// Pioggia prevista: conta quella attesa, non quella massima. Con probabilità 80% o più vale tutta, sotto in proporzione
+// (20 mm al 56% contano 14 mm): così una pioggia incerta non fa saltare un'innaffiatura che serve.
+export const pioggiaAttesa = d => !d || d.prob==null ? d : {...d, rain:(d.rain||0)*Math.min(1,Math.max(0,d.prob)/80)};
 
 /* ---------------- Piano locale (bilancio idrico giorno per giorno) ----------------
    opts = {piante, past, fut, eventi, oggi, lat, vacanza:{dal, al}}  (al = giorno del rientro) */
@@ -225,7 +232,7 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     if(fatte.has(oggi)) dep=0;
     const giorni=[];
     fut.forEach((d,i)=>{
-      const pl=pioggiaL(p,k,d);
+      const pl=pioggiaL(p,k,d.date>=oggi?pioggiaAttesa(d):d);
       let end=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pl));
       const next=fut[i+1], momento=d.tmin<=2&&!k.interno?'metà giornata':'mattina presto';
       const innaffia=(motivo,extra=1.1)=>{ const l=Math.max(0.05,end*(k.vaso?extra:1)); const g={data:d.date,azione:'innaffia',litri:+l.toFixed(l<2?2:1),momento,motivo}; end=0; return g; };
@@ -238,7 +245,7 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
       }
       else if(pl>=k.rawL*0.25 && pl>0.05 && end<k.rawL) g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'La pioggia basta (~'+fmtN(Math.min(pl,k.tawL))+' L utili)'};
       else if(end>=k.rawL){
-        const nr=next?pioggiaL(p,k,next):0;
+        const nr=next?pioggiaL(p,k,pioggiaAttesa(next)):0;
         if(next&&nr>=end*0.6&&(next.prob??0)>=60&&end<k.tawL*0.85) g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Rinvia: pioggia prevista domani ('+fmtN(next.rain)+' mm)'};
         else g=innaffia((k.vaso?'Vaso asciutto al ':'Riserva consumata al ')+Math.round(end/k.tawL*100)+'%'+(k.vaso?', bagna finché esce dal foro':''));
       }
@@ -249,7 +256,7 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     out.piante.push({id:p.id, valutazione:'', fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:[]});
   }
   const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
-  const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p));
+  const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
   if(freddo.length) out.avvisi.push('Minima fino a '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
   if(maxT>=33) out.avvisi.push('Caldo intenso (fino a '+fmtN(maxT)+' °C): innaffia all\'alba e controlla i vasi piccoli anche la sera.');
   return out;
@@ -273,14 +280,15 @@ export function gelo(p){ const sp=SPECIE[p.specie]||SPECIE.altro; return sp.gelo
 // notte (facoltativa) = temperature orarie dalla sera di oggi alla mattina di domani: [{ora:'HH', t}]
 export function avvisiDomani(piante, domani, notte){
   if(!domani) return [];
-  const out=[], fuori=piante.filter(p=>p.dove!=='interno');
+  const out=[], fuori=piante.filter(p=>!alCoperto(p)), daGelo=piante.filter(p=>p.dove!=='interno');
   const oraria = Array.isArray(notte) && notte.length ? notte : null;
   const minima = oraria ? Math.min(...oraria.map(x=>x.t)) : domani.tmin;
-  const fredde=fuori.filter(p=>minima<=gelo(p));
+  const sogliaGelo=p=>gelo(p)-(p.dove==='serra'?4:0);   // il vetro della serra tiene circa 4 gradi
+  const fredde=daGelo.filter(p=>minima<=sogliaGelo(p));
   if(fredde.length){
     let testo='Minima di '+fmtN(minima)+' °C';
     if(oraria){
-      const soglia=Math.max(...fredde.map(gelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
+      const soglia=Math.max(...fredde.map(sogliaGelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
       testo='Stanotte minima di '+fmtN(minima)+' °C verso le '+piu.ora+':00'+(sotto.length>1?' (sotto '+fmtN(soglia)+' °C dalle '+sotto[0].ora+':00 alle '+sotto[sotto.length-1].ora+':00)':'');
     }
     out.push({tipo:'gelo', testo:testo+': porta al riparo o copri con tessuto non tessuto '+fredde.map(p=>p.nome).join(', ')+'.', piante:fredde.map(p=>p.id)});
