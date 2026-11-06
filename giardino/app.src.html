@@ -169,10 +169,10 @@ details[open]>summary .chev{transform:rotate(90deg)}
 .diag .sint{display:grid;gap:10px;margin:10px 0 12px} .diag[open] summary{margin-bottom:4px}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
 @media (max-width:359px){.grid2{grid-template-columns:minmax(0,1fr)}}
-input[type=text],input[type=number],input[type=date],select,textarea{display:block;width:100%;min-width:0;max-width:100%;
+input[type=text],input[type=number],input[type=date],input[type=time],input[type=month],select,textarea{display:block;width:100%;min-width:0;max-width:100%;
   border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:11px 12px;min-height:48px;font-size:16px;-webkit-appearance:none;appearance:none}
-input[type=date]{text-align:left}
-input[type=date]::-webkit-date-and-time-value{text-align:left}
+input[type=date],input[type=time],input[type=month]{text-align:left}
+input[type=date]::-webkit-date-and-time-value,input[type=time]::-webkit-date-and-time-value,input[type=month]::-webkit-date-and-time-value{text-align:left}
 select{padding-right:34px;background-image:var(--sel);background-repeat:no-repeat;background-position:right 12px center}
 textarea{min-height:84px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--water);outline-offset:0;border-color:transparent}

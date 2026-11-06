@@ -283,7 +283,7 @@ export function storicoDa(j){ const d=j?.daily, o={}; if(d?.time) d.time.forEach
 export const inizioRaccolta = sp => sp.ciclo.slice(0,5).filter(x=>x!=null).pop();
 // la raccolta prevista: quella scritta, altrimenti il primo mese di raccolta della scheda di Claude (se è per questa semina)
 export function raccoltaDi(p){
-  if(/^\d{4}-\d{2}$/.test(p?.raccolta||'')) return p.raccolta;
+  if(/^\d{4}-\d{2}$/.test(p?.raccolta||'')) return p.data_semina && p.raccolta>p.data_semina.slice(0,7) ? p.raccolta : '';   // una raccolta prima della semina non vale
   const sc=p?.scheda; if(!sc || sc.specie!==p.specie || (sc.data_semina||'')!==(p.data_semina||'') || !p.data_semina) return '';
   return (sc.calendario||[]).filter(x=>x.raccolta && /^\d{4}-\d{2}$/.test(x.mese) && x.mese>p.data_semina.slice(0,7)).map(x=>x.mese).sort()[0]||'';
 }

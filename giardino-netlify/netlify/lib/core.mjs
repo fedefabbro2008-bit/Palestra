@@ -62,12 +62,14 @@ export async function meteo(lat, lon) {
   try { c = await st.get(key, { type: "json" }); } catch (e) { console.warn("cache del meteo:", e?.message); }
   if (c && ora - c.at < METEO_VALIDO && new Date(c.at).getUTCHours() === ora.getUTCHours()) { M.registraClima(lat, M.climaDa(c.met)); return c.met; }
   const u = M.urlMeteo(lat, lon);
-  const [r, rIT] = await Promise.all([fetch(u.base).catch((e) => ({ ok: false, status: e?.message || "rete" })), fetch(u.it).catch(() => null)]);
+  // storico delle temperature (una richiesta al giorno) insieme alle previsioni, non dopo
+  const [r, rIT, temp] = await Promise.all([fetch(u.base).catch((e) => ({ ok: false, status: e?.message || "rete" })), fetch(u.it).catch(() => null),
+    storicoTemperature(st, lat, lon, oraLocale(c?.met?.tz || "Europe/Rome").oggi).catch(() => null)]);
   if (!r.ok) return meteoRiserva(st, key, lat, lon, c?.met, "Open-Meteo " + r.status);
   const j = await r.json(), jIT = rIT?.ok ? await rIT.json().catch(() => null) : null;
   const { oggi, ora: h } = oraLocale(j.timezone || "Europe/Rome");
   const met = M.componiMeteo(j, jIT, oggi, h);
-  met.storico = await storicoTemperature(st, lat, lon, oggi);
+  met.storico = temp;
   M.registraClima(lat, M.climaDa(met));
   try { await st.setJSON(key, { at: ora.getTime(), met }); } catch (e) { console.warn("cache del meteo:", e?.message); }
   return met;

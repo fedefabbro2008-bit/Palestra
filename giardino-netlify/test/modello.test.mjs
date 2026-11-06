@@ -261,3 +261,8 @@ test("messa sotto la pioggia: mm misurati (ARPAE) nelle ore scelte, litri nel va
   const con = M.pianoLocale({ piante: [p], fut, oggi: "2026-11-06", lat: 44, eventi: [{ id: "x", plantId: "n", tipo: "pioggia", data: "2026-11-06", litri }] }).piante[0].acqua;
   assert.ok(con > senza && con < 1, "più acqua nel terriccio, ma non per forza piena");
 });
+
+test("raccolta prevista rimasta prima di una nuova data di semina: non vale", () => {
+  assert.equal(M.raccoltaDi({ specie: "carota", fase: "auto", data_semina: "2027-05-10", raccolta: "2027-04" }), "");
+  assert.equal(M.raccoltaDi({ specie: "carota", fase: "auto", data_semina: "2026-11-06", raccolta: "2027-04" }), "2027-04");
+});

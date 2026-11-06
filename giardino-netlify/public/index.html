@@ -185,10 +185,10 @@ details[open]>summary .chev{transform:rotate(90deg)}
 .diag .sint{display:grid;gap:10px;margin:10px 0 12px} .diag[open] summary{margin-bottom:4px}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
 @media (max-width:359px){.grid2{grid-template-columns:minmax(0,1fr)}}
-input[type=text],input[type=number],input[type=date],select,textarea{display:block;width:100%;min-width:0;max-width:100%;
+input[type=text],input[type=number],input[type=date],input[type=time],input[type=month],select,textarea{display:block;width:100%;min-width:0;max-width:100%;
   border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:11px 12px;min-height:48px;font-size:16px;-webkit-appearance:none;appearance:none}
-input[type=date]{text-align:left}
-input[type=date]::-webkit-date-and-time-value{text-align:left}
+input[type=date],input[type=time],input[type=month]{text-align:left}
+input[type=date]::-webkit-date-and-time-value,input[type=time]::-webkit-date-and-time-value,input[type=month]::-webkit-date-and-time-value{text-align:left}
 select{padding-right:34px;background-image:var(--sel);background-repeat:no-repeat;background-position:right 12px center}
 textarea{min-height:84px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--water);outline-offset:0;border-color:transparent}
@@ -806,18 +806,21 @@ function diffGiardino(nuovo){
 // stesse richieste e stessi calcoli del bot (urlMeteo, componiMeteo nel modello), le due richieste in parallelo
 async function meteo(lat,lon){
   const u=urlMeteo(lat,lon);
-  const [r,rIT]=await Promise.all([fetch(u.base),fetch(u.it).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
+  // lo storico delle temperature (una volta al giorno) parte insieme alle previsioni, non dopo
+  const [r,rIT,temp]=await Promise.all([fetch(u.base),fetch(u.it).catch(()=>null),storico(lat,lon,isoDate(new Date())).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
   const j=await r.json(), jIT=rIT&&rIT.ok?await rIT.json().catch(()=>null):null;
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
   const oggi=p.year+'-'+p.month+'-'+p.day;
-  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,jIT,oggi,+p.hour),storico:await storico(lat,lon,oggi)};
+  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,jIT,oggi,+p.hour),storico:temp};
 }
 // temperature medie dei 400 giorni passati, per le fasi a gradi-giorno: scaricate una volta al giorno
 async function storico(lat,lon,oggi){
-  const c=LSjson('storico');
-  if(c&&c.giorno===oggi&&c.lat===lat&&c.lon===lon&&c.temp) return c.temp;
-  try{ const r=await fetch(urlStorico(lat,lon,oggi)); if(r.ok){ const temp=storicoDa(await r.json()); if(Object.keys(temp).length){ LSset('storico',JSON.stringify({giorno:oggi,lat,lon,temp})); return temp; } } }catch(e){}
-  return c&&c.lat===lat&&c.lon===lon?c.temp:null;
+  const c=LSjson('storico'), qui=c&&c.lat===lat&&c.lon===lon&&c.temp;
+  if(qui&&c.giorno===oggi) return c.temp;
+  const scarica=fetch(urlStorico(lat,lon,oggi)).then(r=>r.ok?r.json():null).then(j=>{ const temp=j?storicoDa(j):{}; if(Object.keys(temp).length){ LSset('storico',JSON.stringify({giorno:oggi,lat,lon,temp})); return temp; } return null; }).catch(()=>null);
+  // c'è già quello di ieri: si usa subito e il nuovo arriva per la prossima volta (l'avvio non aspetta)
+  if(qui) return c.temp;
+  return (await scarica)||null;
 }
 async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
@@ -1180,7 +1183,7 @@ function storicoDa(j){ const d=j?.daily, o={}; if(d?.time) d.time.forEach((t,i)=
 const inizioRaccolta = sp => sp.ciclo.slice(0,5).filter(x=>x!=null).pop();
 // la raccolta prevista: quella scritta, altrimenti il primo mese di raccolta della scheda di Claude (se è per questa semina)
 function raccoltaDi(p){
-  if(/^\d{4}-\d{2}$/.test(p?.raccolta||'')) return p.raccolta;
+  if(/^\d{4}-\d{2}$/.test(p?.raccolta||'')) return p.data_semina && p.raccolta>p.data_semina.slice(0,7) ? p.raccolta : '';   // una raccolta prima della semina non vale
   const sc=p?.scheda; if(!sc || sc.specie!==p.specie || (sc.data_semina||'')!==(p.data_semina||'') || !p.data_semina) return '';
   return (sc.calendario||[]).filter(x=>x.raccolta && /^\d{4}-\d{2}$/.test(x.mese) && x.mese>p.data_semina.slice(0,7)).map(x=>x.mese).sort()[0]||'';
 }

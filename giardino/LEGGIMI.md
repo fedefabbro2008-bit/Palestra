@@ -73,7 +73,9 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Pioggia misurata**: ogni 3 ore il bot legge le stazioni ARPAE-SIMC (open data, solo Emilia-Romagna) e scrive nei dati i giorni completi della stazione più vicina (`pioggia_misurata`): nei giorni passati prende il posto della pioggia stimata.
 - **Bot di riserva su GitHub** (`giardino/riserva.mjs`, `.github/workflows/giardino-riserva.yml`, ogni mattina): sito vivo → copia cifrata dei dati nella cache di GitHub Actions; sito fermo (es. crediti finiti) → messaggio del mattino su Telegram da GitHub. Segreti: `GIARDINO_CODE`, `GIARDINO_TG_TOKEN`, `GIARDINO_TG_CHAT` (il numero è in Impostazioni → Telegram).
 - **Crediti**: in Impostazioni → Crediti Netlify si scrive il valore vero letto su Netlify e la stima riparte da lì.
-- **Badge «Powered by Netlify»** (piano gratuito): l'app gli lascia una fascia al centro sotto le schede.
+- **Badge «Powered by Netlify»** (piano gratuito, iframe `#nl-badge-frame`): l'app lo mette in alto a destra, al 70%, sotto la fotocamera (`html.con-badge` lascia 30 px in cima solo quando c'è); scorre via con la pagina e non copre le schede in basso.
+- **Annaffiata / Sotto la pioggia**: 💧 e 🌧 su ogni pianta (anche quando il piano non chiede acqua). «Sotto la pioggia» chiede dalle/alle e usa solo la pioggia **misurata** dalla stazione ARPAE più vicina (quarti d'ora, `?op=pioggia`): litri = mm × apertura del vaso; riempie solo quei litri. Senza misure non registra niente.
+- **Raccolta prevista** (`raccolta` = AAAA-MM, nel modulo o dalla scheda di Claude): le fasi automatiche delle annuali si adattano a quel mese.
 
 ## Rete e velocità
 - **Sincronizzazione a costo quasi zero**: l'app manda la versione che ha (`x-giardino-versione: rev-updatedAt`); se sul server non è cambiato niente risponde `{invariato: true}` (~50 byte invece di tutti i dati) e lo schermo non si ridisegna.
