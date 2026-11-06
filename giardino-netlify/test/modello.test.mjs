@@ -93,3 +93,8 @@ test("pioggia prevista pesata con la probabilità", () => {
   assert.equal(M.pioggiaAttesa({ rain: 20, prob: 95 }).rain, 20);
   assert.equal(M.pioggiaAttesa({ rain: 20 }).rain, 20);
 });
+
+test("avviso di gelo: in veranda/serra non dice di portare al riparo", () => {
+  const [a] = M.avvisiDomani([{ id: "a", nome: "Basilico", specie: "basilico", colt: "vaso", dove: "aperto" }, { id: "b", nome: "Pomodori", specie: "pomodoro", colt: "vaso", dove: "serra" }], { tmin: 0, tmax: 9 }, [{ ora: "04", t: 0 }]);
+  assert.match(a.testo, /porta al riparo o copri con tessuto non tessuto Basilico; in veranda\/serra chiudi bene e copri Pomodori\./);
+});

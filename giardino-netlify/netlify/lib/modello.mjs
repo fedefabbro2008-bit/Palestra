@@ -294,7 +294,9 @@ export function avvisiDomani(piante, domani, notte){
       const soglia=Math.max(...fredde.map(sogliaGelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
       testo='Stanotte minima di '+fmtN(minima)+' °C verso le '+piu.ora+':00'+(sotto.length>1?' (sotto '+fmtN(soglia)+' °C dalle '+sotto[0].ora+':00 alle '+sotto[sotto.length-1].ora+':00)':'');
     }
-    out.push({tipo:'gelo', testo:testo+': porta al riparo o copri con tessuto non tessuto '+fredde.map(p=>p.nome).join(', ')+'.', piante:fredde.map(p=>p.id)});
+    const fuoriF=fredde.filter(p=>p.dove!=='serra'), serraF=fredde.filter(p=>p.dove==='serra');
+    const cosa=[fuoriF.length?'porta al riparo o copri con tessuto non tessuto '+fuoriF.map(p=>p.nome).join(', '):'', serraF.length?'in veranda/serra chiudi bene e copri '+serraF.map(p=>p.nome).join(', '):''].filter(Boolean).join('; ');
+    out.push({tipo:'gelo', testo:testo+': '+cosa+'.', piante:fredde.map(p=>p.id)});
   }
   if(domani.tmax>=33){
     const delicate=fuori.filter(p=>(p.colt==='vaso'&&(+p.vaso||10)<=10&&luceOre(p)>=5)||['lattuga','fragola','ortensia','basilico'].includes(p.specie));
