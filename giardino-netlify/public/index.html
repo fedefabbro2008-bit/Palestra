@@ -349,6 +349,10 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
 html.con-badge{--tabh:116px}
 html.con-badge nav.tabs{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 54px)}
 #nl-badge-frame{left:50% !important;right:auto !important;transform:translateX(calc(-50% + 5px)) !important;bottom:calc(env(safe-area-inset-bottom,0px) - 10px) !important}
+.lrow .mini{flex:none;display:flex;gap:4px} .lrow .mini .btn{min-width:40px;padding:6px 8px}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:30}
+.sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 10px);width:min(560px,calc(100% - 24px));z-index:31;max-height:calc(100vh - 140px);overflow:auto}
+.sheet .inrow .field{flex:1;min-width:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 12px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:.92rem;z-index:20;width:max-content;max-width:calc(100% - 32px);text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.18)}
 </style>
 
@@ -689,6 +693,14 @@ html.con-badge nav.tabs{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 54
     <button class="tab" role="tab" id="tab-impostazioni" data-view="impostazioni" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Impostazioni</span></button>
   </div>
 </nav>
+<div class="sheet-bg" id="pioggiaBg" hidden></div>
+<div class="sheet card stack" id="pioggiaSheet" role="dialog" aria-modal="true" aria-labelledby="pgTitolo" hidden>
+  <h2 id="pgTitolo">🌧 Sotto la pioggia</h2>
+  <p class="sub" id="pgSub"></p>
+  <div class="inrow"><div class="field"><label for="pgDa">Dalle</label><input type="time" id="pgDa"></div><div class="field"><label for="pgA">Alle</label><input type="time" id="pgA"></div></div>
+  <div class="alert info" id="pgCalc"></div>
+  <div class="row"><button class="btn primary" type="button" id="pgSalva">Registra</button><button class="btn ghost" type="button" id="pgAnnulla">Annulla</button></div>
+</div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script>
@@ -1287,6 +1299,23 @@ function dateInnaffiate(p, eventi){
   if(p.ultima) s.add(p.ultima);
   return s;
 }
+// «L'ho messa sotto la pioggia»: litri presi per giorno (eventi «pioggia» con i litri calcolati dalle ore)
+function pioggiaPresa(p, eventi){
+  const o={}; for(const e of eventiValidi(eventi,p.id)) if(e.tipo==='pioggia' && +e.litri>0) o[e.data]=(o[e.data]||0)+(+e.litri); return o;
+}
+// pioggia (mm) caduta tra due ore di oggi: ore = {'AAAA-MM-GGTHH:00': mm dell'ora che finisce lì}; senza dati orari,
+// la pioggia del giorno distribuita sulle 24 ore. Restituisce anche i litri entrati nel vaso (apertura × mm).
+function pioggiaNelleOre(ore, giorno, dalle, alle, mmGiorno){
+  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; }, a=min(dalle), b=min(alle);
+  if(a==null||b==null||b<=a) return {mm:0, stima:false};
+  // il valore delle HH:00 è la pioggia dell'ora prima; le 00:00 del giorno dopo chiudono l'ultima ora
+  const dopo=addDays(giorno,1)+'T00:00', chiavi=Object.keys(ore||{}).filter(t=>t.startsWith(giorno)||t===dopo);
+  if(!chiavi.length) return {mm:+((mmGiorno||0)*(b-a)/1440).toFixed(1), stima:true};
+  let mm=0;
+  for(const t of chiavi){ const fine=t===dopo?1440:(+t.slice(11,13))*60, inizio=fine-60, sovr=Math.max(0,Math.min(b,fine)-Math.max(a,inizio)); mm+=(+ore[t]||0)*sovr/60; }
+  return {mm:+mm.toFixed(1), stima:false};
+}
+const litriDaPioggia = (k, mm) => +Math.max(0,(mm||0)*k.pioggiaArea).toFixed(2);
 function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
 // Ogni "era ancora umida" toglie il 10% al consumo stimato, ogni "era già secca" aggiunge il 12% (ultimi 60 giorni).
 // La stessa risposta più volte di fila corregge di più: 1ª volta −10% / +12%, 2ª −15% / +18%, dalla 3ª −20% / +24%.
@@ -1396,12 +1425,13 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
   if(!fut.length) return out;
   for(const p of piante){
     const k=params(p,{oggi,lat,eventi});
-    const fatte=dateInnaffiate(p,eventi);
+    const fatte=dateInnaffiate(p,eventi), presa=pioggiaPresa(p,eventi);
     let dep=k.rawL*0.5;
     const usaSuolo = suolo!=null && isFinite(suolo) && !k.vaso && p.dove==='aperto' && ![...fatte].some(d=>d>=addDays(oggi,-3));
     if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
-    else for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d))); if(fatte.has(d.date)) dep=0; }
+    else for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d)-(presa[d.date]||0))); if(fatte.has(d.date)) dep=0; }
     if(fatte.has(oggi)) dep=0;
+    dep=Math.max(0, dep-(presa[oggi]||0));     // messa sotto la pioggia oggi: riempie solo i litri presi
     // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
     let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
@@ -1673,9 +1703,13 @@ function datiOrari(h, oggi, ora){
   if(i>=0){ let s=0,w=0; for(const [k,p] of strati){ const v=h[k]?.[i]; if(v!=null&&isFinite(v)){ s+=v*p; w+=p; } } if(w) suolo=+(s/w).toFixed(3); }
   const da=oggi+'T18:00', a=addDays(oggi,1)+'T10:00';
   const notte=h.time.map((t,j)=>({t:h.temperature_2m?.[j],ora:t.slice(11,13),k:t})).filter(x=>x.k>=da&&x.k<=a&&x.t!=null).map(({ora,t})=>({ora,t}));
-  return {suolo, notte:notte.length?notte:null};
+  // pioggia ora per ora di ieri e di oggi (per «l'ho messa sotto la pioggia»)
+  const pioggiaOre={}, ieri=addDays(oggi,-1);
+  const domani0=addDays(oggi,1)+'T00:00';
+  h.time.forEach((t,j)=>{ const v=h.precipitation?.[j]; if(v!=null && (t.startsWith(oggi)||t.startsWith(ieri)||t===domani0)) pioggiaOre[t]=v; });
+  return {suolo, notte:notte.length?notte:null, pioggiaOre:Object.keys(pioggiaOre).length?pioggiaOre:null};
 }
-const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
+const ORARIO_PARAMS='temperature_2m,precipitation,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
 
 /* ---------------- Meteo: richieste e lettura, uguali per app e server ----------------
    Due richieste a Open-Meteo, in parallelo: (1) il modello scelto da Open-Meteo, giornaliero e orario insieme
@@ -2087,7 +2121,9 @@ function renderOggi(AP){
   setHTML(list, html);
   if(rest.length){
     $('#restBox').hidden=false;
-    setHTML($('#restList'),rest.map(x=>`<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(x.p))}</span><span class="li"><b>${esc(x.p.nome)}</b><span>${esc(x.g?x.g.motivo:'Non nel piano di Claude: chiedigli di rifarlo')}</span></span></div>`).join(''));
+    setHTML($('#restList'),rest.map(x=>{ const ev=eventsOf(x.p.id,t), f=ev.find(e=>e.tipo==='fatto'), pi=ev.filter(e=>e.tipo==='pioggia').reduce((a,e)=>a+(+e.litri||0),0);
+      return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(x.p))}</span><span class="li"><b>${esc(x.p.nome)}</b><span>${esc(f?'Annaffiata oggi'+(f.litri?' · '+fmtL(+f.litri):''):pi>0?'Ha preso la pioggia · '+fmtL(pi):x.g?x.g.motivo:'Non nel piano di Claude: chiedigli di rifarlo')}</span></span>
+        <span class="mini"><button class="btn small ghost" type="button" data-ev="fatto" data-pid="${esc(x.p.id)}" aria-label="Annaffiata">💧</button><button class="btn small ghost" type="button" data-pioggia="${esc(x.p.id)}" aria-label="Messa sotto la pioggia">🌧</button></span></div>`; }).join(''));
   }
   renderConcime(); renderVerifica(AP); renderWeek(AP);
 }
@@ -2108,6 +2144,36 @@ function rispondiVerifica(pid, risposta){
   if(!k) return;
   const v=esitoVerifica(risposta, pp?.acqua, pp?.soglia);
   addEvent(pid,'verifica',{esito:risposta, valutazione:v, acqua:pp?.acqua??null}); renderAll(); toast(TESTO_VERIFICA[v]);
+}
+// «L'ho messa sotto la pioggia»: dalle/alle → mm caduti in quelle ore (meteo ora per ora) → litri entrati nel vaso
+let pgPianta=null;
+const oraHHMM = d => String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+function calcolaPioggia(){
+  const p=S.plants.find(x=>x.id===pgPianta); if(!p) return null;
+  const w=activeWeather(), t=today(), d0=(w?.days||[]).find(d=>d.date===t);
+  const r=pioggiaNelleOre(w?.pioggiaOre, t, $('#pgDa').value, $('#pgA').value, d0?.rain);
+  const k=params(p,ctx()), litri=litriDaPioggia(k, r.mm), pp=activePlan()?.data?.piante.find(x=>x.id===p.id);
+  const manca=pp?.acqua!=null?Math.max(0,(1-pp.acqua)*k.tawL):null;
+  return {p,k,r,litri,manca};
+}
+function aggiornaPioggia(){
+  const c=calcolaPioggia(); if(!c) return;
+  const {r,litri,manca,k}=c;
+  $('#pgCalc').innerHTML=ICON.info+'<div>'+(r.mm>0?'In quelle ore sono caduti circa <b>'+fmt(r.mm,1)+' mm</b>'+(r.stima?' (stima dalla pioggia del giorno)':'')+': nel vaso sono entrati circa <b>'+fmtL(litri)+'</b>'+(manca!=null?(litri>=manca?', abbastanza da riempire il terriccio.':' (al terriccio ne mancavano ~'+fmtL(manca)+').'):'.'):'In quelle ore il meteo non dà pioggia: controlla gli orari.')+(k.chiuso&&litri>0?' Vaso senza fori: svuota l\'acqua in più.':'')+'</div>';
+  $('#pgSalva').disabled=!(litri>0);
+}
+function apriPioggia(pid){
+  const p=S.plants.find(x=>x.id===pid); if(!p) return;
+  pgPianta=pid; const ora=new Date(), prima=new Date(ora.getTime()-3600e3);
+  $('#pgSub').textContent=p.nome+': da che ora a che ora è stata sotto la pioggia, oggi?';
+  $('#pgDa').value=oraHHMM(prima.getDate()===ora.getDate()?prima:new Date(ora.setHours(0,0,0,0))); $('#pgA').value=oraHHMM(new Date());
+  $('#pioggiaSheet').hidden=false; $('#pioggiaBg').hidden=false; aggiornaPioggia();
+}
+function chiudiPioggia(){ $('#pioggiaSheet').hidden=true; $('#pioggiaBg').hidden=true; pgPianta=null; }
+function salvaPioggia(){
+  const c=calcolaPioggia(); if(!c||!(c.litri>0)) return;
+  addEvent(c.p.id,'pioggia',{litri:c.litri, mm:c.r.mm, dalle:$('#pgDa').value, alle:$('#pgA').value});
+  chiudiPioggia(); renderAll(); toast('Registrato: '+c.p.nome+' ha preso ~'+fmtL(c.litri)+' di pioggia');
 }
 function renderConcime(){
   const t=today(), c=ctx();
@@ -2204,6 +2270,7 @@ function renderPiante(AP){
     return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ring${pp&&pp.acqua!=null&&pp.acqua<=pp.soglia?' basso':''}" style="--p:${pp?.acqua!=null?Math.round(Math.max(0,Math.min(1,pp.acqua))*100):0}" aria-hidden="true"><span>${esc(icoDi(p))}</span></span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
       <div class="pbody">${livello(pp)}<div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
       ${notes.length?'<ul class="notes">'+notes.map(([cls,x])=>`<li class="${cls}">${esc(x)}</li>`).join('')+'</ul>':''}
+      <div class="pbtn"><button class="btn" type="button" data-ev="fatto" data-pid="${esc(p.id)}">💧 Annaffiata</button><button class="btn" type="button" data-pioggia="${esc(p.id)}">🌧 Sotto la pioggia</button></div>
       <div class="pbtn"><button class="btn" type="button" data-scheda="${esc(p.id)}">📖 Scheda</button><button class="btn" type="button" data-edit="${esc(p.id)}">Modifica</button></div></div></details>`;
   }).join(''));
 }
@@ -2236,7 +2303,7 @@ function renderSiri(){
   if(sel._h!==h){ sel.innerHTML=h; sel._h=h; sel.value=zone.includes(prima)?prima:''; }
   $('#siriUrl').textContent=location.origin+'/api/siri/fatto'+(sel.value?'?zona='+encodeURIComponent(sel.value):'');
 }
-const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito']};
+const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito'],pioggia:['🌧','presa la pioggia']};
 const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
 function renderDiario(){
   const ev=allEvents(), t=today(), lim=addDays(t,-29);
@@ -2545,9 +2612,12 @@ function wire(){
     const u=e.target.closest('[data-undo]'); if(u){ undoOggi(u.dataset.undo); return; }
     const tt=e.target.closest('[data-tutte]'); if(tt){ fattoTutte(tt.dataset.tutte); return; }
     const vr=e.target.closest('[data-ver]'); if(vr){ rispondiVerifica(vr.dataset.pid, vr.dataset.ver); return; }
+    const pg=e.target.closest('[data-pioggia]'); if(pg){ apriPioggia(pg.dataset.pioggia); return; }
     const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); }
   });
   $('#saveNote').addEventListener('click',()=>$('#saveNote').hidden=true);
+  $('#pgDa').addEventListener('input',aggiornaPioggia); $('#pgA').addEventListener('input',aggiornaPioggia);
+  $('#pgSalva').addEventListener('click',salvaPioggia); $('#pgAnnulla').addEventListener('click',chiudiPioggia); $('#pioggiaBg').addEventListener('click',chiudiPioggia);
   const meseSposta=n=>{ const [y,m]=calMese.split('-').map(Number), d=new Date(y,m-1+n,1); calMese=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); renderCalendario(); };
   $('#calPrima').addEventListener('click',()=>meseSposta(-1)); $('#calDopo').addEventListener('click',()=>meseSposta(1));
   $('#cal').addEventListener('click',e=>{ const g=e.target.closest('[data-giorno]'); if(g){ calSel=g.dataset.giorno; renderCalendario(); } });

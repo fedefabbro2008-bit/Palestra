@@ -405,6 +405,23 @@ export function dateInnaffiate(p, eventi){
   if(p.ultima) s.add(p.ultima);
   return s;
 }
+// «L'ho messa sotto la pioggia»: litri presi per giorno (eventi «pioggia» con i litri calcolati dalle ore)
+export function pioggiaPresa(p, eventi){
+  const o={}; for(const e of eventiValidi(eventi,p.id)) if(e.tipo==='pioggia' && +e.litri>0) o[e.data]=(o[e.data]||0)+(+e.litri); return o;
+}
+// pioggia (mm) caduta tra due ore di oggi: ore = {'AAAA-MM-GGTHH:00': mm dell'ora che finisce lì}; senza dati orari,
+// la pioggia del giorno distribuita sulle 24 ore. Restituisce anche i litri entrati nel vaso (apertura × mm).
+export function pioggiaNelleOre(ore, giorno, dalle, alle, mmGiorno){
+  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; }, a=min(dalle), b=min(alle);
+  if(a==null||b==null||b<=a) return {mm:0, stima:false};
+  // il valore delle HH:00 è la pioggia dell'ora prima; le 00:00 del giorno dopo chiudono l'ultima ora
+  const dopo=addDays(giorno,1)+'T00:00', chiavi=Object.keys(ore||{}).filter(t=>t.startsWith(giorno)||t===dopo);
+  if(!chiavi.length) return {mm:+((mmGiorno||0)*(b-a)/1440).toFixed(1), stima:true};
+  let mm=0;
+  for(const t of chiavi){ const fine=t===dopo?1440:(+t.slice(11,13))*60, inizio=fine-60, sovr=Math.max(0,Math.min(b,fine)-Math.max(a,inizio)); mm+=(+ore[t]||0)*sovr/60; }
+  return {mm:+mm.toFixed(1), stima:false};
+}
+export const litriDaPioggia = (k, mm) => +Math.max(0,(mm||0)*k.pioggiaArea).toFixed(2);
 export function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
 // Ogni "era ancora umida" toglie il 10% al consumo stimato, ogni "era già secca" aggiunge il 12% (ultimi 60 giorni).
 // La stessa risposta più volte di fila corregge di più: 1ª volta −10% / +12%, 2ª −15% / +18%, dalla 3ª −20% / +24%.
@@ -514,12 +531,13 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
   if(!fut.length) return out;
   for(const p of piante){
     const k=params(p,{oggi,lat,eventi});
-    const fatte=dateInnaffiate(p,eventi);
+    const fatte=dateInnaffiate(p,eventi), presa=pioggiaPresa(p,eventi);
     let dep=k.rawL*0.5;
     const usaSuolo = suolo!=null && isFinite(suolo) && !k.vaso && p.dove==='aperto' && ![...fatte].some(d=>d>=addDays(oggi,-3));
     if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
-    else for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d))); if(fatte.has(d.date)) dep=0; }
+    else for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d)-(presa[d.date]||0))); if(fatte.has(d.date)) dep=0; }
     if(fatte.has(oggi)) dep=0;
+    dep=Math.max(0, dep-(presa[oggi]||0));     // messa sotto la pioggia oggi: riempie solo i litri presi
     // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
     let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
@@ -791,9 +809,13 @@ export function datiOrari(h, oggi, ora){
   if(i>=0){ let s=0,w=0; for(const [k,p] of strati){ const v=h[k]?.[i]; if(v!=null&&isFinite(v)){ s+=v*p; w+=p; } } if(w) suolo=+(s/w).toFixed(3); }
   const da=oggi+'T18:00', a=addDays(oggi,1)+'T10:00';
   const notte=h.time.map((t,j)=>({t:h.temperature_2m?.[j],ora:t.slice(11,13),k:t})).filter(x=>x.k>=da&&x.k<=a&&x.t!=null).map(({ora,t})=>({ora,t}));
-  return {suolo, notte:notte.length?notte:null};
+  // pioggia ora per ora di ieri e di oggi (per «l'ho messa sotto la pioggia»)
+  const pioggiaOre={}, ieri=addDays(oggi,-1);
+  const domani0=addDays(oggi,1)+'T00:00';
+  h.time.forEach((t,j)=>{ const v=h.precipitation?.[j]; if(v!=null && (t.startsWith(oggi)||t.startsWith(ieri)||t===domani0)) pioggiaOre[t]=v; });
+  return {suolo, notte:notte.length?notte:null, pioggiaOre:Object.keys(pioggiaOre).length?pioggiaOre:null};
 }
-export const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
+export const ORARIO_PARAMS='temperature_2m,precipitation,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
 
 /* ---------------- Meteo: richieste e lettura, uguali per app e server ----------------
    Due richieste a Open-Meteo, in parallelo: (1) il modello scelto da Open-Meteo, giornaliero e orario insieme

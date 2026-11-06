@@ -164,7 +164,7 @@ async function toolSalvaScheda(ctx, a) {
   ctx.saved(out);
   return `Scheda di «${nome}» salvata: l'app la mostra in Piante → ${nome} → Scheda, con la tabella dei mesi.` + (allineata ? ` Ho allineato anche le fasi automatiche dell'app: raccolta da ${allineata}.` : "");
 }
-const TIPO_OK = ["fatto", "saltato", "umido", "secco", "concime", "meno", "piu", "diagnosi"];
+const TIPO_OK = ["fatto", "saltato", "umido", "secco", "concime", "meno", "piu", "diagnosi", "pioggia"];
 async function toolRegistra(ctx, a) {
   if (!TIPO_OK.includes(a.tipo)) throw new Error("tipo non valido");
   const data = ISO.test(a.data || "") ? a.data : M.isoDate(new Date());
@@ -325,7 +325,7 @@ const TOOLS = [
       piante: { type: "array", items: { type: "object", required: ["id", "giorni"], properties: { id: { type: "string", description: "id della pianta da «giardino»" }, valutazione: { type: "string" }, consigli: { type: "array", items: { type: "string" }, description: "da 1 a 3" }, giorni: { type: "array", items: GIORNO } } } } } },
     annotations: { ...RW, title: "Salva piano" }, run: toolSalvaPiano },
   { name: "registra", title: "Registra nel diario", write: true,
-    description: "Registra un evento per una pianta: fatto (innaffiata), saltato, umido (era ancora umida: il calcolo beve meno), secco (era secca, innaffiata: beve di più), concime, meno / piu (correzione dopo una foto o la «diagnosi»), diagnosi (solo nota). Le correzioni crescono se si ripetono di fila (−10/−15/−20%, +12/+18/+24%). Usalo quando l'utente ti racconta cosa ha fatto.",
+    description: "Registra un evento per una pianta: fatto (innaffiata), saltato, umido (era ancora umida: il calcolo beve meno), secco (era secca, innaffiata: beve di più), concime, meno / piu (correzione dopo una foto o la «diagnosi»), diagnosi (solo nota), pioggia (l'utente ha messo la pianta sotto la pioggia: litri = mm caduti × apertura del vaso; riempie solo quei litri). Le correzioni crescono se si ripetono di fila (−10/−15/−20%, +12/+18/+24%). Usalo quando l'utente ti racconta cosa ha fatto.",
     inputSchema: { type: "object", required: ["pianta", "tipo"], properties: { pianta: { type: "string", description: "id o nome" }, tipo: { type: "string", enum: TIPO_OK },
       data: { type: "string", description: "AAAA-MM-GG, predefinito oggi" }, litri: { type: "number" }, nota: { type: "string" } } },
     annotations: { ...RW, title: "Registra" }, run: toolRegistra },

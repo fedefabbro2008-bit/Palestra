@@ -244,3 +244,18 @@ test("raccolta presa dalla scheda di Claude se è per la stessa semina", () => {
   assert.equal(M.raccoltaDi(p), "2027-04"); assert.equal(M.raccoltaDi({ ...p, raccolta: "2027-06" }), "2027-06");
   assert.equal(M.raccoltaDi({ ...p, data_semina: "2026-12-01" }), "", "scheda di un'altra semina");
 });
+
+test("messa sotto la pioggia: mm nelle ore scelte, litri nel vaso, riempie solo quei litri", () => {
+  const ore = { "2026-11-06T10:00": 1, "2026-11-06T11:00": 2, "2026-11-06T12:00": 4, "2026-11-07T00:00": 9 };
+  assert.equal(M.pioggiaNelleOre(ore, "2026-11-06", "10:00", "12:00").mm, 6, "ore 10-11 e 11-12");
+  assert.equal(M.pioggiaNelleOre(ore, "2026-11-06", "10:30", "11:00").mm, 1, "mezz'ora");
+  assert.equal(M.pioggiaNelleOre(ore, "2026-11-06", "23:00", "23:59").mm, 8.8, "l'ultima ora arriva dalle 00:00 del giorno dopo");
+  assert.equal(M.pioggiaNelleOre(null, "2026-11-06", "00:00", "12:00", 10).mm, 5, "senza ore: la pioggia del giorno in proporzione");
+  const p = { id: "n", nome: "Nepenthes", specie: "nepenthes", fase: "auto", colt: "vaso", vaso: 12, diametro: 30, luce: 2, dove: "serra" };
+  const fut = ["2026-11-06", "2026-11-07"].map((date) => ({ date, et0: 1, tmax: 12, tmin: 8, rain: 10, prob: 90 }));
+  const k = M.params(p, { oggi: "2026-11-06", lat: 44 }), litri = M.litriDaPioggia(k, 6);
+  assert.ok(litri > 0.2 && litri < 0.4, "6 mm su un vaso da 30 cm ≈ 0,3 L");
+  const senza = M.pianoLocale({ piante: [p], fut, oggi: "2026-11-06", lat: 44 }).piante[0].acqua;
+  const con = M.pianoLocale({ piante: [p], fut, oggi: "2026-11-06", lat: 44, eventi: [{ id: "x", plantId: "n", tipo: "pioggia", data: "2026-11-06", litri }] }).piante[0].acqua;
+  assert.ok(con > senza && con < 1, "più acqua nel terriccio, ma non per forza piena");
+});
