@@ -58,8 +58,57 @@ export const SPECIE = {
   appartamento:{nome:'Pianta da appartamento',cat:'casa',ico:'🪴',kc:[0.5,0.6,0.7,0.6,0.4],area:0.10,radici:0.3,p:0.50,cal:'RRVVVVVVVVRR',gelo:10,conc:{V:30},concTipo:'concime liquido per piante verdi',rinvaso:2},
   orchidea:{nome:'Orchidea',cat:'casa',ico:'🌸',kc:[0.3,0.4,0.45,0.4,0.3],area:0.05,radici:0.15,p:0.60,cal:'VFFFVVVVVVVV',gelo:12,conc:{V:14,F:21},concTipo:'concime per orchidee a metà dose',rinvaso:2},
   succulenta:{nome:'Succulenta / cactus',cat:'casa',ico:'🌵',kc:[0.25,0.3,0.35,0.3,0.1],area:0.04,radici:0.2,p:0.85,cal:'RRVVVVVVVVRR',gelo:3,conc:{V:30},concTipo:'concime per cactacee a metà dose',rinvaso:3},
+  nepenthes:{nome:'Nepenthes (carnivora tropicale)',cat:'casa',ico:'🪴',kc:[0.6,0.7,0.8,0.75,0.6],area:0.10,radici:0.2,p:0.25,cal:'VVVVVVVVVVVV',gelo:12,conc:{},concTipo:'',rinvaso:2,acquaDolce:true},
+  carnivora:{nome:'Carnivora da torbiera (Dionaea, Sarracenia, Drosera)',cat:'fiori',ico:'🪴',kc:[0.7,0.9,1.0,0.9,0.4],area:0.05,radici:0.2,p:0.15,cal:'RRVVFVVVVVRR',gelo:-5,conc:{},concTipo:'',rinvaso:2,acquaDolce:true},
+  tropicale:{nome:'Monstera / pothos / filodendro',cat:'casa',ico:'🪴',kc:[0.5,0.65,0.75,0.65,0.45],area:0.25,radici:0.3,p:0.50,cal:'RRVVVVVVVVRR',gelo:12,conc:{V:21},concTipo:'concime liquido per piante verdi',rinvaso:2},
+  sansevieria:{nome:'Sansevieria / zamioculcas',cat:'casa',ico:'🪴',kc:[0.25,0.3,0.35,0.3,0.15],area:0.06,radici:0.25,p:0.80,cal:'RRVVVVVVVVRR',gelo:10,conc:{V:45},concTipo:'concime per piante verdi a metà dose',rinvaso:3},
+  ficus:{nome:'Ficus (benjamin, elastica, lyrata)',cat:'casa',ico:'🌳',kc:[0.5,0.6,0.7,0.6,0.45],area:0.40,radici:0.4,p:0.50,cal:'RRVVVVVVVVRR',gelo:10,conc:{V:21},concTipo:'concime liquido per piante verdi',rinvaso:2},
+  spatifillo:{nome:'Spatifillo / calathea / anthurium',cat:'casa',ico:'🌿',kc:[0.6,0.75,0.85,0.75,0.5],area:0.12,radici:0.25,p:0.35,cal:'RRVVFFVVVVRR',gelo:13,conc:{V:21,F:21},concTipo:'concime liquido per piante verdi a metà dose',rinvaso:2},
+  oleandro:{nome:'Oleandro',cat:'fiori',ico:'🌺',kc:[0.5,0.6,0.75,0.65,0.3],area:0.60,radici:0.6,p:0.50,cal:'RRVVFFFFFVRR',gelo:-5,conc:{V:30,F:30},concTipo:'concime per piante fiorite',rinvaso:3},
+  bulbose:{nome:'Bulbose da fiore (tulipano, narciso, giacinto)',cat:'fiori',ico:'🌷',kc:[0.5,0.7,0.9,0.6,0.1],area:0.02,radici:0.25,p:0.40,cal:'VVFFVRRRRVVV',gelo:-15,conc:{V:30,F:30},concTipo:'concime per bulbose, dopo la fioritura',rinvaso:0},
   altro:{nome:'Altra pianta',cat:'altro',ico:'🌱',kc:[0.5,0.7,0.85,0.7,0.35],area:0.25,radici:0.5,p:0.50,cal:'RRVVFVVVVVRR',gelo:2,conc:{V:30,F:30},concTipo:'concime universale',rinvaso:2}
 };
+// Nomi comuni e scientifici di ogni specie: per la ricerca nell'elenco e per riconoscere la specie dal nome della pianta.
+export const ALIAS = {
+  pomodoro:'pomodoro,pomodorino,ciliegino,datterino,san marzano,cuore di bue,solanum lycopersicum,tomato',
+  zucchina:'zucchina,zucchino,zucca,cucurbita,courgette',cetriolo:'cetriolo,cucumis sativus',melone:'melone,anguria,cocomero,cucumis melo,citrullus',
+  peperone:'peperone,peperoncino,capsicum,habanero,jalapeno,friggitello',melanzana:'melanzana,solanum melongena',
+  lattuga:'lattuga,insalata,indivia,radicchio,scarola,songino,valerianella,cicoria,lactuca',spinaci:'spinaci,bietola,bieta,coste,rucola,spinacia',
+  cavolo:'cavolo,broccolo,cavolfiore,verza,cavolo nero,cime di rapa,brassica,cavolini',fagiolo:'fagiolo,fagiolino,phaseolus',
+  pisello:'pisello,fava,taccola,cece,lenticchia,pisum',patata:'patata,solanum tuberosum',carota:'carota,rapa,barbabietola,daucus',ravanello:'ravanello,raphanus',
+  aglio:'aglio,allium sativum',cipolla:'cipolla,cipollotto,porro,scalogno,allium cepa',
+  basilico:'basilico,ocimum',prezzemolo:'prezzemolo,erba cipollina,coriandolo,aneto,cerfoglio,petroselinum',menta:'menta,mentuccia,melissa,nepitella,mentha',
+  rosmarino:'rosmarino,salvia,timo,origano,maggiorana,santoreggia,alloro,elicriso,salvia rosmarinus',lavanda:'lavanda,lavandula',
+  fragola:'fragola,fragolina,fragaria',agrumi:'limone,arancio,arancia,mandarino,clementina,kumquat,pompelmo,cedro,lime,agrume,citrus,calamondino',
+  olivo:'olivo,ulivo,oliva,olea',vite:'vite,uva,vitis',fruttiferi:'melo,pero,pesco,albicocco,ciliegio,susino,prugno,fico,kaki,cachi,melograno,nocciolo,noce,mirtillo,lampone,mora,ribes,feijoa',
+  rosa:'rosa,rose,roseto,rosaio',ortensia:'ortensia,hydrangea',geranio:'geranio,pelargonio,petunia,surfinia,begonia,impatiens,verbena,calibrachoa,gazania,dipladenia,mandevilla,viola,primula,ciclamino,fiori',
+  arbusto:'arbusto,siepe,bosso,pittosporo,lauroceraso,gelsomino,photinia,edera,ligustro,bouganville,ibisco',felce:'felce,nephrolepis,capelvenere,adiantum,asplenium',prato:'prato,erba,tappeto erboso',
+  appartamento:'pianta da appartamento,chlorophytum,clorofito,falangio,dracena,dracaena,kenzia,kentia,yucca,aspidistra,croton,dieffenbachia,aglaonema,pilea,peperomia,tradescantia,beaucarnea,schefflera,areca,chamaedorea',
+  orchidea:'orchidea,phalaenopsis,falenopsis,dendrobium,cymbidium,oncidium,vanda',
+  succulenta:'succulenta,grassa,cactus,cactacea,aloe,echeveria,crassula,haworthia,opuntia,sedum,euphorbia,kalanchoe,sempervivum,agave,mammillaria',
+  nepenthes:'nepenthes,nepente,pianta carnivora tropicale',carnivora:'carnivora,dionaea,dionea,acchiappamosche,venere acchiappamosche,sarracenia,drosera,pinguicula,darlingtonia',
+  tropicale:'monstera,pothos,potos,epipremnum,filodendro,philodendron,syngonium,alocasia,scindapsus,colocasia',
+  sansevieria:'sansevieria,sanseveria,zamioculcas,dracaena trifasciata,lingua di suocera',ficus:'ficus,ficus benjamin,benjamina,ficus elastica,ficus lyrata,beniamino',
+  spatifillo:'spatifillo,spathiphyllum,calathea,maranta,anthurium,anturio,ctenanthe,stromanthe',oleandro:'oleandro,nerium',
+  bulbose:'tulipano,narciso,giacinto,crocus,croco,muscari,amaryllis,amarillide,bulbo,bulbi,iris,fresia,anemone'
+};
+const normNome = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+// Specie più probabile dal nome scritto dall'utente («Nepenthes mirabilis» → nepenthes, «Pomodori ciliegini» → pomodoro).
+// Vince la corrispondenza più lunga: «melone» batte «melo», «ficus» batte «fico», «erba cipollina» batte «erba».
+export function specieDaNome(nome){
+  const n=' '+normNome(nome)+' ', parole=n.trim().split(' ').filter(Boolean);
+  if(!parole.length) return null;
+  let best=null, punti=0;
+  for(const [k,lista] of Object.entries(ALIAS)) for(const a of lista.split(',')){
+    const w=normNome(a); if(!w) continue;
+    let v=0;
+    if(n.includes(' '+w+' ')) v=w.length+10;                                   // parola o frase intera
+    else if(!w.includes(' ') && w.length>=4){ const radice=w.slice(0,Math.max(4,w.length-1));   // plurali e varianti: pomodori, tulipani
+      if(parole.some(x=>x.startsWith(radice) && x.length<=w.length+2)) v=radice.length; }
+    if(v>punti){ punti=v; best=k; }
+  }
+  return punti>=4 ? best : null;
+}
 export const CATEGORIE = {orto:'Orto', aromatiche:'Aromatiche', frutti:'Frutti', fiori:'Fiori, arbusti e prato', casa:'In casa', altro:'Altro'};
 export const FASI = {
   germinazione:{nome:'Semina / germinazione',kc:0,radici:0.25,p:0.20,l:'G'},
@@ -302,6 +351,29 @@ export function dose(litri, imp={}){
   const q=Math.max(0.25,Math.round(litri/a*4)/4), int=Math.floor(q), fr=FRAZ[+(q-int).toFixed(2)]||'';
   if(!int) return '≈ '+fr+' di annaffiatoio';
   return '≈ '+int+' '+(int>1?'annaffiatoi':'annaffiatoio')+(fr?' e '+fr:'');
+}
+
+/* ---------------- Primi giorni da due modelli ----------------
+   Per i primi giorni (fino a 3, quelli che ICON-2I copre per intero, ora per ora) pioggia, massima e minima sono la media
+   tra il modello scelto da Open-Meteo (in Italia di solito ICON-D2/ICON-EU del servizio tedesco) e ICON-2I di
+   ItaliaMeteo-ARPAE (2,2 km, tarato su Alpi e Appennini): un modello solo sbaglia spesso dove cade un temporale,
+   la media sbaglia meno. La probabilità di pioggia resta quella di Open-Meteo (ICON-2I non la dà).
+   Fuori dall'area di ICON-2I i valori sono vuoti e restano i dati di partenza. */
+export const MODELLO_IT='italia_meteo_arpae_icon_2i';
+export const MODELLO_IT_PARAMS='precipitation,temperature_2m';
+// h = risposta "hourly" di ICON-2I (time locale, precipitation, temperature_2m)
+export function mediaModelli(days, h, oggi){
+  if(!h?.time || !Array.isArray(h.precipitation)) return days;
+  const per={};
+  h.time.forEach((t,i)=>{ const d=t.slice(0,10); (per[d]||(per[d]={p:[],t:[]})); per[d].p.push(h.precipitation[i]); per[d].t.push(h.temperature_2m?.[i]); });
+  const fine=addDays(oggi,2), ok=a=>a.length>=24 && a.every(x=>x!=null && isFinite(x)), m=(a,b)=>+((a+b)/2).toFixed(1);
+  return days.map(d=>{
+    const x=per[d.date];
+    if(d.date<oggi || d.date>fine || !x || !ok(x.p)) return d;
+    const r=x.p.reduce((a,b)=>a+b,0), out={...d, rain:m(d.rain,r), rain_modelli:[d.rain,+r.toFixed(1)]};
+    if(ok(x.t) && d.tmax!=null && d.tmin!=null){ out.tmax=m(d.tmax,Math.max(...x.t)); out.tmin=m(d.tmin,Math.min(...x.t)); }
+    return out;
+  });
 }
 
 /* ---------------- Gelo, caldo, vento, temporale e grandine ---------------- */

@@ -162,6 +162,8 @@ details[open]>summary .chev{transform:rotate(90deg)}
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .field>label,.flabel{font-size:.9rem;font-weight:700}
 .hint{font-size:.8rem;color:var(--muted)}
+.sugg{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:8px 10px;border-radius:12px;background:var(--leaf-soft);color:var(--ink);font-size:.88rem}
+.sugg b{color:var(--leaf)} .sugg .btn{flex:none}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
 @media (max-width:359px){.grid2{grid-template-columns:minmax(0,1fr)}}
 input[type=text],input[type=number],input[type=date],select,textarea{display:block;width:100%;min-width:0;max-width:100%;
@@ -400,6 +402,7 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
             <input type="text" id="pf-cerca" placeholder="Cerca: aglio, limone, rosa…" aria-label="Cerca la specie" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
             <div class="plist" id="pf-plist" role="listbox" aria-labelledby="pf-specie-l"></div>
           </div>
+          <div class="sugg" id="pf-sugg" hidden></div>
         </div>
         <div class="field"><label for="pf-zona">Zona <span class="sub" style="font-weight:400">(facoltativa)</span></label>
           <input type="text" id="pf-zona" maxlength="30" placeholder="Es. Balcone, Orto, Salotto" autocomplete="off" enterkeyhint="done">
@@ -1226,10 +1229,6 @@ let editingId=null;
 const optSpecie = v => specieOrdinate().map(([k,s])=>`<option value="${k}" ${k===v?'selected':''}>${esc((s.ico?s.ico+' ':'')+s.nome)}</option>`).join('');
 const optFasi = (v,auto,specie) => (auto?`<option value="${auto.value}" ${v===auto.value?'selected':''}>${esc(auto.label)}</option>`:'')+Object.keys(FASI).map(k=>`<option value="${k}" ${k===v?'selected':''}>${esc(nomeFase(specie,k))}</option>`).join('');
 // parole che fanno trovare una specie anche se non sono nel nome
-const ALIAS={appartamento:'pothos monstera ficus sansevieria zamioculcas dracena spatifillo kenzia',agrumi:'limone arancio mandarino lime pompelmo',fruttiferi:'melo pero pesco albicocco ciliegio susino fico kaki',
-  arbusto:'oleandro bosso alloro gelsomino lauroceraso',geranio:'petunia surfinia begonia fiori',succulenta:'cactus aloe grassa',prato:'erba',melone:'anguria cocomero',peperone:'peperoncino',cipolla:'porro scalogno',
-  spinaci:'bietola bieta rucola',cavolo:'broccolo cavolfiore verza',fagiolo:'fagiolino',pisello:'fava',carota:'rapa',prezzemolo:'erba cipollina coriandolo aneto',menta:'melissa',rosmarino:'salvia timo origano maggiorana',
-  lattuga:'insalata radicchio',vite:'uva',orchidea:'phalaenopsis',zucchina:'zucca',olivo:'ulivo oliva'};
 function setSpecie(k){ const sp=SPECIE[k]?k:'altro'; $('#pf-specie').value=sp; $('#pf-specie-ico').textContent=SPECIE[sp].ico||'🌱'; $('#pf-specie-lab').textContent=SPECIE[sp].nome; }
 function renderPicker(){
   // cerca all'inizio delle parole del nome e dei sinonimi (“po” trova pomodoro, porro, pothos; non “cipollina”)
@@ -1242,11 +1241,23 @@ function apriPicker(on){
   $('#pf-picker').hidden=!on; $('#pf-specie-btn').setAttribute('aria-expanded',String(on));
   if(on){ $('#pf-cerca').value=''; renderPicker(); const sel=$('#pf-plist [aria-selected="true"]'); if(sel) $('#pf-plist').scrollTop=sel.offsetTop-$('#pf-plist').offsetTop-80; }
 }
-function scegliSpecie(k){
+// specie riconosciuta dal nome: per una pianta nuova la sceglie da sola finché non la scegli tu; altrimenti la propone
+let specieScelta=false;
+function suggerisciSpecie(){
+  const k=specieDaNome($('#pf-nome').value), cur=$('#pf-specie').value, box=$('#pf-sugg');
+  if(k && k!==cur && !editingId && !specieScelta){ scegliSpecie(k,{auto:true}); return; }
+  const mostra=k && k!==cur;
+  box.hidden=!mostra;
+  if(mostra) setHTML(box,`<span>Dal nome sembra: <b>${esc(SPECIE[k].ico+' '+SPECIE[k].nome)}</b></span><button type="button" class="btn small" data-usa="${k}">Usa</button>`);
+  else if(k && !editingId && !specieScelta){ box.hidden=false; setHTML(box,'<span>✓ Riconosciuta dal nome</span>'); }
+}
+function scegliSpecie(k,{auto=false}={}){
+  if(!auto) specieScelta=true;
   setSpecie(k); apriPicker(false);
   const sp=SPECIE[k]; if(!editingId) $('#pf-tipo-data').value=sp?.ann&&sp.trap>0?'trapianto':'semina';
   $('#pf-fase').innerHTML=optFasi($('#pf-fase').value,{value:'auto',label:'Automatica'},k);
-  syncForm(); $('#pf-specie-btn').focus({preventScroll:true});
+  syncForm(); if(!auto) $('#pf-specie-btn').focus({preventScroll:true});
+  suggerisciSpecie();
 }
 function renderZoneQuick(){ const v=$('#pf-zona').value.trim().toLowerCase(); $('#pf-zona-q').innerHTML=zoneEsistenti().map(z=>`<button type="button" data-zona="${esc(z)}" class="${z.toLowerCase()===v?'on':''}">${esc(z)}</button>`).join(''); }
 const radioVal = n => document.querySelector(`input[name=${n}]:checked`)?.value;
@@ -1286,7 +1297,7 @@ function openForm(id){
   if(!p) return;
   editingId=id||null;
   $('#plantFormTitle').textContent=id?'Modifica pianta':'Nuova pianta';
-  $('#pf-nome').value=p.nome; setSpecie(p.specie); apriPicker(false); $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'},p.specie);
+  $('#pf-nome').value=p.nome; setSpecie(p.specie); apriPicker(false); specieScelta=false; suggerisciSpecie(); $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'},p.specie);
   $('#pf-zona').value=zonaDi(p); renderZoneQuick();
   $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina';
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
@@ -1380,6 +1391,8 @@ function undoOggi(pid){
 function wire(){
   $('#pf-specie-btn').addEventListener('click',()=>apriPicker($('#pf-picker').hidden));
   $('#pf-cerca').addEventListener('input',renderPicker);
+  $('#pf-nome').addEventListener('input',suggerisciSpecie);
+  $('#pf-sugg').addEventListener('click',e=>{ const b=e.target.closest('[data-usa]'); if(b) scegliSpecie(b.dataset.usa); });
   $('#pf-cerca').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); const b=$('#pf-plist [data-sp]'); if(b) scegliSpecie(b.dataset.sp); } });
   $('#pf-plist').addEventListener('click',e=>{ const b=e.target.closest('[data-sp]'); if(b) scegliSpecie(b.dataset.sp); });
   $('#pf-zona').addEventListener('input',renderZoneQuick);

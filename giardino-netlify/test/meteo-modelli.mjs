@@ -11,3 +11,10 @@ for (const models of ["best_match", "italia_meteo_arpae_icon_2i", "icon_d2", "ic
     for (const k of DAILY.split(",")) console.log("   ", k.padEnd(32), JSON.stringify(j.daily[k]));
   } catch (e) { console.log(models, "→ errore", e.message); }
 }
+// ICON-2I ora per ora: quante ore valide per giorno (il giorno conta nella media solo se le ha tutte e 24)
+try {
+  const q = new URLSearchParams({ ...LUOGO, timezone: "auto", forecast_days: "4", hourly: "precipitation,temperature_2m", models: "italia_meteo_arpae_icon_2i" });
+  const h = (await (await fetch("https://api.open-meteo.com/v1/forecast?" + q)).json()).hourly, per = {};
+  h.time.forEach((t, i) => { const d = t.slice(0, 10); per[d] = (per[d] || 0) + (h.precipitation[i] != null && h.temperature_2m[i] != null ? 1 : 0); });
+  console.log("ICON-2I ore valide per giorno:", JSON.stringify(per));
+} catch (e) { console.log("ICON-2I orario → errore", e.message); }

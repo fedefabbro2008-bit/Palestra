@@ -88,6 +88,12 @@ async function meteo(lat,lon){
   const j=await r.json(), d=j.daily;
   const out={source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,suolo:null,notte:null,days:d.time.map((t,i)=>({date:t,cond:COND(d.weather_code[i]),tmax:d.temperature_2m_max[i],tmin:d.temperature_2m_min[i],
     rain:d.precipitation_sum[i]??0,prob:d.precipitation_probability_max[i],et0:d.et0_fao_evapotranspiration[i]??0,wind:d.wind_speed_10m_max[i],raffiche:d.wind_gusts_10m_max?.[i]??null,code:d.weather_code[i]}))};
+  // primi giorni anche dal modello italiano ICON-2I (stesso calcolo del bot): media di pioggia e temperature
+  try{
+    const r3=await fetch('https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',forecast_days:'3',hourly:MODELLO_IT_PARAMS,models:MODELLO_IT}));
+    if(r3.ok){ const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+      out.days=mediaModelli(out.days,(await r3.json()).hourly,p.year+'-'+p.month+'-'+p.day); }
+  }catch(e){}
   // umidità del suolo e temperature della notte (stessi calcoli del bot): se non arrivano, il resto funziona lo stesso
   try{
     const r2=await fetch('https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',forecast_days:'2',hourly:ORARIO_PARAMS}));

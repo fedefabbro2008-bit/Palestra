@@ -63,6 +63,11 @@ export async function meteo(lat, lon) {
   const out = { tz, days: d.time.map((t, i) => ({ date: t, cond: COND(d.weather_code[i]), tmax: d.temperature_2m_max[i], tmin: d.temperature_2m_min[i],
     rain: d.precipitation_sum[i] ?? 0, prob: d.precipitation_probability_max[i], et0: d.et0_fao_evapotranspiration[i] ?? 0, wind: d.wind_speed_10m_max[i],
     raffiche: d.wind_gusts_10m_max?.[i] ?? null, code: d.weather_code[i] })), suolo: null, notte: null };
+  // primi giorni anche dal modello italiano ICON-2I: media di pioggia e temperature (se non risponde, restano i dati di prima)
+  try {
+    const r3 = await fetch("https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", forecast_days: "3", hourly: M.MODELLO_IT_PARAMS, models: M.MODELLO_IT }));
+    if (r3.ok) out.days = M.mediaModelli(out.days, (await r3.json()).hourly, oraLocale(tz).oggi);
+  } catch (e) { console.warn("ICON-2I non disponibile:", e?.message); }
   // dati orari (umidità del suolo, temperature della notte) in una richiesta a parte: se non arrivano, il resto funziona lo stesso
   try {
     const r2 = await fetch("https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", forecast_days: "2", hourly: M.ORARIO_PARAMS }));

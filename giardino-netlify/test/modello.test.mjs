@@ -136,3 +136,21 @@ test("avvisi di temporale, grandine e raffiche", () => {
   const fut = ["2026-07-15", "2026-07-16", "2026-07-17"].map((date, i) => ({ date, et0: 5, tmax: 26, tmin: 15, rain: 0, prob: 0, wind: 5, code: i === 2 ? 99 : 1 }));
   assert.match(M.pianoLocale({ piante: [vaso], fut, oggi: "2026-07-15", lat: 44 }).avvisi.join(" "), /Possibile grandine venerdì/);
 });
+
+test("primi giorni: media con ICON-2I solo dove copre il giorno intero", () => {
+  const days = ["2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"].map((date) => ({ date, rain: 10, prob: 80, tmax: 14, tmin: 6 }));
+  const ore = (d, n, p, t) => [...Array(n)].map((_, h) => ({ t: d + "T" + String(h).padStart(2, "0") + ":00", p, T: t + (h === 14 ? 4 : 0) }));
+  const h = [...ore("2026-11-06", 24, 0.25, 8), ...ore("2026-11-07", 24, 0, 7), ...ore("2026-11-08", 12, 1, 7)];
+  const out = M.mediaModelli(days, { time: h.map((x) => x.t), precipitation: h.map((x) => x.p), temperature_2m: h.map((x) => x.T) }, "2026-11-06");
+  assert.deepEqual(out.map((d) => d.rain), [10, 8, 5, 10, 10], "ieri no; oggi (10+6)/2; domani (10+0)/2; terzo giorno incompleto: resta");
+  assert.deepEqual(out[1].rain_modelli, [10, 6]); assert.equal(out[1].prob, 80);
+  assert.equal(out[1].tmax, 13); assert.equal(out[1].tmin, 7);
+  assert.equal(M.mediaModelli(days, undefined, "2026-11-06"), days);
+});
+
+test("specie riconosciuta dal nome", () => {
+  const casi = { "Nepenthes mirabilis": "nepenthes", "Chlorophytum comosum": "appartamento", "Aglio": "aglio", "Pomodori ciliegini": "pomodoro", "Melone giallo": "melone", "Melo cotogno": "fruttiferi",
+    "Ficus benjamin": "ficus", "Erba cipollina": "prezzemolo", "Limone in terrazzo": "agrumi", "Tulipani rossi": "bulbose", "Dionea": "carnivora", "Monstera deliciosa": "tropicale", "Basilico genovese": "basilico", "Pianta di Marta": null, "": null };
+  for (const [n, k] of Object.entries(casi)) assert.equal(M.specieDaNome(n), k, n);
+  for (const k of Object.keys(M.SPECIE)) if (k !== "altro") assert.ok(M.ALIAS[k], k + ": nomi per la ricerca");
+});
