@@ -1377,9 +1377,10 @@ body.light{
   --glass-hi:rgba(255,255,255,.95); --glass-hi-soft:rgba(255,255,255,.8); --glass-pill:rgba(0,0,0,.06);
   --glass-sheen:linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,0) 60%);
 }
-/* barra in basso: capsula di vetro sospesa, il contenuto le scorre sotto */
+/* barra in basso: capsula di vetro sospesa, il contenuto le scorre sotto. Più vicina al fondo: entra in parte nella
+   fascia dell'indicatore Home (iPhone ~34 px) restandone sopra; senza fascia resta a 6 px dal bordo */
 .bottom-stack{position:absolute; left:0; right:0; bottom:0; display:flex; flex-direction:column; gap:8px;
-  padding:0 12px calc(8px + env(safe-area-inset-bottom)); pointer-events:none;}
+  padding:0 12px max(6px, calc(env(safe-area-inset-bottom) - 12px)); pointer-events:none;}
 .bottom-stack > *{pointer-events:auto;}
 main{padding-bottom:calc(var(--stack-h, 92px) + 6px);}
 nav.bottom{border:1px solid var(--glass-line); border-radius:30px; padding:5px;
