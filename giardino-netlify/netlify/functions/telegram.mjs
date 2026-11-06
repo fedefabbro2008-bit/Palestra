@@ -89,6 +89,7 @@ async function pulsante(st, t, code, cq) {
   const rispondi = (text) => tg(t.token, "answerCallbackQuery", { callback_query_id: cq.id, ...(text ? { text } : {}) }, { ignora: true });
   if (cq.message?.chat?.id !== t.chat_id) return rispondi();
   const [k, data, pid, x] = String(cq.data || "").split("|");
+  if (k === "v" && /^[us]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return verifica(st, t, code, cq, rispondi);
   if (k === "g" && /^z[casn]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return annulla(st, t, code, cq, data, pid, x[1], rispondi);
   const tipo = TIPI[x];
   if (k !== "g" || !tipo || !/^\d{4}-\d{2}-\d{2}$/.test(data || "")) return rispondi("Già registrato");
@@ -118,6 +119,20 @@ async function pulsante(st, t, code, cq) {
     }).filter(Boolean);
     await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: nuova } }, { ignora: true });
   }
+}
+
+// Controllo della settimana: «umido» o «asciutto» confrontato con l'acqua che il calcolo dava nel terriccio.
+async function verifica(st, t, code, cq, rispondi) {
+  const [, data, pid, x, a, sg] = String(cq.data).split("|"), risposta = x === "u" ? "umido" : "secco";
+  const acqua = +a >= 0 ? +a / 100 : null, soglia = +sg >= 0 ? +sg / 100 : null, v = M.esitoVerifica(risposta, acqua, soglia);
+  let nome = pid, gia = false;
+  await aggiorna(st, code, (d) => {
+    const p = d.plants.find((y) => y.id === pid); if (!p) return false; nome = p.nome;
+    if (d.eventi.some((e) => e.plantId === pid && e.data === data && e.tipo === "verifica")) { gia = true; return false; }
+    d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo: "verifica", data, fonte: "telegram", ts: new Date().toISOString(), esito: risposta, valutazione: v, acqua });
+  });
+  await rispondi(gia ? "Già registrato" : M.TESTO_VERIFICA[v]);
+  if (!gia) await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: `✔ ${corto(nome)}: ${risposta} — ${v === "ok" ? "calcolo giusto" : v === "piu" ? "beve di più" : "beve di meno"}`, callback_data: "x" }]] } }, { ignora: true });
 }
 
 // Annulla: toglie la risposta data da Telegram per quella pianta e quel giorno e rimette i pulsanti com'erano.

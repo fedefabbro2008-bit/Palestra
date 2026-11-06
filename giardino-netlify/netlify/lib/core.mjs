@@ -58,18 +58,116 @@ export function pota(ev) {
 const METEO_VALIDO = 15 * 60e3;
 export async function meteo(lat, lon) {
   const key = `c-meteo-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`, st = store(), ora = new Date();
-  try {
-    const c = await st.get(key, { type: "json" });
-    if (c && ora - c.at < METEO_VALIDO && new Date(c.at).getUTCHours() === ora.getUTCHours()) return c.met;
-  } catch (e) { console.warn("cache del meteo:", e?.message); }
+  let c = null;
+  try { c = await st.get(key, { type: "json" }); } catch (e) { console.warn("cache del meteo:", e?.message); }
+  if (c && ora - c.at < METEO_VALIDO && new Date(c.at).getUTCHours() === ora.getUTCHours()) { M.registraClima(lat, M.climaDa(c.met)); return c.met; }
   const u = M.urlMeteo(lat, lon);
-  const [r, rIT] = await Promise.all([fetch(u.base), fetch(u.it).catch(() => null)]);
-  if (!r.ok) throw new Error("Open-Meteo " + r.status);
+  // storico delle temperature (una richiesta al giorno) insieme alle previsioni, non dopo
+  const [r, rIT, temp] = await Promise.all([fetch(u.base).catch((e) => ({ ok: false, status: e?.message || "rete" })), fetch(u.it).catch(() => null),
+    storicoTemperature(st, lat, lon, oraLocale(c?.met?.tz || "Europe/Rome").oggi).catch(() => null)]);
+  if (!r.ok) return meteoRiserva(st, key, lat, lon, c?.met, "Open-Meteo " + r.status);
   const j = await r.json(), jIT = rIT?.ok ? await rIT.json().catch(() => null) : null;
   const { oggi, ora: h } = oraLocale(j.timezone || "Europe/Rome");
   const met = M.componiMeteo(j, jIT, oggi, h);
+  met.storico = temp;
+  M.registraClima(lat, M.climaDa(met));
   try { await st.setJSON(key, { at: ora.getTime(), met }); } catch (e) { console.warn("cache del meteo:", e?.message); }
   return met;
+}
+// Open-Meteo non risponde: previsioni da MET Norway; giorni passati, storico e (se di oggi) umidità del suolo dall'ultimo
+// meteo buono salvato. Se non risponde nemmeno MET Norway, l'ultimo meteo buono così com'è (o l'errore).
+const UA = "giardino-fede.netlify.app/1.0 https://giardino-fede.netlify.app";
+async function meteoRiserva(st, key, lat, lon, ultimo, errore) {
+  console.warn("meteo di riserva:", errore);
+  try {
+    const tz = ultimo?.tz || "Europe/Rome", { oggi, ora } = oraLocale(tz);
+    const r = await fetch(M.urlMet(lat, lon), { headers: { "user-agent": UA } });
+    if (!r.ok) throw new Error("MET Norway " + r.status);
+    const { days, notte } = M.giorniDaMet(await r.json(), tz, lat, oggi, ora);
+    if (!days.length) throw new Error("MET Norway senza dati");
+    const met = { tz, days: [...(ultimo?.days || []).filter((d) => d.date < oggi).slice(-3), ...days], suolo: null, notte, storico: ultimo?.storico || null, fonte: "MET Norway (riserva)" };
+    M.registraClima(lat, M.climaDa(met));
+    try { await st.setJSON(key, { at: Date.now(), met, riserva: true }); } catch {}
+    return met;
+  } catch (e) {
+    console.warn("anche la riserva non risponde:", e?.message);
+    if (ultimo) return { ...ultimo, fonte: "ultimo meteo salvato" };
+    throw new Error(errore);
+  }
+}
+/* ---------------- Pioggia misurata: stazioni ARPAE-SIMC (open data, Emilia-Romagna) ----------------
+   realtime.jsonl (~9 MB) contiene le ultime ore di tutte le stazioni: il bot lo legge ogni 3 ore, tiene le ore della
+   stazione con pluviometro più vicina (entro 15 km) e somma i giorni completi. B13011 = pioggia; timerange [1,0,3600]
+   = ultima ora, [1,0,900] = ultimo quarto d'ora. Ore in UTC, alla fine dell'intervallo. */
+export const ARPAE_URL = "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl";
+export const inEmiliaRomagna = (lat, lon) => lat > 43.7 && lat < 45.15 && lon > 9.15 && lon < 12.85;
+export function leggiArpae(testo, lat, lon, preferita) {
+  const staz = new Map(), cosl = Math.cos(lat * Math.PI / 180);
+  for (const l of testo.split("\n")) {
+    if (!l.includes('"B13011"')) continue;
+    let o; try { o = JSON.parse(l); } catch { continue; }
+    const la = o.lat / 1e5, lo = o.lon / 1e5, km = Math.hypot((la - lat) * 111, (lo - lon) * 111 * cosl);
+    if (!(km <= 15)) continue;
+    const k = `${o.network}|${o.lon}|${o.lat}`, s = staz.get(k) || { k, nome: "", km: +km.toFixed(1), h: {}, q: {} };
+    for (const x of o.data || []) {
+      if (x.vars?.B01019) s.nome = String(x.vars.B01019.v);
+      const v = x.vars?.B13011?.v, tr = x.timerange;
+      if (v == null || !tr || tr[0] !== 1) continue;
+      if (tr[2] === 3600) s.h[o.date] = v; else if (tr[2] === 900) s.q[o.date] = v;
+    }
+    staz.set(k, s);
+  }
+  const conDati = [...staz.values()].filter((s) => Object.keys(s.h).length || Object.keys(s.q).length).sort((a, b) => a.km - b.km);
+  const s = conDati.find((x) => x.k === preferita) || conDati[0];
+  if (!s) return null;
+  let ore = s.h;
+  if (!Object.keys(ore).length) { ore = {}; for (const [t, v] of Object.entries(s.q)) { const f = new Date(Math.ceil(Date.parse(t) / 36e5) * 36e5).toISOString().replace(".000", ""); ore[f] = (ore[f] || 0) + v; } }
+  return { stazione: { k: s.k, nome: s.nome || "stazione ARPAE", km: s.km }, ore, quarti: s.q };
+}
+// giorni locali completi (almeno 22 ore) dalle ore misurate
+export function giorniMisurati(ore, tz) {
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }), g = {};
+  for (const [t, v] of Object.entries(ore || {})) { const d = fmt.format(new Date(Date.parse(t) - 30 * 60e3)); (g[d] ||= { mm: 0, n: 0 }); g[d].mm += +v || 0; g[d].n++; }
+  return Object.fromEntries(Object.entries(g).filter(([, x]) => x.n >= 22).map(([d, x]) => [d, +x.mm.toFixed(1)]));
+}
+// Ore e quarti d'ora misurati per una posizione: archivio c-arpae-<lat,lon> (6 giorni), aggiornato con il file realtime.
+export async function misureArpae(st, lat, lon, testo, { massimaEta = 0 } = {}) {
+  const key = `c-arpae-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`, prima = (await st.get(key, { type: "json" }).catch(() => null)) || { ore: {}, quarti: {} };
+  if (massimaEta && prima.at && Date.now() - prima.at < massimaEta) return prima;
+  if (testo == null) { try { const r = await fetch(ARPAE_URL, { headers: { "user-agent": UA } }); testo = r.ok ? await r.text() : ""; } catch (e) { console.warn("ARPAE:", e?.message); testo = ""; } }
+  const letto = testo ? leggiArpae(testo, lat, lon, prima.stazione?.k) : null;
+  if (!letto) return prima.stazione ? prima : null;
+  const stessa = prima.stazione?.k === letto.stazione.k, limite = new Date(Date.now() - 6 * 864e5).toISOString();
+  const unisci = (a, b) => Object.fromEntries(Object.entries({ ...(stessa ? a || {} : {}), ...b }).filter(([t]) => t >= limite));
+  const c = { stazione: letto.stazione, ore: unisci(prima.ore, letto.ore), quarti: unisci(prima.quarti, letto.quarti), at: Date.now() };
+  await st.setJSON(key, c).catch(() => {});
+  return c;
+}
+// Ogni 3 ore (dal bot): aggiorna le ore misurate per ogni posizione in Emilia-Romagna e scrive i giorni completi nei dati.
+export async function aggiornaPioggiaMisurata(st) {
+  const { blobs } = await st.list({ prefix: "d-" });
+  let testo = null;
+  for (const b of blobs) {
+    const code = b.key.slice(2), cur = await leggi(st, code), l = cur?.data?.location;
+    if (!l || !inEmiliaRomagna(l.lat, l.lon)) continue;
+    if (testo === null) { try { const r = await fetch(ARPAE_URL, { headers: { "user-agent": UA } }); testo = r.ok ? await r.text() : ""; } catch (e) { console.warn("ARPAE:", e?.message); testo = ""; } }
+    if (!testo) return;
+    const c = await misureArpae(st, l.lat, l.lon, testo);
+    if (!c?.stazione) continue;
+    const letto = c, giorni = giorniMisurati(c.ore, "Europe/Rome"), att = cur.data.pioggia_misurata;
+    if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome)
+      await aggiorna(st, code, (d) => { d.pioggia_misurata = { stazione: letto.stazione.nome, km: letto.stazione.km, giorni, aggiornato: new Date().toISOString() }; });
+  }
+}
+// Temperature medie dei 400 giorni passati (per le fasi a gradi-giorno): una richiesta al giorno, poi dall'archivio.
+async function storicoTemperature(st, lat, lon, oggi) {
+  const key = `c-storico-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`;
+  try { const c = await st.get(key, { type: "json" }); if (c?.giorno === oggi && c.temp) return c.temp; } catch {}
+  try {
+    const r = await fetch(M.urlStorico(lat, lon, oggi));
+    if (r.ok) { const temp = M.storicoDa(await r.json()); if (Object.keys(temp).length) { await st.setJSON(key, { giorno: oggi, temp }).catch(() => {}); return temp; } }
+  } catch (e) { console.warn("storico delle temperature:", e?.message); }
+  return null;
 }
 export function oraLocale(tz) {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map((x) => [x.type, x.value]));
@@ -80,7 +178,8 @@ export function oraLocale(tz) {
 // ultimo giorno programmato da Claude (le previsioni del meteo arrivano a circa 7 giorni)
 export function finePiano(pc) { let f = ""; for (const x of pc?.data?.piante || []) for (const g of x.giorni || []) if (g?.data > f) f = g.data; return f; }
 export function pianoAttivo(data, met, oggi) {
-  const lat = data.location?.lat, past = met.days.filter((d) => d.date < oggi).slice(-3), fut = met.days.filter((d) => d.date >= oggi).slice(0, 7);
+  const lat = data.location?.lat, giorni = M.conPioggiaMisurata(met.days, data.pioggia_misurata, oggi);
+  const past = giorni.filter((d) => d.date < oggi).slice(-3), fut = giorni.filter((d) => d.date >= oggi).slice(0, 7);
   const base = M.pianoLocale({ piante: data.plants, past, fut, eventi: data.eventi, oggi, lat, vacanza: data.vacanza, suolo: met.suolo });
   const pc = data.piano_claude;
   if (pc?.data?.piante?.some((x) => x.giorni?.some((g) => g.data === oggi))) {
@@ -88,9 +187,9 @@ export function pianoAttivo(data, met, oggi) {
     // oltre l'ultimo giorno del piano di Claude vale il calcolo automatico
     const piante = pc.data.piante.map((x) => { const b = base.piante.find((y) => y.id === x.id); if (!b) return x; const date = new Set((x.giorni || []).map((g) => g.data));
       return { ...x, giorni: [...(x.giorni || []), ...b.giorni.filter((g) => !date.has(g.data)).map((g) => ({ ...g, auto: true }))].sort((a, c) => (a.data < c.data ? -1 : 1)) }; });
-    return { piano: { avvisi: pc.data.avvisi || [], sintesi: pc.data.sintesi || "", piante: [...piante, ...base.piante.filter((x) => !ids.has(x.id))] }, fonte: "Claude", past, fut, base };
+    return { piano: { avvisi: pc.data.avvisi || [], sintesi: pc.data.sintesi || "", piante: [...piante, ...base.piante.filter((x) => !ids.has(x.id))] }, fonte: "Claude", past, fut, base, meteoFonte: met.fonte || "" };
   }
-  return { piano: base, fonte: "calcolo automatico", past, fut, base };
+  return { piano: base, fonte: "calcolo automatico", past, fut, base, meteoFonte: met.fonte || "" };
 }
 
 /* ---------------- Telegram ---------------- */
@@ -154,7 +253,7 @@ export function messaggioMattina(data, ap, oggi, { prova = false } = {}) {
     return new Date(d.date + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short" }) + " " + (n ? n + " 💧" : "–"); }).join(" · ");
   msg += `\n\nProssimi giorni: ${prossimi}`;
   if (tastiera.length && !prova) msg += `\n<i>Se non premi nulla, domani le conto come annaffiate.</i>`;
-  msg += `\n<i>Piano: ${esc(ap.fonte)}</i>`;
+  msg += `\n<i>Piano: ${esc(ap.fonte)}${ap.meteoFonte ? " · meteo: " + esc(ap.meteoFonte) : ""}</i>`;
   return { msg, tastiera, daFare };
 }
 
@@ -230,8 +329,17 @@ export async function crediti(st) {
   const mese = oraLocale("Europe/Rome").oggi.slice(0, 7), key = "u-" + mese;
   const u = (await st.get(key, { type: "json" })) || { versioni: [], avvisato: false };
   if (!u.versioni.includes(VERSIONE)) { u.versioni.push(VERSIONE); await st.setJSON(key, u); }
-  const stima = u.versioni.length * CREDITI.pubblicazione + CREDITI.uso;
-  return { mese, pubblicazioni: u.versioni.length, stima, limite: CREDITI.limite, alto: stima >= CREDITI.avviso, avvisato: !!u.avvisato, key };
+  // con il valore vero letto su Netlify (correzione) la stima parte da lì: + 15 per ogni pubblicazione dopo, + l'uso dei giorni passati
+  const k = u.correzione, giorni = k ? Math.max(0, (Date.now() - k.at) / 864e5) : 0;
+  const stima = k ? Math.round(CREDITI.limite - k.rimasti + Math.max(0, u.versioni.length - k.versioni) * CREDITI.pubblicazione + giorni * CREDITI.uso / 30)
+    : u.versioni.length * CREDITI.pubblicazione + CREDITI.uso;
+  return { mese, pubblicazioni: u.versioni.length, stima, limite: CREDITI.limite, alto: stima >= CREDITI.avviso, avvisato: !!u.avvisato, corretta: k ? { rimasti: k.rimasti, at: k.at } : null, key };
+}
+export async function correggiCrediti(st, rimasti) {
+  const c = await crediti(st), u = (await st.get(c.key, { type: "json" })) || { versioni: [] };
+  u.correzione = { rimasti, at: Date.now(), versioni: u.versioni.length };
+  await st.setJSON(c.key, u);
+  return crediti(st);
 }
 export async function segnaAvvisoCrediti(st, c) { const u = (await st.get(c.key, { type: "json" })) || { versioni: [] }; u.avvisato = true; await st.setJSON(c.key, u); }
 export const COMANDI = [

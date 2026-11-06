@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inviati, OGGI } from "./rete-finta.mjs";
 import { getStore } from "@netlify/blobs";
+import * as M from "../netlify/lib/modello.mjs";
 const dati = (await import("../netlify/functions/dati.mjs")).default;
 const mcp = (await import("../netlify/functions/mcp.mjs")).default;
 const telegram = (await import("../netlify/functions/telegram.mjs")).default;
@@ -41,7 +42,58 @@ test("dati: il codice viaggia nell'intestazione (e ?code= vale ancora per le app
   assert.ok(nuovo.body.data && nuovo.body.rev === ora.rev + 1, "dopo una modifica arrivano i dati nuovi");
   // stato per le Impostazioni in una richiesta sola
   const st = (await call(dati, "/api/dati?op=stato", { headers: H })).body;
+  // crediti veri letti su Netlify: la stima riparte da lì
+  const cor = (await call(dati, "/api/dati?op=crediti", { method: "POST", headers: H, body: { rimasti: 104 } })).body;
+  assert.equal(cor.stima, 196); assert.equal(cor.corretta.rimasti, 104);
+  assert.equal((await call(dati, "/api/dati?op=crediti", { method: "POST", headers: H, body: { rimasti: 999 } })).status, 400);
+  { const g = getStore({ name: "giardino" }), k = "u-" + new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit" }).format(new Date());
+    const u = await g.get(k, { type: "json" }); delete u.correzione; await g.setJSON(k, u); }   // le prove dopo contano le pubblicazioni
   assert.deepEqual(st.mcp, { active: false }); assert.deepEqual(st.telegram, { configured: false }); assert.ok(st.crediti.limite === 300 && !("key" in st.crediti));
+});
+
+test("meteo: se Open-Meteo non risponde, MET Norway con i giorni passati dall'ultimo meteo buono", async () => {
+  const { meteo } = await import("../netlify/lib/core.mjs");
+  const st = getStore({ name: "giardino" }), key = "c-meteo-44.30,11.70";
+  await st.delete(key);
+  const buono = await meteo(44.3, 11.7);                     // Open-Meteo (finto) risponde
+  await st.setJSON(key, { at: Date.now() - 20 * 60e3, met: buono });   // scaduto: la prossima volta riprova
+  const vero = globalThis.fetch, oggi = buono.days.find((d) => d.date >= new Date().toISOString().slice(0, 10)).date;
+  const ts = [...Array(60)].map((_, h) => ({ time: new Date(Date.now() + h * 36e5).toISOString().slice(0, 13) + ":00:00Z", data: { instant: { details: { air_temperature: 9, wind_speed: 2 } }, next_1_hours: { summary: { symbol_code: "rain" }, details: { precipitation_amount: 1 } } } }));
+  let ua = "";
+  globalThis.fetch = async (u, o) => { u = String(u); if (u.includes("api.open-meteo.com") && !u.includes("historical")) return new Response("", { status: 502 });
+    if (u.includes("api.met.no")) { ua = o?.headers?.["user-agent"] || ""; return Response.json({ properties: { timeseries: ts } }); } return vero(u, o); };
+  try {
+    const m = await meteo(44.3, 11.7);
+    assert.match(m.fonte, /MET Norway/); assert.match(ua, /giardino-fede\.netlify\.app/, "MET chiede di farsi riconoscere");
+    assert.ok(m.days.some((d) => d.date < oggi), "giorni passati dall'ultimo meteo buono");
+    assert.ok(m.days.find((d) => d.date === oggi).rain > 0 && m.days.find((d) => d.date === oggi).prob === null);
+  } finally { globalThis.fetch = vero; }
+});
+
+test("pioggia misurata ARPAE: stazione più vicina, giorni completi, nei dati e nel piano", async () => {
+  const C = await import("../netlify/lib/core.mjs");
+  // file come realtime.jsonl: Castrocaro (1 km, ogni ora) e una stazione più lontana senza pluviometro
+  const righe = [], ieri = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const giorno = (iso) => [...Array(27)].map((_, h) => new Date(Date.parse(iso + "T00:00:00Z") - 2 * 36e5 + h * 36e5).toISOString().replace(".000", ""));
+  for (const t of giorno(ieri)) righe.push(JSON.stringify({ network: "locali", lon: 1194940, lat: 4417012, date: t, data: [{ vars: { B01019: { v: "Castrocaro" } } }, { timerange: [1, 0, 3600], vars: { B13011: { v: 0.5 } } }] }));
+  righe.push(JSON.stringify({ network: "agrmet", lon: 1202757, lat: 4422698, date: ieri + "T10:00:00Z", data: [{ vars: { B01019: { v: "Forlì" } } }, { timerange: [0, 0, 900], vars: { B12101: { v: 283 } } }] }));
+  const letto = C.leggiArpae(righe.join("\n"), 44.18, 11.95);
+  assert.equal(letto.stazione.nome, "Castrocaro"); assert.ok(letto.stazione.km < 2);
+  const g = C.giorniMisurati(letto.ore, "UTC");
+  assert.equal(g[ieri], 12, "24 ore × 0,5 mm"); assert.equal(Object.keys(g).length, 1, "i giorni incompleti non contano");
+  assert.equal(C.inEmiliaRomagna(44.18, 11.95), true); assert.equal(C.inEmiliaRomagna(41.9, 12.5), false);
+  // il bot scrive i giorni nei dati; il piano usa la pioggia misurata
+  const vero = globalThis.fetch;
+  globalThis.fetch = async (u, o) => String(u).includes("dati-simc.arpae.it") ? new Response(righe.join("\n")) : vero(u, o);
+  try { await C.aggiornaPioggiaMisurata(getStore({ name: "giardino" })); } finally { globalThis.fetch = vero; }
+  const d = await leggiDati();
+  assert.equal(d.pioggia_misurata.stazione, "Castrocaro");
+  // l'app chiede le misure per «l'ho messa sotto la pioggia»: dall'archivio (aggiornato da meno di 15 minuti)
+  const pg = (await call(dati, "/api/dati?op=pioggia", { headers: H })).body;
+  assert.ok(pg.disponibile && pg.stazione === "Castrocaro" && Object.keys(pg.ore).length >= 24);
+  const giorni = M.conPioggiaMisurata([{ date: ieri, rain: 3 }, { date: OGGI, rain: 1 }], d.pioggia_misurata, OGGI);
+  assert.ok(Object.values(d.pioggia_misurata.giorni).length >= 1);
+  assert.equal(giorni[1].rain, 1, "oggi resta la previsione");
 });
 
 test("meteo: due richieste in parallelo, poi 15 minuti dall'archivio", async () => {
@@ -86,6 +138,8 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(sc.isError, false);
   const agl = (await leggiDati()).plants.find((p) => p.id === "agl");
   assert.equal(agl.scheda.calendario.length, 2, "il mese 13 viene scartato");
+  assert.match(sc.content[0].text, /allineato anche le fasi automatiche dell'app: raccolta da 2027-06/);
+  assert.equal(agl.raccolta, "2027-06", "la raccolta della scheda guida le fasi dell'app");
   assert.equal(agl.scheda.specie, "aglio");
   assert.match((await strumento("giardino")).content[0].text, /scheda: compilata da te il/);
   assert.equal((await strumento("salva_scheda", { pianta: "agl", calendario: [] })).isError, true);
@@ -190,6 +244,12 @@ test("Telegram: collegamento, /oggi con «Annaffiato» e «Terreno ancora umido�
   await webhook({ callback_query: { id: "cb3", data: `g|${OGGI}|bas|u`, message: { message_id: 5, chat: { id: 77 }, reply_markup: { inline_keyboard: ripristinata } } } });
   assert.equal((await leggiDati()).eventi.filter((e) => e.plantId === "bas" && e.tipo === "umido").length, 1);
 
+  // controllo della settimana da Telegram: «asciutto» quando il calcolo vedeva l'80% d'acqua → beve di più
+  inviati.length = 0;
+  await webhook({ callback_query: { id: "cbv", data: `v|${OGGI}|agl|s|80|50`, message: { message_id: 9, chat: { id: 77 }, reply_markup: { inline_keyboard: [] } } } });
+  const ver = (await leggiDati()).eventi.find((e) => e.tipo === "verifica" && e.plantId === "agl");
+  assert.ok(ver && ver.valutazione === "piu" && ver.esito === "secco" && ver.fonte === "telegram");
+  assert.match(inviati.find((x) => x[0] === "answerCallbackQuery")[1].text, /beve di più/);
   // /fatto balcone: solo la zona Balcone (il basilico ha già una risposta, resta il pomodoro)
   inviati.length = 0;
   await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto Balcone" } });
@@ -286,4 +346,25 @@ test("crediti Netlify: una versione contata una volta, avviso su Telegram sopra 
   const t2 = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_invio: null, ultimo_avviso_sera: null });
   inviati.length = 0; await bot();
   assert.ok(!inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "una volta al mese");
+});
+
+test("bot di riserva su GitHub: copia cifrata col sito vivo, messaggio su Telegram col sito fermo", async () => {
+  const { riserva, cifra, decifra } = await import("../../giardino/riserva.mjs");
+  const { mkdtemp } = await import("node:fs/promises"), { tmpdir } = await import("node:os"), { join } = await import("node:path");
+  const file = join(await mkdtemp(join(tmpdir(), "riserva-")), "dati.enc"), x = { a: 1 };
+  assert.deepEqual(decifra(cifra(x, CODE), CODE), x); assert.throws(() => decifra(cifra(x, CODE), "ALTRO-CODICE-XXXXXXXX"));
+  const vero = globalThis.fetch, log = () => {};
+  // sito vivo: il «sito» sono le funzioni vere dei test
+  globalThis.fetch = async (u, o = {}) => { u = String(u); if (u.startsWith("https://sito.test")) return dati(new Request(u.replace("https://sito.test", B), { headers: o.headers })); return vero(u, o); };
+  try {
+    assert.equal((await riserva({ sito: "https://sito.test", codice: CODE, token: "123:abc", chat: 77, file, tentativi: 1, attesa: 0, log })).azione, "copia");
+    const copia = decifra(await (await import("node:fs/promises")).readFile(file, "utf8"), CODE);
+    assert.ok(copia.data.plants.length >= 4 && !JSON.stringify(copia).includes("123:abc"));
+    // sito fermo: messaggio di riserva con il piano di oggi, senza pulsanti
+    globalThis.fetch = async (u, o) => (String(u).startsWith("https://sito.test") ? new Response("Site not available", { status: 503 }) : vero(u, o));
+    inviati.length = 0;
+    assert.equal((await riserva({ sito: "https://sito.test", codice: CODE, token: "123:abc", chat: 77, file, tentativi: 1, attesa: 0, log })).azione, "telegram");
+    const m = inviati.find((y) => y[0] === "sendMessage")[1];
+    assert.match(m.text, /Il sito Giardino non risponde[\s\S]*copia di riserva[\s\S]*Giardino —/); assert.equal(m.chat_id, 77); assert.ok(!m.reply_markup);
+  } finally { globalThis.fetch = vero; }
 });

@@ -1,0 +1,44 @@
+# Giardino · bot di riserva: ogni mattina. Se il sito risponde salva una copia cifrata dei dati nella cache di GitHub
+# Actions; se non risponde (es. in pausa per i crediti Netlify) manda il messaggio del mattino su Telegram da qui.
+# Segreti del repository (Settings → Secrets and variables → Actions): GIARDINO_CODE (codice di sincronizzazione),
+# GIARDINO_TG_TOKEN (token del bot da @BotFather) e GIARDINO_TG_CHAT (numero della chat, in app: Impostazioni → Telegram).
+name: Giardino · bot di riserva
+on:
+  schedule:
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: giardino-riserva
+jobs:
+  riserva:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: giardino-netlify
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Ultima copia dei dati
+        uses: actions/cache/restore@v4
+        with:
+          path: giardino-netlify/riserva/dati.enc
+          key: giardino-dati-${{ github.run_id }}
+          restore-keys: giardino-dati-
+      - name: Sito vivo → copia; sito fermo → Telegram
+        id: riserva
+        env:
+          GIARDINO_CODE: ${{ secrets.GIARDINO_CODE }}
+          GIARDINO_TG_TOKEN: ${{ secrets.GIARDINO_TG_TOKEN }}
+          GIARDINO_TG_CHAT: ${{ secrets.GIARDINO_TG_CHAT }}
+        run: node --import ./test/registra-finto.mjs ../giardino/riserva.mjs
+      - name: Salva la copia nuova
+        if: steps.riserva.outputs.azione == 'copia'
+        uses: actions/cache/save@v4
+        with:
+          path: giardino-netlify/riserva/dati.enc
+          key: giardino-dati-${{ github.run_id }}

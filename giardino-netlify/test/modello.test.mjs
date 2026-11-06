@@ -180,3 +180,89 @@ test("diagnosi guidata: troppa, poca, incerta, altre cause", () => {
   assert.equal(nep.verdetto, "altro"); assert.match(nep.altri[0], /piovana o distillata/);
   assert.equal(M.diagnosi([]).verdetto, "bene");
 });
+
+test("sole secondo la stagione: orientamento e ore scritte un certo giorno", () => {
+  assert.ok(Math.abs(M.oreSoleGeom("2026-12-21", "S", 44.2) - 6.75) < 0.3, "sud d'inverno: sole tutto il giorno");
+  assert.ok(M.oreSoleGeom("2026-06-21", "S", 44.2) < M.oreSoleGeom("2026-03-21", "S", 44.2), "sud d'estate meno che all'equinozio");
+  assert.equal(M.oreSoleGeom("2026-12-21", "N", 44.2), 0);
+  const p = { luce: 4, orient: "E", luce_data: "2026-11-06" };
+  assert.equal(M.luceOre(p, "2026-11-06", 44.2), 4); assert.ok(M.luceOre(p, "2027-06-21", 44.2) > 6, "est d'estate: più sole");
+  assert.equal(M.luceOre({ luce: 4 }, "2027-06-21", 44.2), 4, "senza orientamento: numero fisso");
+  // in casa la luce del giorno segue il sole previsto
+  const k = M.params({ id: "c", nome: "C", specie: "appartamento", colt: "vaso", vaso: 3, luce: 6, dove: "interno" }, { oggi: "2026-11-06", lat: 44 });
+  assert.ok(M.consumoL(k, { date: "2026-11-06", sole: 0 }) < M.consumoL(k, { date: "2026-11-06", sole: 0.9 }));
+});
+
+test("fasi a gradi-giorno: col freddo più piano, col caldo più in fretta; senza storico, giorni", () => {
+  const p = { id: "t", nome: "Pomodoro", specie: "pomodoro", fase: "auto", data_semina: "2026-05-01", tipo_data: "semina", colt: "vaso", vaso: 20, dove: "aperto" };
+  const giorni = (T) => { const st = {}; for (let i = 0; i < 400; i++) st[M.addDays("2025-10-01", i)] = T; return { storico: st, prev: {} }; };
+  M.registraClima(10, null); // nessun dato per questa latitudine
+  assert.equal(M.etaEquivalente(p, "2026-06-10", 10).eta, 40, "senza storico: 40 giorni");
+  M.registraClima(11, giorni(15.5)); M.registraClima(12, giorni(27));
+  const freddo = M.etaEquivalente(p, "2026-06-10", 11), caldo = M.etaEquivalente(p, "2026-06-10", 12);
+  assert.ok(Math.abs(freddo.eta - 20) < 0.5 && freddo.ritmo === 0.5, "15,5 °C: metà velocità");
+  assert.ok(caldo.eta > 60 && caldo.ritmo === 1.55, "27 °C: più veloce");
+  assert.equal(M.faseEffettiva(p, "2026-06-10", 11).fase, "piantina", "freddo: ancora piantina"); assert.equal(M.faseEffettiva(p, "2026-06-10", 12).fase, "vegetativa");
+  assert.ok(M.calendarioAuto(p, 11).mesi.length > M.calendarioAuto(p, 12).mesi.length, "col freddo il ciclo dura più mesi");
+});
+
+test("controllo della settimana: quando, quale pianta, cosa impara", () => {
+  const piante = [{ id: "a", nome: "Aglio" }, { id: "b", nome: "Basilico" }];
+  assert.equal(M.verificaDaFare(piante, [], "2026-11-06"), null, "venerdì no");
+  const ev = [{ id: "1", plantId: "a", tipo: "umido", data: "2026-11-03" }];
+  assert.equal(M.verificaDaFare(piante, ev, "2026-11-07").id, "b", "sabato: la pianta senza risposte recenti");
+  assert.equal(M.verificaDaFare(piante, [...ev, { id: "2", plantId: "b", tipo: "verifica", data: "2026-11-07" }], "2026-11-08"), null, "già fatto questa settimana");
+  assert.equal(M.esitoVerifica("secco", 0.8, 0.5), "piu"); assert.equal(M.esitoVerifica("umido", 0.3, 0.5), "meno"); assert.equal(M.esitoVerifica("umido", 0.8, 0.5), "ok");
+  assert.ok(M.calibrazione([{ id: "v", plantId: "a", tipo: "verifica", valutazione: "piu", data: "2026-11-07" }], "a", "2026-11-08") > 1);
+  assert.equal(M.calibrazione([{ id: "v", plantId: "a", tipo: "verifica", valutazione: "ok", data: "2026-11-07" }], "a", "2026-11-08"), 1);
+});
+
+test("meteo di riserva MET Norway: giorni locali, pioggia senza doppi conteggi, notte", () => {
+  const t0 = Date.UTC(2026, 10, 6, 0), ts = [];
+  for (let h = 0; h < 48; h++) ts.push({ time: new Date(t0 + h * 36e5).toISOString().replace(".000", ""), data: { instant: { details: { air_temperature: 8 + (h % 24 > 10 && h % 24 < 16 ? 6 : 0), wind_speed: 3 } },
+    next_1_hours: { summary: { symbol_code: "rain" }, details: { precipitation_amount: 0.5 } }, next_6_hours: { summary: { symbol_code: "rain" }, details: { precipitation_amount: 3, air_temperature_max: 14, air_temperature_min: 8 } } } });
+  for (let h = 48; h < 9 * 24; h += 6) ts.push({ time: new Date(t0 + h * 36e5).toISOString().replace(".000", ""), data: { instant: { details: { air_temperature: 10, wind_speed: 2 } },
+    next_6_hours: { summary: { symbol_code: "cloudy" }, details: { precipitation_amount: 1.5, air_temperature_max: 12, air_temperature_min: 7 } } } });
+  const { days, notte } = M.giorniDaMet({ properties: { timeseries: ts } }, "UTC", 44, "2026-11-06", 9);
+  assert.equal(days[0].date, "2026-11-06"); assert.equal(days[0].rain, 12, "24 ore × 0,5 mm (non anche i 6 ore)");
+  assert.equal(days[0].tmax, 14); assert.equal(days[0].tmin, 8); assert.equal(days[0].cond, "pioggia"); assert.ok(days[0].et0 > 0);
+  assert.equal(days[3].rain, 6, "dopo due giorni: 4 × 1,5 mm ogni 6 ore"); assert.equal(days[3].cond, "nuvoloso");
+  assert.ok(notte.length >= 10 && notte[0].ora === "18");
+});
+
+test("raccolta prevista: le fasi automatiche si adattano al mese scritto (es. carote seminate a novembre)", () => {
+  const p = { id: "c", nome: "Carote", specie: "carota", fase: "auto", data_semina: "2026-11-06", tipo_data: "semina", colt: "vaso", vaso: 50, dove: "aperto" };
+  const senza = M.calendarioAuto(p, 20).mesi, con = M.calendarioAuto({ ...p, raccolta: "2027-04" }, 20).mesi;
+  assert.equal(senza.find((m) => m.raccolta).mese, "2027-01", "a giorni fissi: gennaio");
+  assert.equal(con.find((m) => m.raccolta).mese, "2027-04", "con la raccolta prevista: aprile");
+  assert.equal(M.faseEffettiva({ ...p, raccolta: "2027-04" }, "2027-04-20", 20).fase, "maturazione");
+  assert.notEqual(M.faseEffettiva({ ...p, raccolta: "2027-04" }, "2027-01-20", 20).fase, "maturazione");
+});
+
+test("raccolta presa dalla scheda di Claude se è per la stessa semina", () => {
+  const p = { specie: "carota", fase: "auto", data_semina: "2026-11-06", scheda: { specie: "carota", data_semina: "2026-11-06", calendario: [{ mese: "2027-05", raccolta: true }, { mese: "2027-04", raccolta: true }] } };
+  assert.equal(M.raccoltaDi(p), "2027-04"); assert.equal(M.raccoltaDi({ ...p, raccolta: "2027-06" }), "2027-06");
+  assert.equal(M.raccoltaDi({ ...p, data_semina: "2026-12-01" }), "", "scheda di un'altra semina");
+});
+
+test("messa sotto la pioggia: mm misurati (ARPAE) nelle ore scelte, litri nel vaso, riempie solo quei litri", () => {
+  // misure ARPAE: chiavi in UTC alla fine dell'intervallo; a novembre l'Italia è UTC+1
+  const quarti = { "2026-11-06T07:15:00Z": 0.4, "2026-11-06T07:30:00Z": 0.4, "2026-11-06T07:45:00Z": 0.4, "2026-11-06T08:00:00Z": 0.4, "2026-11-06T08:15:00Z": 2 };
+  const r = M.pioggiaMisurataNelleOre({ quarti }, "2026-11-06", "08:00", "09:15", "Europe/Rome");
+  assert.equal(r.mm, 3.6); assert.equal(r.fino, "09:15"); assert.equal(r.completo, true);
+  const parz = M.pioggiaMisurataNelleOre({ quarti }, "2026-11-06", "08:30", "10:00", "Europe/Rome");
+  assert.equal(parz.mm, 2.8, "dalle 8:30: 2 quarti + l'ultimo"); assert.equal(parz.completo, false, "misure solo fino alle 9:15");
+  assert.equal(M.pioggiaMisurataNelleOre({ ore: { "2026-11-06T08:00:00Z": 6 } }, "2026-11-06", "08:30", "09:00", "Europe/Rome").mm, 3, "senza quarti: le ore");
+  const p = { id: "n", nome: "Nepenthes", specie: "nepenthes", fase: "auto", colt: "vaso", vaso: 12, diametro: 30, luce: 2, dove: "serra" };
+  const fut = ["2026-11-06", "2026-11-07"].map((date) => ({ date, et0: 1, tmax: 12, tmin: 8, rain: 10, prob: 90 }));
+  const k = M.params(p, { oggi: "2026-11-06", lat: 44 }), litri = M.litriDaPioggia(k, 6);
+  assert.ok(litri > 0.2 && litri < 0.4, "6 mm su un vaso da 30 cm ≈ 0,3 L");
+  const senza = M.pianoLocale({ piante: [p], fut, oggi: "2026-11-06", lat: 44 }).piante[0].acqua;
+  const con = M.pianoLocale({ piante: [p], fut, oggi: "2026-11-06", lat: 44, eventi: [{ id: "x", plantId: "n", tipo: "pioggia", data: "2026-11-06", litri }] }).piante[0].acqua;
+  assert.ok(con > senza && con < 1, "più acqua nel terriccio, ma non per forza piena");
+});
+
+test("raccolta prevista rimasta prima di una nuova data di semina: non vale", () => {
+  assert.equal(M.raccoltaDi({ specie: "carota", fase: "auto", data_semina: "2027-05-10", raccolta: "2027-04" }), "");
+  assert.equal(M.raccoltaDi({ specie: "carota", fase: "auto", data_semina: "2026-11-06", raccolta: "2027-04" }), "2027-04");
+});

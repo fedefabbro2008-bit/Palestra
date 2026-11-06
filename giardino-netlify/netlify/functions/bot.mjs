@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, aggiornaPioggiaMisurata, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Per ogni bot Telegram collegato, all'ora locale:
@@ -16,6 +16,8 @@ export default async () => {
   const st = store();
   // crediti Netlify: conta la versione pubblicata; sopra l'80% della stima avvisa una volta al mese
   let cr = null; try { cr = await crediti(st); } catch (e) { console.error("crediti", e?.message); }
+  // ogni 3 ore: pioggia misurata dalle stazioni ARPAE (solo per le posizioni in Emilia-Romagna)
+  if (new Date().getUTCHours() % 3 === 0) { try { await aggiornaPioggiaMisurata(st); } catch (e) { console.error("pioggia misurata", e?.message); } }
   const { blobs } = await st.list({ prefix: "t-" });
   let avvisati = 0;
   for (const b of blobs) {
@@ -60,6 +62,15 @@ async function uno(st, tkey, cr) {
       await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {});
       next.notificati[oggi] = data.plants.map((p) => ({ id: p.id, g: ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((g) => g.data === oggi) }))
         .filter((x) => x.g?.azione === "innaffia").map((x) => ({ id: x.id, litri: x.g.litri }));
+    }
+    // il sabato, il controllo della settimana: una pianta da toccare con il dito
+    const pv = new Date(oggi + "T12:00:00Z").getUTCDay() === 6 && t.ultima_verifica !== oggi ? M.verificaDaFare(data.plants, data.eventi, oggi, data.vacanza) : null;
+    if (pv) {
+      const pb = ap.base.piante.find((x) => x.id === pv.id), a = Math.round((pb?.acqua ?? -1) * 100), sg = Math.round((pb?.soglia ?? -1) * 100);
+      const cb = (r) => `v|${oggi}|${pv.id}|${r}|${a}|${sg}`;
+      await invia(`🔍 <b>Controllo della settimana</b>\nInfila un dito nel terriccio di <b>${esc(pv.nome)}</b> per 2–3 cm: com'è?\n<i>Così l'app impara quanto beve davvero.</i>`,
+        { reply_markup: { inline_keyboard: [[{ text: "💦 Umido", callback_data: cb("u") }, { text: "🏜 Asciutto", callback_data: cb("s") }]] } });
+      next.ultima_verifica = oggi;
     }
     next.ultimo_invio = oggi;
   }
