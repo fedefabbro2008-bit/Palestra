@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, aggiornaPioggiaMisurata, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Per ogni bot Telegram collegato, all'ora locale:
@@ -16,6 +16,8 @@ export default async () => {
   const st = store();
   // crediti Netlify: conta la versione pubblicata; sopra l'80% della stima avvisa una volta al mese
   let cr = null; try { cr = await crediti(st); } catch (e) { console.error("crediti", e?.message); }
+  // ogni 3 ore: pioggia misurata dalle stazioni ARPAE (solo per le posizioni in Emilia-Romagna)
+  if (new Date().getUTCHours() % 3 === 0) { try { await aggiornaPioggiaMisurata(st); } catch (e) { console.error("pioggia misurata", e?.message); } }
   const { blobs } = await st.list({ prefix: "t-" });
   let avvisati = 0;
   for (const b of blobs) {

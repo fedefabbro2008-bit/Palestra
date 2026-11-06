@@ -1155,7 +1155,7 @@ function renderPiante(AP){
 function renderMeteoSet(){
   const w=activeWeather();
   $('#wxVal').textContent=!w?'nessun dato':w.source==='open-meteo'?(/MET/.test(w.fonte||'')?'MET Norway (riserva)':'Open-Meteo')+(w.updatedAt?' · '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):''):'corretto a mano';
-  $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.';
+  $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.misurata?'; pioggia dei giorni passati misurata dalla stazione ARPAE di '+w.misurata.stazione+' ('+fmt(w.misurata.km,1)+' km)':'')+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.';
   const ed=$('#wxEdit'); if(ed.contains(document.activeElement)) return;
   const map={}; wxDays().forEach(d=>map[d.date]=d);
   setHTML(ed,'<div class="wxe-h"><span></span><span>Max °C</span><span>Min °C</span><span>Pioggia mm</span></div>'+next7().map(dt=>{ const d=map[dt]||{}, l=esc(dayLabel(dt));

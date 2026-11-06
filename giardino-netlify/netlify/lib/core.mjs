@@ -93,6 +93,61 @@ async function meteoRiserva(st, key, lat, lon, ultimo, errore) {
     throw new Error(errore);
   }
 }
+/* ---------------- Pioggia misurata: stazioni ARPAE-SIMC (open data, Emilia-Romagna) ----------------
+   realtime.jsonl (~9 MB) contiene le ultime ore di tutte le stazioni: il bot lo legge ogni 3 ore, tiene le ore della
+   stazione con pluviometro più vicina (entro 15 km) e somma i giorni completi. B13011 = pioggia; timerange [1,0,3600]
+   = ultima ora, [1,0,900] = ultimo quarto d'ora. Ore in UTC, alla fine dell'intervallo. */
+export const ARPAE_URL = "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl";
+export const inEmiliaRomagna = (lat, lon) => lat > 43.7 && lat < 45.15 && lon > 9.15 && lon < 12.85;
+export function leggiArpae(testo, lat, lon, preferita) {
+  const staz = new Map(), cosl = Math.cos(lat * Math.PI / 180);
+  for (const l of testo.split("\n")) {
+    if (!l.includes('"B13011"')) continue;
+    let o; try { o = JSON.parse(l); } catch { continue; }
+    const la = o.lat / 1e5, lo = o.lon / 1e5, km = Math.hypot((la - lat) * 111, (lo - lon) * 111 * cosl);
+    if (!(km <= 15)) continue;
+    const k = `${o.network}|${o.lon}|${o.lat}`, s = staz.get(k) || { k, nome: "", km: +km.toFixed(1), h: {}, q: {} };
+    for (const x of o.data || []) {
+      if (x.vars?.B01019) s.nome = String(x.vars.B01019.v);
+      const v = x.vars?.B13011?.v, tr = x.timerange;
+      if (v == null || !tr || tr[0] !== 1) continue;
+      if (tr[2] === 3600) s.h[o.date] = v; else if (tr[2] === 900) s.q[o.date] = v;
+    }
+    staz.set(k, s);
+  }
+  const conDati = [...staz.values()].filter((s) => Object.keys(s.h).length || Object.keys(s.q).length).sort((a, b) => a.km - b.km);
+  const s = conDati.find((x) => x.k === preferita) || conDati[0];
+  if (!s) return null;
+  let ore = s.h;
+  if (!Object.keys(ore).length) { ore = {}; for (const [t, v] of Object.entries(s.q)) { const f = new Date(Math.ceil(Date.parse(t) / 36e5) * 36e5).toISOString().replace(".000", ""); ore[f] = (ore[f] || 0) + v; } }
+  return { stazione: { k: s.k, nome: s.nome || "stazione ARPAE", km: s.km }, ore };
+}
+// giorni locali completi (almeno 22 ore) dalle ore misurate
+export function giorniMisurati(ore, tz) {
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }), g = {};
+  for (const [t, v] of Object.entries(ore || {})) { const d = fmt.format(new Date(Date.parse(t) - 30 * 60e3)); (g[d] ||= { mm: 0, n: 0 }); g[d].mm += +v || 0; g[d].n++; }
+  return Object.fromEntries(Object.entries(g).filter(([, x]) => x.n >= 22).map(([d, x]) => [d, +x.mm.toFixed(1)]));
+}
+// Ogni 3 ore (dal bot): aggiorna le ore misurate per ogni posizione in Emilia-Romagna e scrive i giorni completi nei dati.
+export async function aggiornaPioggiaMisurata(st) {
+  const { blobs } = await st.list({ prefix: "d-" });
+  let testo = null;
+  for (const b of blobs) {
+    const code = b.key.slice(2), cur = await leggi(st, code), l = cur?.data?.location;
+    if (!l || !inEmiliaRomagna(l.lat, l.lon)) continue;
+    if (testo === null) { try { const r = await fetch(ARPAE_URL, { headers: { "user-agent": UA } }); testo = r.ok ? await r.text() : ""; } catch (e) { console.warn("ARPAE:", e?.message); testo = ""; } }
+    if (!testo) return;
+    const key = `c-arpae-${(+l.lat).toFixed(2)},${(+l.lon).toFixed(2)}`, prima = (await st.get(key, { type: "json" }).catch(() => null)) || { ore: {} };
+    const letto = leggiArpae(testo, l.lat, l.lon, prima.stazione?.k);
+    if (!letto) continue;
+    const limite = new Date(Date.now() - 6 * 864e5).toISOString();
+    const ore = Object.fromEntries(Object.entries({ ...(prima.stazione?.k === letto.stazione.k ? prima.ore : {}), ...letto.ore }).filter(([t]) => t >= limite));
+    await st.setJSON(key, { stazione: letto.stazione, ore, at: Date.now() });
+    const giorni = giorniMisurati(ore, "Europe/Rome"), att = cur.data.pioggia_misurata;
+    if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome)
+      await aggiorna(st, code, (d) => { d.pioggia_misurata = { stazione: letto.stazione.nome, km: letto.stazione.km, giorni, aggiornato: new Date().toISOString() }; });
+  }
+}
 // Temperature medie dei 400 giorni passati (per le fasi a gradi-giorno): una richiesta al giorno, poi dall'archivio.
 async function storicoTemperature(st, lat, lon, oggi) {
   const key = `c-storico-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`;
@@ -112,7 +167,8 @@ export function oraLocale(tz) {
 // ultimo giorno programmato da Claude (le previsioni del meteo arrivano a circa 7 giorni)
 export function finePiano(pc) { let f = ""; for (const x of pc?.data?.piante || []) for (const g of x.giorni || []) if (g?.data > f) f = g.data; return f; }
 export function pianoAttivo(data, met, oggi) {
-  const lat = data.location?.lat, past = met.days.filter((d) => d.date < oggi).slice(-3), fut = met.days.filter((d) => d.date >= oggi).slice(0, 7);
+  const lat = data.location?.lat, giorni = M.conPioggiaMisurata(met.days, data.pioggia_misurata, oggi);
+  const past = giorni.filter((d) => d.date < oggi).slice(-3), fut = giorni.filter((d) => d.date >= oggi).slice(0, 7);
   const base = M.pianoLocale({ piante: data.plants, past, fut, eventi: data.eventi, oggi, lat, vacanza: data.vacanza, suolo: met.suolo });
   const pc = data.piano_claude;
   if (pc?.data?.piante?.some((x) => x.giorni?.some((g) => g.data === oggi))) {

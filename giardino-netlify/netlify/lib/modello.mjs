@@ -604,6 +604,14 @@ export function giorniDaMet(j, tz, lat, oggi, ora){
   return {days, notte:notte.length?notte:null};
 }
 
+/* ---------------- Pioggia misurata (stazioni ARPAE in Emilia-Romagna) ----------------
+   mis = {stazione, km, giorni:{AAAA-MM-GG: mm}} (solo giorni completi): nei giorni passati sostituisce la pioggia
+   stimata dal modello; rain_modello tiene quella di prima. */
+export function conPioggiaMisurata(days, mis, oggi){
+  if(!mis?.giorni || !Array.isArray(days)) return days;
+  return days.map(d=>{ const v=mis.giorni[d.date]; return d.date<oggi && v!=null && isFinite(v) && !d.misurata ? {...d, rain:+(+v).toFixed(1), rain_modello:d.rain, misurata:true} : d; });
+}
+
 /* ---------------- Primi giorni da due modelli ----------------
    Per i primi giorni (fino a 3, quelli che ICON-2I copre per intero, ora per ora) pioggia, massima e minima sono la media
    tra il modello scelto da Open-Meteo (in Italia di solito ICON-D2/ICON-EU del servizio tedesco) e ICON-2I di

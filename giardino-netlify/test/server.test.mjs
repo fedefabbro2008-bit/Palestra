@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inviati, OGGI } from "./rete-finta.mjs";
 import { getStore } from "@netlify/blobs";
+import * as M from "../netlify/lib/modello.mjs";
 const dati = (await import("../netlify/functions/dati.mjs")).default;
 const mcp = (await import("../netlify/functions/mcp.mjs")).default;
 const telegram = (await import("../netlify/functions/telegram.mjs")).default;
@@ -61,6 +62,29 @@ test("meteo: se Open-Meteo non risponde, MET Norway con i giorni passati dall'ul
     assert.ok(m.days.some((d) => d.date < oggi), "giorni passati dall'ultimo meteo buono");
     assert.ok(m.days.find((d) => d.date === oggi).rain > 0 && m.days.find((d) => d.date === oggi).prob === null);
   } finally { globalThis.fetch = vero; }
+});
+
+test("pioggia misurata ARPAE: stazione più vicina, giorni completi, nei dati e nel piano", async () => {
+  const C = await import("../netlify/lib/core.mjs");
+  // file come realtime.jsonl: Castrocaro (1 km, ogni ora) e una stazione più lontana senza pluviometro
+  const righe = [], ieri = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const giorno = (iso) => [...Array(27)].map((_, h) => new Date(Date.parse(iso + "T00:00:00Z") - 2 * 36e5 + h * 36e5).toISOString().replace(".000", ""));
+  for (const t of giorno(ieri)) righe.push(JSON.stringify({ network: "locali", lon: 1194940, lat: 4417012, date: t, data: [{ vars: { B01019: { v: "Castrocaro" } } }, { timerange: [1, 0, 3600], vars: { B13011: { v: 0.5 } } }] }));
+  righe.push(JSON.stringify({ network: "agrmet", lon: 1202757, lat: 4422698, date: ieri + "T10:00:00Z", data: [{ vars: { B01019: { v: "Forlì" } } }, { timerange: [0, 0, 900], vars: { B12101: { v: 283 } } }] }));
+  const letto = C.leggiArpae(righe.join("\n"), 44.18, 11.95);
+  assert.equal(letto.stazione.nome, "Castrocaro"); assert.ok(letto.stazione.km < 2);
+  const g = C.giorniMisurati(letto.ore, "UTC");
+  assert.equal(g[ieri], 12, "24 ore × 0,5 mm"); assert.equal(Object.keys(g).length, 1, "i giorni incompleti non contano");
+  assert.equal(C.inEmiliaRomagna(44.18, 11.95), true); assert.equal(C.inEmiliaRomagna(41.9, 12.5), false);
+  // il bot scrive i giorni nei dati; il piano usa la pioggia misurata
+  const vero = globalThis.fetch;
+  globalThis.fetch = async (u, o) => String(u).includes("dati-simc.arpae.it") ? new Response(righe.join("\n")) : vero(u, o);
+  try { await C.aggiornaPioggiaMisurata(getStore({ name: "giardino" })); } finally { globalThis.fetch = vero; }
+  const d = await leggiDati();
+  assert.equal(d.pioggia_misurata.stazione, "Castrocaro");
+  const giorni = M.conPioggiaMisurata([{ date: ieri, rain: 3 }, { date: OGGI, rain: 1 }], d.pioggia_misurata, OGGI);
+  assert.ok(Object.values(d.pioggia_misurata.giorni).length >= 1);
+  assert.equal(giorni[1].rain, 1, "oggi resta la previsione");
 });
 
 test("meteo: due richieste in parallelo, poi 15 minuti dall'archivio", async () => {

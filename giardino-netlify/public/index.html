@@ -722,6 +722,14 @@ function dalServer(){
   docs.piano=d.piano_claude||null;
   docs.eventi_bot={aggiornato:server?.updatedAt?new Date(server.updatedAt).toISOString():null,eventi:ev.filter(e=>e.fonte!=='app')};
   docs.piano_bot=null;
+  misurata=d.pioggia_misurata||null;
+}
+// pioggia misurata dalla stazione ARPAE (la scrive il bot nei dati): nei giorni passati prende il posto di quella stimata
+let misurata=null;
+function conMisurata(m){
+  if(!m||!Array.isArray(m.days)||!misurata) return m;
+  const oggi=new Intl.DateTimeFormat('en-CA',{timeZone:m.tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km}};
 }
 let primo=null;
 // Scarica i dati solo se sono cambiati: l'app dice quale versione ha già (rev e ora del salvataggio) e, se è la stessa,
@@ -795,12 +803,12 @@ async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
   const c=LSjson('meteo');
   // previsioni valide un'ora e solo nello stesso giorno: il polling ogni 2 minuti non le riscarica
-  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=c; return nuovo; }
-  try{ docs.meteo_bot=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(docs.meteo_bot)); return true; }catch(e){}
+  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=conMisurata(c); return nuovo; }
+  try{ const m=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(m)); docs.meteo_bot=conMisurata(m); return true; }catch(e){}
   // Open-Meteo non risponde dal telefono: il meteo dal server (Open-Meteo dal server, o la riserva MET Norway)
   try{ const m=await api('GET',null,'meteo');
-    if(m&&Array.isArray(m.days)&&m.days.length){ docs.meteo_bot={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString()}; LSset('meteo',JSON.stringify(docs.meteo_bot)); return true; } }catch(e){}
-  const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=c; stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo;
+    if(m&&Array.isArray(m.days)&&m.days.length){ const x={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString()}; LSset('meteo',JSON.stringify(x)); docs.meteo_bot=conMisurata(x); return true; } }catch(e){}
+  const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=conMisurata(c); stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo;
 }
 
 /* ---------------- documenti come li chiede l'app ---------------- */
@@ -829,6 +837,7 @@ async function aggiorna(forza){
   if(inAttesa) await svuota(); else await coda;
   const dati=await scarica(), met=await caricaMeteo(!!forza);
   // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
+  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata(LSjson('meteo')||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
   if(met||forza) emit('meteo_bot');
   if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();
@@ -1469,6 +1478,14 @@ function giorniDaMet(j, tz, lat, oggi, ora){
     return {...d, et0:et0Hargreaves(d, lat)??0};
   }).slice(0,8);
   return {days, notte:notte.length?notte:null};
+}
+
+/* ---------------- Pioggia misurata (stazioni ARPAE in Emilia-Romagna) ----------------
+   mis = {stazione, km, giorni:{AAAA-MM-GG: mm}} (solo giorni completi): nei giorni passati sostituisce la pioggia
+   stimata dal modello; rain_modello tiene quella di prima. */
+function conPioggiaMisurata(days, mis, oggi){
+  if(!mis?.giorni || !Array.isArray(days)) return days;
+  return days.map(d=>{ const v=mis.giorni[d.date]; return d.date<oggi && v!=null && isFinite(v) && !d.misurata ? {...d, rain:+(+v).toFixed(1), rain_modello:d.rain, misurata:true} : d; });
 }
 
 /* ---------------- Primi giorni da due modelli ----------------
@@ -2168,7 +2185,7 @@ function renderPiante(AP){
 function renderMeteoSet(){
   const w=activeWeather();
   $('#wxVal').textContent=!w?'nessun dato':w.source==='open-meteo'?(/MET/.test(w.fonte||'')?'MET Norway (riserva)':'Open-Meteo')+(w.updatedAt?' · '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):''):'corretto a mano';
-  $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.';
+  $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.misurata?'; pioggia dei giorni passati misurata dalla stazione ARPAE di '+w.misurata.stazione+' ('+fmt(w.misurata.km,1)+' km)':'')+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.';
   const ed=$('#wxEdit'); if(ed.contains(document.activeElement)) return;
   const map={}; wxDays().forEach(d=>map[d.date]=d);
   setHTML(ed,'<div class="wxe-h"><span></span><span>Max °C</span><span>Min °C</span><span>Pioggia mm</span></div>'+next7().map(dt=>{ const d=map[dt]||{}, l=esc(dayLabel(dt));

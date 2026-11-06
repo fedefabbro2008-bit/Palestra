@@ -34,6 +34,14 @@ function dalServer(){
   docs.piano=d.piano_claude||null;
   docs.eventi_bot={aggiornato:server?.updatedAt?new Date(server.updatedAt).toISOString():null,eventi:ev.filter(e=>e.fonte!=='app')};
   docs.piano_bot=null;
+  misurata=d.pioggia_misurata||null;
+}
+// pioggia misurata dalla stazione ARPAE (la scrive il bot nei dati): nei giorni passati prende il posto di quella stimata
+let misurata=null;
+function conMisurata(m){
+  if(!m||!Array.isArray(m.days)||!misurata) return m;
+  const oggi=new Intl.DateTimeFormat('en-CA',{timeZone:m.tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km}};
 }
 let primo=null;
 // Scarica i dati solo se sono cambiati: l'app dice quale versione ha già (rev e ora del salvataggio) e, se è la stessa,
@@ -107,12 +115,12 @@ async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
   const c=LSjson('meteo');
   // previsioni valide un'ora e solo nello stesso giorno: il polling ogni 2 minuti non le riscarica
-  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=c; return nuovo; }
-  try{ docs.meteo_bot=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(docs.meteo_bot)); return true; }catch(e){}
+  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=conMisurata(c); return nuovo; }
+  try{ const m=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(m)); docs.meteo_bot=conMisurata(m); return true; }catch(e){}
   // Open-Meteo non risponde dal telefono: il meteo dal server (Open-Meteo dal server, o la riserva MET Norway)
   try{ const m=await api('GET',null,'meteo');
-    if(m&&Array.isArray(m.days)&&m.days.length){ docs.meteo_bot={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString()}; LSset('meteo',JSON.stringify(docs.meteo_bot)); return true; } }catch(e){}
-  const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=c; stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo;
+    if(m&&Array.isArray(m.days)&&m.days.length){ const x={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString()}; LSset('meteo',JSON.stringify(x)); docs.meteo_bot=conMisurata(x); return true; } }catch(e){}
+  const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=conMisurata(c); stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo;
 }
 
 /* ---------------- documenti come li chiede l'app ---------------- */
@@ -141,6 +149,7 @@ async function aggiorna(forza){
   if(inAttesa) await svuota(); else await coda;
   const dati=await scarica(), met=await caricaMeteo(!!forza);
   // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
+  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata(LSjson('meteo')||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
   if(met||forza) emit('meteo_bot');
   if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();
