@@ -52,28 +52,24 @@ export function pota(ev) {
   return (Array.isArray(ev) ? ev : []).filter((e) => e && e.id && e.plantId && /^\d{4}-\d{2}-\d{2}$/.test(e.data || "") && e.data >= lim && !visti.has(e.id) && visti.add(e.id)).slice(-3000);
 }
 
-/* ---------------- Meteo (Open-Meteo) ---------------- */
-const COND = (c) => c === 0 ? "sereno" : c <= 2 ? "poco nuvoloso" : c === 3 ? "nuvoloso" : (c === 45 || c === 48) ? "nebbia" : c >= 95 ? "temporale" : ((c >= 71 && c <= 77) || c === 85 || c === 86) ? "neve" : "pioggia";
+/* ---------------- Meteo (Open-Meteo) ----------------
+   Due richieste in parallelo (vedi M.urlMeteo); il risultato resta nell'archivio 15 minuti, nella stessa ora:
+   bot, Claude, Telegram e Siri lo condividono invece di richiederlo ogni volta (risposte più rapide, meno tempo di calcolo). */
+const METEO_VALIDO = 15 * 60e3;
 export async function meteo(lat, lon) {
-  const q = new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", past_days: "3", forecast_days: "8",
-    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max" });
-  const r = await fetch("https://api.open-meteo.com/v1/forecast?" + q);
+  const key = `c-meteo-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`, st = store(), ora = new Date();
+  try {
+    const c = await st.get(key, { type: "json" });
+    if (c && ora - c.at < METEO_VALIDO && new Date(c.at).getUTCHours() === ora.getUTCHours()) return c.met;
+  } catch (e) { console.warn("cache del meteo:", e?.message); }
+  const u = M.urlMeteo(lat, lon);
+  const [r, rIT] = await Promise.all([fetch(u.base), fetch(u.it).catch(() => null)]);
   if (!r.ok) throw new Error("Open-Meteo " + r.status);
-  const j = await r.json(), d = j.daily, tz = j.timezone || "Europe/Rome";
-  const out = { tz, days: d.time.map((t, i) => ({ date: t, cond: COND(d.weather_code[i]), tmax: d.temperature_2m_max[i], tmin: d.temperature_2m_min[i],
-    rain: d.precipitation_sum[i] ?? 0, prob: d.precipitation_probability_max[i], et0: d.et0_fao_evapotranspiration[i] ?? 0, wind: d.wind_speed_10m_max[i],
-    raffiche: d.wind_gusts_10m_max?.[i] ?? null, code: d.weather_code[i] })), suolo: null, notte: null };
-  // primi giorni anche dal modello italiano ICON-2I: media di pioggia e temperature (se non risponde, restano i dati di prima)
-  try {
-    const r3 = await fetch("https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", forecast_days: "3", hourly: M.MODELLO_IT_PARAMS, models: M.MODELLO_IT }));
-    if (r3.ok) out.days = M.mediaModelli(out.days, (await r3.json()).hourly, oraLocale(tz).oggi);
-  } catch (e) { console.warn("ICON-2I non disponibile:", e?.message); }
-  // dati orari (umidità del suolo, temperature della notte) in una richiesta a parte: se non arrivano, il resto funziona lo stesso
-  try {
-    const r2 = await fetch("https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", forecast_days: "2", hourly: M.ORARIO_PARAMS }));
-    if (r2.ok) { const { oggi, ora } = oraLocale(tz); Object.assign(out, M.datiOrari((await r2.json()).hourly, oggi, ora)); }
-  } catch (e) { console.warn("dati orari non disponibili:", e?.message); }
-  return out;
+  const j = await r.json(), jIT = rIT?.ok ? await rIT.json().catch(() => null) : null;
+  const { oggi, ora: h } = oraLocale(j.timezone || "Europe/Rome");
+  const met = M.componiMeteo(j, jIT, oggi, h);
+  try { await st.setJSON(key, { at: ora.getTime(), met }); } catch (e) { console.warn("cache del meteo:", e?.message); }
+  return met;
 }
 export function oraLocale(tz) {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map((x) => [x.type, x.value]));

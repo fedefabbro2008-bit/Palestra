@@ -150,7 +150,8 @@ test("primi giorni: media con ICON-2I solo dove copre il giorno intero", () => {
 
 test("specie riconosciuta dal nome", () => {
   const casi = { "Nepenthes mirabilis": "nepenthes", "Chlorophytum comosum": "appartamento", "Aglio": "aglio", "Pomodori ciliegini": "pomodoro", "Melone giallo": "melone", "Melo cotogno": "fruttiferi",
-    "Ficus benjamin": "ficus", "Erba cipollina": "prezzemolo", "Limone in terrazzo": "agrumi", "Tulipani rossi": "bulbose", "Dionea": "carnivora", "Monstera deliciosa": "tropicale", "Basilico genovese": "basilico", "Pianta di Marta": null, "": null };
+    "Ficus benjamin": "ficus", "Erba cipollina": "prezzemolo", "Limone in terrazzo": "agrumi", "Tulipani rossi": "bulbose", "Dionea": "carnivora", "Monstera deliciosa": "tropicale", "Basilico genovese": "basilico", "Pianta di Marta": null, "": null,
+    "Fichi": "fruttiferi", "Gerani del balcone": "geranio", "Lattughe": "lattuga", "Zucchine": "zucchina", "Ceci": "pisello", "Cavoli neri": "cavolo", "Rose rampicanti": "rosa", "Erbe aromatiche": "rosmarino", "Pianta grassa": "succulenta", "Rosso": null, "Fioriera": null };
   for (const [n, k] of Object.entries(casi)) assert.equal(M.specieDaNome(n), k, n);
   for (const k of Object.keys(M.SPECIE)) if (k !== "altro") assert.ok(M.ALIAS[k], k + ": nomi per la ricerca");
 });

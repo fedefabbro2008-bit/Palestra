@@ -687,8 +687,8 @@ const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) e
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null};
 
 /* ---------------- server ---------------- */
-async function api(method, body, op, keepalive){
-  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
+async function api(method, body, op, keepalive, extra){
+  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
   const j=await r.json().catch(()=>null);
   if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')'));
   return j;
@@ -707,8 +707,15 @@ function dalServer(){
   docs.piano_bot=null;
 }
 let primo=null;
+// Scarica i dati solo se sono cambiati: l'app dice quale versione ha già (rev e ora del salvataggio) e, se è la stessa,
+// il server risponde «invariato» con pochi byte. Restituisce true se sono arrivati dati nuovi.
+const versione=()=>server&&server.rev?server.rev+'-'+server.updatedAt:'';
 function scarica(){
-  return api('GET').then(j=>{ server=j; if(inAttesa) applicaLocale(inAttesa); LSset('cache',JSON.stringify(j)); dalServer(); stato('Sincronizzato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.'); return true; })
+  const v=versione();
+  return api('GET',null,null,false,v?{'x-giardino-versione':v}:null).then(j=>{
+      const ora='Sincronizzato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.';
+      if(j&&j.invariato&&server){ if(!docs.giardino){ if(inAttesa) applicaLocale(inAttesa); dalServer(); } stato(ora); return false; }
+      server=j; if(inAttesa) applicaLocale(inAttesa); LSset('cache',JSON.stringify(j)); dalServer(); stato(ora); return true; })
     .catch(e=>{ dalServer(); stato('Server non raggiungibile ('+e.message+'): uso i dati salvati su questo dispositivo.'); return false; });
 }
 // dati del server con sopra le modifiche locali non ancora inviate
@@ -751,35 +758,21 @@ function diffGiardino(nuovo){
 }
 
 /* ---------------- meteo ---------------- */
-const COND=c=> c===0?'sereno': c<=2?'poco nuvoloso': c===3?'nuvoloso': (c===45||c===48)?'nebbia': c>=95?'temporale': ((c>=71&&c<=77)||c===85||c===86)?'neve': 'pioggia';
+// stesse richieste e stessi calcoli del bot (urlMeteo, componiMeteo nel modello), le due richieste in parallelo
 async function meteo(lat,lon){
-  const q=new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',past_days:'3',forecast_days:'8',
-    daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max'});
-  const r=await fetch('https://api.open-meteo.com/v1/forecast?'+q); if(!r.ok) throw new Error('Open-Meteo '+r.status);
-  const j=await r.json(), d=j.daily;
-  const out={source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,suolo:null,notte:null,days:d.time.map((t,i)=>({date:t,cond:COND(d.weather_code[i]),tmax:d.temperature_2m_max[i],tmin:d.temperature_2m_min[i],
-    rain:d.precipitation_sum[i]??0,prob:d.precipitation_probability_max[i],et0:d.et0_fao_evapotranspiration[i]??0,wind:d.wind_speed_10m_max[i],raffiche:d.wind_gusts_10m_max?.[i]??null,code:d.weather_code[i]}))};
-  // primi giorni anche dal modello italiano ICON-2I (stesso calcolo del bot): media di pioggia e temperature
-  try{
-    const r3=await fetch('https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',forecast_days:'3',hourly:MODELLO_IT_PARAMS,models:MODELLO_IT}));
-    if(r3.ok){ const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
-      out.days=mediaModelli(out.days,(await r3.json()).hourly,p.year+'-'+p.month+'-'+p.day); }
-  }catch(e){}
-  // umidità del suolo e temperature della notte (stessi calcoli del bot): se non arrivano, il resto funziona lo stesso
-  try{
-    const r2=await fetch('https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',forecast_days:'2',hourly:ORARIO_PARAMS}));
-    if(r2.ok){ const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
-      Object.assign(out, datiOrari((await r2.json()).hourly, p.year+'-'+p.month+'-'+p.day, +p.hour)); }
-  }catch(e){}
-  return out;
+  const u=urlMeteo(lat,lon);
+  const [r,rIT]=await Promise.all([fetch(u.base),fetch(u.it).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
+  const j=await r.json(), jIT=rIT&&rIT.ok?await rIT.json().catch(()=>null):null;
+  const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,jIT,p.year+'-'+p.month+'-'+p.day,+p.hour)};
 }
 async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
   const c=LSjson('meteo');
   // previsioni valide un'ora e solo nello stesso giorno: il polling ogni 2 minuti non le riscarica
-  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ docs.meteo_bot=c; return; }
-  try{ docs.meteo_bot=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(docs.meteo_bot)); }
-  catch(e){ docs.meteo_bot=c; stato('Meteo non disponibile: uso gli ultimi dati salvati.'); }
+  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=c; return nuovo; }
+  try{ docs.meteo_bot=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(docs.meteo_bot)); return true; }
+  catch(e){ const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=c; stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo; }
 }
 
 /* ---------------- documenti come li chiede l'app ---------------- */
@@ -806,8 +799,10 @@ function doc(path){
 async function aggiorna(forza){
   await window.salvaSubito?.();          // prima partono le modifiche fatte nell'app da meno di mezzo secondo
   if(inAttesa) await svuota(); else await coda;
-  await scarica(); await caricaMeteo(!!forza);
-  ['meteo_bot','eventi_bot','piano'].forEach(emit);
+  const dati=await scarica(), met=await caricaMeteo(!!forza);
+  // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
+  if(met||forza) emit('meteo_bot');
+  if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();
 }
 window.GiardinoNet={
@@ -815,6 +810,7 @@ window.GiardinoNet={
   usaCodice(c){ c=String(c||'').trim().toUpperCase(); if(!/^[A-Z0-9-]{16,64}$/.test(c)) return false; LSset('code',c); LSset('cache',null); location.reload(); return true; },
   mcp:(action,extra)=>action?api('POST',{action,...(extra||{})},'mcp'):api('GET',null,'mcp'),
   crediti:()=>api('GET',null,'crediti'),
+  stato:()=>api('GET',null,'stato'),
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
   async geocodifica(q){
@@ -921,7 +917,7 @@ const ALIAS = {
   pisello:'pisello,fava,taccola,cece,lenticchia,pisum',patata:'patata,solanum tuberosum',carota:'carota,rapa,barbabietola,daucus',ravanello:'ravanello,raphanus',
   aglio:'aglio,allium sativum',cipolla:'cipolla,cipollotto,porro,scalogno,allium cepa',
   basilico:'basilico,ocimum',prezzemolo:'prezzemolo,erba cipollina,coriandolo,aneto,cerfoglio,petroselinum',menta:'menta,mentuccia,melissa,nepitella,mentha',
-  rosmarino:'rosmarino,salvia,timo,origano,maggiorana,santoreggia,alloro,elicriso,salvia rosmarinus',lavanda:'lavanda,lavandula',
+  rosmarino:'rosmarino,salvia,timo,origano,maggiorana,santoreggia,alloro,elicriso,salvia rosmarinus,erbe aromatiche,aromatiche',lavanda:'lavanda,lavandula',
   fragola:'fragola,fragolina,fragaria',agrumi:'limone,arancio,arancia,mandarino,clementina,kumquat,pompelmo,cedro,lime,agrume,citrus,calamondino',
   olivo:'olivo,ulivo,oliva,olea',vite:'vite,uva,vitis',fruttiferi:'melo,pero,pesco,albicocco,ciliegio,susino,prugno,fico,kaki,cachi,melograno,nocciolo,noce,mirtillo,lampone,mora,ribes,feijoa',
   rosa:'rosa,rose,roseto,rosaio',ortensia:'ortensia,hydrangea',geranio:'geranio,pelargonio,petunia,surfinia,begonia,impatiens,verbena,calibrachoa,gazania,dipladenia,mandevilla,viola,primula,ciclamino,fiori',
@@ -936,21 +932,26 @@ const ALIAS = {
   bulbose:'tulipano,narciso,giacinto,crocus,croco,muscari,amaryllis,amarillide,bulbo,bulbi,iris,fresia,anemone'
 };
 const normNome = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+// Radice di una parola italiana: toglie la desinenza (singolare e plurale insieme) e uniforma ch/gh davanti a e/i.
+const radiceIt = w => w.length<4 ? w : w.replace(/([cg])h(?=[ei])/g,'$1').replace(/(io|ia|ie|i|e|a|o)$/,'');
+const radiciNome = s => normNome(s).split(' ').filter(Boolean).map(radiceIt);
+let ALIAS_RADICI=null;   // [specie, radici della parola o frase, lunghezza] — calcolate una volta sola
 // Specie più probabile dal nome scritto dall'utente («Nepenthes mirabilis» → nepenthes, «Pomodori ciliegini» → pomodoro).
-// Vince la corrispondenza più lunga: «melone» batte «melo», «ficus» batte «fico», «erba cipollina» batte «erba».
+// Confronta le radici delle parole: vince la corrispondenza più lunga («melone» batte «melo», «ficus» batte «fico»,
+// «erba cipollina» batte «erba»); una parola uguale vale più di una con la stessa radice.
 function specieDaNome(nome){
-  const n=' '+normNome(nome)+' ', parole=n.trim().split(' ').filter(Boolean);
+  const parole=normNome(nome).split(' ').filter(Boolean), radici=parole.map(radiceIt);
   if(!parole.length) return null;
+  ALIAS_RADICI ??= Object.entries(ALIAS).flatMap(([k,l])=>l.split(',').map(a=>[k, radiciNome(a), normNome(a)]).filter(x=>x[2]));
+  const testo=' '+parole.join(' ')+' ';
   let best=null, punti=0;
-  for(const [k,lista] of Object.entries(ALIAS)) for(const a of lista.split(',')){
-    const w=normNome(a); if(!w) continue;
+  for(const [k,r,a] of ALIAS_RADICI){
     let v=0;
-    if(n.includes(' '+w+' ')) v=w.length+10;                                   // parola o frase intera
-    else if(!w.includes(' ') && w.length>=4){ const radice=w.slice(0,Math.max(4,w.length-1));   // plurali e varianti: pomodori, tulipani
-      if(parole.some(x=>x.startsWith(radice) && x.length<=w.length+2)) v=radice.length; }
+    if(testo.includes(' '+a+' ')) v=a.length+10;                                               // parola o frase identica
+    else for(let i=0;i+r.length<=radici.length;i++) if(r.every((x,j)=>x===radici[i+j]) && r.join('').length>=3){ v=a.length+5; break; }   // stessa radice
     if(v>punti){ punti=v; best=k; }
   }
-  return punti>=4 ? best : null;
+  return punti>=8 ? best : null;
 }
 /* ---------------- Schede dell'app (senza Claude) ----------------
    d: descrizione; luce, temp, terreno, acqua, umid: condizioni ideali; per: periodo (semina, trapianto, raccolta in Italia);
@@ -1327,7 +1328,7 @@ function mediaModelli(days, h, oggi){
   if(!h?.time || !Array.isArray(h.precipitation)) return days;
   const per={};
   h.time.forEach((t,i)=>{ const d=t.slice(0,10); (per[d]||(per[d]={p:[],t:[]})); per[d].p.push(h.precipitation[i]); per[d].t.push(h.temperature_2m?.[i]); });
-  const fine=addDays(oggi,2), ok=a=>a.length>=24 && a.every(x=>x!=null && isFinite(x)), m=(a,b)=>+((a+b)/2).toFixed(1);
+  const fine=addDays(oggi,2), ok=a=>a.length>=23 && a.every(x=>x!=null && isFinite(x)), m=(a,b)=>+((a+b)/2).toFixed(1);
   return days.map(d=>{
     const x=per[d.date];
     if(d.date<oggi || d.date>fine || !x || !ok(x.p)) return d;
@@ -1478,6 +1479,26 @@ function datiOrari(h, oggi, ora){
   return {suolo, notte:notte.length?notte:null};
 }
 const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
+
+/* ---------------- Meteo: richieste e lettura, uguali per app e server ----------------
+   Due richieste a Open-Meteo, in parallelo: (1) il modello scelto da Open-Meteo, giornaliero e orario insieme
+   (3 giorni passati e 8 previsti; dall'orario: umidità del suolo e temperature della notte); (2) ICON-2I ora per ora
+   per la media dei primi giorni. Se la seconda non risponde, la prima basta. */
+const DAILY_PARAMS='weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max';
+function urlMeteo(lat, lon){
+  const q=o=>'https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat, longitude:lon, timezone:'auto', ...o});
+  return {base:q({past_days:'3', forecast_days:'8', daily:DAILY_PARAMS, hourly:ORARIO_PARAMS}), it:q({forecast_days:'3', hourly:MODELLO_IT_PARAMS, models:MODELLO_IT})};
+}
+const condizioneMeteo = c => c===0?'sereno': c<=2?'poco nuvoloso': c===3?'nuvoloso': (c===45||c===48)?'nebbia': c>=95?'temporale': ((c>=71&&c<=77)||c===85||c===86)?'neve': 'pioggia';
+// j = risposta della richiesta (1), jIT = della (2) o null; oggi e ora nel fuso della posizione (j.timezone)
+function componiMeteo(j, jIT, oggi, ora){
+  const d=j.daily;
+  let days=d.time.map((t,i)=>({date:t, cond:condizioneMeteo(d.weather_code[i]), tmax:d.temperature_2m_max[i], tmin:d.temperature_2m_min[i],
+    rain:d.precipitation_sum[i]??0, prob:d.precipitation_probability_max[i], et0:d.et0_fao_evapotranspiration[i]??0, wind:d.wind_speed_10m_max[i],
+    raffiche:d.wind_gusts_10m_max?.[i]??null, code:d.weather_code[i]}));
+  if(jIT?.hourly) days=mediaModelli(days, jIT.hourly, oggi);
+  return {tz:j.timezone||'Europe/Rome', days, ...datiOrari(j.hourly, oggi, ora)};
+}
 
 /* ---------------- Calendario dei mesi (automatico, dal modello) ----------------
    Annuali con data di semina/trapianto: un mese per riga dalla semina alla fine del ciclo.
@@ -1635,7 +1656,7 @@ async function boot(){
         if(snap!=='timeout'){
           store={kind:'db',refs}; loaded=true;
           const d=snap.exists?applyMain(snap.data()):null;
-          const listen=(name,fn)=>refs[name].onSnapshot(s=>{ fn(s.exists?s.data():null); renderAll(); },()=>{});
+          const listen=(name,fn)=>refs[name].onSnapshot(s=>{ fn(s.exists?s.data():null); renderPresto(); },()=>{});
           const legacy={weather:d?.weather, plan:d?.plan};
           listen('meteo',x=>{ W.manual=x&&x.days?x:(legacy.weather?.days?legacy.weather:null); });
           listen('piano',x=>{ P.claude=x&&x.data?x:(legacy.plan?.data?legacy.plan:null); });
@@ -1751,11 +1772,21 @@ async function syncNow(){
 }
 
 /* ================= Render ================= */
-function renderAll(){
-  const AP=activePlan();
-  renderHeader(); renderOggi(AP); renderPiante(AP); renderImpostazioni();
-  if(!$('#view-diario').hidden) renderDiario();
+// Si ridisegna solo la scheda (vista) che hai davanti; le altre si segnano da rifare e si ridisegnano quando le apri.
+let daRifare=new Set();
+const vistaAttiva=()=>(document.querySelector('section.view:not([hidden])')?.id||'view-oggi').slice(5);
+function renderVista(v,AP){
+  daRifare.delete(v);
+  if(v==='oggi') renderOggi(AP||activePlan()); else if(v==='piante') renderPiante(AP||activePlan()); else if(v==='impostazioni') renderImpostazioni(); else if(v==='diario') renderDiario();
 }
+function renderAll(){
+  renderHeader();
+  daRifare=new Set(['oggi','piante','impostazioni','diario']);
+  renderVista(vistaAttiva());
+}
+// Aggiornamenti arrivati da soli (server, meteo): un solo ridisegno per fotogramma, e niente mentre l'app è in background.
+let renderAtteso=0;
+function renderPresto(){ if(renderAtteso) return; renderAtteso=requestAnimationFrame(()=>{ renderAtteso=0; renderAll(); }); }
 function renderHeader(){
   $('#locName').textContent=S.location?S.location.name:'Imposta il comune';
   const ob=ready && (!S.location || !S.plants.length);
@@ -2218,10 +2249,12 @@ function submitForm(e){
 }
 
 /* ================= Navigazione ed eventi ================= */
+let caricaStato=()=>{};
 function switchView(v){
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.view===v)));
   document.querySelectorAll('section.view').forEach(s=>s.hidden=s.id!=='view-'+v);
-  if(v==='diario') renderDiario();
+  if(v==='diario'||daRifare.has(v)) renderVista(v);
+  if(v==='impostazioni') caricaStato();
   window.scrollTo({top:0});
 }
 function apriSezione(id){ switchView('impostazioni'); const d=$('#'+id); d.open=true; requestAnimationFrame(()=>d.scrollIntoView({block:'start',behavior:'smooth'})); }
@@ -2291,7 +2324,7 @@ function wire(){
     S.plants.push(
       {id:uid(),nome:'Limone in terrazzo',specie:'agrumi',fase:'auto',colt:'vaso',vaso:45,diametro:45,consociate:[],area:null,num:1,luce:7,dove:'riparato',ultima:'',note:'',example:true},
       {id:uid(),nome:'Fioriera aromatiche',specie:'rosmarino',fase:'auto',colt:'vaso',vaso:8,diametro:null,consociate:[{specie:'prezzemolo',num:2}],area:null,num:1,luce:5,dove:'aperto',ultima:'',note:'',example:true},
-      {id:uid(),nome:'Pothos in salotto',specie:'appartamento',fase:'vegetativa',colt:'vaso',vaso:3,diametro:17,consociate:[],area:null,num:1,luce:2,dove:'interno',ultima:'',note:'',example:true});
+      {id:uid(),nome:'Pothos in salotto',specie:'tropicale',fase:'vegetativa',colt:'vaso',vaso:3,diametro:17,consociate:[],area:null,num:1,luce:2,dove:'interno',ultima:'',note:'',example:true});
     saveMain(); renderAll(); toast('Aggiunte 3 piante di esempio: modificale o eliminale in Piante');
   });
   $('#localBtn').addEventListener('click',()=>{ P.claude=null; savePiano(); renderAll(); toast('Uso il calcolo automatico'); });
@@ -2423,31 +2456,34 @@ function wireNetlify(){
   $('#netCode').textContent=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
   $('#siriZona').addEventListener('change',renderSiri);
-  const crediti=()=>N.crediti().then(c=>{ const pct=Math.min(100,Math.round(c.stima/c.limite*100)), alto=c.stima>=240;
+  const mostraCrediti=c=>{ if(!c){ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; return; } const pct=Math.min(100,Math.round(c.stima/c.limite*100)), alto=c.stima>=240;
       $('#credChip').textContent='~'+c.stima+' / '+c.limite; $('#credChip').className='sv'+(alto?'':' ok');
       $('#credBarra').innerHTML=`<div class="lev${alto?' basso':''}" role="img" aria-label="Crediti usati circa ${pct}%"><i style="width:${pct}%"></i><b style="left:80%"></b></div>`;
-      $('#credTesto').textContent='Stima di '+new Date(c.mese+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long'})+': '+c.pubblicazioni+(c.pubblicazioni===1?' pubblicazione':' pubblicazioni')+' × 15 + uso ≈ '+c.stima+' crediti su '+c.limite+'.'; })
-    .catch(()=>{ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; });
-  crediti(); $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) crediti(); });
+      $('#credTesto').textContent='Stima di '+new Date(c.mese+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long'})+': '+c.pubblicazioni+(c.pubblicazioni===1?' pubblicazione':' pubblicazioni')+' × 15 + uso ≈ '+c.stima+' crediti su '+c.limite+'.'; };
+  // Claude, Telegram e crediti in una richiesta sola e solo quando apri Impostazioni (prima: 3 richieste a ogni apertura dell'app)
+  let statoAt=0;
+  caricaStato=(forza)=>{ if(!forza&&Date.now()-statoAt<60000) return; statoAt=Date.now();
+    ['#mcpChip','#tgChip','#credChip'].forEach(id=>{ if(!$(id).textContent) $(id).textContent='…'; });
+    N.stato().then(x=>{ renderMcp(x.mcp); renderTg(x.telegram); mostraCrediti(x.crediti); })
+      .catch(()=>{ statoAt=0; $('#mcpChip').textContent='non raggiungibile'; $('#tgChip').textContent='non raggiungibile'; mostraCrediti(null); }); };
+  $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) N.crediti().then(mostraCrediti).catch(()=>mostraCrediti(null)); });
   $('#siriCopyUrl').addEventListener('click',async()=>toast(await copyText($('#siriUrl').textContent,$('#siriUrl'))?'Indirizzo copiato':'Seleziona e copia a mano'));
   $('#siriCopyCode').addEventListener('click',async()=>toast(await copyText(N.codice())?'Codice copiato: incollalo come valore di x-giardino-code':'Copia non riuscita'));
   $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });
   $('#prompts').innerHTML=PROMPTS.map((t,i)=>`<button class="prompt" type="button" data-prompt="${i}"><span>“${esc(t)}”</span><span class="pc">Copia</span></button>`).join('');
   $('#prompts').addEventListener('click',async e=>{ const b=e.target.closest('[data-prompt]'); if(b) toast(await copyText(PROMPTS[+b.dataset.prompt])?'Copiato: incollalo nella chat di Claude':'Copia non riuscita'); });
   const mcpAct=async(a,extra)=>{ $('#mcpStatus').innerHTML=spin('Un momento…'); try{ renderMcp(await N.mcp(a,extra)); $('#mcpStatus').textContent=''; }catch(e){ $('#mcpStatus').textContent=e.message; } };
-  N.mcp().then(renderMcp).catch(()=>{ $('#mcpChip').textContent='non raggiungibile'; });
   $('#mcpOn').addEventListener('click',()=>mcpAct('on'));
   $('#mcpNew').addEventListener('click',()=>mcpAct('new'));
   $('#mcpOff').addEventListener('click',()=>mcpAct('off'));
   $('#mcpWrite').addEventListener('change',e=>mcpAct('write',{on:e.target.checked}));
   $('#mcpCopy').addEventListener('click',async()=>toast(await copyText($('#mcpUrl').textContent,$('#mcpUrl'))?'Indirizzo copiato':'Seleziona e copia a mano'));
   const tgAct=async(a,extra)=>{ $('#tgStatus').innerHTML=spin('Un momento…'); try{ const r=await N.telegram(a,extra); if(a==='test'){ $('#tgStatus').textContent='Messaggio inviato: guarda Telegram.'; return; } renderTg(r); }catch(e){ $('#tgStatus').textContent=e.message; } };
-  N.telegram().then(renderTg).catch(()=>{ $('#tgChip').textContent='non raggiungibile'; });
   $('#tgSet').addEventListener('click',async()=>{ const t=$('#tgToken').value.trim(); if(!t){ $('#tgToken').focus(); return; } await tgAct('token',{token:t}); $('#tgToken').value=''; $('#tgToken').blur(); });
   $('#tgTest').addEventListener('click',()=>tgAct('test'));
   $('#tgOff').addEventListener('click',()=>tgAct('off'));
-  // dopo "Avvia" su Telegram, quando torni sull'app lo stato si aggiorna
-  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') N.telegram().then(renderTg).catch(()=>{}); });
+  // dopo "Avvia" su Telegram, quando torni sull'app (in Impostazioni) lo stato si aggiorna
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && !$('#view-impostazioni').hidden) caricaStato(true); });
 }
 
 wire(); wireNetlify(); boot();

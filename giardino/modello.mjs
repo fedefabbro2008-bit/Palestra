@@ -78,7 +78,7 @@ export const ALIAS = {
   pisello:'pisello,fava,taccola,cece,lenticchia,pisum',patata:'patata,solanum tuberosum',carota:'carota,rapa,barbabietola,daucus',ravanello:'ravanello,raphanus',
   aglio:'aglio,allium sativum',cipolla:'cipolla,cipollotto,porro,scalogno,allium cepa',
   basilico:'basilico,ocimum',prezzemolo:'prezzemolo,erba cipollina,coriandolo,aneto,cerfoglio,petroselinum',menta:'menta,mentuccia,melissa,nepitella,mentha',
-  rosmarino:'rosmarino,salvia,timo,origano,maggiorana,santoreggia,alloro,elicriso,salvia rosmarinus',lavanda:'lavanda,lavandula',
+  rosmarino:'rosmarino,salvia,timo,origano,maggiorana,santoreggia,alloro,elicriso,salvia rosmarinus,erbe aromatiche,aromatiche',lavanda:'lavanda,lavandula',
   fragola:'fragola,fragolina,fragaria',agrumi:'limone,arancio,arancia,mandarino,clementina,kumquat,pompelmo,cedro,lime,agrume,citrus,calamondino',
   olivo:'olivo,ulivo,oliva,olea',vite:'vite,uva,vitis',fruttiferi:'melo,pero,pesco,albicocco,ciliegio,susino,prugno,fico,kaki,cachi,melograno,nocciolo,noce,mirtillo,lampone,mora,ribes,feijoa',
   rosa:'rosa,rose,roseto,rosaio',ortensia:'ortensia,hydrangea',geranio:'geranio,pelargonio,petunia,surfinia,begonia,impatiens,verbena,calibrachoa,gazania,dipladenia,mandevilla,viola,primula,ciclamino,fiori',
@@ -93,21 +93,26 @@ export const ALIAS = {
   bulbose:'tulipano,narciso,giacinto,crocus,croco,muscari,amaryllis,amarillide,bulbo,bulbi,iris,fresia,anemone'
 };
 const normNome = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+// Radice di una parola italiana: toglie la desinenza (singolare e plurale insieme) e uniforma ch/gh davanti a e/i.
+const radiceIt = w => w.length<4 ? w : w.replace(/([cg])h(?=[ei])/g,'$1').replace(/(io|ia|ie|i|e|a|o)$/,'');
+const radiciNome = s => normNome(s).split(' ').filter(Boolean).map(radiceIt);
+let ALIAS_RADICI=null;   // [specie, radici della parola o frase, lunghezza] — calcolate una volta sola
 // Specie più probabile dal nome scritto dall'utente («Nepenthes mirabilis» → nepenthes, «Pomodori ciliegini» → pomodoro).
-// Vince la corrispondenza più lunga: «melone» batte «melo», «ficus» batte «fico», «erba cipollina» batte «erba».
+// Confronta le radici delle parole: vince la corrispondenza più lunga («melone» batte «melo», «ficus» batte «fico»,
+// «erba cipollina» batte «erba»); una parola uguale vale più di una con la stessa radice.
 export function specieDaNome(nome){
-  const n=' '+normNome(nome)+' ', parole=n.trim().split(' ').filter(Boolean);
+  const parole=normNome(nome).split(' ').filter(Boolean), radici=parole.map(radiceIt);
   if(!parole.length) return null;
+  ALIAS_RADICI ??= Object.entries(ALIAS).flatMap(([k,l])=>l.split(',').map(a=>[k, radiciNome(a), normNome(a)]).filter(x=>x[2]));
+  const testo=' '+parole.join(' ')+' ';
   let best=null, punti=0;
-  for(const [k,lista] of Object.entries(ALIAS)) for(const a of lista.split(',')){
-    const w=normNome(a); if(!w) continue;
+  for(const [k,r,a] of ALIAS_RADICI){
     let v=0;
-    if(n.includes(' '+w+' ')) v=w.length+10;                                   // parola o frase intera
-    else if(!w.includes(' ') && w.length>=4){ const radice=w.slice(0,Math.max(4,w.length-1));   // plurali e varianti: pomodori, tulipani
-      if(parole.some(x=>x.startsWith(radice) && x.length<=w.length+2)) v=radice.length; }
+    if(testo.includes(' '+a+' ')) v=a.length+10;                                               // parola o frase identica
+    else for(let i=0;i+r.length<=radici.length;i++) if(r.every((x,j)=>x===radici[i+j]) && r.join('').length>=3){ v=a.length+5; break; }   // stessa radice
     if(v>punti){ punti=v; best=k; }
   }
-  return punti>=4 ? best : null;
+  return punti>=8 ? best : null;
 }
 /* ---------------- Schede dell'app (senza Claude) ----------------
    d: descrizione; luce, temp, terreno, acqua, umid: condizioni ideali; per: periodo (semina, trapianto, raccolta in Italia);
@@ -484,7 +489,7 @@ export function mediaModelli(days, h, oggi){
   if(!h?.time || !Array.isArray(h.precipitation)) return days;
   const per={};
   h.time.forEach((t,i)=>{ const d=t.slice(0,10); (per[d]||(per[d]={p:[],t:[]})); per[d].p.push(h.precipitation[i]); per[d].t.push(h.temperature_2m?.[i]); });
-  const fine=addDays(oggi,2), ok=a=>a.length>=24 && a.every(x=>x!=null && isFinite(x)), m=(a,b)=>+((a+b)/2).toFixed(1);
+  const fine=addDays(oggi,2), ok=a=>a.length>=23 && a.every(x=>x!=null && isFinite(x)), m=(a,b)=>+((a+b)/2).toFixed(1);
   return days.map(d=>{
     const x=per[d.date];
     if(d.date<oggi || d.date>fine || !x || !ok(x.p)) return d;
@@ -635,6 +640,26 @@ export function datiOrari(h, oggi, ora){
   return {suolo, notte:notte.length?notte:null};
 }
 export const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
+
+/* ---------------- Meteo: richieste e lettura, uguali per app e server ----------------
+   Due richieste a Open-Meteo, in parallelo: (1) il modello scelto da Open-Meteo, giornaliero e orario insieme
+   (3 giorni passati e 8 previsti; dall'orario: umidità del suolo e temperature della notte); (2) ICON-2I ora per ora
+   per la media dei primi giorni. Se la seconda non risponde, la prima basta. */
+export const DAILY_PARAMS='weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max';
+export function urlMeteo(lat, lon){
+  const q=o=>'https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat, longitude:lon, timezone:'auto', ...o});
+  return {base:q({past_days:'3', forecast_days:'8', daily:DAILY_PARAMS, hourly:ORARIO_PARAMS}), it:q({forecast_days:'3', hourly:MODELLO_IT_PARAMS, models:MODELLO_IT})};
+}
+export const condizioneMeteo = c => c===0?'sereno': c<=2?'poco nuvoloso': c===3?'nuvoloso': (c===45||c===48)?'nebbia': c>=95?'temporale': ((c>=71&&c<=77)||c===85||c===86)?'neve': 'pioggia';
+// j = risposta della richiesta (1), jIT = della (2) o null; oggi e ora nel fuso della posizione (j.timezone)
+export function componiMeteo(j, jIT, oggi, ora){
+  const d=j.daily;
+  let days=d.time.map((t,i)=>({date:t, cond:condizioneMeteo(d.weather_code[i]), tmax:d.temperature_2m_max[i], tmin:d.temperature_2m_min[i],
+    rain:d.precipitation_sum[i]??0, prob:d.precipitation_probability_max[i], et0:d.et0_fao_evapotranspiration[i]??0, wind:d.wind_speed_10m_max[i],
+    raffiche:d.wind_gusts_10m_max?.[i]??null, code:d.weather_code[i]}));
+  if(jIT?.hourly) days=mediaModelli(days, jIT.hourly, oggi);
+  return {tz:j.timezone||'Europe/Rome', days, ...datiOrari(j.hourly, oggi, ora)};
+}
 
 /* ---------------- Calendario dei mesi (automatico, dal modello) ----------------
    Annuali con data di semina/trapianto: un mese per riga dalla semina alla fine del ciclo.

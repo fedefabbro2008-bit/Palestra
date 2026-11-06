@@ -65,6 +65,14 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Diagnosi guidata** (Scheda → Come sta?): sintomi da spuntare → troppa o poca acqua (registra «meno»/«più» e il calcolo impara) o altre cause (calcare, ferro, luce, oidio, ragnetto, scottature).
 - **Sintesi della settimana e prossima innaffiatura** per pianta anche nel calcolo automatico (app, Telegram /settimana, connettore).
 
+## Rete e velocità
+- **Sincronizzazione a costo quasi zero**: l'app manda la versione che ha (`x-giardino-versione: rev-updatedAt`); se sul server non è cambiato niente risponde `{invariato: true}` (~50 byte invece di tutti i dati) e lo schermo non si ridisegna.
+- **Avvio con una richiesta sola**: lo stato di Claude, Telegram e crediti (`/api/dati?op=stato`, una richiesta) si chiede solo quando apri Impostazioni.
+- **Meteo con 2 richieste in parallelo** (giornaliero e orario insieme + ICON-2I), lette dalla stessa funzione del modello (`urlMeteo`, `componiMeteo`) in app e server; sul server il risultato resta 15 minuti nell'archivio (`c-meteo-<lat>,<lon>`) e lo condividono bot, Claude, Telegram e Siri.
+- **Ridisegno solo della vista aperta**; gli aggiornamenti arrivati da soli si raggruppano in un ridisegno per fotogramma (e nessuno con l'app in background).
+- **Bot**: se oggi mattino e sera sono già fatti, non legge niente fino al giorno dopo.
+- **Service worker**: prima la rete; se non risponde entro 3 secondi, la copia salvata.
+
 ## Come si calcola (vasi)
 
 - Acqua disponibile = 25% del volume del vaso, ridotta del 6% per ogni pianta in più (radici), minimo 60%.

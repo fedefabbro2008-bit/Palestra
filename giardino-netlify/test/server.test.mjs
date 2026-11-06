@@ -32,6 +32,29 @@ test("dati: il codice viaggia nell'intestazione (e ?code= vale ancora per le app
   assert.equal((await call(dati, "/api/dati?code=" + CODE)).body.data.plants.length, 4);
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { remove: ["app-1"] } });
   assert.equal((await leggiDati()).eventi.length, 0);
+  // controllo ogni 5 minuti: se l'app ha già l'ultima versione, il server risponde «invariato» con pochi byte
+  const ora = (await call(dati, "/api/dati", { headers: H })).body, v = ora.rev + "-" + ora.updatedAt;
+  const inv = await call(dati, "/api/dati", { headers: { ...H, "x-giardino-versione": v } });
+  assert.deepEqual(inv.body, { rev: ora.rev, updatedAt: ora.updatedAt, invariato: true }); assert.ok(JSON.stringify(inv.body).length < 80);
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { vacanza: null } } });
+  const nuovo = await call(dati, "/api/dati", { headers: { ...H, "x-giardino-versione": v } });
+  assert.ok(nuovo.body.data && nuovo.body.rev === ora.rev + 1, "dopo una modifica arrivano i dati nuovi");
+  // stato per le Impostazioni in una richiesta sola
+  const st = (await call(dati, "/api/dati?op=stato", { headers: H })).body;
+  assert.deepEqual(st.mcp, { active: false }); assert.deepEqual(st.telegram, { configured: false }); assert.ok(st.crediti.limite === 300 && !("key" in st.crediti));
+});
+
+test("meteo: due richieste in parallelo, poi 15 minuti dall'archivio", async () => {
+  const { meteo } = await import("../netlify/lib/core.mjs");
+  const st = getStore({ name: "giardino" }), key = "c-meteo-44.18,11.95";
+  await st.delete(key);
+  const m1 = await meteo(44.18, 11.95);
+  assert.ok(m1.days.length === 11 && m1.notte?.length && m1.suolo === 0.2, "giornaliero e orario dalla stessa richiesta");
+  const c = await st.get(key, { type: "json" }); assert.ok(c && c.at <= Date.now());
+  await st.setJSON(key, { ...c, met: { ...c.met, days: c.met.days.map((d, i) => (i ? d : { ...d, cond: "dall'archivio" })) } });
+  assert.equal((await meteo(44.18, 11.95)).days[0].cond, "dall'archivio");
+  await st.setJSON(key, { ...c, at: Date.now() - 16 * 60e3 });
+  assert.notEqual((await meteo(44.18, 11.95)).days[0].cond, "dall'archivio", "dopo 15 minuti si riscarica");
 });
 
 let KEY;

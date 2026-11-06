@@ -16,8 +16,8 @@ const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) e
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null};
 
 /* ---------------- server ---------------- */
-async function api(method, body, op, keepalive){
-  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
+async function api(method, body, op, keepalive, extra){
+  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
   const j=await r.json().catch(()=>null);
   if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')'));
   return j;
@@ -36,8 +36,15 @@ function dalServer(){
   docs.piano_bot=null;
 }
 let primo=null;
+// Scarica i dati solo se sono cambiati: l'app dice quale versione ha già (rev e ora del salvataggio) e, se è la stessa,
+// il server risponde «invariato» con pochi byte. Restituisce true se sono arrivati dati nuovi.
+const versione=()=>server&&server.rev?server.rev+'-'+server.updatedAt:'';
 function scarica(){
-  return api('GET').then(j=>{ server=j; if(inAttesa) applicaLocale(inAttesa); LSset('cache',JSON.stringify(j)); dalServer(); stato('Sincronizzato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.'); return true; })
+  const v=versione();
+  return api('GET',null,null,false,v?{'x-giardino-versione':v}:null).then(j=>{
+      const ora='Sincronizzato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.';
+      if(j&&j.invariato&&server){ if(!docs.giardino){ if(inAttesa) applicaLocale(inAttesa); dalServer(); } stato(ora); return false; }
+      server=j; if(inAttesa) applicaLocale(inAttesa); LSset('cache',JSON.stringify(j)); dalServer(); stato(ora); return true; })
     .catch(e=>{ dalServer(); stato('Server non raggiungibile ('+e.message+'): uso i dati salvati su questo dispositivo.'); return false; });
 }
 // dati del server con sopra le modifiche locali non ancora inviate
@@ -80,35 +87,21 @@ function diffGiardino(nuovo){
 }
 
 /* ---------------- meteo ---------------- */
-const COND=c=> c===0?'sereno': c<=2?'poco nuvoloso': c===3?'nuvoloso': (c===45||c===48)?'nebbia': c>=95?'temporale': ((c>=71&&c<=77)||c===85||c===86)?'neve': 'pioggia';
+// stesse richieste e stessi calcoli del bot (urlMeteo, componiMeteo nel modello), le due richieste in parallelo
 async function meteo(lat,lon){
-  const q=new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',past_days:'3',forecast_days:'8',
-    daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max'});
-  const r=await fetch('https://api.open-meteo.com/v1/forecast?'+q); if(!r.ok) throw new Error('Open-Meteo '+r.status);
-  const j=await r.json(), d=j.daily;
-  const out={source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,suolo:null,notte:null,days:d.time.map((t,i)=>({date:t,cond:COND(d.weather_code[i]),tmax:d.temperature_2m_max[i],tmin:d.temperature_2m_min[i],
-    rain:d.precipitation_sum[i]??0,prob:d.precipitation_probability_max[i],et0:d.et0_fao_evapotranspiration[i]??0,wind:d.wind_speed_10m_max[i],raffiche:d.wind_gusts_10m_max?.[i]??null,code:d.weather_code[i]}))};
-  // primi giorni anche dal modello italiano ICON-2I (stesso calcolo del bot): media di pioggia e temperature
-  try{
-    const r3=await fetch('https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',forecast_days:'3',hourly:MODELLO_IT_PARAMS,models:MODELLO_IT}));
-    if(r3.ok){ const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
-      out.days=mediaModelli(out.days,(await r3.json()).hourly,p.year+'-'+p.month+'-'+p.day); }
-  }catch(e){}
-  // umidità del suolo e temperature della notte (stessi calcoli del bot): se non arrivano, il resto funziona lo stesso
-  try{
-    const r2=await fetch('https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat,longitude:lon,timezone:'auto',forecast_days:'2',hourly:ORARIO_PARAMS}));
-    if(r2.ok){ const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
-      Object.assign(out, datiOrari((await r2.json()).hourly, p.year+'-'+p.month+'-'+p.day, +p.hour)); }
-  }catch(e){}
-  return out;
+  const u=urlMeteo(lat,lon);
+  const [r,rIT]=await Promise.all([fetch(u.base),fetch(u.it).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
+  const j=await r.json(), jIT=rIT&&rIT.ok?await rIT.json().catch(()=>null):null;
+  const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,jIT,p.year+'-'+p.month+'-'+p.day,+p.hour)};
 }
 async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
   const c=LSjson('meteo');
   // previsioni valide un'ora e solo nello stesso giorno: il polling ogni 2 minuti non le riscarica
-  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ docs.meteo_bot=c; return; }
-  try{ docs.meteo_bot=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(docs.meteo_bot)); }
-  catch(e){ docs.meteo_bot=c; stato('Meteo non disponibile: uso gli ultimi dati salvati.'); }
+  if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=c; return nuovo; }
+  try{ docs.meteo_bot=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(docs.meteo_bot)); return true; }
+  catch(e){ const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=c; stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo; }
 }
 
 /* ---------------- documenti come li chiede l'app ---------------- */
@@ -135,8 +128,10 @@ function doc(path){
 async function aggiorna(forza){
   await window.salvaSubito?.();          // prima partono le modifiche fatte nell'app da meno di mezzo secondo
   if(inAttesa) await svuota(); else await coda;
-  await scarica(); await caricaMeteo(!!forza);
-  ['meteo_bot','eventi_bot','piano'].forEach(emit);
+  const dati=await scarica(), met=await caricaMeteo(!!forza);
+  // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
+  if(met||forza) emit('meteo_bot');
+  if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();
 }
 window.GiardinoNet={
@@ -144,6 +139,7 @@ window.GiardinoNet={
   usaCodice(c){ c=String(c||'').trim().toUpperCase(); if(!/^[A-Z0-9-]{16,64}$/.test(c)) return false; LSset('code',c); LSset('cache',null); location.reload(); return true; },
   mcp:(action,extra)=>action?api('POST',{action,...(extra||{})},'mcp'):api('GET',null,'mcp'),
   crediti:()=>api('GET',null,'crediti'),
+  stato:()=>api('GET',null,'stato'),
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
   async geocodifica(q){

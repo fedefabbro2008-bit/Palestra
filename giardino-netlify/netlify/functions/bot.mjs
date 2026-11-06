@@ -29,6 +29,8 @@ export default async () => {
 async function uno(st, tkey, cr) {
   const t = await st.get(tkey, { type: "json" });
   if (!t?.chat_id) return;
+  // oggi mattino e sera già fatti (e niente avviso dei crediti): niente da leggere né da calcolare fino a domani
+  if (!cr) { const { oggi: g } = oraLocale(t.tz || "Europe/Rome"); if (t.ultimo_invio === g && t.ultimo_avviso_sera === g) return; }
   const code = tkey.slice(2);
   const cur = await leggi(st, code);
   if (!cur?.data?.location || !cur.data.plants.length) return;

@@ -18,3 +18,13 @@ try {
   h.time.forEach((t, i) => { const d = t.slice(0, 10); per[d] = (per[d] || 0) + (h.precipitation[i] != null && h.temperature_2m[i] != null ? 1 : 0); });
   console.log("ICON-2I ore valide per giorno:", JSON.stringify(per));
 } catch (e) { console.log("ICON-2I orario → errore", e.message); }
+// Le due richieste vere dell'app e del bot (M.urlMeteo) lette con M.componiMeteo: controlla che giornaliero e orario
+// arrivino insieme dalla stessa richiesta e che la media con ICON-2I copra i primi giorni.
+try {
+  const M = await import("../netlify/lib/modello.mjs"), u = M.urlMeteo(LUOGO.latitude, LUOGO.longitude);
+  const [r, rIT] = await Promise.all([fetch(u.base), fetch(u.it)]), j = await r.json(), jIT = rIT.ok ? await rIT.json() : null;
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: j.timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  const met = M.componiMeteo(j, jIT, `${p.year}-${p.month}-${p.day}`, +p.hour);
+  console.log("richieste dell'app:", r.status, rIT.status, "· giorni", met.days.length, "· suolo", met.suolo, "· ore della notte", met.notte?.length ?? 0,
+    "· giorni in media con ICON-2I", met.days.filter((d) => d.rain_modelli).map((d) => d.date + " " + d.rain_modelli.join("/") + " mm").join(", "));
+} catch (e) { console.log("richieste dell'app → errore", e.message); }

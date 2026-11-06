@@ -9,21 +9,22 @@ const { chromium } = await import("playwright").catch(() => import("/opt/node22/
 const dati = (await import("../netlify/functions/dati.mjs")).default;
 const PUB = fileURLToPath(new URL("../public/", import.meta.url));
 const SITO = "https://giardino.test/";
+const RICHIESTE = [];   // richieste a /api/dati, per controllare che l'app non ne faccia più del necessario
 const json = (o) => ({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(o) });
 
 async function contesto(browser, opz = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: "it-IT", timezoneId: "UTC", acceptDownloads: true, ...opz });
   await ctx.route("https://geocoding-api.open-meteo.com/**", (r) => r.fulfill(json({ results: [{ name: "Castrocaro Terme", admin1: "Emilia-Romagna", country: "Italia", latitude: 44.176, longitude: 11.95, elevation: 68 }] })));
   await ctx.route("https://api.open-meteo.com/**", (r) => {
-    if (r.request().url().includes("hourly")) {
-      const ore = giorni.slice(3, 5).flatMap((d) => [...Array(24)].map((_, h) => d + "T" + String(h).padStart(2, "0") + ":00"));
-      return r.fulfill(json({ hourly: { time: ore, temperature_2m: ore.map(() => 8), soil_moisture_0_to_1cm: ore.map(() => 0.2), soil_moisture_1_to_3cm: ore.map(() => 0.2), soil_moisture_3_to_9cm: ore.map(() => 0.2), soil_moisture_9_to_27cm: ore.map(() => 0.2) } }));
-    }
-    return r.fulfill(json({ daily: { time: giorni, weather_code: giorni.map((_, i) => [0, 2, 3, 61, 0, 2, 95, 61, 3, 0, 45][i]), temperature_2m_max: giorni.map(() => 22), temperature_2m_min: giorni.map(() => 9), precipitation_sum: giorni.map((_, i) => (i === 6 ? 9 : 0)), precipitation_probability_max: giorni.map(() => 20), et0_fao_evapotranspiration: giorni.map(() => 3.5), wind_speed_10m_max: giorni.map(() => 8) } }));
+    if (r.request().url().includes("models=italia")) return r.fulfill(json({ hourly: { time: [], precipitation: [], temperature_2m: [] } }));
+    const ore = giorni.slice(3, 5).flatMap((d) => [...Array(24)].map((_, h) => d + "T" + String(h).padStart(2, "0") + ":00"));
+    return r.fulfill(json({ daily: { time: giorni, weather_code: giorni.map((_, i) => [0, 2, 3, 61, 0, 2, 95, 61, 3, 0, 45][i]), temperature_2m_max: giorni.map(() => 22), temperature_2m_min: giorni.map(() => 9), precipitation_sum: giorni.map((_, i) => (i === 6 ? 9 : 0)), precipitation_probability_max: giorni.map(() => 20), et0_fao_evapotranspiration: giorni.map(() => 3.5), wind_speed_10m_max: giorni.map(() => 8) },
+      hourly: { time: ore, temperature_2m: ore.map(() => 8), soil_moisture_0_to_1cm: ore.map(() => 0.2), soil_moisture_1_to_3cm: ore.map(() => 0.2), soil_moisture_3_to_9cm: ore.map(() => 0.2), soil_moisture_9_to_27cm: ore.map(() => 0.2) } }));
   });
   await ctx.route(SITO + "**", async (r) => {
     const u = new URL(r.request().url());
     if (u.pathname.startsWith("/api/dati")) {
+      RICHIESTE.push(r.request().method() + " " + (u.searchParams.get("op") || "dati") + (r.request().headers()["x-giardino-versione"] ? " (versione)" : ""));
       const res = await dati(new Request(u.href, { method: r.request().method(), headers: r.request().headers(), body: r.request().postData() || undefined }));
       return r.fulfill({ status: res.status, contentType: "application/json", body: await res.text() });
     }
@@ -45,7 +46,10 @@ test("flusso completo a 390 px", async (t) => {
   const errori = [], conCodice = [];
   page.on("pageerror", (e) => errori.push(e.message));
   page.on("request", (r) => { if (r.url().includes("code=")) conCodice.push(r.url()); });
+  RICHIESTE.length = 0;
   await page.goto(SITO); await pronta(page);
+  await page.waitForTimeout(300);
+  assert.deepEqual(RICHIESTE, ["GET dati"], "all'avvio una sola richiesta al server (lo stato di Claude e Telegram solo in Impostazioni)");
 
   // zoom bloccato e campi a 16 px
   assert.match(await page.getAttribute("meta[name=viewport]", "content"), /user-scalable=no/);
@@ -170,7 +174,13 @@ test("flusso completo a 390 px", async (t) => {
   await page.click("#calPrima"); assert.ok(!(await page.isDisabled("#calDopo")));
 
   // Impostazioni: crediti e Siri con l'indirizzo per zona
-  await page.click("#tab-impostazioni"); await page.click("#set-crediti summary");
+  RICHIESTE.length = 0;
+  await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+  assert.deepEqual(RICHIESTE, ["GET dati (versione)"], "controllo periodico: chiede solo se è cambiato qualcosa");
+  await page.click("#tab-impostazioni");
+  await quando(page, () => document.querySelector("#tgChip").textContent && document.querySelector("#tgChip").textContent !== "…");
+  assert.deepEqual(RICHIESTE.slice(1), ["GET stato"], "Claude, Telegram e crediti in una richiesta sola");
+  await page.click("#set-crediti summary");
   await quando(page, () => /pubblicazion/.test(document.querySelector("#credTesto").textContent));
 
   // Impostazioni: Siri con l'indirizzo per zona

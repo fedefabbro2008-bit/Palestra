@@ -786,7 +786,7 @@ async function boot(){
         if(snap!=='timeout'){
           store={kind:'db',refs}; loaded=true;
           const d=snap.exists?applyMain(snap.data()):null;
-          const listen=(name,fn)=>refs[name].onSnapshot(s=>{ fn(s.exists?s.data():null); renderAll(); },()=>{});
+          const listen=(name,fn)=>refs[name].onSnapshot(s=>{ fn(s.exists?s.data():null); renderPresto(); },()=>{});
           const legacy={weather:d?.weather, plan:d?.plan};
           listen('meteo',x=>{ W.manual=x&&x.days?x:(legacy.weather?.days?legacy.weather:null); });
           listen('piano',x=>{ P.claude=x&&x.data?x:(legacy.plan?.data?legacy.plan:null); });
@@ -902,11 +902,21 @@ async function syncNow(){
 }
 
 /* ================= Render ================= */
-function renderAll(){
-  const AP=activePlan();
-  renderHeader(); renderOggi(AP); renderPiante(AP); renderImpostazioni();
-  if(!$('#view-diario').hidden) renderDiario();
+// Si ridisegna solo la scheda (vista) che hai davanti; le altre si segnano da rifare e si ridisegnano quando le apri.
+let daRifare=new Set();
+const vistaAttiva=()=>(document.querySelector('section.view:not([hidden])')?.id||'view-oggi').slice(5);
+function renderVista(v,AP){
+  daRifare.delete(v);
+  if(v==='oggi') renderOggi(AP||activePlan()); else if(v==='piante') renderPiante(AP||activePlan()); else if(v==='impostazioni') renderImpostazioni(); else if(v==='diario') renderDiario();
 }
+function renderAll(){
+  renderHeader();
+  daRifare=new Set(['oggi','piante','impostazioni','diario']);
+  renderVista(vistaAttiva());
+}
+// Aggiornamenti arrivati da soli (server, meteo): un solo ridisegno per fotogramma, e niente mentre l'app è in background.
+let renderAtteso=0;
+function renderPresto(){ if(renderAtteso) return; renderAtteso=requestAnimationFrame(()=>{ renderAtteso=0; renderAll(); }); }
 function renderHeader(){
   $('#locName').textContent=S.location?S.location.name:'Imposta il comune';
   const ob=ready && (!S.location || !S.plants.length);
@@ -1369,10 +1379,12 @@ function submitForm(e){
 }
 
 /* ================= Navigazione ed eventi ================= */
+let caricaStato=()=>{};
 function switchView(v){
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.view===v)));
   document.querySelectorAll('section.view').forEach(s=>s.hidden=s.id!=='view-'+v);
-  if(v==='diario') renderDiario();
+  if(v==='diario'||daRifare.has(v)) renderVista(v);
+  if(v==='impostazioni') caricaStato();
   window.scrollTo({top:0});
 }
 function apriSezione(id){ switchView('impostazioni'); const d=$('#'+id); d.open=true; requestAnimationFrame(()=>d.scrollIntoView({block:'start',behavior:'smooth'})); }
@@ -1442,7 +1454,7 @@ function wire(){
     S.plants.push(
       {id:uid(),nome:'Limone in terrazzo',specie:'agrumi',fase:'auto',colt:'vaso',vaso:45,diametro:45,consociate:[],area:null,num:1,luce:7,dove:'riparato',ultima:'',note:'',example:true},
       {id:uid(),nome:'Fioriera aromatiche',specie:'rosmarino',fase:'auto',colt:'vaso',vaso:8,diametro:null,consociate:[{specie:'prezzemolo',num:2}],area:null,num:1,luce:5,dove:'aperto',ultima:'',note:'',example:true},
-      {id:uid(),nome:'Pothos in salotto',specie:'appartamento',fase:'vegetativa',colt:'vaso',vaso:3,diametro:17,consociate:[],area:null,num:1,luce:2,dove:'interno',ultima:'',note:'',example:true});
+      {id:uid(),nome:'Pothos in salotto',specie:'tropicale',fase:'vegetativa',colt:'vaso',vaso:3,diametro:17,consociate:[],area:null,num:1,luce:2,dove:'interno',ultima:'',note:'',example:true});
     saveMain(); renderAll(); toast('Aggiunte 3 piante di esempio: modificale o eliminale in Piante');
   });
   $('#localBtn').addEventListener('click',()=>{ P.claude=null; savePiano(); renderAll(); toast('Uso il calcolo automatico'); });
@@ -1574,31 +1586,34 @@ function wireNetlify(){
   $('#netCode').textContent=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
   $('#siriZona').addEventListener('change',renderSiri);
-  const crediti=()=>N.crediti().then(c=>{ const pct=Math.min(100,Math.round(c.stima/c.limite*100)), alto=c.stima>=240;
+  const mostraCrediti=c=>{ if(!c){ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; return; } const pct=Math.min(100,Math.round(c.stima/c.limite*100)), alto=c.stima>=240;
       $('#credChip').textContent='~'+c.stima+' / '+c.limite; $('#credChip').className='sv'+(alto?'':' ok');
       $('#credBarra').innerHTML=`<div class="lev${alto?' basso':''}" role="img" aria-label="Crediti usati circa ${pct}%"><i style="width:${pct}%"></i><b style="left:80%"></b></div>`;
-      $('#credTesto').textContent='Stima di '+new Date(c.mese+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long'})+': '+c.pubblicazioni+(c.pubblicazioni===1?' pubblicazione':' pubblicazioni')+' × 15 + uso ≈ '+c.stima+' crediti su '+c.limite+'.'; })
-    .catch(()=>{ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; });
-  crediti(); $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) crediti(); });
+      $('#credTesto').textContent='Stima di '+new Date(c.mese+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long'})+': '+c.pubblicazioni+(c.pubblicazioni===1?' pubblicazione':' pubblicazioni')+' × 15 + uso ≈ '+c.stima+' crediti su '+c.limite+'.'; };
+  // Claude, Telegram e crediti in una richiesta sola e solo quando apri Impostazioni (prima: 3 richieste a ogni apertura dell'app)
+  let statoAt=0;
+  caricaStato=(forza)=>{ if(!forza&&Date.now()-statoAt<60000) return; statoAt=Date.now();
+    ['#mcpChip','#tgChip','#credChip'].forEach(id=>{ if(!$(id).textContent) $(id).textContent='…'; });
+    N.stato().then(x=>{ renderMcp(x.mcp); renderTg(x.telegram); mostraCrediti(x.crediti); })
+      .catch(()=>{ statoAt=0; $('#mcpChip').textContent='non raggiungibile'; $('#tgChip').textContent='non raggiungibile'; mostraCrediti(null); }); };
+  $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) N.crediti().then(mostraCrediti).catch(()=>mostraCrediti(null)); });
   $('#siriCopyUrl').addEventListener('click',async()=>toast(await copyText($('#siriUrl').textContent,$('#siriUrl'))?'Indirizzo copiato':'Seleziona e copia a mano'));
   $('#siriCopyCode').addEventListener('click',async()=>toast(await copyText(N.codice())?'Codice copiato: incollalo come valore di x-giardino-code':'Copia non riuscita'));
   $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });
   $('#prompts').innerHTML=PROMPTS.map((t,i)=>`<button class="prompt" type="button" data-prompt="${i}"><span>“${esc(t)}”</span><span class="pc">Copia</span></button>`).join('');
   $('#prompts').addEventListener('click',async e=>{ const b=e.target.closest('[data-prompt]'); if(b) toast(await copyText(PROMPTS[+b.dataset.prompt])?'Copiato: incollalo nella chat di Claude':'Copia non riuscita'); });
   const mcpAct=async(a,extra)=>{ $('#mcpStatus').innerHTML=spin('Un momento…'); try{ renderMcp(await N.mcp(a,extra)); $('#mcpStatus').textContent=''; }catch(e){ $('#mcpStatus').textContent=e.message; } };
-  N.mcp().then(renderMcp).catch(()=>{ $('#mcpChip').textContent='non raggiungibile'; });
   $('#mcpOn').addEventListener('click',()=>mcpAct('on'));
   $('#mcpNew').addEventListener('click',()=>mcpAct('new'));
   $('#mcpOff').addEventListener('click',()=>mcpAct('off'));
   $('#mcpWrite').addEventListener('change',e=>mcpAct('write',{on:e.target.checked}));
   $('#mcpCopy').addEventListener('click',async()=>toast(await copyText($('#mcpUrl').textContent,$('#mcpUrl'))?'Indirizzo copiato':'Seleziona e copia a mano'));
   const tgAct=async(a,extra)=>{ $('#tgStatus').innerHTML=spin('Un momento…'); try{ const r=await N.telegram(a,extra); if(a==='test'){ $('#tgStatus').textContent='Messaggio inviato: guarda Telegram.'; return; } renderTg(r); }catch(e){ $('#tgStatus').textContent=e.message; } };
-  N.telegram().then(renderTg).catch(()=>{ $('#tgChip').textContent='non raggiungibile'; });
   $('#tgSet').addEventListener('click',async()=>{ const t=$('#tgToken').value.trim(); if(!t){ $('#tgToken').focus(); return; } await tgAct('token',{token:t}); $('#tgToken').value=''; $('#tgToken').blur(); });
   $('#tgTest').addEventListener('click',()=>tgAct('test'));
   $('#tgOff').addEventListener('click',()=>tgAct('off'));
-  // dopo "Avvia" su Telegram, quando torni sull'app lo stato si aggiorna
-  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') N.telegram().then(renderTg).catch(()=>{}); });
+  // dopo "Avvia" su Telegram, quando torni sull'app (in Impostazioni) lo stato si aggiorna
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && !$('#view-impostazioni').hidden) caricaStato(true); });
 }
 
 wire(); wireNetlify(); boot();
