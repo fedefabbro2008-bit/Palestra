@@ -1055,7 +1055,7 @@ function renderOggi(AP){
     $('#restBox').hidden=false;
     setHTML($('#restList'),rest.map(x=>{ const ev=eventsOf(x.p.id,t), f=ev.find(e=>e.tipo==='fatto'), pi=ev.filter(e=>e.tipo==='pioggia').reduce((a,e)=>a+(+e.litri||0),0);
       return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(x.p))}</span><span class="li"><b>${esc(x.p.nome)}</b><span>${esc(f?'Annaffiata oggi'+(f.litri?' · '+fmtL(+f.litri):''):pi>0?'Ha preso la pioggia · '+fmtL(pi):x.g?x.g.motivo:'Non nel piano di Claude: chiedigli di rifarlo')}</span></span>
-        <span class="mini"><button class="btn small ghost" type="button" data-ev="fatto" data-pid="${esc(x.p.id)}" aria-label="Annaffiata">💧</button><button class="btn small ghost" type="button" data-pioggia="${esc(x.p.id)}" aria-label="Messa sotto la pioggia">🌧</button></span></div>`; }).join(''));
+        <span class="mini"><button class="btn small ghost" type="button" data-ev="fatto" data-pid="${esc(x.p.id)}" aria-label="Annaffiata">💧</button>${x.p.dove!=='aperto'?`<button class="btn small ghost" type="button" data-pioggia="${esc(x.p.id)}" aria-label="Messa sotto la pioggia">🌧</button>`:''}</span></div>`; }).join(''));
   }
   renderConcime(); renderVerifica(AP); renderWeek(AP);
 }
@@ -1210,7 +1210,7 @@ function renderPiante(AP){
     return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ring${pp&&pp.acqua!=null&&pp.acqua<=pp.soglia?' basso':''}" style="--p:${pp?.acqua!=null?Math.round(Math.max(0,Math.min(1,pp.acqua))*100):0}" aria-hidden="true"><span>${esc(icoDi(p))}</span></span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
       <div class="pbody">${livello(pp)}<div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
       ${notes.length?'<ul class="notes">'+notes.map(([cls,x])=>`<li class="${cls}">${esc(x)}</li>`).join('')+'</ul>':''}
-      <div class="pbtn"><button class="btn" type="button" data-ev="fatto" data-pid="${esc(p.id)}">💧 Annaffiata</button><button class="btn" type="button" data-pioggia="${esc(p.id)}">🌧 Sotto la pioggia</button></div>
+      <div class="pbtn"><button class="btn" type="button" data-ev="fatto" data-pid="${esc(p.id)}">💧 Annaffiata</button>${p.dove!=='aperto'?`<button class="btn" type="button" data-pioggia="${esc(p.id)}">🌧 Sotto la pioggia</button>`:''}</div>
       <div class="pbtn"><button class="btn" type="button" data-scheda="${esc(p.id)}">📖 Scheda</button><button class="btn" type="button" data-edit="${esc(p.id)}">Modifica</button></div></div></details>`;
   }).join(''));
 }

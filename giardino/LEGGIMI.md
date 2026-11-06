@@ -74,7 +74,7 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Bot di riserva su GitHub** (`giardino/riserva.mjs`, `.github/workflows/giardino-riserva.yml`, ogni mattina): sito vivo → copia cifrata dei dati nella cache di GitHub Actions; sito fermo (es. crediti finiti) → messaggio del mattino su Telegram da GitHub. Segreti: `GIARDINO_CODE`, `GIARDINO_TG_TOKEN`, `GIARDINO_TG_CHAT` (il numero è in Impostazioni → Telegram).
 - **Crediti**: in Impostazioni → Crediti Netlify si scrive il valore vero letto su Netlify e la stima riparte da lì.
 - **Badge «Powered by Netlify»** (piano gratuito, iframe `#nl-badge-frame`): l'app lo mette in alto a destra, al 70%, sotto la fotocamera (`html.con-badge` lascia 30 px in cima solo quando c'è); scorre via con la pagina e non copre le schede in basso.
-- **Annaffiata / Sotto la pioggia**: 💧 e 🌧 su ogni pianta (anche quando il piano non chiede acqua). «Sotto la pioggia» chiede dalle/alle e usa solo la pioggia **misurata** dalla stazione ARPAE più vicina (quarti d'ora, `?op=pioggia`): litri = mm × apertura del vaso; riempie solo quei litri. Senza misure non registra niente.
+- **Annaffiata / Sotto la pioggia**: 💧 su ogni pianta (anche quando il piano non chiede acqua); 🌧 solo sulle piante al riparo, in veranda/serra o in casa (quelle «fuori, prende la pioggia» la ricevono già nel calcolo). «Sotto la pioggia» chiede dalle/alle e usa solo la pioggia **misurata** dalla stazione ARPAE più vicina (quarti d'ora, `?op=pioggia`): litri = mm × apertura del vaso; riempie solo quei litri. Senza misure non registra niente.
 - **Raccolta prevista** (`raccolta` = AAAA-MM, nel modulo o dalla scheda di Claude): le fasi automatiche delle annuali si adattano a quel mese.
 
 ## Rete e velocità
