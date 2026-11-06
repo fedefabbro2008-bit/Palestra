@@ -9,21 +9,22 @@ const { chromium } = await import("playwright").catch(() => import("/opt/node22/
 const dati = (await import("../netlify/functions/dati.mjs")).default;
 const PUB = fileURLToPath(new URL("../public/", import.meta.url));
 const SITO = "https://giardino.test/";
+const RICHIESTE = [];   // richieste a /api/dati, per controllare che l'app non ne faccia più del necessario
 const json = (o) => ({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify(o) });
 
 async function contesto(browser, opz = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: "it-IT", timezoneId: "UTC", acceptDownloads: true, ...opz });
   await ctx.route("https://geocoding-api.open-meteo.com/**", (r) => r.fulfill(json({ results: [{ name: "Castrocaro Terme", admin1: "Emilia-Romagna", country: "Italia", latitude: 44.176, longitude: 11.95, elevation: 68 }] })));
   await ctx.route("https://api.open-meteo.com/**", (r) => {
-    if (r.request().url().includes("hourly")) {
-      const ore = giorni.slice(3, 5).flatMap((d) => [...Array(24)].map((_, h) => d + "T" + String(h).padStart(2, "0") + ":00"));
-      return r.fulfill(json({ hourly: { time: ore, temperature_2m: ore.map(() => 8), soil_moisture_0_to_1cm: ore.map(() => 0.2), soil_moisture_1_to_3cm: ore.map(() => 0.2), soil_moisture_3_to_9cm: ore.map(() => 0.2), soil_moisture_9_to_27cm: ore.map(() => 0.2) } }));
-    }
-    return r.fulfill(json({ daily: { time: giorni, weather_code: giorni.map((_, i) => [0, 2, 3, 61, 0, 2, 95, 61, 3, 0, 45][i]), temperature_2m_max: giorni.map(() => 22), temperature_2m_min: giorni.map(() => 9), precipitation_sum: giorni.map((_, i) => (i === 6 ? 9 : 0)), precipitation_probability_max: giorni.map(() => 20), et0_fao_evapotranspiration: giorni.map(() => 3.5), wind_speed_10m_max: giorni.map(() => 8) } }));
+    if (r.request().url().includes("models=italia")) return r.fulfill(json({ hourly: { time: [], precipitation: [], temperature_2m: [] } }));
+    const ore = giorni.slice(3, 5).flatMap((d) => [...Array(24)].map((_, h) => d + "T" + String(h).padStart(2, "0") + ":00"));
+    return r.fulfill(json({ daily: { time: giorni, weather_code: giorni.map((_, i) => [0, 2, 3, 61, 0, 2, 95, 61, 3, 0, 45][i]), temperature_2m_max: giorni.map(() => 22), temperature_2m_min: giorni.map(() => 9), precipitation_sum: giorni.map((_, i) => (i === 6 ? 9 : 0)), precipitation_probability_max: giorni.map(() => 20), et0_fao_evapotranspiration: giorni.map(() => 3.5), wind_speed_10m_max: giorni.map(() => 8) },
+      hourly: { time: ore, temperature_2m: ore.map(() => 8), soil_moisture_0_to_1cm: ore.map(() => 0.2), soil_moisture_1_to_3cm: ore.map(() => 0.2), soil_moisture_3_to_9cm: ore.map(() => 0.2), soil_moisture_9_to_27cm: ore.map(() => 0.2) } }));
   });
   await ctx.route(SITO + "**", async (r) => {
     const u = new URL(r.request().url());
     if (u.pathname.startsWith("/api/dati")) {
+      RICHIESTE.push(r.request().method() + " " + (u.searchParams.get("op") || "dati") + (r.request().headers()["x-giardino-versione"] ? " (versione)" : ""));
       const res = await dati(new Request(u.href, { method: r.request().method(), headers: r.request().headers(), body: r.request().postData() || undefined }));
       return r.fulfill({ status: res.status, contentType: "application/json", body: await res.text() });
     }
@@ -45,7 +46,10 @@ test("flusso completo a 390 px", async (t) => {
   const errori = [], conCodice = [];
   page.on("pageerror", (e) => errori.push(e.message));
   page.on("request", (r) => { if (r.url().includes("code=")) conCodice.push(r.url()); });
+  RICHIESTE.length = 0;
   await page.goto(SITO); await pronta(page);
+  await page.waitForTimeout(300);
+  assert.deepEqual(RICHIESTE, ["GET dati"], "all'avvio una sola richiesta al server (lo stato di Claude e Telegram solo in Impostazioni)");
 
   // zoom bloccato e campi a 16 px
   assert.match(await page.getAttribute("meta[name=viewport]", "content"), /user-scalable=no/);
@@ -79,8 +83,9 @@ test("flusso completo a 390 px", async (t) => {
   assert.deepEqual(await page.locator("#plantList .pname").evaluateAll((els) => els.map((e) => e.firstChild.textContent.trim())), ["Fioriera aromatiche", "Limone in terrazzo", "Pothos in salotto"]);
   await page.click("#addPlantBtn");
   await page.fill("#pf-nome", "Aglio");
+  assert.equal(await page.inputValue("#pf-specie"), "aglio", "specie riconosciuta dal nome");
   await page.click("#pf-specie-btn"); await page.fill("#pf-cerca", "agl");
-  assert.deepEqual(await page.locator("#pf-plist [data-sp]").evaluateAll((els) => els.map((e) => e.dataset.sp)), ["aglio"]);
+  assert.deepEqual(await page.locator("#pf-plist [data-sp]").evaluateAll((els) => els.map((e) => e.dataset.sp)), ["aglio", "appartamento"], "aglio e aglaonema");
   await page.fill("#pf-cerca", "limone");
   assert.deepEqual(await page.locator("#pf-plist [data-sp]").evaluateAll((els) => els.map((e) => e.dataset.sp)), ["agrumi"], "trova anche i sinonimi");
   await page.fill("#pf-cerca", ""); const tutte = await page.locator("#pf-plist [data-sp]").evaluateAll((els) => els.map((e) => e.textContent));
@@ -91,7 +96,11 @@ test("flusso completo a 390 px", async (t) => {
   await page.fill("#pf-semina", OGGI); await page.dispatchEvent("#pf-semina", "input");
   assert.match(await page.textContent("#pf-fase-hint"), /germinazione/);
   assert.ok((await page.locator("#pf-fase option").allTextContents()).includes("Ingrossamento del bulbo"));
+  await page.click("label:has(input[name=materiale][value=chiuso])");
+  assert.match(await page.textContent("#pf-mat-hint"), /dose esatta/);
+  await page.fill("#pf-riserva", "1,5");
   await page.fill("#pf-zona", "orto"); await page.click("button[type=submit]"); await page.waitForTimeout(200);
+  assert.deepEqual(await page.evaluate(() => { const p = S.plants.find((x) => x.nome === "Aglio"); return [p.materiale, p.riserva]; }), ["chiuso", 1.5]);
   // seconda pianta nella stessa zona, scelta con il pulsante rapido; la maiuscola viene da quella già esistente
   await page.click("#addPlantBtn"); await page.fill("#pf-nome", "Zucchine"); await scegliSpecie(page, "zucc", "zucchina");
   await page.click('#pf-zona-q [data-zona="orto"]'); await page.click('[data-vaso="30"]'); await page.click('[data-luce="8"]');
@@ -113,6 +122,10 @@ test("flusso completo a 390 px", async (t) => {
   await page.evaluate(() => { document.querySelectorAll("#plantList details.plant").forEach((d) => (d.open = true)); });
   await page.click('#plantList details.plant:has-text("Limone") [data-edit]');
   assert.ok(!(await page.isVisible("#pf-t-inverno")), "fuori casa niente temperature");
+  await page.click("label:has(input[name=dove][value=serra])");
+  assert.ok(await page.isVisible("#pf-t-inverno"));
+  assert.match(await page.textContent("#pf-t-titolo"), /veranda/);
+  assert.equal(await page.inputValue("#pf-t-inverno"), "10", "valori tipici della serra");
   await page.click("#cancelPlantBtn");
 
   // scheda: prima il calendario automatico, poi quella scritta da Claude con la tabella dei mesi
@@ -124,6 +137,15 @@ test("flusso completo a 390 px", async (t) => {
   assert.equal(await page.locator("#schBody table.mesi tr.ora").count(), 1, "il mese corrente è evidenziato");
   assert.match(await page.textContent("#schBody"), /Raccolta: /);
   assert.ok(await page.isVisible("#schBody [data-copia]"));
+  // senza Claude: scheda dell'app con condizioni e fasi
+  assert.match(await page.textContent("#schBody"), /Scheda dell'app[\s\S]*Condizioni ideali[\s\S]*Fasi di crescita[\s\S]*Ingrossamento del bulbo/);
+  // diagnosi guidata: terriccio bagnato + foglie gialle molli → troppa acqua, registrata
+  await page.click("#schDiag summary");
+  await page.check('#schDiag input[value="bagnato"]'); await page.check('#schDiag input[value="gialle_molli"]');
+  await page.click("#schDiag [data-diag]");
+  assert.match(await page.textContent("#diagEsito"), /Troppa acqua/);
+  await page.click("#schDiag [data-diag-reg]");
+  assert.ok(await page.evaluate(() => S.eventi_app.some((e) => e.tipo === "meno")), "evento «meno» registrato");
   const codice = await page.evaluate(() => window.GiardinoNet.codice());
   await quando(page, () => !localStorage.getItem("giardino:net:pending"));
   const sul = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": codice } }))).text()).data;
@@ -142,6 +164,24 @@ test("flusso completo a 390 px", async (t) => {
   // Oggi con le zone: sezione per zona
   await page.click("#tab-oggi");
   assert.ok((await page.locator("#todayList .zhead span").allTextContents()).includes("orto"));
+
+  // Diario a calendario: oggi ha l'icona dell'acqua (Pothos segnata più su)
+  await page.click("#tab-diario");
+  assert.equal(await page.locator("#cal [data-giorno]").count(), new Date(+OGGI.slice(0, 4), +OGGI.slice(5, 7), 0).getDate());
+  assert.match(await page.textContent(`#cal [data-giorno="${OGGI}"]`), /💧/);
+  await page.click(`#cal [data-giorno="${OGGI}"]`);
+  assert.match(await page.textContent("#calGiorno"), /annaffiata|innaffiata/);
+  await page.click("#calPrima"); assert.ok(!(await page.isDisabled("#calDopo")));
+
+  // Impostazioni: crediti e Siri con l'indirizzo per zona
+  RICHIESTE.length = 0;
+  await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+  assert.deepEqual(RICHIESTE, ["GET dati (versione)"], "controllo periodico: chiede solo se è cambiato qualcosa");
+  await page.click("#tab-impostazioni");
+  await quando(page, () => document.querySelector("#tgChip").textContent && document.querySelector("#tgChip").textContent !== "…");
+  assert.deepEqual(RICHIESTE.slice(1), ["GET stato"], "Claude, Telegram e crediti in una richiesta sola");
+  await page.click("#set-crediti summary");
+  await quando(page, () => /pubblicazion/.test(document.querySelector("#credTesto").textContent));
 
   // Impostazioni: Siri con l'indirizzo per zona
   await page.click("#tab-impostazioni"); await page.click("#set-siri summary");

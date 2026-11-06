@@ -1,10 +1,11 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, messaggioSettimana, segnaFatte, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · webhook di Telegram (/api/telegram/<segreto>).
    - /start dalla chat dell'utente: collega il bot a quella chat (solo la prima volta).
    - /oggi: manda subito il piano di oggi. /fatto [zona]: segna come annaffiate le piante di oggi. /settimana: i prossimi 7 giorni.
    - /vacanza 10/8 20/8 (o /vacanza no). /aiuto: l'elenco dei comandi.
-   - pulsanti dei messaggi (Annaffiato, Terreno ancora umido, Salto, Era secca, Concimata): registrati nel diario all'istante. */
+   - pulsanti dei messaggi (Annaffiato, Terreno ancora umido, Salto, Era secca, Concimata): registrati nel diario all'istante;
+     dopo la conferma resta «↩️ Annulla», che toglie la risposta e rimette i pulsanti di prima. */
 export const config = { path: "/api/telegram/*" };
 const ok = () => new Response("ok");
 const corto = (s) => { s = String(s || ""); return s.length > 18 ? s.slice(0, 17) + "…" : s; };
@@ -47,11 +48,11 @@ async function messaggio(st, tkey, t, code, m) {
       await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {});
     } else if (comando.endsWith("settimana")) await invia(messaggioSettimana(cur.data, ap));
     else {
-      // /fatto balcone → solo le piante della zona “Balcone”
-      const zona = String(m.text || "").trim().split(/\s+/).slice(1).join(" ").slice(0, 40);
-      if (zona && !cur.data.plants.some((p) => M.zonaDi(p).toLowerCase() === zona.toLowerCase())) { await invia(`Non trovo la zona «${esc(zona)}». Le zone si danno alle piante nell'app.`); return; }
-      const fatte = await segnaFatte(st, code, ap, oggi, { zona, fonte: "telegram" });
-      await invia(fatte.length ? "✅ Segnate come annaffiate: " + fatte.map(esc).join(", ") + "." : "Oggi non c'era niente da innaffiare" + (zona ? " in " + esc(zona) : "") + ", o l'avevi già segnato.");
+      // /fatto balcone → solo la zona «Balcone»; /fatto aglio → solo l'aglio, anche se oggi non era in programma
+      const arg = String(m.text || "").trim().split(/\s+/).slice(1).join(" ").slice(0, 40), chi = trovaZonaOPianta(cur.data.plants, arg);
+      if (chi.nessuno) { await invia(`Non trovo «${esc(arg)}» tra le zone e le piante. Scrivi /fatto da solo per tutte quelle di oggi.`); return; }
+      const fatte = await segnaFatte(st, code, ap, oggi, { zona: chi.zona || "", pianta: chi.pianta || "", fonte: "telegram" });
+      await invia(fatte.length ? "✅ Segnate come annaffiate: " + fatte.map(esc).join(", ") + "." : chi.pianta ? `${esc(chi.nome)} è già segnata per oggi.` : "Oggi non c'era niente da innaffiare" + (chi.zona ? " in " + esc(chi.zona) : "") + ", o l'avevi già segnato.");
     }
     return;
   }
@@ -80,10 +81,16 @@ function leggiData(m) {
   return iso;
 }
 
+const BREVE = { fatto: "annaffiata", saltato: "saltata", umido: "umida", secco: "secca, annaffiata", concime: "concimata" };
+// Pulsante «Annulla»: callback g|data|pianta|z + com'erano i pulsanti (c = concime, a = era secca, s = con Salto, n = senza Salto)
+const annullaCb = (data, pid, v) => `g|${data}|${pid}|z${v}`;
+
 async function pulsante(st, t, code, cq) {
   const rispondi = (text) => tg(t.token, "answerCallbackQuery", { callback_query_id: cq.id, ...(text ? { text } : {}) }, { ignora: true });
   if (cq.message?.chat?.id !== t.chat_id) return rispondi();
-  const [k, data, pid, x] = String(cq.data || "").split("|"), tipo = TIPI[x];
+  const [k, data, pid, x] = String(cq.data || "").split("|");
+  if (k === "g" && /^z[casn]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return annulla(st, t, code, cq, data, pid, x[1], rispondi);
+  const tipo = TIPI[x];
   if (k !== "g" || !tipo || !/^\d{4}-\d{2}-\d{2}$/.test(data || "")) return rispondi("Già registrato");
   let nome = pid;
   await aggiorna(st, code, (d) => {
@@ -97,16 +104,39 @@ async function pulsante(st, t, code, cq) {
   await rispondi(`Registrato: ${nome} — ${ETICHETTE[tipo]}`);
   const kb = cq.message?.reply_markup?.inline_keyboard;
   if (kb) {
-    // le righe della pianta premuta (Annaffiato + Terreno ancora umido/Salto, oppure Concimata) diventano una sola riga di conferma
-    const gruppo = x === "c" ? "c" : "w";
+    // le righe della pianta premuta (Annaffiato + Terreno ancora umido/Salto, oppure Concimata) diventano una sola riga:
+    // la conferma e «↩️ Annulla»
+    const gruppo = x === "c" ? "c" : "w", cbs = kb.flat().map((b) => b.callback_data || "").filter((c) => c.startsWith(`g|${data}|${pid}|`));
+    const v = gruppo === "c" ? "c" : cbs.some((c) => c.endsWith("|a")) ? "a" : cbs.some((c) => c.endsWith("|s")) ? "s" : "n";
     let messa = false;
     const nuova = kb.map((row) => {
       const cb = row.map((b) => b.callback_data || "");
-      const stessa = cb.some((c) => c.startsWith(`g|${data}|${pid}|`)), suo = cb.some((c) => c.endsWith("|c")) ? "c" : "w";
+      const stessa = cb.some((c) => c.startsWith(`g|${data}|${pid}|`)), suo = cb.some((c) => /\|z?c$/.test(c)) ? "c" : "w";
       if (!(stessa && suo === gruppo)) return row;
       if (messa) return null;
-      messa = true; return [{ text: `✔ ${corto(nome)}: ${ETICHETTE[tipo]}`, callback_data: "x" }];
+      messa = true; return [{ text: `✔ ${corto(nome)}: ${BREVE[tipo]}`, callback_data: "x" }, { text: "↩️ Annulla", callback_data: annullaCb(data, pid, v) }];
     }).filter(Boolean);
     await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: nuova } }, { ignora: true });
   }
+}
+
+// Annulla: toglie la risposta data da Telegram per quella pianta e quel giorno e rimette i pulsanti com'erano.
+async function annulla(st, t, code, cq, data, pid, v, rispondi) {
+  let p = null, tolte = 0;
+  await aggiorna(st, code, (d) => {
+    p = d.plants.find((y) => y.id === pid) || null; if (!p) return false;
+    const prima = d.eventi.length;
+    d.eventi = d.eventi.filter((e) => !(e.plantId === pid && e.data === data && e.fonte === "telegram" && (v === "c" ? e.tipo === "concime" : ESITI.includes(e.tipo))));
+    tolte = prima - d.eventi.length;
+    if (!tolte) return false;
+  });
+  if (!p) return rispondi("Pianta non trovata");
+  await rispondi(tolte ? `Annullato: ${p.nome}` : "Niente da annullare");
+  const kb = cq.message?.reply_markup?.inline_keyboard;
+  if (!kb) return;
+  const altre = kb.flat().some((b) => /^g\|/.test(b.callback_data || "") && !(b.callback_data || "").startsWith(`g|${data}|${pid}|`));
+  const righe = v === "c" ? [[{ text: "🌱 " + corto(p.nome) + " concimata", callback_data: `g|${data}|${pid}|c` }]]
+    : pulsantiAcqua(p, data, { conNome: altre, salto: v === "s", secca: v === "a" });
+  const nuova = kb.flatMap((row) => row.some((b) => b.callback_data === cq.data) ? righe : [row]);
+  await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: nuova } }, { ignora: true });
 }

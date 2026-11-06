@@ -32,6 +32,29 @@ test("dati: il codice viaggia nell'intestazione (e ?code= vale ancora per le app
   assert.equal((await call(dati, "/api/dati?code=" + CODE)).body.data.plants.length, 4);
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { remove: ["app-1"] } });
   assert.equal((await leggiDati()).eventi.length, 0);
+  // controllo ogni 5 minuti: se l'app ha già l'ultima versione, il server risponde «invariato» con pochi byte
+  const ora = (await call(dati, "/api/dati", { headers: H })).body, v = ora.rev + "-" + ora.updatedAt;
+  const inv = await call(dati, "/api/dati", { headers: { ...H, "x-giardino-versione": v } });
+  assert.deepEqual(inv.body, { rev: ora.rev, updatedAt: ora.updatedAt, invariato: true }); assert.ok(JSON.stringify(inv.body).length < 80);
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { vacanza: null } } });
+  const nuovo = await call(dati, "/api/dati", { headers: { ...H, "x-giardino-versione": v } });
+  assert.ok(nuovo.body.data && nuovo.body.rev === ora.rev + 1, "dopo una modifica arrivano i dati nuovi");
+  // stato per le Impostazioni in una richiesta sola
+  const st = (await call(dati, "/api/dati?op=stato", { headers: H })).body;
+  assert.deepEqual(st.mcp, { active: false }); assert.deepEqual(st.telegram, { configured: false }); assert.ok(st.crediti.limite === 300 && !("key" in st.crediti));
+});
+
+test("meteo: due richieste in parallelo, poi 15 minuti dall'archivio", async () => {
+  const { meteo } = await import("../netlify/lib/core.mjs");
+  const st = getStore({ name: "giardino" }), key = "c-meteo-44.18,11.95";
+  await st.delete(key);
+  const m1 = await meteo(44.18, 11.95);
+  assert.ok(m1.days.length === 11 && m1.notte?.length && m1.suolo === 0.2, "giornaliero e orario dalla stessa richiesta");
+  const c = await st.get(key, { type: "json" }); assert.ok(c && c.at <= Date.now());
+  await st.setJSON(key, { ...c, met: { ...c.met, days: c.met.days.map((d, i) => (i ? d : { ...d, cond: "dall'archivio" })) } });
+  assert.equal((await meteo(44.18, 11.95)).days[0].cond, "dall'archivio");
+  await st.setJSON(key, { ...c, at: Date.now() - 16 * 60e3 });
+  assert.notEqual((await meteo(44.18, 11.95)).days[0].cond, "dall'archivio", "dopo 15 minuti si riscarica");
 });
 
 let KEY;
@@ -42,7 +65,8 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   KEY = (await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "on" } })).body.token;
   assert.match(KEY, /^[A-Z2-7]{26}$/);
   assert.equal((await rpc("initialize", { protocolVersion: "2025-06-18" })).result.serverInfo.name, "giardino");
-  assert.equal((await rpc("tools/list")).result.tools.length, 7);
+  assert.equal((await rpc("tools/list")).result.tools.length, 12);
+  assert.equal((await rpc("initialize", {})).result.serverInfo.version, "2.0.0");
   const g = (await strumento("giardino")).content[0].text;
   const ordine = ["Basilico", "Pomodoro", "Zucchine", "Aglio"].map((n) => g.indexOf("**" + n + "**"));
   assert.ok(ordine.every((x, i) => x > 0 && (!i || x > ordine[i - 1])), "piante per zona e in ordine alfabetico");
@@ -63,7 +87,7 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   const agl = (await leggiDati()).plants.find((p) => p.id === "agl");
   assert.equal(agl.scheda.calendario.length, 2, "il mese 13 viene scartato");
   assert.equal(agl.scheda.specie, "aglio");
-  assert.match((await strumento("giardino")).content[0].text, /scheda: compilata il/);
+  assert.match((await strumento("giardino")).content[0].text, /scheda: compilata da te il/);
   assert.equal((await strumento("salva_scheda", { pianta: "agl", calendario: [] })).isError, true);
   // anche senza «salva_scheda» (elenco di strumenti vecchio nel client) la scheda si scrive con «modifica_pianta»
   assert.match((await strumento("giardino")).content[0].text, /Come scrivere le schede[\s\S]*modifica_pianta/);
@@ -80,8 +104,44 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(d.plants.find((p) => p.id === "agl").scheda.descrizione, "Bulbo da piantare in autunno.");
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d.plants.map((p) => (p.id === "agl" ? { ...p, scheda: { ...p.scheda, descrizione: "vecchia", aggiornata: "2020-01-01T00:00:00Z" } } : p)) } } });
   assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").scheda.descrizione, "Bulbo da piantare in autunno.");
+  // livello dell'acqua e prossima innaffiatura nel riepilogo
+  assert.match((await strumento("giardino")).content[0].text, /acqua nel terriccio a fine giornata ~\d+% \(si innaffia sotto \d+%\)/);
+  // una pianta in dettaglio: scheda dell'app se Claude non l'ha scritta
+  const pb = (await strumento("pianta", { pianta: "Basilico" })).content[0].text;
+  assert.match(pb, /Scheda dell'app[\s\S]*luce:/); assert.match(pb, /## Piano/);
+  // diagnosi: senza registra non scrive, con registra salva «meno»
+  const dg = (await strumento("diagnosi", { pianta: "bas", sintomi: ["bagnato", "gialle_molli", "inesistente"] })).content[0].text;
+  assert.match(dg, /Troppa acqua[\s\S]*registra: true/);
+  assert.ok(!(await leggiDati()).eventi.some((e) => e.plantId === "bas" && e.tipo === "meno"));
+  assert.match((await strumento("diagnosi", { pianta: "bas", sintomi: ["bagnato", "marciume"], registra: true })).content[0].text, /Registrato «meno»: correzione appresa ora ×0,9/);
+  const meno = (await leggiDati()).eventi.find((e) => e.plantId === "bas" && e.tipo === "meno");
+  assert.ok(meno && meno.fonte === "claude");
+  assert.equal((await strumento("diagnosi", { pianta: "bas", sintomi: [] })).isError, true);
+  // annulla: toglie l'evento per id
+  assert.match((await strumento("diario", { giorni: 3 })).content[0].text, new RegExp("\\[" + meno.id + "\\]"));
+  assert.match((await strumento("annulla", { id: meno.id })).content[0].text, /Tolto dal diario: Basilico — meno/);
+  assert.ok(!(await leggiDati()).eventi.some((e) => e.id === meno.id));
+  assert.equal((await strumento("annulla", { id: "nessuno" })).isError, true);
+  // nuova pianta senza specie: riconosciuta dal nome
+  assert.match((await strumento("modifica_pianta", { azione: "aggiungi", campi: { nome: "Monstera deliciosa", dove: "interno" } })).content[0].text, /Monstera \/ pothos \/ filodendro \(riconosciuta dal nome\)/);
+  // piano: litri oltre quello che il vaso trattiene ridotti, giorni fuori periodo scartati; poi di nuovo calcolo automatico
+  const sp = (await strumento("salva_piano", { piante: [{ id: "bas", giorni: [{ data: OGGI, azione: "innaffia", litri: 50 }, { data: "2020-01-01", azione: "innaffia", litri: 1 }] }] })).content[0].text;
+  assert.match(sp, /50 L ridotti a/); assert.match(sp, /1 giorni fuori dal periodo/);
+  const pc = (await leggiDati()).piano_claude.data.piante[0];
+  assert.equal(pc.giorni.length, 1); assert.ok(pc.giorni[0].litri < 2);
+  assert.match((await strumento("piano_automatico")).content[0].text, /calcolo automatico/);
+  // giorno di pioggia: per una pianta in casa il messaggio spiega perché va bagnata lo stesso
+  const { notaPioggia } = await import("../netlify/lib/core.mjs");
+  assert.equal(notaPioggia({ dove: "interno" }, { rain: 8 }), "in casa: la pioggia non la raggiunge");
+  assert.equal(notaPioggia({ dove: "aperto" }, { rain: 8 }), ""); assert.equal(notaPioggia({ dove: "interno" }, { rain: 0 }), "");
+  assert.equal((await leggiDati()).piano_claude, null);
+  // impostazioni
+  assert.equal((await strumento("impostazioni", { ora_sera: 20, bicchiere: 0.3 })).isError, false);
+  assert.equal((await leggiDati()).impostazioni.ora_sera, 20);
+  assert.equal((await strumento("impostazioni", { ora_mattina: 2 })).isError, true);
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
   assert.equal((await strumento("vacanza", { annulla: true })).isError, true);
+  assert.match((await strumento("diagnosi", { pianta: "bas", sintomi: ["secco"], registra: true })).content[0].text, /Modifiche non permesse/);
   assert.equal((await call(mcp, "/mcp/AAAAAAAAAAAAAAAAAAAAAAAAAA", { method: "POST", body: { jsonrpc: "2.0", id: 1, method: "ping" } })).status, 401);
 });
 
@@ -117,6 +177,19 @@ test("Telegram: collegamento, /oggi con «Annaffiato» e «Terreno ancora umido�
   assert.equal(nuova.length, kb.length - 1);
   assert.equal(nuova.filter((r) => r[0].text.startsWith("✔ Basilico")).length, 1);
 
+  // «↩️ Annulla»: toglie la risposta e rimette i pulsanti com'erano
+  const annullaB = nuova.flat().find((b) => b.text === "↩️ Annulla");
+  assert.ok(annullaB && annullaB.callback_data.length <= 64, "pulsante Annulla (callback entro 64 byte)");
+  inviati.length = 0;
+  await webhook({ callback_query: { id: "cb2", data: annullaB.callback_data, message: { message_id: 5, chat: { id: 77 }, reply_markup: { inline_keyboard: nuova } } } });
+  assert.ok(!(await leggiDati()).eventi.some((e) => e.plantId === "bas" && e.fonte === "telegram"), "risposta tolta");
+  assert.match(inviati.find((x) => x[0] === "answerCallbackQuery")[1].text, /Annullato: Basilico/);
+  const ripristinata = inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard;
+  assert.deepEqual(ripristinata, kb, "pulsanti di prima");
+  // di nuovo «Terreno ancora umido» (serve per /fatto qui sotto)
+  await webhook({ callback_query: { id: "cb3", data: `g|${OGGI}|bas|u`, message: { message_id: 5, chat: { id: 77 }, reply_markup: { inline_keyboard: ripristinata } } } });
+  assert.equal((await leggiDati()).eventi.filter((e) => e.plantId === "bas" && e.tipo === "umido").length, 1);
+
   // /fatto balcone: solo la zona Balcone (il basilico ha già una risposta, resta il pomodoro)
   inviati.length = 0;
   await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto Balcone" } });
@@ -126,7 +199,13 @@ test("Telegram: collegamento, /oggi con «Annaffiato» e «Terreno ancora umido�
   assert.ok(!d.eventi.some((e) => e.plantId === "zuc"), "la zona Orto resta da fare");
   inviati.length = 0;
   await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto cantina" } });
-  assert.match(inviati.at(-1)[1].text, /Non trovo la zona/);
+  assert.match(inviati.at(-1)[1].text, /Non trovo «cantina»/);
+  // /fatto aglio: segna l'aglio anche se oggi non era in programma
+  inviati.length = 0;
+  await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto aglio" } });
+  assert.match(inviati.at(-1)[1].text, /Segnate come annaffiate: Aglio\./);
+  const ag = (await leggiDati()).eventi.find((e) => e.plantId === "agl" && e.tipo === "fatto");
+  assert.ok(ag && ag.litri > 0);
 });
 
 test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora umido» a tutta riga", async () => {
@@ -161,6 +240,8 @@ test("Siri: codice in intestazione, piano di oggi a voce, «ho innaffiato» per 
   assert.match(r.body, /Ho segnato come annaffiate: Zucchine\./);
   assert.ok((await leggiDati()).eventi.some((e) => e.plantId === "zuc" && e.fonte === "siri"));
   assert.match((await call(siri, "/api/siri/fatto?zona=Orto", { method: "POST", headers: H })).body, /niente da innaffiare in Orto/);
+  assert.match((await call(siri, "/api/siri/fatto?pianta=pomo", { method: "POST", headers: H })).body, /già segnato|Pomodoro/);
+  assert.match((await call(siri, "/api/siri/fatto?pianta=cactus", { method: "POST", headers: H })).body, /Non trovo la pianta cactus/);
 });
 
 test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calcolo automatico", async () => {
@@ -177,15 +258,32 @@ test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calc
   assert.equal(ap.fonte, "Claude");
   assert.ok(zg.length >= 7 && zg.filter((g) => g.auto).length >= 5, "giorni automatici dopo la fine del piano");
   // la sera: messaggio con il pulsante per aprire Claude, una volta sola
+  // fuso in cui adesso sono le 12 (dopo il primo giro il bot salva il fuso del meteo finto, UTC)
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
   const st = getStore({ name: "giardino" }), t = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t, ultimo_avviso_sera: null });
+  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_avviso_sera: null });
   inviati.length = 0; await bot();
   const msg = inviati.find((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude"));
   assert.ok(msg, "avviso di fine piano");
   assert.match(msg[1].text, /finisce domani/);
   assert.match(msg[1].reply_markup.inline_keyboard[0][0].url, /^https:\/\/claude\.ai\/new\?q=/);
   const t2 = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t2, ultimo_avviso_sera: null });
+  await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_avviso_sera: null });
   inviati.length = 0; await bot();
   assert.ok(!inviati.some((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude")), "non si ripete per lo stesso piano");
+});
+
+test("crediti Netlify: una versione contata una volta, avviso su Telegram sopra l'80% una volta al mese", async () => {
+  const c1 = (await call(dati, "/api/dati?op=crediti", { headers: H })).body, c2 = (await call(dati, "/api/dati?op=crediti", { headers: H })).body;
+  assert.equal(c1.pubblicazioni, 1); assert.equal(c2.pubblicazioni, 1); assert.equal(c1.limite, 300); assert.equal(c1.stima, 20);
+  const st = getStore({ name: "giardino" }), key = "u-" + c1.mese, u = await st.get(key, { type: "json" });
+  await st.setJSON(key, { ...u, versioni: [...u.versioni, ...Array.from({ length: 15 }, (_, i) => "v" + i)] });
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12), t = await st.get("t-" + CODE, { type: "json" });
+  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  inviati.length = 0; await bot();
+  assert.ok(inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "avviso crediti");
+  assert.ok(inviati.some((x) => x[0] === "sendMessage" && /Giardino —/.test(x[1].text)), "il messaggio del mattino parte lo stesso");
+  const t2 = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  inviati.length = 0; await bot();
+  assert.ok(!inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "una volta al mese");
 });

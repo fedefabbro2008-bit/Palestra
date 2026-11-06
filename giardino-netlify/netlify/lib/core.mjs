@@ -7,6 +7,7 @@
 //   w-<segreto>   { code }                   dal webhook di Telegram al codice
 import { getStore } from "@netlify/blobs";
 import * as M from "./modello.mjs";
+import { VERSIONE } from "./versione.mjs";
 export { M };
 
 export const store = () => getStore({ name: "giardino", consistency: "strong" });
@@ -51,22 +52,24 @@ export function pota(ev) {
   return (Array.isArray(ev) ? ev : []).filter((e) => e && e.id && e.plantId && /^\d{4}-\d{2}-\d{2}$/.test(e.data || "") && e.data >= lim && !visti.has(e.id) && visti.add(e.id)).slice(-3000);
 }
 
-/* ---------------- Meteo (Open-Meteo) ---------------- */
-const COND = (c) => c === 0 ? "sereno" : c <= 2 ? "poco nuvoloso" : c === 3 ? "nuvoloso" : (c === 45 || c === 48) ? "nebbia" : c >= 95 ? "temporale" : ((c >= 71 && c <= 77) || c === 85 || c === 86) ? "neve" : "pioggia";
+/* ---------------- Meteo (Open-Meteo) ----------------
+   Due richieste in parallelo (vedi M.urlMeteo); il risultato resta nell'archivio 15 minuti, nella stessa ora:
+   bot, Claude, Telegram e Siri lo condividono invece di richiederlo ogni volta (risposte più rapide, meno tempo di calcolo). */
+const METEO_VALIDO = 15 * 60e3;
 export async function meteo(lat, lon) {
-  const q = new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", past_days: "3", forecast_days: "8",
-    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max" });
-  const r = await fetch("https://api.open-meteo.com/v1/forecast?" + q);
-  if (!r.ok) throw new Error("Open-Meteo " + r.status);
-  const j = await r.json(), d = j.daily, tz = j.timezone || "Europe/Rome";
-  const out = { tz, days: d.time.map((t, i) => ({ date: t, cond: COND(d.weather_code[i]), tmax: d.temperature_2m_max[i], tmin: d.temperature_2m_min[i],
-    rain: d.precipitation_sum[i] ?? 0, prob: d.precipitation_probability_max[i], et0: d.et0_fao_evapotranspiration[i] ?? 0, wind: d.wind_speed_10m_max[i] })), suolo: null, notte: null };
-  // dati orari (umidità del suolo, temperature della notte) in una richiesta a parte: se non arrivano, il resto funziona lo stesso
+  const key = `c-meteo-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`, st = store(), ora = new Date();
   try {
-    const r2 = await fetch("https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", forecast_days: "2", hourly: M.ORARIO_PARAMS }));
-    if (r2.ok) { const { oggi, ora } = oraLocale(tz); Object.assign(out, M.datiOrari((await r2.json()).hourly, oggi, ora)); }
-  } catch (e) { console.warn("dati orari non disponibili:", e?.message); }
-  return out;
+    const c = await st.get(key, { type: "json" });
+    if (c && ora - c.at < METEO_VALIDO && new Date(c.at).getUTCHours() === ora.getUTCHours()) return c.met;
+  } catch (e) { console.warn("cache del meteo:", e?.message); }
+  const u = M.urlMeteo(lat, lon);
+  const [r, rIT] = await Promise.all([fetch(u.base), fetch(u.it).catch(() => null)]);
+  if (!r.ok) throw new Error("Open-Meteo " + r.status);
+  const j = await r.json(), jIT = rIT?.ok ? await rIT.json().catch(() => null) : null;
+  const { oggi, ora: h } = oraLocale(j.timezone || "Europe/Rome");
+  const met = M.componiMeteo(j, jIT, oggi, h);
+  try { await st.setJSON(key, { at: ora.getTime(), met }); } catch (e) { console.warn("cache del meteo:", e?.message); }
+  return met;
 }
 export function oraLocale(tz) {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map((x) => [x.type, x.value]));
@@ -87,7 +90,7 @@ export function pianoAttivo(data, met, oggi) {
       return { ...x, giorni: [...(x.giorni || []), ...b.giorni.filter((g) => !date.has(g.data)).map((g) => ({ ...g, auto: true }))].sort((a, c) => (a.data < c.data ? -1 : 1)) }; });
     return { piano: { avvisi: pc.data.avvisi || [], sintesi: pc.data.sintesi || "", piante: [...piante, ...base.piante.filter((x) => !ids.has(x.id))] }, fonte: "Claude", past, fut, base };
   }
-  return { piano: { ...base, sintesi: "" }, fonte: "calcolo automatico", past, fut, base };
+  return { piano: base, fonte: "calcolo automatico", past, fut, base };
 }
 
 /* ---------------- Telegram ---------------- */
@@ -104,6 +107,9 @@ export const TIPI = { f: "fatto", s: "saltato", u: "umido", a: "secco", c: "conc
 export const ETICHETTE = { fatto: "annaffiata", saltato: "saltata", umido: "terreno ancora umido", secco: "era secca, annaffiata", concime: "concimata" };
 export const ESITI = ["fatto", "secco", "umido", "saltato"];
 const conZona = (p) => M.zonaDi(p) ? ` <i>(${esc(M.zonaDi(p))})</i>` : "";
+// Nei giorni di pioggia dice perché una pianta al coperto va bagnata lo stesso (altrimenti sembra un errore).
+const POSTO = { interno: "in casa", serra: "in veranda/serra", riparato: "al riparo" };
+export const notaPioggia = (p, giorno) => (giorno?.rain || 0) >= 1 && POSTO[p.dove] ? `${POSTO[p.dove]}: la pioggia non la raggiunge` : "";
 // Pulsanti per una pianta: “Annaffiato” e “Terreno ancora umido” su righe intere (si leggono bene sul telefono);
 // il nome serve solo se nel messaggio ci sono più piante; “Salto” solo nel messaggio del mattino.
 export function pulsantiAcqua(p, oggi, { conNome = true, salto = true, secca = false } = {}) {
@@ -122,7 +128,8 @@ export function messaggioMattina(data, ap, oggi, { prova = false } = {}) {
   for (const p of piante) {
     const g = azione(p);
     if (g?.azione === "innaffia") {
-      righe.innaffia.push(`💧 <b>${esc(p.nome)}</b>${conZona(p)}: ${fmt(g.litri, g.litri < 2 ? 2 : 1)} L (${esc(M.dose(g.litri, imp))}), ${esc(g.momento)}\n      <i>${esc(g.motivo)}</i>`);
+      const np = notaPioggia(p, d0);
+      righe.innaffia.push(`💧 <b>${esc(p.nome)}</b>${conZona(p)}: ${fmt(g.litri, g.litri < 2 ? 2 : 1)} L (${esc(M.dose(g.litri, imp))}), ${esc(g.momento)}\n      <i>${esc(g.motivo)}${np ? " — " + esc(np) : ""}</i>`);
       tastiera.push(...pulsantiAcqua(p, oggi, { conNome }));
     } else if (g?.azione === "controlla") {
       righe.controlla.push(`👆 <b>${esc(p.nome)}</b>${conZona(p)}: ${esc(g.motivo)}`);
@@ -215,9 +222,21 @@ export function messaggioFinePiano(fine, oggi) {
   const url = "https://claude.ai/new?q=" + encodeURIComponent("Fammi il piano di innaffiatura della settimana per il mio giardino e salvalo.");
   return { testo, tastiera: { inline_keyboard: [[{ text: "✨ Apri Claude", url }]] } };
 }
+/* ---------------- Crediti Netlify (stima) ----------------
+   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot, Claude e Siri, con
+   questo traffico, pochi crediti al mese (stima prudente: 5). Le pubblicazioni si contano dalle impronte di versione viste. */
+export const CREDITI = { limite: 300, pubblicazione: 15, uso: 5, avviso: 240 };
+export async function crediti(st) {
+  const mese = oraLocale("Europe/Rome").oggi.slice(0, 7), key = "u-" + mese;
+  const u = (await st.get(key, { type: "json" })) || { versioni: [], avvisato: false };
+  if (!u.versioni.includes(VERSIONE)) { u.versioni.push(VERSIONE); await st.setJSON(key, u); }
+  const stima = u.versioni.length * CREDITI.pubblicazione + CREDITI.uso;
+  return { mese, pubblicazioni: u.versioni.length, stima, limite: CREDITI.limite, alto: stima >= CREDITI.avviso, avvisato: !!u.avvisato, key };
+}
+export async function segnaAvvisoCrediti(st, c) { const u = (await st.get(c.key, { type: "json" })) || { versioni: [] }; u.avvisato = true; await st.setJSON(c.key, u); }
 export const COMANDI = [
   { command: "oggi", description: "Il piano di oggi, con i pulsanti" },
-  { command: "fatto", description: "Segna come annaffiate le piante di oggi (es. /fatto balcone)" },
+  { command: "fatto", description: "Segna come annaffiate le piante di oggi (es. /fatto balcone, /fatto aglio)" },
   { command: "settimana", description: "I prossimi 7 giorni" },
   { command: "vacanza", description: "Es. /vacanza 10/8 20/8 oppure /vacanza no" },
   { command: "aiuto", description: "Cosa sa fare il bot" }
@@ -225,20 +244,30 @@ export const COMANDI = [
 
 /* ---------------- “Fatto” per tutte le piante di oggi (comando /fatto e Siri) ---------------- */
 // Segna come annaffiate le piante che oggi il piano dice di innaffiare (tutte o di una zona) e che non hanno già una risposta.
-export async function segnaFatte(st, code, ap, oggi, { zona = "", fonte = "telegram" } = {}) {
+// Con «pianta» (id) segna quella pianta anche se oggi il piano non la prevedeva (l'hai annaffiata di tua iniziativa).
+export async function segnaFatte(st, code, ap, oggi, { zona = "", pianta = "", fonte = "telegram" } = {}) {
   const z = String(zona || "").trim().toLowerCase(), fatte = [];
   await aggiorna(st, code, (d) => {
     fatte.length = 0;
     for (const p of M.pianteOrdinate(d.plants)) {
-      if (z && M.zonaDi(p).toLowerCase() !== z) continue;
+      if (pianta ? p.id !== pianta : z && M.zonaDi(p).toLowerCase() !== z) continue;
       const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
-      if (g?.azione !== "innaffia" || d.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo))) continue;
-      d.eventi.push({ id: `${fonte === "siri" ? "sr" : "tg"}-f-${oggi}-${p.id}`, plantId: p.id, tipo: "fatto", data: oggi, fonte, ts: new Date().toISOString(), litri: g.litri });
+      if ((!pianta && g?.azione !== "innaffia") || d.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo))) continue;
+      const litri = g?.azione === "innaffia" ? g.litri : +(M.params(p, { oggi, lat: d.location?.lat, eventi: d.eventi }).rawL * 1.1).toFixed(2);
+      d.eventi.push({ id: `${fonte === "siri" ? "sr" : "tg"}-f-${oggi}-${p.id}`, plantId: p.id, tipo: "fatto", data: oggi, fonte, ts: new Date().toISOString(), litri });
       fatte.push(p.nome);
     }
     if (!fatte.length) return false;
   });
   return fatte;
+}
+// Da un testo libero («balcone», «aglio»): prima una zona, poi una pianta (nome uguale, poi che inizia così, poi che lo contiene).
+export function trovaZonaOPianta(plants, testo) {
+  const q = String(testo || "").trim().toLowerCase(); if (!q) return {};
+  const zona = plants.map(M.zonaDi).find((z) => z && z.toLowerCase() === q);
+  if (zona) return { zona };
+  const p = plants.find((x) => x.nome.toLowerCase() === q) || plants.find((x) => x.nome.toLowerCase().startsWith(q)) || plants.find((x) => x.nome.toLowerCase().includes(q));
+  return p ? { pianta: p.id, nome: p.nome } : { nessuno: true };
 }
 // Testo da far leggere a Siri: cosa innaffiare oggi (tutte le piante o una zona).
 const parlato = (s) => String(s).replace(/≈\s*/g, "circa ").replace(/(\d)½/g, "$1 e mezzo").replace(/½/g, "mezzo").replace(/¼/g, "un quarto").replace(/¾/g, "tre quarti");

@@ -1,6 +1,7 @@
 // Costruisce l'app Giardino per Netlify: app.src.html + modello.mjs + netlify-shim.js → giardino-netlify/public/index.html
 // e copia il modello per le funzioni (giardino-netlify/netlify/lib/modello.mjs). Uso: node giardino/build-app.mjs
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, readdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -36,4 +37,11 @@ ${body}
 </html>
 `);
 await copyFile(join(DIR, 'modello.mjs'), join(NET, 'netlify', 'lib', 'modello.mjs'));
+// Impronta della versione del sito: cambia a ogni pubblicazione che cambia qualcosa. Il bot conta le impronte nuove del mese
+// per stimare i crediti Netlify (ogni pubblicazione costa 15 crediti).
+const file = [];
+for (const dir of ['public', 'netlify/functions', 'netlify/lib']) for (const f of (await readdir(join(NET, dir))).sort()) if (f !== 'versione.mjs') file.push(join(NET, dir, f));
+file.push(join(NET, 'netlify.toml'));
+const h = createHash('sha256'); for (const f of file) h.update(f.slice(NET.length) + '\0').update(await readFile(f));
+await writeFile(join(NET, 'netlify', 'lib', 'versione.mjs'), `// generato da giardino/build-app.mjs: impronta della versione pubblicata\nexport const VERSIONE = "${h.digest('hex').slice(0, 12)}";\n`);
 console.log('Scritto giardino-netlify/public/index.html e giardino-netlify/netlify/lib/modello.mjs');

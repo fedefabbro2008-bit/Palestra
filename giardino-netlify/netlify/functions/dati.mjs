@@ -1,27 +1,42 @@
-import { store, reply, codiceDa, newToken, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
+import { VERSIONE } from "../lib/versione.mjs";
+import { store, reply, codiceDa, newToken, crediti, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
    Viaggia nell'intestazione x-giardino-code (non nell'indirizzo, così non resta nei log); ?code=X vale ancora per le app non aggiornate.
 
    GET  /api/dati                      → { rev, data }  (data null se non c'è ancora niente)
+        con l'intestazione x-giardino-versione = "rev-updatedAt" già in mano all'app → { rev, updatedAt, invariato: true }
+        se nel frattempo non è cambiato niente (pochi byte invece di tutti i dati: il controllo ogni 5 minuti costa quasi zero)
+   GET  /api/dati?op=stato            → { mcp, telegram, crediti }  lo stato per le Impostazioni, in una richiesta sola
    POST /api/dati  { changes:{campo:valore}, add:[eventi], remove:[id eventi] }
         Unisce sul server: i campi cambiati sostituiscono quelli salvati, gli eventi si aggiungono o tolgono uno per uno.
         Così le modifiche fatte nel frattempo da Claude o da Telegram non si perdono.
    GET/POST /api/dati?op=mcp          { action: on | new | off | write, on }   chiave per Claude
-   GET/POST /api/dati?op=telegram     { action: token, token } | { action: test } | { action: off } */
+   GET/POST /api/dati?op=telegram     { action: token, token } | { action: test } | { action: off }
+   GET  /api/dati?op=versione         → { versione }  impronta della versione online, senza codice (per il controllo dopo la pubblicazione) */
 
 export const config = { path: "/api/dati", rateLimit: { windowSize: 60, windowLimit: 120, aggregateBy: ["ip", "domain"] } };
 const MAX = 2 * 1024 * 1024;
 
 export default async (request) => {
   const url = new URL(request.url), code = codiceDa(request), op = url.searchParams.get("op") || "";
+  if (op === "versione") return reply({ versione: VERSIONE });
   if (!code) return reply({ error: "codice mancante o non valido" }, 400);
   const st = store();
   try {
     if (op === "mcp") return await opMcp(request, st, code);
     if (op === "telegram") return await opTelegram(request, st, code);
-    if (request.method === "GET") { const cur = await leggi(st, code); return reply(cur ? { rev: cur.rev, updatedAt: cur.updatedAt, data: cur.data } : { rev: 0, data: null }); }
+    if (op === "crediti") { const { key, ...c } = await crediti(st); return reply(c); }
+    if (op === "stato") {
+      const [m, t, c] = await Promise.all([st.get("m-" + code, { type: "json" }), st.get("t-" + code, { type: "json" }), crediti(st).catch(() => null)]);
+      return reply({ mcp: statoMcp(m), telegram: statoTelegram(t), crediti: c ? (({ key, ...x }) => x)(c) : null });
+    }
+    if (request.method === "GET") {
+      const cur = await leggi(st, code);
+      if (cur && request.headers.get("x-giardino-versione") === cur.rev + "-" + cur.updatedAt) return reply({ rev: cur.rev, updatedAt: cur.updatedAt, invariato: true });
+      return reply(cur ? { rev: cur.rev, updatedAt: cur.updatedAt, data: cur.data } : { rev: 0, data: null });
+    }
     if (request.method !== "POST") return reply({ error: "metodo non consentito" }, 405);
     const raw = await request.text();
     if (raw.length > MAX) return reply({ error: "dati troppo grandi" }, 413);
@@ -52,12 +67,14 @@ function conSchede(nuove, vecchie) {
   });
 }
 
+const statoMcp = (c) => c?.token ? { active: true, token: c.token, write: c.write === true } : { active: false };
+const statoTelegram = (x) => x ? { configured: true, username: x.username || "", collegato: !!x.chat_id } : { configured: false };
 async function opMcp(request, st, code) {
   const mkey = "m-" + code;
   const f = await st.getWithMetadata(mkey, { type: "json" });
   const cur = f?.data || null, on = !!cur?.token;
-  const stato = (c) => ({ active: true, token: c.token, write: c.write === true });
-  if (request.method === "GET") return reply(on ? stato(cur) : { active: false });
+  const stato = statoMcp;
+  if (request.method === "GET") return reply(stato(cur));
   const body = await request.json().catch(() => null), action = body?.action;
   if (action === "off") { if (on) await st.delete("r-" + cur.token); await st.delete(mkey); return reply({ active: false }); }
   if (action === "write") {
@@ -76,7 +93,7 @@ async function opMcp(request, st, code) {
 async function opTelegram(request, st, code) {
   const tkey = "t-" + code;
   const t = await st.get(tkey, { type: "json" });
-  const stato = (x) => x ? { configured: true, username: x.username || "", collegato: !!x.chat_id } : { configured: false };
+  const stato = statoTelegram;
   if (request.method === "GET") return reply(stato(t));
   const body = await request.json().catch(() => null), action = body?.action;
   if (action === "off") {

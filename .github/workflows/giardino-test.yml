@@ -37,3 +37,6 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Prove
         run: npm test
+      - name: Modelli meteo disponibili (solo informativo)
+        continue-on-error: true
+        run: node test/meteo-modelli.mjs

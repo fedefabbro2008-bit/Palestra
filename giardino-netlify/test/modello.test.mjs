@@ -76,3 +76,107 @@ test("vasi piccoli: la chioma non supera circa il doppio del vaso (niente acqua 
   const conArea = M.params({ ...p, area: 0.1 }, { oggi: "2026-11-03", lat: 44 });
   assert.equal(conArea.chioma, 0.1, "se la superficie è indicata vale quella");
 });
+
+test("veranda/serra: niente pioggia, temperature proprie, più sole che in casa; il vetro tiene 4 gradi", () => {
+  const base = { id: "s", specie: "pomodoro", fase: "vegetativa", colt: "vaso", vaso: 12, num: 1, luce: 6 };
+  const serra = M.params({ ...base, dove: "serra" }, { oggi: "2026-07-15", lat: 44 }), casa = M.params({ ...base, dove: "interno" }, { oggi: "2026-07-15", lat: 44 });
+  assert.ok(serra.interno && serra.serra);
+  assert.deepEqual(serra.tcasa, M.TSERRA_DEF);
+  assert.ok(M.consumoL(serra, { date: "2026-07-15" }) > M.consumoL(casa, { date: "2026-07-15" }), "in serra beve più che in casa");
+  assert.equal(M.pioggiaL({ ...base, dove: "serra" }, serra, { rain: 20 }), 0);
+  assert.equal(M.avvisiDomani([{ ...base, nome: "P", dove: "serra" }], { tmin: 5, tmax: 12 }, [{ ora: "04", t: 5 }]).length, 0, "5 °C fuori: in serra niente gelo");
+  assert.equal(M.avvisiDomani([{ ...base, nome: "P", dove: "serra" }], { tmin: 0, tmax: 8 }, [{ ora: "04", t: 0 }]).length, 1, "0 °C fuori: avviso anche in serra");
+});
+
+test("pioggia prevista pesata con la probabilità", () => {
+  assert.equal(M.pioggiaAttesa({ rain: 20, prob: 56 }).rain, 14);
+  assert.equal(M.pioggiaAttesa({ rain: 20, prob: 95 }).rain, 20);
+  assert.equal(M.pioggiaAttesa({ rain: 20 }).rain, 20);
+});
+
+test("avviso di gelo: in veranda/serra non dice di portare al riparo", () => {
+  const [a] = M.avvisiDomani([{ id: "a", nome: "Basilico", specie: "basilico", colt: "vaso", dove: "aperto" }, { id: "b", nome: "Pomodori", specie: "pomodoro", colt: "vaso", dove: "serra" }], { tmin: 0, tmax: 9 }, [{ ora: "04", t: 0 }]);
+  assert.match(a.testo, /porta al riparo o copri con tessuto non tessuto Basilico; in veranda\/serra chiudi bene e copri Pomodori\./);
+});
+
+test("calibrazione: la stessa risposta di fila corregge di più, una opposta riparte", () => {
+  const ev = (tipi) => tipi.map((tipo, i) => ({ id: "e" + i, plantId: "x", tipo, data: "2026-11-0" + (i + 1), fonte: "app" }));
+  assert.ok(Math.abs(M.calibrazione(ev(["umido"]), "x", "2026-11-09") - 0.9) < 1e-9);
+  assert.ok(Math.abs(M.calibrazione(ev(["umido", "umido", "umido"]), "x", "2026-11-09") - 0.9 * 0.85 * 0.8) < 1e-9);
+  assert.ok(Math.abs(M.calibrazione(ev(["umido", "secco"]), "x", "2026-11-09") - 0.9 * 1.12) < 1e-9);
+});
+
+test("vaso: terracotta beve di più, senza fori dose esatta, riserva allunga gli intervalli, caldo e vento sui vasi piccoli", () => {
+  const p = { id: "v", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 4, num: 1, luce: 7, dove: "aperto" };
+  const k = (x) => M.params({ ...p, ...x }, { oggi: "2026-07-15", lat: 44 });
+  assert.ok(Math.abs(k({ materiale: "terracotta" }).lPerMm / k({}).lPerMm - 1.25) < 1e-9);
+  const r = k({ riserva: 1 }); assert.ok(Math.abs(r.rawL - k({}).rawL - 1) < 1e-9 && r.riserva === 1);
+  const base = k({}), d = { date: "2026-07-15", et0: 5, tmax: 34, wind: 35 };
+  assert.ok(Math.abs(M.consumoL(base, d) / M.consumoL(base, { ...d, tmax: 25, wind: 5 }) - 1.25) < 1e-9, "+15% caldo +10% vento");
+  const giorni = ["2026-07-15", "2026-07-16", "2026-07-17"].map((date) => ({ date, et0: 6, tmax: 30, tmin: 18, rain: 0, prob: 0, wind: 5 }));
+  const piano = (x) => M.pianoLocale({ piante: [{ ...p, ...x }], fut: giorni, oggi: "2026-07-15", lat: 44 }).piante[0].giorni.find((g) => g.azione === "innaffia");
+  const ap = piano({}), ch = piano({ materiale: "chiuso" });
+  assert.match(ch.motivo, /senza fori/); assert.match(ap.motivo, /esce dal foro/);
+  // pioggia forte su vaso senza fori: avviso
+  const pioggia = giorni.map((g) => ({ ...g, rain: 40, prob: 100 }));
+  assert.match(M.pianoLocale({ piante: [{ ...p, materiale: "chiuso" }], fut: pioggia, oggi: "2026-07-15", lat: 44 }).avvisi.join(" "), /vasi senza fori/);
+});
+
+test("avvisi di temporale, grandine e raffiche", () => {
+  const vaso = { id: "b", nome: "Basilico", specie: "basilico", colt: "vaso", vaso: 4, dove: "aperto", materiale: "chiuso" };
+  const terra = { id: "z", nome: "Zucchine", specie: "zucchina", colt: "terra", dove: "aperto" };
+  const serra = { id: "s", nome: "Limone", specie: "agrumi", colt: "vaso", vaso: 40, dove: "serra" };
+  const dom = { tmin: 15, tmax: 26, wind: 20 };
+  const gr = M.avvisiDomani([vaso, terra, serra], { ...dom, code: 96 }).find((a) => a.tipo === "grandine");
+  assert.match(gr.testo, /metti al riparo Basilico; copri .* Zucchine/); assert.ok(!gr.testo.includes("Limone"), "in serra niente grandine");
+  const tm = M.avvisiDomani([vaso, serra], { ...dom, code: 95, rain: 18 }).find((a) => a.tipo === "temporale");
+  assert.match(tm.testo, /circa 18 mm.*vasi leggeri \(Basilico\).*senza fori \(Basilico\)/);
+  assert.match(M.avvisiDomani([vaso], { ...dom, raffiche: 72 }).find((a) => a.tipo === "vento").testo, /^Raffiche fino a 72 km\/h/);
+  assert.equal(M.avvisiDomani([vaso], { ...dom, code: 3, raffiche: 40 }).length, 0, "cielo coperto e raffiche deboli: niente avvisi");
+  const fut = ["2026-07-15", "2026-07-16", "2026-07-17"].map((date, i) => ({ date, et0: 5, tmax: 26, tmin: 15, rain: 0, prob: 0, wind: 5, code: i === 2 ? 99 : 1 }));
+  assert.match(M.pianoLocale({ piante: [vaso], fut, oggi: "2026-07-15", lat: 44 }).avvisi.join(" "), /Possibile grandine venerdì/);
+});
+
+test("primi giorni: media con ICON-2I solo dove copre il giorno intero", () => {
+  const days = ["2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"].map((date) => ({ date, rain: 10, prob: 80, tmax: 14, tmin: 6 }));
+  const ore = (d, n, p, t) => [...Array(n)].map((_, h) => ({ t: d + "T" + String(h).padStart(2, "0") + ":00", p, T: t + (h === 14 ? 4 : 0) }));
+  const h = [...ore("2026-11-06", 24, 0.25, 8), ...ore("2026-11-07", 24, 0, 7), ...ore("2026-11-08", 12, 1, 7)];
+  const out = M.mediaModelli(days, { time: h.map((x) => x.t), precipitation: h.map((x) => x.p), temperature_2m: h.map((x) => x.T) }, "2026-11-06");
+  assert.deepEqual(out.map((d) => d.rain), [10, 8, 5, 10, 10], "ieri no; oggi (10+6)/2; domani (10+0)/2; terzo giorno incompleto: resta");
+  assert.deepEqual(out[1].rain_modelli, [10, 6]); assert.equal(out[1].prob, 80);
+  assert.equal(out[1].tmax, 13); assert.equal(out[1].tmin, 7);
+  assert.equal(M.mediaModelli(days, undefined, "2026-11-06"), days);
+});
+
+test("specie riconosciuta dal nome", () => {
+  const casi = { "Nepenthes mirabilis": "nepenthes", "Chlorophytum comosum": "appartamento", "Aglio": "aglio", "Pomodori ciliegini": "pomodoro", "Melone giallo": "melone", "Melo cotogno": "fruttiferi",
+    "Ficus benjamin": "ficus", "Erba cipollina": "prezzemolo", "Limone in terrazzo": "agrumi", "Tulipani rossi": "bulbose", "Dionea": "carnivora", "Monstera deliciosa": "tropicale", "Basilico genovese": "basilico", "Pianta di Marta": null, "": null,
+    "Fichi": "fruttiferi", "Gerani del balcone": "geranio", "Lattughe": "lattuga", "Zucchine": "zucchina", "Ceci": "pisello", "Cavoli neri": "cavolo", "Rose rampicanti": "rosa", "Erbe aromatiche": "rosmarino", "Pianta grassa": "succulenta", "Rosso": null, "Fioriera": null };
+  for (const [n, k] of Object.entries(casi)) assert.equal(M.specieDaNome(n), k, n);
+  for (const k of Object.keys(M.SPECIE)) if (k !== "altro") assert.ok(M.ALIAS[k], k + ": nomi per la ricerca");
+});
+
+test("scheda dell'app per ogni specie, senza Claude", () => {
+  for (const k of Object.keys(M.SPECIE)) {
+    const sc = M.schedaAuto({ id: "x", nome: "X", specie: k, colt: "vaso", vaso: 2, luce: 8, dove: "aperto" }, 44);
+    assert.ok(M.INFO[k] && sc.descrizione && sc.consigli.length, k + ": testi");
+    for (const c of ["luce", "temperatura", "terreno", "acqua", "umidita", "concime"]) assert.ok(sc.condizioni[c], k + ": " + c);
+    if (M.SPECIE[k].ann) assert.ok(sc.fasi.length >= 3 && /dalla semina/.test(sc.fasi[0].quando), k + ": fasi");
+    else assert.deepEqual(Object.keys(sc.stagioni), ["inverno", "primavera", "estate", "autunno"], k + ": stagioni");
+  }
+  const nep = M.schedaAuto({ nome: "Nepenthes", specie: "nepenthes", colt: "vaso", vaso: 12, luce: 0, dove: "interno" }, 44);
+  assert.match(nep.condizioni.concime, /Niente concime/); assert.match(nep.condizioni.acqua, /piovana/);
+  const ag = M.schedaAuto({ nome: "Aglio", specie: "aglio", colt: "vaso", vaso: 30, luce: 4, dove: "aperto" }, 44);
+  assert.equal(ag.fasi.find((f) => /bulbo/i.test(f.fase)).cosa.includes("smetti"), true);
+  const bas = M.schedaAuto({ nome: "Basilico", specie: "basilico", colt: "vaso", vaso: 1, luce: 8, dove: "aperto", materiale: "chiuso" }, 44);
+  assert.ok(bas.consigli.some((c) => /Vaso piccolo/.test(c)) && bas.consigli.some((c) => /senza fori/.test(c)), "consigli dalla pianta");
+});
+
+test("diagnosi guidata: troppa, poca, incerta, altre cause", () => {
+  assert.equal(M.diagnosi(["bagnato", "appassita", "gialle_molli"]).registra, "meno");
+  assert.equal(M.diagnosi(["secco", "appassita"]).registra, "piu");
+  assert.equal(M.diagnosi(["bagnato", "secco"]).verdetto, "incerto");
+  const nep = M.diagnosi(["punte"], { specie: "nepenthes" });
+  assert.equal(nep.verdetto, "altro"); assert.match(nep.altri[0], /piovana o distillata/);
+  assert.equal(M.diagnosi([]).verdetto, "bene");
+});
