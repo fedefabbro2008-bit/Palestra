@@ -60,7 +60,7 @@ export async function meteo(lat, lon) {
   const key = `c-meteo-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`, st = store(), ora = new Date();
   try {
     const c = await st.get(key, { type: "json" });
-    if (c && ora - c.at < METEO_VALIDO && new Date(c.at).getUTCHours() === ora.getUTCHours()) return c.met;
+    if (c && ora - c.at < METEO_VALIDO && new Date(c.at).getUTCHours() === ora.getUTCHours()) { M.registraClima(lat, M.climaDa(c.met)); return c.met; }
   } catch (e) { console.warn("cache del meteo:", e?.message); }
   const u = M.urlMeteo(lat, lon);
   const [r, rIT] = await Promise.all([fetch(u.base), fetch(u.it).catch(() => null)]);
@@ -68,8 +68,20 @@ export async function meteo(lat, lon) {
   const j = await r.json(), jIT = rIT?.ok ? await rIT.json().catch(() => null) : null;
   const { oggi, ora: h } = oraLocale(j.timezone || "Europe/Rome");
   const met = M.componiMeteo(j, jIT, oggi, h);
+  met.storico = await storicoTemperature(st, lat, lon, oggi);
+  M.registraClima(lat, M.climaDa(met));
   try { await st.setJSON(key, { at: ora.getTime(), met }); } catch (e) { console.warn("cache del meteo:", e?.message); }
   return met;
+}
+// Temperature medie dei 400 giorni passati (per le fasi a gradi-giorno): una richiesta al giorno, poi dall'archivio.
+async function storicoTemperature(st, lat, lon, oggi) {
+  const key = `c-storico-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`;
+  try { const c = await st.get(key, { type: "json" }); if (c?.giorno === oggi && c.temp) return c.temp; } catch {}
+  try {
+    const r = await fetch(M.urlStorico(lat, lon, oggi));
+    if (r.ok) { const temp = M.storicoDa(await r.json()); if (Object.keys(temp).length) { await st.setJSON(key, { giorno: oggi, temp }).catch(() => {}); return temp; } }
+  } catch (e) { console.warn("storico delle temperature:", e?.message); }
+  return null;
 }
 export function oraLocale(tz) {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map((x) => [x.type, x.value]));

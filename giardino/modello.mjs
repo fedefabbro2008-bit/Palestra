@@ -235,16 +235,59 @@ export function pianteOrdinate(piante){
 const DA_LETTERA = {G:'germinazione',P:'piantina',V:'vegetativa',F:'fioritura',T:'fruttificazione',M:'maturazione',R:'riposo'};
 const ORDINE_FASI = ['germinazione','piantina','vegetativa','fioritura','fruttificazione','maturazione'];
 
+/* ---------------- Gradi-giorno: le fasi delle annuali seguono le temperature vere ----------------
+   I giorni del ciclo (SPECIE.ciclo) valgono per un anno tipico. Ogni giorno vero conta (T − base) / (riferimento − base)
+   giorni «tipici» (da 0 a 1,6): col freddo la pianta cresce più piano, col caldo più in fretta. T = media del giorno:
+   misurata (storico di Open-Meteo dalla semina), prevista (prossimi giorni), poi la stessa settimana dell'anno scorso
+   e, se manca anche quella, una stima dal clima della latitudine. In casa e in veranda, la temperatura per stagione.
+   GRADI[specie] = [base, riferimento] in °C (riferimento ≈ media tipica durante il ciclo). Senza dati del meteo: giorni. */
+export const GRADI = {pomodoro:[10,21], zucchina:[10,21], cetriolo:[10,21], melone:[12,23], peperone:[10,21], melanzana:[12,22], lattuga:[4,14],
+  spinaci:[2,12], cavolo:[4,15], fagiolo:[10,20], pisello:[4,12], patata:[6,15], carota:[4,14], ravanello:[4,13], aglio:[0,10], cipolla:[4,13],
+  basilico:[10,21], prezzemolo:[4,14]};
+const CLIMA=new Map(), ETA_CACHE=new Map(), kLat=lat=>lat==null?'x':(+lat).toFixed(2);
+// L'app e il server registrano qui il meteo della posizione (storico + previsioni): lo usano le fasi automatiche.
+export function registraClima(lat, c){ if(!c) return; CLIMA.set(kLat(lat), c); ETA_CACHE.clear(); }
+export function climaDa(met){
+  if(!met || !met.storico) return null;
+  const prev={}; for(const d of met.days||[]) if(d.tmax!=null && d.tmin!=null) prev[d.date]=(d.tmax+d.tmin)/2;
+  return {storico:met.storico, prev};
+}
+export function tempMedia(c, iso, lat){
+  if(c){
+    const v=c.prev[iso]??c.storico[iso]; if(v!=null) return v;
+    let s=0,n=0; for(let k=-7;k<=7;k++){ const x=c.storico[addDays(iso,k-365)]; if(x!=null){ s+=x; n++; } }   // stessa settimana, un anno fa
+    if(n>=5) return s/n;
+  }
+  const L=Math.abs(lat??44), doy=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  return 27.5-0.31*L - (4+0.15*L)*Math.cos(2*Math.PI*(doy-15-(lat<0?182:0))/365);
+}
+// giorni «tipici» di crescita dalla semina (o dal trapianto, più l'età della piantina) a «giorno»
+export function etaEquivalente(p, giorno, lat){
+  const sp=SPECIE[p.specie]||SPECIE.altro, g=GRADI[p.specie], c=CLIMA.get(kLat(lat)), tr=p.tipo_data==='trapianto'?sp.trap:0;
+  const reali=giorniTra(p.data_semina, giorno);
+  if(!g || !c || reali<=0) return {eta:reali+tr, reali};
+  const k=[p.specie,p.data_semina,p.tipo_data,p.dove,JSON.stringify(p.tcasa||''),giorno,kLat(lat)].join('|');
+  if(ETA_CACHE.has(k)) return ETA_CACHE.get(k);
+  const [tb,tref]=g, casa=alCoperto(p), tc=casa?tempCasa(p):null;
+  let eq=tr, d=p.data_semina;
+  for(let i=0;i<Math.min(reali,600);i++){ const T=casa?tempCasaGiorno(tc,d,lat):tempMedia(c,d,lat); eq+=Math.max(0,Math.min(1.6,(T-tb)/(tref-tb))); d=addDays(d,1); }
+  const r={eta:+eq.toFixed(1), reali, ritmo:+((eq-tr)/reali).toFixed(2)};
+  if(ETA_CACHE.size>3000) ETA_CACHE.clear(); ETA_CACHE.set(k,r); return r;
+}
+export const urlStorico = (lat, lon, oggi) => 'https://historical-forecast-api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat, longitude:lon, timezone:'auto',
+  start_date:addDays(oggi,-400), end_date:addDays(oggi,-1), daily:'temperature_2m_mean'});
+export function storicoDa(j){ const d=j?.daily, o={}; if(d?.time) d.time.forEach((t,i)=>{ const v=d.temperature_2m_mean?.[i]; if(v!=null&&isFinite(v)) o[t]=v; }); return o; }
+
 /* ---------------- Fase di crescita (manuale o automatica) ---------------- */
 export function faseEffettiva(p, oggi, lat){
   const sp=SPECIE[p.specie]||SPECIE.altro;
   if(p.fase!=='auto') return {fase:FASI[p.fase]?p.fase:'vegetativa', auto:false};
   if(sp.ann){
     if(!p.data_semina) return {fase:'vegetativa', auto:true, nota:'manca la data di semina o trapianto'};
-    const eta=giorniTra(p.data_semina, oggi)+(p.tipo_data==='trapianto'?sp.trap:0);
+    const {eta, ritmo}=etaEquivalente(p, oggi, lat);
     if(eta<0) return {fase:'germinazione', auto:true, eta, nota:'semina non ancora fatta'};
-    for(let i=0;i<ORDINE_FASI.length;i++){ if(sp.ciclo[i]!=null && eta<sp.ciclo[i]) return {fase:ORDINE_FASI[i], auto:true, eta}; }
-    return {fase:'maturazione', auto:true, eta, nota:'ciclo probabilmente concluso'};
+    for(let i=0;i<ORDINE_FASI.length;i++){ if(sp.ciclo[i]!=null && eta<sp.ciclo[i]) return {fase:ORDINE_FASI[i], auto:true, eta, ritmo}; }
+    return {fase:'maturazione', auto:true, eta, ritmo, nota:'ciclo probabilmente concluso'};
   }
   let m=meseDi(oggi); if(lat!=null && lat<0) m=(m+6)%12;   // emisfero sud: stagioni invertite
   return {fase:DA_LETTERA[(sp.cal||SPECIE.altro.cal)[m]], auto:true};
@@ -252,7 +295,41 @@ export function faseEffettiva(p, oggi, lat){
 
 /* ---------------- Luce, ambiente, evaporazione ---------------- */
 const LUCE_DA_ESPO = {sole:8, mezzombra:4, ombra:2};
-export function luceOre(p){ const h=Number(p.luce); return p.luce!=null && p.luce!=='' && isFinite(h) ? Math.max(0,Math.min(14,h)) : (LUCE_DA_ESPO[p.espo] ?? 6); }
+/* Sole diretto secondo la stagione. Con l'orientamento (verso dove guarda il balcone o la finestra) le ore di sole
+   scritte dall'utente valgono per il giorno in cui le ha scritte (luce_data); negli altri giorni si scalano con la
+   geometria del sole: ore in cui il sole è alto almeno 8° e davanti alla parete (entro 85° dalla sua direzione).
+   «aperto» = nessuna parete (orto, giardino): conta tutto il giorno. Senza orientamento resta il numero fisso. */
+export const ORIENTAMENTI = {N:0, NE:45, E:90, SE:135, S:180, SO:225, O:270, NO:315, aperto:null};
+const SOLE_CACHE = new Map();
+export function oreSoleGeom(iso, orient, lat){
+  const k=iso+'|'+orient+'|'+Math.round((lat??44)*10);
+  if(SOLE_CACHE.has(k)) return SOLE_CACHE.get(k);
+  const r=Math.PI/180, phi=(lat??44)*r, n=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), A=ORIENTAMENTI[orient];
+  let min=0;
+  for(let m=0;m<1440;m+=5){
+    const w=(m/60-12)*15*r, se=Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(w);
+    if(se<Math.sin(8*r)) continue;
+    if(A!=null && A!==undefined){
+      const el=Math.asin(se), ca=(Math.sin(dec)-Math.sin(el)*Math.sin(phi))/(Math.cos(el)*Math.cos(phi));
+      let az=Math.acos(Math.max(-1,Math.min(1,ca)))/r; if(w>0) az=360-az;          // azimut da nord, in senso orario
+      const diff=Math.abs(((az-A+540)%360)-180); if(diff>85) continue;
+    }
+    min+=5;
+  }
+  const h=+(min/60).toFixed(2); if(SOLE_CACHE.size>2000) SOLE_CACHE.clear(); SOLE_CACHE.set(k,h); return h;
+}
+export function luceOre(p, oggi, lat){
+  const v=Number(p.luce), h=p.luce!=null && p.luce!=='' && isFinite(v) ? Math.max(0,Math.min(14,v)) : (LUCE_DA_ESPO[p.espo] ?? 6);
+  if(!oggi || !p.orient || !(p.orient in ORIENTAMENTI) || !/^\d{4}-\d{2}-\d{2}$/.test(p.luce_data||'') || p.luce_data===oggi) return h;
+  const g0=oreSoleGeom(p.luce_data,p.orient,lat), g=oreSoleGeom(oggi,p.orient,lat), max=oreSoleGeom(oggi,'aperto',lat);
+  // in proporzione; se quel giorno il sole geometrico era quasi nullo (parete a nord d'inverno), si aggiunge la differenza
+  const x = g0>=1.5 ? h*g/g0 : h+0.7*(g-g0);
+  return +Math.max(0,Math.min(14,max,x)).toFixed(1);
+}
+// Nuvole: in casa e in veranda la parte di consumo dovuta alla luce segue il sole previsto del giorno
+// (d.sole = ore di sole / ore di luce, da Open-Meteo); con il cielo coperto resta la luce diffusa (35%).
+export const fattoreNuvole = d => d?.sole==null || !isFinite(d.sole) ? 1 : 0.35+0.65*Math.min(1, Math.max(0,d.sole)/0.85);
 export const fattoreLuce = h => 0.35 + 0.65*Math.min(h,9)/8;   // 0 h → 35%, 8 h → 100%, 9+ h → 108%
 // In casa (mm/giorno): una parte viene dalla luce della finestra, una dall'aria. Più la stanza è calda, più l'aria
 // “tira” acqua (deficit di vapore, proporzionale alla pressione di saturazione) e più la luce fa traspirare
@@ -339,7 +416,7 @@ export function params(p, ctx={}){
   const fe=faseEffettiva(p, oggi, ctx.lat);
   const sp=SPECIE[p.specie]||SPECIE.altro, fa=FASI[fe.fase];
   const membri=membriVaso(p, fe.fase), nTot=membri.reduce((a,m)=>a+m.num,0);
-  const h=ctx.luce!=null?ctx.luce:luceOre(p), interno=alCoperto(p), serra=p.dove==='serra', fl=interno?1:fattoreLuce(h);
+  const h=ctx.luce!=null?ctx.luce:luceOre(p, ctx.oggi, ctx.lat), interno=alCoperto(p), serra=p.dove==='serra', fl=interno?1:fattoreLuce(h);
   let kcA=0, chioma=0, pMin=1;
   for(const m of membri){
     const s=SPECIE[m.specie]||SPECIE.altro, f=FASI[m.fase]||FASI.vegetativa, a=s.area*m.num;
@@ -347,7 +424,7 @@ export function params(p, ctx={}){
   }
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',faseRitmo:fe.ritmo??null,membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
     oggi, lat:ctx.lat, tcasa:interno?tempCasa(p):null};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
@@ -370,7 +447,7 @@ export function params(p, ctx={}){
   return {...base,vaso:false,chioma,area,tawL,rawL:tawL*pMin,pMin,lPerMm:kcA/chioma*area*fl*calib,pioggiaArea:area*0.85};
 }
 // in casa conta la temperatura della stanza in quel giorno (d.date; senza data, oggi)
-export const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra)*k.lPerMm : (d?.et0||0)*k.lPerMm*fattoreVaso(k,d);
+export const consumoL = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra)*k.lPerMm : (d?.et0||0)*k.lPerMm*fattoreVaso(k,d);
 // Effetto vaso all'aperto: l'ET0 conta già caldo e vento per il terreno, ma un vaso scalda e si asciuga anche dai lati.
 // Con 30 °C o più: +15% per i vasi fino a 10 L al sole (5+ ore), +7% per gli altri; con vento da 30 km/h: +10% / +5%.
 export function fattoreVaso(k,d){
@@ -645,7 +722,7 @@ export const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_
    Due richieste a Open-Meteo, in parallelo: (1) il modello scelto da Open-Meteo, giornaliero e orario insieme
    (3 giorni passati e 8 previsti; dall'orario: umidità del suolo e temperature della notte); (2) ICON-2I ora per ora
    per la media dei primi giorni. Se la seconda non risponde, la prima basta. */
-export const DAILY_PARAMS='weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max';
+export const DAILY_PARAMS='weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max,sunshine_duration,daylight_duration';
 export function urlMeteo(lat, lon){
   const q=o=>'https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat, longitude:lon, timezone:'auto', ...o});
   return {base:q({past_days:'3', forecast_days:'8', daily:DAILY_PARAMS, hourly:ORARIO_PARAMS}), it:q({forecast_days:'3', hourly:MODELLO_IT_PARAMS, models:MODELLO_IT})};
@@ -656,7 +733,8 @@ export function componiMeteo(j, jIT, oggi, ora){
   const d=j.daily;
   let days=d.time.map((t,i)=>({date:t, cond:condizioneMeteo(d.weather_code[i]), tmax:d.temperature_2m_max[i], tmin:d.temperature_2m_min[i],
     rain:d.precipitation_sum[i]??0, prob:d.precipitation_probability_max[i], et0:d.et0_fao_evapotranspiration[i]??0, wind:d.wind_speed_10m_max[i],
-    raffiche:d.wind_gusts_10m_max?.[i]??null, code:d.weather_code[i]}));
+    raffiche:d.wind_gusts_10m_max?.[i]??null, code:d.weather_code[i],
+    sole:d.sunshine_duration?.[i]!=null && d.daylight_duration?.[i]>0 ? +(d.sunshine_duration[i]/d.daylight_duration[i]).toFixed(2) : null}));
   if(jIT?.hourly) days=mediaModelli(days, jIT.hourly, oggi);
   return {tz:j.timezone||'Europe/Rome', days, ...datiOrari(j.hourly, oggi, ora)};
 }
@@ -670,8 +748,11 @@ export function calendarioAuto(p, lat){
   const voce=(mese,fase)=>({mese, fase, nome:nomeFase(p.specie,fase), frutti:fase==='fruttificazione'&&!bulbo, raccolta:fase==='maturazione'});
   if(sp.ann){
     if(!p.data_semina) return {tipo:null, mesi:[]};
-    const inizio=p.data_semina, eta0=p.tipo_data==='trapianto'?sp.trap:0;
-    const ultimo=addDays(inizio, Math.max(0, sp.ciclo.filter(x=>x!=null).pop()-eta0-1));
+    const inizio=p.data_semina, fineCiclo=sp.ciclo.filter(x=>x!=null).pop();
+    // ultimo giorno del ciclo: con i gradi-giorno può essere prima o dopo dei giorni tipici
+    let ultimo=addDays(inizio, Math.max(0, fineCiclo-(p.tipo_data==='trapianto'?sp.trap:0)-1));
+    if(GRADI[p.specie] && CLIMA.has(kLat(lat))){ let a=inizio, b=addDays(inizio,600);
+      while(giorniTra(a,b)>1){ const m=addDays(a,Math.floor(giorniTra(a,b)/2)); if(etaEquivalente(p,m,lat).eta<fineCiclo) a=m; else b=m; } ultimo=a; }
     const mesi=[]; let y=+inizio.slice(0,4), m=+inizio.slice(5,7);
     while(mesi.length<18){
       const mm=y+'-'+String(m).padStart(2,'0'); if(mm>ultimo.slice(0,7)) break;

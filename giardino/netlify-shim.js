@@ -93,7 +93,15 @@ async function meteo(lat,lon){
   const [r,rIT]=await Promise.all([fetch(u.base),fetch(u.it).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
   const j=await r.json(), jIT=rIT&&rIT.ok?await rIT.json().catch(()=>null):null;
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
-  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,jIT,p.year+'-'+p.month+'-'+p.day,+p.hour)};
+  const oggi=p.year+'-'+p.month+'-'+p.day;
+  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,jIT,oggi,+p.hour),storico:await storico(lat,lon,oggi)};
+}
+// temperature medie dei 400 giorni passati, per le fasi a gradi-giorno: scaricate una volta al giorno
+async function storico(lat,lon,oggi){
+  const c=LSjson('storico');
+  if(c&&c.giorno===oggi&&c.lat===lat&&c.lon===lon&&c.temp) return c.temp;
+  try{ const r=await fetch(urlStorico(lat,lon,oggi)); if(r.ok){ const temp=storicoDa(await r.json()); if(Object.keys(temp).length){ LSset('storico',JSON.stringify({giorno:oggi,lat,lon,temp})); return temp; } } }catch(e){}
+  return c&&c.lat===lat&&c.lon===lon?c.temp:null;
 }
 async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;

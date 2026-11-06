@@ -15,6 +15,8 @@ const json = (o) => ({ contentType: "application/json", headers: { "access-contr
 async function contesto(browser, opz = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: "it-IT", timezoneId: "UTC", acceptDownloads: true, ...opz });
   await ctx.route("https://geocoding-api.open-meteo.com/**", (r) => r.fulfill(json({ results: [{ name: "Castrocaro Terme", admin1: "Emilia-Romagna", country: "Italia", latitude: 44.176, longitude: 11.95, elevation: 68 }] })));
+  // fonti esterne non usate nei test: niente dati (le fasi restano a giorni, niente riserva né stazioni)
+  for (const u of ["https://historical-forecast-api.open-meteo.com/**", "https://api.met.no/**", "https://dati-simc.arpae.it/**"]) await ctx.route(u, (r) => r.fulfill({ status: 503, body: "" }));
   await ctx.route("https://api.open-meteo.com/**", (r) => {
     if (r.request().url().includes("models=italia")) return r.fulfill(json({ hourly: { time: [], precipitation: [], temperature_2m: [] } }));
     const ore = giorni.slice(3, 5).flatMap((d) => [...Array(24)].map((_, h) => d + "T" + String(h).padStart(2, "0") + ":00"));

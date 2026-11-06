@@ -7,6 +7,7 @@ export const meteo = { tmin: giorni.map((_, i) => (i === 4 ? 2 : 12)), tmax: gio
 const vero = globalThis.fetch;
 globalThis.fetch = async (url, opt = {}) => {
   url = String(url);
+  if (url.includes("historical-forecast-api.open-meteo.com") || url.includes("api.met.no") || url.includes("dati-simc.arpae.it")) return new Response("", { status: 503 });
   if (url.includes("api.open-meteo.com")) {
     // ICON-2I: nei test niente dati (resta il modello di partenza, così i numeri attesi non cambiano)
     if (url.includes("models=italia")) return Response.json({ hourly: { time: [], precipitation: [], temperature_2m: [] } });

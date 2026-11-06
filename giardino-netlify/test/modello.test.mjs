@@ -180,3 +180,28 @@ test("diagnosi guidata: troppa, poca, incerta, altre cause", () => {
   assert.equal(nep.verdetto, "altro"); assert.match(nep.altri[0], /piovana o distillata/);
   assert.equal(M.diagnosi([]).verdetto, "bene");
 });
+
+test("sole secondo la stagione: orientamento e ore scritte un certo giorno", () => {
+  assert.ok(Math.abs(M.oreSoleGeom("2026-12-21", "S", 44.2) - 6.75) < 0.3, "sud d'inverno: sole tutto il giorno");
+  assert.ok(M.oreSoleGeom("2026-06-21", "S", 44.2) < M.oreSoleGeom("2026-03-21", "S", 44.2), "sud d'estate meno che all'equinozio");
+  assert.equal(M.oreSoleGeom("2026-12-21", "N", 44.2), 0);
+  const p = { luce: 4, orient: "E", luce_data: "2026-11-06" };
+  assert.equal(M.luceOre(p, "2026-11-06", 44.2), 4); assert.ok(M.luceOre(p, "2027-06-21", 44.2) > 6, "est d'estate: più sole");
+  assert.equal(M.luceOre({ luce: 4 }, "2027-06-21", 44.2), 4, "senza orientamento: numero fisso");
+  // in casa la luce del giorno segue il sole previsto
+  const k = M.params({ id: "c", nome: "C", specie: "appartamento", colt: "vaso", vaso: 3, luce: 6, dove: "interno" }, { oggi: "2026-11-06", lat: 44 });
+  assert.ok(M.consumoL(k, { date: "2026-11-06", sole: 0 }) < M.consumoL(k, { date: "2026-11-06", sole: 0.9 }));
+});
+
+test("fasi a gradi-giorno: col freddo più piano, col caldo più in fretta; senza storico, giorni", () => {
+  const p = { id: "t", nome: "Pomodoro", specie: "pomodoro", fase: "auto", data_semina: "2026-05-01", tipo_data: "semina", colt: "vaso", vaso: 20, dove: "aperto" };
+  const giorni = (T) => { const st = {}; for (let i = 0; i < 400; i++) st[M.addDays("2025-10-01", i)] = T; return { storico: st, prev: {} }; };
+  M.registraClima(10, null); // nessun dato per questa latitudine
+  assert.equal(M.etaEquivalente(p, "2026-06-10", 10).eta, 40, "senza storico: 40 giorni");
+  M.registraClima(11, giorni(15.5)); M.registraClima(12, giorni(27));
+  const freddo = M.etaEquivalente(p, "2026-06-10", 11), caldo = M.etaEquivalente(p, "2026-06-10", 12);
+  assert.ok(Math.abs(freddo.eta - 20) < 0.5 && freddo.ritmo === 0.5, "15,5 °C: metà velocità");
+  assert.ok(caldo.eta > 60 && caldo.ritmo === 1.55, "27 °C: più veloce");
+  assert.equal(M.faseEffettiva(p, "2026-06-10", 11).fase, "piantina", "freddo: ancora piantina"); assert.equal(M.faseEffettiva(p, "2026-06-10", 12).fase, "vegetativa");
+  assert.ok(M.calendarioAuto(p, 11).mesi.length > M.calendarioAuto(p, 12).mesi.length, "col freddo il ciclo dura più mesi");
+});

@@ -266,6 +266,8 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .seg.tiles3{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}
 .seg.tiles label,.seg.tiles3 label{flex-direction:column;gap:2px;min-height:64px;padding:8px 4px}
 .seg .ti{font-size:1.4rem;line-height:1}
+.seg.bussola{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))} .seg.bussola label{min-height:44px} .seg.bussola .tutta{grid-column:1/-1;min-height:36px;font-weight:500}
+.opt{font-weight:400;color:var(--muted)}
 
 /* calendario del diario */
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
@@ -326,6 +328,11 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
 .spinner{width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;flex:none;display:inline-block;vertical-align:-3px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spinner{animation-duration:3s}.chev{transition:none}}
+/* Badge «Powered by Netlify» (piano gratuito, lo aggiunge Netlify): sta al centro in una fascia sotto le schede, così non copre niente.
+   L'iframe è 194×64 e la parte visibile è in alto a sinistra (3–181 × 3–51): la si centra e la si appoggia sul bordo inferiore. */
+html.con-badge{--tabh:116px}
+html.con-badge nav.tabs{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 54px)}
+#nl-badge-frame{left:50% !important;right:auto !important;transform:translateX(calc(-50% + 5px)) !important;bottom:calc(env(safe-area-inset-bottom,0px) - 10px) !important}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 12px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:.92rem;z-index:20;width:max-content;max-width:calc(100% - 32px);text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.18)}
 </style>
 
@@ -434,7 +441,16 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
         </div>
         <div class="field pf-vaso-only"><label for="pf-riserva">Sottovaso con riserva d'acqua (litri)</label><input type="text" id="pf-riserva" inputmode="decimal" placeholder="0 se non c'è">
           <span class="hint">Vasi autoirriganti o sottovasi con riserva: la pianta beve dal basso, quindi si annaffia più di rado (riempiendo anche la riserva).</span></div>
-        <div class="field"><label for="pf-luce">Ore di sole diretto al giorno</label>
+        <div class="field"><span class="flabel" id="pf-orient-l">Verso dove guarda <span class="opt">(facoltativo)</span></span>
+          <div class="seg bussola" role="radiogroup" aria-labelledby="pf-orient-l">
+            <label><input type="radio" name="orient" value="NO">↖ NO</label><label><input type="radio" name="orient" value="N">↑ Nord</label><label><input type="radio" name="orient" value="NE">↗ NE</label>
+            <label><input type="radio" name="orient" value="O">← Ovest</label><label><input type="radio" name="orient" value="aperto">☀️ Aperto</label><label><input type="radio" name="orient" value="E">→ Est</label>
+            <label><input type="radio" name="orient" value="SO">↙ SO</label><label><input type="radio" name="orient" value="S">↓ Sud</label><label><input type="radio" name="orient" value="SE">↘ SE</label>
+            <label class="tutta"><input type="radio" name="orient" value="">Non lo so</label>
+          </div>
+          <span class="hint" id="pf-orient-hint">Il balcone, la parete o la finestra. Così le ore di sole cambiano da sole con le stagioni. «Aperto»: orto o giardino senza pareti intorno.</span>
+        </div>
+        <div class="field"><label for="pf-luce" id="pf-luce-l">Ore di sole diretto al giorno</label>
           <input type="text" id="pf-luce" inputmode="decimal">
           <div class="quick" id="pf-luce-q"><button type="button" data-luce="2">🌥️ Ombra · 2 h</button><button type="button" data-luce="4">⛅ Mezz'ombra · 4 h</button><button type="button" data-luce="8">☀️ Pieno sole · 8 h</button></div>
           <span class="hint">In casa: ore di luce forte vicino alla finestra (a sud 6–8, a est o a ovest 3–4, a nord 1).</span>
@@ -909,7 +925,10 @@ function renderVista(v,AP){
   daRifare.delete(v);
   if(v==='oggi') renderOggi(AP||activePlan()); else if(v==='piante') renderPiante(AP||activePlan()); else if(v==='impostazioni') renderImpostazioni(); else if(v==='diario') renderDiario();
 }
+let climaDi=null;
 function renderAll(){
+  // meteo con lo storico delle temperature: le fasi automatiche delle annuali seguono i gradi-giorno
+  const w=activeWeather(); if(w&&w!==climaDi&&w.storico){ climaDi=w; registraClima(S.location?.lat, climaDa(w)); }
   renderHeader();
   daRifare=new Set(['oggi','piante','impostazioni','diario']);
   renderVista(vistaAttiva());
@@ -1094,12 +1113,14 @@ function renderPiante(AP){
     const u=ultimaInnaffiatura(p,c.eventi);
     const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
       ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],['Quindi',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
+    if(p.orient) facts.push(['Sole diretto oggi','~'+fmt(k.h,1)+' h · '+(p.orient==='aperto'?'aperto':'verso '+({N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SO:'sud-ovest',O:'ovest',NO:'nord-ovest'}[p.orient]))]);
     if(altri) facts.push(['Nel vaso anche',altri]);
     if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
     if(k.faseNota) notes.push(['warn','Fase: '+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
+    if(k.faseRitmo!=null && Math.abs(k.faseRitmo-1)>=0.1) notes.push(['','🌡️ Fase dalle temperature vere: dalla semina cresce '+(k.faseRitmo<1?'più piano':'più in fretta')+' del solito (~'+Math.round(Math.abs(k.faseRitmo-1)*100)+'%).']);
     if(cc.inStagione) notes.push([cc.dovuto?'warn':'','🌱 '+cc.testo]);
     rv.forEach(x=>notes.push(['warn','🪴 '+x]));
     if(Math.abs(k.calib-1)>0.01) notes.push(['','Imparato dalle tue risposte: beve il '+Math.round(Math.abs(k.calib-1)*100)+'% '+(k.calib<1?'in meno':'in più')+' del previsto.']);
@@ -1325,6 +1346,12 @@ function syncForm(){
   $('#pf-fase-hint').textContent=hint;
   document.querySelectorAll('.seg label').forEach(l=>l.classList.toggle('on',!!l.querySelector('input:checked')));
   markQuick('#pf-vaso-q','data-vaso',$('#pf-vaso').value); markQuick('#pf-luce-q','data-luce',$('#pf-luce').value);
+  const or=radioVal('orient');
+  $('#pf-luce-l').textContent=or?'Ore di sole diretto in questo periodo':'Ore di sole diretto al giorno';
+  if(or){ const g=oreSoleGeom(today(),or,S.location?.lat), e=oreSoleGeom(addDays(today(),182),or,S.location?.lat);
+    const pe=editingId&&S.plants.find(x=>x.id===editingId), ora=pe&&pe.orient===or&&pe.luce_data&&pe.luce_data!==today()?luceOre(pe,today(),S.location?.lat):null;
+    $('#pf-orient-hint').textContent='Oggi il sole può arrivare al massimo per ~'+fmt(g,0)+' h, fra sei mesi ~'+fmt(e,0)+' h (senza ostacoli): scrivi le ore che vedi adesso, al resto pensa l\'app.'+(ora!=null?' Le ore qui sotto le hai scritte il '+dataBreve(pe.luce_data)+': oggi l\'app conta ~'+fmt(ora,1)+' h.':''); }
+  else $('#pf-orient-hint').textContent='Il balcone, la parete o la finestra. Così le ore di sole cambiano da sole con le stagioni. «Aperto»: orto o giardino senza pareti intorno.';
 }
 function openForm(id){
   const p=id?S.plants.find(x=>x.id===id):{nome:'',zona:'',specie:'pomodoro',fase:'auto',data_semina:'',tipo_data:'trapianto',colt:'vaso',vaso:12,diametro:null,area:'',num:1,luce:6,dove:'aperto',ultima:'',ultima_concime:'',data_rinvaso:'',note:'',consociate:[]};
@@ -1335,7 +1362,7 @@ function openForm(id){
   $('#pf-zona').value=zonaDi(p); renderZoneQuick();
   $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina';
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
-  setRadio('materiale',p.materiale||'plastica'); $('#pf-riserva').value=+p.riserva>0?numIn(p.riserva):'';
+  setRadio('materiale',p.materiale||'plastica'); setRadio('orient',p.orient||''); $('#pf-riserva').value=+p.riserva>0?numIn(p.riserva):'';
   $('#pf-vaso').value=numIn(p.vaso); $('#pf-diam').value=numIn(p.diametro); $('#pf-area').value=numIn(p.area); $('#pf-num').value=p.num||1;
   $('#pf-luce').value=numIn(luceOre(p)); $('#pf-ultima').value=p.ultima||''; $('#pf-concime').value=p.ultima_concime||''; $('#pf-rinvaso').value=p.data_rinvaso||''; $('#pf-note').value=p.note||'';
   $('#pf-cons').innerHTML=(p.consociate||[]).map(consRow).join('');
@@ -1366,13 +1393,16 @@ function submitForm(e){
     vaso:colt==='vaso'?(pos($('#pf-vaso').value)||10):null, diametro:colt==='vaso'?pos($('#pf-diam').value):null, consociate,
     materiale:colt==='vaso'?(radioVal('materiale')||'plastica'):'plastica', riserva:colt==='vaso'?(pos($('#pf-riserva').value)||0):0,
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
-    luce:luce==null?6:Math.max(0,Math.min(14,luce)), dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
+    luce:luce==null?6:Math.max(0,Math.min(14,luce)), orient:radioVal('orient')||'', dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
     data_rinvaso:colt==='vaso'?($('#pf-rinvaso').value||''):'', note:$('#pf-note').value.trim().slice(0,500)};
   if(data.dove==='interno'||data.dove==='serra'){
     const def=data.dove==='serra'?TSERRA_DEF:TCASA_DEF;
     data.tcasa=Object.fromEntries([...document.querySelectorAll('[data-stagione]')].map(i=>[i.dataset.stagione, tcasaValida(numOrNull(i.value)) ?? def[i.dataset.stagione]]));
     if($('#pf-t-tutte').checked) S.plants.forEach(x=>{ if(x.id!==editingId && x.dove===data.dove) x.tcasa={...data.tcasa}; });
   }
+  // le ore di sole valgono per il giorno in cui le scrivi: se cambiano (o cambia l'orientamento) la data si aggiorna
+  const prima=editingId?S.plants.find(x=>x.id===editingId):null;
+  data.luce_data=!data.orient?'':(prima&&prima.orient===data.orient&&+prima.luce===+data.luce&&prima.luce_data)?prima.luce_data:today();
   if(editingId){ const p=S.plants.find(x=>x.id===editingId); if(p){ Object.assign(p,data); delete p.example; delete p.espo; } }
   else S.plants.push({id:uid(),...data});
   saveMain(); closeForm(); renderAll(); toast('Pianta salvata');
@@ -1616,5 +1646,8 @@ function wireNetlify(){
   document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && !$('#view-impostazioni').hidden) caricaStato(true); });
 }
 
+// il badge di Netlify arriva dopo il caricamento: quando c'è, l'app gli lascia la fascia in basso
+function badgeNetlify(){ document.documentElement.classList.toggle('con-badge', !!document.getElementById('nl-badge-frame')); }
+new MutationObserver(badgeNetlify).observe(document.body,{childList:true}); badgeNetlify();
 wire(); wireNetlify(); boot();
 </script>
