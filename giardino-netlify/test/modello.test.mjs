@@ -229,3 +229,18 @@ test("meteo di riserva MET Norway: giorni locali, pioggia senza doppi conteggi, 
   assert.equal(days[3].rain, 6, "dopo due giorni: 4 × 1,5 mm ogni 6 ore"); assert.equal(days[3].cond, "nuvoloso");
   assert.ok(notte.length >= 10 && notte[0].ora === "18");
 });
+
+test("raccolta prevista: le fasi automatiche si adattano al mese scritto (es. carote seminate a novembre)", () => {
+  const p = { id: "c", nome: "Carote", specie: "carota", fase: "auto", data_semina: "2026-11-06", tipo_data: "semina", colt: "vaso", vaso: 50, dove: "aperto" };
+  const senza = M.calendarioAuto(p, 20).mesi, con = M.calendarioAuto({ ...p, raccolta: "2027-04" }, 20).mesi;
+  assert.equal(senza.find((m) => m.raccolta).mese, "2027-01", "a giorni fissi: gennaio");
+  assert.equal(con.find((m) => m.raccolta).mese, "2027-04", "con la raccolta prevista: aprile");
+  assert.equal(M.faseEffettiva({ ...p, raccolta: "2027-04" }, "2027-04-20", 20).fase, "maturazione");
+  assert.notEqual(M.faseEffettiva({ ...p, raccolta: "2027-04" }, "2027-01-20", 20).fase, "maturazione");
+});
+
+test("raccolta presa dalla scheda di Claude se è per la stessa semina", () => {
+  const p = { specie: "carota", fase: "auto", data_semina: "2026-11-06", scheda: { specie: "carota", data_semina: "2026-11-06", calendario: [{ mese: "2027-05", raccolta: true }, { mese: "2027-04", raccolta: true }] } };
+  assert.equal(M.raccoltaDi(p), "2027-04"); assert.equal(M.raccoltaDi({ ...p, raccolta: "2027-06" }), "2027-06");
+  assert.equal(M.raccoltaDi({ ...p, data_semina: "2026-12-01" }), "", "scheda di un'altra semina");
+});

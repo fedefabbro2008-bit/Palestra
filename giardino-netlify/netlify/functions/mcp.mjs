@@ -45,7 +45,7 @@ function descrivi(p, data, oggi, met, ap) {
   if (cons.length) L.push(`  consigli dell'app per questa pianta: ${cons.join(" ")}`);
   if (k.interno) { const tc = k.tcasa; L.push(`  ${k.serra ? "in veranda/serra" : "in casa"}: oggi ~${fmt(M.tempCasaGiorno(tc, oggi, lat), 0)} °C (inverno ${fmt(tc.inverno, 0)}, primavera ${fmt(tc.primavera, 0)}, estate ${fmt(tc.estate, 0)}, autunno ${fmt(tc.autunno, 0)} °C${p.tcasa ? "" : ", valori tipici"})`); }
   const cal = M.calendarioAuto(p, lat);
-  if (cal.tipo === "ciclo") L.push(`  fasi stimate dall'app: ` + cal.mesi.map((x) => `${x.mese} ${x.nome.toLowerCase()}`).join(" · "));
+  if (cal.tipo === "ciclo") L.push(`  fasi stimate dall'app${M.raccoltaDi(p) ? ` (adattate alla raccolta prevista ${M.raccoltaDi(p)})` : " (dalle temperature; se secondo te la raccolta è un'altra, scrivila nella scheda o con modifica_pianta campi.raccolta = AAAA-MM)"}: ` + cal.mesi.map((x) => `${x.mese} ${x.nome.toLowerCase()}`).join(" · "));
   const sc = p.scheda;
   const sug = p.specie === "altro" ? M.specieDaNome(p.nome) : null;
   if (sug) L.push(`  specie impostata «Altra pianta», ma dal nome sembra ${M.SPECIE[sug].nome} (specie «${sug}»): se è così proponi all'utente di cambiarla, il calcolo diventa più preciso`);
@@ -152,13 +152,17 @@ function validaScheda(a) {
 const conScheda = (p, s) => ({ aggiornata: new Date().toISOString(), specie: p.specie, data_semina: p.data_semina || "", ...s });
 async function toolSalvaScheda(ctx, a) {
   const s = validaScheda(a);
-  let nome = "";
+  let nome = "", allineata = "";
   const out = await aggiorna(ctx.store, ctx.code, (d) => {
     const p = trovaPianta(d, a.pianta); if (!p) throw new Error("Pianta non trovata: usa l'id dello strumento «giardino».");
     nome = p.nome; p.scheda = conScheda(p, s);
+    // il calendario dell'app segue la tua raccolta: il primo mese di raccolta (AAAA-MM) diventa la raccolta prevista
+    const sp = M.SPECIE[p.specie];
+    const r = s.calendario.filter((x) => x.raccolta && /^\d{4}-\d{2}$/.test(x.mese)).map((x) => x.mese).sort()[0];
+    if (sp?.ann && p.fase === "auto" && p.data_semina && r && r > p.data_semina.slice(0, 7)) { allineata = r !== p.raccolta ? r : ""; p.raccolta = r; }
   });
   ctx.saved(out);
-  return `Scheda di «${nome}» salvata: l'app la mostra in Piante → ${nome} → Scheda, con la tabella dei mesi.`;
+  return `Scheda di «${nome}» salvata: l'app la mostra in Piante → ${nome} → Scheda, con la tabella dei mesi.` + (allineata ? ` Ho allineato anche le fasi automatiche dell'app: raccolta da ${allineata}.` : "");
 }
 const TIPO_OK = ["fatto", "saltato", "umido", "secco", "concime", "meno", "piu", "diagnosi"];
 async function toolRegistra(ctx, a) {
@@ -176,7 +180,7 @@ async function toolRegistra(ctx, a) {
   return `Registrato nel diario: ${nome} — ${a.tipo} (${data}).` + (["meno", "piu", "umido", "secco"].includes(a.tipo) ? ` Correzione appresa per questa pianta: ×${fmt(cal, 2)} (${cal < 1 ? "beve meno" : cal > 1 ? "beve di più" : "nessuna"} del calcolo di base).` : "");
 }
 const CAMPI_P = { nome: "s", specie: "specie", fase: "fase", data_semina: "data", tipo_data: ["semina", "trapianto"], colt: ["vaso", "terra", "rialzata"], vaso: "n", diametro: "n", num: "n", area: "n", luce: "n",
-  dove: ["aperto", "riparato", "serra", "interno"], ultima: "data", ultima_concime: "data", data_rinvaso: "data", note: "s", consociate: "cons", zona: "s", tcasa: "tcasa", scheda: "scheda", materiale: ["plastica", "terracotta", "chiuso"], riserva: "n", orient: ["", ...Object.keys(M.ORIENTAMENTI)], luce_data: "data" };
+  dove: ["aperto", "riparato", "serra", "interno"], ultima: "data", ultima_concime: "data", data_rinvaso: "data", note: "s", consociate: "cons", zona: "s", tcasa: "tcasa", scheda: "scheda", materiale: ["plastica", "terracotta", "chiuso"], riserva: "n", orient: ["", ...Object.keys(M.ORIENTAMENTI)], luce_data: "data", raccolta: "mese" };
 function valida(campi) {
   const out = {};
   for (const [k, v] of Object.entries(campi || {})) {
@@ -185,6 +189,7 @@ function valida(campi) {
     if (t === "s") out[k] = String(v).trim().replace(k === "note" ? /^$/ : /\s+/g, " ").slice(0, k === "note" ? 500 : k === "zona" ? 30 : 60);
     else if (t === "n") { const n = +v; if (!isFinite(n) || n < 0) throw new Error(k + " deve essere un numero"); out[k] = n; }
     else if (t === "data") { if (!ISO.test(v)) throw new Error(k + " deve essere AAAA-MM-GG"); out[k] = v; }
+    else if (t === "mese") { if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new Error(k + " deve essere AAAA-MM"); out[k] = v; }
     else if (t === "specie") { if (!M.SPECIE[v]) throw new Error("specie non valida: " + Object.keys(M.SPECIE).join(", ")); out[k] = v; }
     else if (t === "fase") { if (v !== "auto" && !M.FASI[v]) throw new Error("fase non valida"); out[k] = v; }
     else if (t === "cons") { if (!Array.isArray(v)) throw new Error("consociate deve essere un elenco"); out[k] = v.filter((c) => c && M.SPECIE[c.specie]).map((c) => ({ specie: c.specie, ...(M.FASI[c.fase] ? { fase: c.fase } : {}), num: Math.max(1, Math.round(+c.num || 1)) })).slice(0, 8); }
@@ -327,7 +332,7 @@ const TOOLS = [
   { name: "modifica_pianta", title: "Aggiungi o modifica una pianta", write: true,
     description: "Aggiunge una pianta o ne cambia i dati (vaso, luce, fase, consociate, note…). Prima di salvare riassumi all'utente cosa cambi. Se aggiungi senza specie, l'app la riconosce dal nome. Specie (chiave = nome): " + M.specieOrdinate().map(([k, x]) => k + " = " + x.nome).join("; ") + ". Fasi: auto (calcolata dalla data di semina/trapianto o dal mese), " + Object.keys(M.FASI).join(", ") + ". Per eliminare una pianta l'utente usa l'app.",
     inputSchema: { type: "object", required: ["azione", "campi"], properties: { azione: { type: "string", enum: ["aggiungi", "modifica"] }, pianta: { type: "string", description: "id o nome (per modifica)" },
-      campi: { type: "object", description: "nome, specie, fase, data_semina, tipo_data (semina|trapianto), colt (vaso|terra|rialzata), vaso (litri), diametro (cm), num, area (m²), luce (ore di sole diretto 0-14), dove (aperto|riparato|serra = veranda o serra|interno = in casa), consociate ([{specie, fase, num}]), ultima, ultima_concime, data_rinvaso, note, zona (gruppo libero, es. Balcone, Orto, Salotto), tcasa (piante in casa o in veranda/serra: temperatura in °C per stagione, {inverno, primavera, estate, autunno}), scheda (la scheda della pianta, come in «salva_scheda»), materiale (plastica|terracotta|chiuso = vaso senza fori), riserva (litri del sottovaso con riserva d'acqua, 0 se non c'è), orient (verso dove guarda: N, NE, E, SE, S, SO, O, NO, aperto = senza pareti; con orient le ore di luce valgono per luce_data e l'app le scala con le stagioni: se cambi luce o orient metti luce_data = oggi)" } } },
+      campi: { type: "object", description: "nome, specie, fase, data_semina, tipo_data (semina|trapianto), colt (vaso|terra|rialzata), vaso (litri), diametro (cm), num, area (m²), luce (ore di sole diretto 0-14), dove (aperto|riparato|serra = veranda o serra|interno = in casa), consociate ([{specie, fase, num}]), ultima, ultima_concime, data_rinvaso, note, zona (gruppo libero, es. Balcone, Orto, Salotto), tcasa (piante in casa o in veranda/serra: temperatura in °C per stagione, {inverno, primavera, estate, autunno}), scheda (la scheda della pianta, come in «salva_scheda»), materiale (plastica|terracotta|chiuso = vaso senza fori), riserva (litri del sottovaso con riserva d'acqua, 0 se non c'è), raccolta (AAAA-MM, solo annuali seminate: mese in cui comincia la raccolta; le fasi automatiche dell'app si adattano), orient (verso dove guarda: N, NE, E, SE, S, SO, O, NO, aperto = senza pareti; con orient le ore di luce valgono per luce_data e l'app le scala con le stagioni: se cambi luce o orient metti luce_data = oggi)" } } },
     annotations: { ...RW, title: "Modifica pianta" }, run: toolModificaPianta },
   { name: "salva_scheda", title: "Scrivi la scheda di una pianta", write: true,
     description: "Scrive la scheda di una pianta, che l'app mostra in Piante → Scheda: descrizione, condizioni ideali, come sta nelle quattro stagioni, fasi di crescita e calendario dei mesi, periodo dei frutti o del raccolto. Compilala quando «giardino» segna «scheda: DA COMPILARE» o «DA AGGIORNARE». Se la pianta è stata seminata o piantata (data_semina), il calendario va dal mese della semina alla raccolta con mesi AAAA-MM, coerente con le «fasi stimate dall'app»; altrimenti un anno tipico (mesi 1-12) per la zona dell'utente. Frasi brevi e pratiche.",

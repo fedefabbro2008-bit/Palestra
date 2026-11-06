@@ -242,7 +242,7 @@ const ORDINE_FASI = ['germinazione','piantina','vegetativa','fioritura','fruttif
    e, se manca anche quella, una stima dal clima della latitudine. In casa e in veranda, la temperatura per stagione.
    GRADI[specie] = [base, riferimento] in °C (riferimento ≈ media tipica durante il ciclo). Senza dati del meteo: giorni. */
 export const GRADI = {pomodoro:[10,21], zucchina:[10,21], cetriolo:[10,21], melone:[12,23], peperone:[10,21], melanzana:[12,22], lattuga:[4,14],
-  spinaci:[2,12], cavolo:[4,15], fagiolo:[10,20], pisello:[4,12], patata:[6,15], carota:[4,14], ravanello:[4,13], aglio:[0,10], cipolla:[4,13],
+  spinaci:[2,12], cavolo:[4,15], fagiolo:[10,20], pisello:[4,12], patata:[6,15], carota:[3,14], ravanello:[4,13], aglio:[0,10], cipolla:[4,13],
   basilico:[10,21], prezzemolo:[4,14]};
 const CLIMA=new Map(), ETA_CACHE=new Map(), kLat=lat=>lat==null?'x':(+lat).toFixed(2);
 // L'app e il server registrano qui il meteo della posizione (storico + previsioni): lo usano le fasi automatiche.
@@ -278,13 +278,31 @@ export const urlStorico = (lat, lon, oggi) => 'https://historical-forecast-api.o
   start_date:addDays(oggi,-400), end_date:addDays(oggi,-1), daily:'temperature_2m_mean'});
 export function storicoDa(j){ const d=j?.daily, o={}; if(d?.time) d.time.forEach((t,i)=>{ const v=d.temperature_2m_mean?.[i]; if(v!=null&&isFinite(v)) o[t]=v; }); return o; }
 
+/* Raccolta prevista (p.raccolta = AAAA-MM, scritta dall'utente o da Claude nella scheda): le fasi automatiche si
+   allungano o si accorciano in proporzione perché la maturazione cominci a metà di quel mese. */
+export const inizioRaccolta = sp => sp.ciclo.slice(0,5).filter(x=>x!=null).pop();
+// la raccolta prevista: quella scritta, altrimenti il primo mese di raccolta della scheda di Claude (se è per questa semina)
+export function raccoltaDi(p){
+  if(/^\d{4}-\d{2}$/.test(p?.raccolta||'')) return p.raccolta;
+  const sc=p?.scheda; if(!sc || sc.specie!==p.specie || (sc.data_semina||'')!==(p.data_semina||'') || !p.data_semina) return '';
+  return (sc.calendario||[]).filter(x=>x.raccolta && /^\d{4}-\d{2}$/.test(x.mese) && x.mese>p.data_semina.slice(0,7)).map(x=>x.mese).sort()[0]||'';
+}
+export function etaPianta(p, giorno, lat){
+  const sp=SPECIE[p.specie]||SPECIE.altro, e=etaEquivalente(p, giorno, lat), r=raccoltaDi(p);
+  if(!sp.ann || !r || !p.data_semina) return e;
+  const rif=etaEquivalente(p, r+'-15', lat).eta, obiettivo=inizioRaccolta(sp);
+  if(!(rif>0) || !obiettivo) return e;
+  const f=Math.max(0.3,Math.min(3,obiettivo/rif));
+  return {...e, eta:+(e.eta*f).toFixed(1), ritmo:e.ritmo!=null?+(e.ritmo*f).toFixed(2):+f.toFixed(2), raccolta:true};
+}
+
 /* ---------------- Fase di crescita (manuale o automatica) ---------------- */
 export function faseEffettiva(p, oggi, lat){
   const sp=SPECIE[p.specie]||SPECIE.altro;
   if(p.fase!=='auto') return {fase:FASI[p.fase]?p.fase:'vegetativa', auto:false};
   if(sp.ann){
     if(!p.data_semina) return {fase:'vegetativa', auto:true, nota:'manca la data di semina o trapianto'};
-    const {eta, ritmo}=etaEquivalente(p, oggi, lat);
+    const {eta, ritmo}=etaPianta(p, oggi, lat);
     if(eta<0) return {fase:'germinazione', auto:true, eta, nota:'semina non ancora fatta'};
     for(let i=0;i<ORDINE_FASI.length;i++){ if(sp.ciclo[i]!=null && eta<sp.ciclo[i]) return {fase:ORDINE_FASI[i], auto:true, eta, ritmo}; }
     return {fase:'maturazione', auto:true, eta, ritmo, nota:'ciclo probabilmente concluso'};
@@ -810,8 +828,8 @@ export function calendarioAuto(p, lat){
     const inizio=p.data_semina, fineCiclo=sp.ciclo.filter(x=>x!=null).pop();
     // ultimo giorno del ciclo: con i gradi-giorno può essere prima o dopo dei giorni tipici
     let ultimo=addDays(inizio, Math.max(0, fineCiclo-(p.tipo_data==='trapianto'?sp.trap:0)-1));
-    if(GRADI[p.specie] && CLIMA.has(kLat(lat))){ let a=inizio, b=addDays(inizio,600);
-      while(giorniTra(a,b)>1){ const m=addDays(a,Math.floor(giorniTra(a,b)/2)); if(etaEquivalente(p,m,lat).eta<fineCiclo) a=m; else b=m; } ultimo=a; }
+    if((GRADI[p.specie] && CLIMA.has(kLat(lat))) || raccoltaDi(p)){ let a=inizio, b=addDays(inizio,600);
+      while(giorniTra(a,b)>1){ const m=addDays(a,Math.floor(giorniTra(a,b)/2)); if(etaPianta(p,m,lat).eta<fineCiclo) a=m; else b=m; } ultimo=a; }
     const mesi=[]; let y=+inizio.slice(0,4), m=+inizio.slice(5,7);
     while(mesi.length<18){
       const mm=y+'-'+String(m).padStart(2,'0'); if(mm>ultimo.slice(0,7)) break;

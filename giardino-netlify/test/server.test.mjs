@@ -135,6 +135,8 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(sc.isError, false);
   const agl = (await leggiDati()).plants.find((p) => p.id === "agl");
   assert.equal(agl.scheda.calendario.length, 2, "il mese 13 viene scartato");
+  assert.match(sc.content[0].text, /allineato anche le fasi automatiche dell'app: raccolta da 2027-06/);
+  assert.equal(agl.raccolta, "2027-06", "la raccolta della scheda guida le fasi dell'app");
   assert.equal(agl.scheda.specie, "aglio");
   assert.match((await strumento("giardino")).content[0].text, /scheda: compilata da te il/);
   assert.equal((await strumento("salva_scheda", { pianta: "agl", calendario: [] })).isError, true);

@@ -477,6 +477,8 @@ html.con-badge nav.tabs{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 54
         <div class="field"><label for="pf-fase">Fase di crescita</label><select id="pf-fase"></select><span class="hint" id="pf-fase-hint"></span></div>
         <div class="field pf-auto-ann"><label for="pf-semina">Seminata o trapiantata il</label><input type="date" id="pf-semina"></div>
         <div class="field pf-auto-ann"><label for="pf-tipo-data">Quella data è</label><select id="pf-tipo-data"><option value="semina">la semina (anche spicchi o bulbi)</option><option value="trapianto">il trapianto di una piantina</option></select></div>
+        <div class="field pf-auto-ann"><label for="pf-raccolta">Raccolta prevista <span class="opt">(facoltativa)</span></label><input type="month" id="pf-raccolta">
+          <span class="hint">Se sai quando comincia la raccolta (o te l'ha detto Claude), le fasi si adattano a quel mese. Vuoto: le calcola l'app dalle temperature.</span></div>
         <details class="more" id="pf-more"><summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>Altre opzioni <span class="sub" style="font-weight:400">(facoltative)</span></summary>
           <div class="form">
             <div class="grid2">
@@ -1144,7 +1146,8 @@ function renderPiante(AP){
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
     if(k.faseNota) notes.push(['warn','Fase: '+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
-    if(k.faseRitmo!=null && Math.abs(k.faseRitmo-1)>=0.1) notes.push(['','🌡️ Fase dalle temperature vere: dalla semina cresce '+(k.faseRitmo<1?'più piano':'più in fretta')+' del solito (~'+Math.round(Math.abs(k.faseRitmo-1)*100)+'%).']);
+    if(raccoltaDi(p)&&k.sp.ann&&p.fase==='auto') notes.push(['','🧺 Fasi adattate alla raccolta prevista'+(p.raccolta?'':' (dalla scheda di Claude)')+': '+new Date(raccoltaDi(p)+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})+'.']);
+    else if(k.faseRitmo!=null && Math.abs(k.faseRitmo-1)>=0.1) notes.push(['','🌡️ Fase dalle temperature vere: dalla semina cresce '+(k.faseRitmo<1?'più piano':'più in fretta')+' del solito (~'+Math.round(Math.abs(k.faseRitmo-1)*100)+'%).']);
     if(cc.inStagione) notes.push([cc.dovuto?'warn':'','🌱 '+cc.testo]);
     rv.forEach(x=>notes.push(['warn','🪴 '+x]));
     if(Math.abs(k.calib-1)>0.01) notes.push(['','Imparato dalle tue risposte: beve il '+Math.round(Math.abs(k.calib-1)*100)+'% '+(k.calib<1?'in meno':'in più')+' del previsto.']);
@@ -1364,7 +1367,7 @@ function syncForm(){
   document.querySelectorAll('.pf-auto-ann').forEach(el=>el.hidden=!(auto&&ann));
   let hint='';
   if(auto){
-    const fe=faseEffettiva({specie,fase:'auto',data_semina:$('#pf-semina').value,tipo_data:$('#pf-tipo-data').value},today(),S.location?.lat);
+    const fe=faseEffettiva({specie,fase:'auto',data_semina:$('#pf-semina').value,tipo_data:$('#pf-tipo-data').value,raccolta:$('#pf-raccolta').value,dove:radioVal('dove')},today(),S.location?.lat);
     hint=(ann?'Calcolata dalla data qui sotto':'Calcolata dal mese')+'. Oggi: '+nomeFase(specie,fe.fase).toLowerCase()+(fe.nota?' ('+fe.nota+')':'')+'.';
   }
   $('#pf-fase-hint').textContent=hint;
@@ -1384,7 +1387,7 @@ function openForm(id){
   $('#plantFormTitle').textContent=id?'Modifica pianta':'Nuova pianta';
   $('#pf-nome').value=p.nome; setSpecie(p.specie); apriPicker(false); specieScelta=false; suggerisciSpecie(); $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'},p.specie);
   $('#pf-zona').value=zonaDi(p); renderZoneQuick();
-  $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina';
+  $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina'; $('#pf-raccolta').value=p.raccolta||'';
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
   setRadio('materiale',p.materiale||'plastica'); setRadio('orient',p.orient||''); $('#pf-riserva').value=+p.riserva>0?numIn(p.riserva):'';
   $('#pf-vaso').value=numIn(p.vaso); $('#pf-diam').value=numIn(p.diametro); $('#pf-area').value=numIn(p.area); $('#pf-num').value=p.num||1;
@@ -1417,6 +1420,7 @@ function submitForm(e){
     vaso:colt==='vaso'?(pos($('#pf-vaso').value)||10):null, diametro:colt==='vaso'?pos($('#pf-diam').value):null, consociate,
     materiale:colt==='vaso'?(radioVal('materiale')||'plastica'):'plastica', riserva:colt==='vaso'?(pos($('#pf-riserva').value)||0):0,
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
+    raccolta:/^\d{4}-\d{2}$/.test($('#pf-raccolta').value)?$('#pf-raccolta').value:'',
     luce:luce==null?6:Math.max(0,Math.min(14,luce)), orient:radioVal('orient')||'', dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
     data_rinvaso:colt==='vaso'?($('#pf-rinvaso').value||''):'', note:$('#pf-note').value.trim().slice(0,500)};
   if(data.dove==='interno'||data.dove==='serra'){
@@ -1537,7 +1541,7 @@ function wire(){
     if(e.target.matches('[data-c=specie]')){ const f=e.target.closest('[data-cons]').querySelector('[data-c=fase]'); f.innerHTML=optFasi(f.value,{value:'',label:'Stessa fase'},e.target.value); }
     syncForm();
   });
-  $('#plantForm').addEventListener('input',e=>{ if(e.target.dataset.stagione) e.target.dataset.toccato='1'; if(['pf-vaso','pf-luce','pf-semina'].includes(e.target.id)) syncForm(); });
+  $('#plantForm').addEventListener('input',e=>{ if(e.target.dataset.stagione) e.target.dataset.toccato='1'; if(['pf-vaso','pf-luce','pf-semina','pf-raccolta'].includes(e.target.id)) syncForm(); });
   document.querySelectorAll('[data-luce]').forEach(b=>b.addEventListener('click',()=>{ $('#pf-luce').value=b.dataset.luce; syncForm(); }));
   document.querySelectorAll('[data-vaso]').forEach(b=>b.addEventListener('click',()=>{ $('#pf-vaso').value=b.dataset.vaso; syncForm(); }));
   $('#pf-cons-add').addEventListener('click',()=>{ $('#pf-cons').insertAdjacentHTML('beforeend',consRow({})); });
