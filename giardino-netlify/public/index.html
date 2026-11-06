@@ -245,6 +245,39 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .tag.racc{background:var(--leaf-soft);color:var(--leaf)}
 .pbtn{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 
+/* proposta più intuitiva: riquadro "da fare", livello dell'acqua, griglia delle piante, scelte a riquadri */
+.hero{display:flex;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.hero.da{background:var(--water-soft);border-color:transparent}
+.hero.ok{background:var(--leaf-soft);border-color:transparent}
+.hnum{flex:none;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:1.6rem;font-weight:800;background:var(--water);color:var(--on-water)}
+.hero.ok .hnum{background:var(--leaf);color:var(--on-water)}
+.hero .htxt{flex:1;min-width:0;display:flex;flex-direction:column}
+.hero .htxt .eyebrow{margin-bottom:2px}
+.hero .headline{font-size:1.2rem}
+.lev{position:relative;height:9px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;margin-top:6px}
+.lev i{position:absolute;left:0;top:0;bottom:0;background:var(--water);border-radius:5px}
+.lev.basso i{background:var(--warn)}
+.lev b{position:absolute;top:0;bottom:0;width:2px;background:var(--muted);opacity:.7}
+.levt{font-size:.8rem;color:var(--muted);margin-top:3px}
+#plantList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#plantList>.empty,#plantList>.zhead{grid-column:1/-1}
+#plantList details.plant[open]{grid-column:1/-1}
+#plantList .plant>summary{flex-direction:column;align-items:center;text-align:center;gap:6px;padding:14px 10px 12px;position:relative}
+#plantList .plant[open]>summary{flex-direction:row;text-align:left}
+#plantList .plant>summary .chev{position:absolute;top:10px;right:10px}
+#plantList .plant[open]>summary .chev{position:static}
+.ring{flex:none;width:68px;height:68px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--water) calc(var(--p)*1%),var(--line) 0)}
+.ring.basso{background:conic-gradient(var(--warn) calc(var(--p)*1%),var(--line) 0)}
+.ring>span{width:56px;height:56px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font-size:1.7rem;line-height:1}
+#plantList .pinfo{align-items:center}
+#plantList .plant[open] .pinfo{align-items:flex-start}
+#plantList .pmeta{display:none}
+#plantList .plant[open] .pmeta{display:block}
+.seg.tiles{grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))}
+.seg.tiles3{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}
+.seg.tiles label,.seg.tiles3 label{flex-direction:column;gap:2px;min-height:64px;padding:8px 4px}
+.seg .ti{font-size:1.4rem;line-height:1}
+
 /* diario */
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column}
@@ -349,7 +382,7 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
     <div id="alerts" class="stack"></div>
 
     <div class="stack" id="todayBox">
-      <div><div class="eyebrow" id="todayDate"></div><h2 class="headline" id="todayHead">Oggi</h2><div class="sub" id="todaySub"></div></div>
+      <div class="hero" id="heroBox"><div class="hnum" id="heroNum" aria-hidden="true">·</div><div class="htxt"><div class="eyebrow" id="todayDate"></div><h2 class="headline" id="todayHead">Oggi</h2><div class="sub" id="todaySub"></div></div></div>
       <div id="todayList" class="stack"></div>
       <div class="card" id="restBox" hidden><div class="eyebrow" style="margin-bottom:4px">Oggi non serve acqua</div><div id="restList"></div></div>
       <div class="card" id="concBox" hidden><div class="eyebrow" style="margin-bottom:4px">Da concimare</div><div id="concList"></div></div>
@@ -391,10 +424,10 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
           <span class="hint">Le piante della stessa zona stanno insieme e si segnano con un tocco solo.</span>
         </div>
         <div class="field"><span class="flabel" id="pf-colt-l">Dove è piantata</span>
-          <div class="seg" role="radiogroup" aria-labelledby="pf-colt-l">
-            <label><input type="radio" name="colt" value="vaso">Vaso</label>
-            <label><input type="radio" name="colt" value="terra">Piena terra</label>
-            <label><input type="radio" name="colt" value="rialzata">Aiuola rialzata</label>
+          <div class="seg tiles3" role="radiogroup" aria-labelledby="pf-colt-l">
+            <label><input type="radio" name="colt" value="vaso"><span class="ti" aria-hidden="true">🪴</span>Vaso</label>
+            <label><input type="radio" name="colt" value="terra"><span class="ti" aria-hidden="true">🌱</span>Piena terra</label>
+            <label><input type="radio" name="colt" value="rialzata"><span class="ti" aria-hidden="true">🧱</span>Aiuola</label>
           </div>
         </div>
         <div class="field pf-vaso-only"><label for="pf-vaso">Grandezza del vaso (litri)</label>
@@ -403,15 +436,15 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
         </div>
         <div class="field"><label for="pf-luce">Ore di sole diretto al giorno</label>
           <input type="text" id="pf-luce" inputmode="decimal">
-          <div class="quick" id="pf-luce-q"><button type="button" data-luce="2">Ombra · 2 h</button><button type="button" data-luce="4">Mezz'ombra · 4 h</button><button type="button" data-luce="8">Pieno sole · 8 h</button></div>
+          <div class="quick" id="pf-luce-q"><button type="button" data-luce="2">🌥️ Ombra · 2 h</button><button type="button" data-luce="4">⛅ Mezz'ombra · 4 h</button><button type="button" data-luce="8">☀️ Pieno sole · 8 h</button></div>
           <span class="hint">In casa: ore di luce forte vicino alla finestra (a sud 6–8, a est o a ovest 3–4, a nord 1).</span>
         </div>
-        <div class="field"><span class="flabel" id="pf-dove-l">La pioggia la bagna?</span>
-          <div class="seg" role="radiogroup" aria-labelledby="pf-dove-l">
-            <label><input type="radio" name="dove" value="aperto">Sì, è fuori</label>
-            <label><input type="radio" name="dove" value="riparato">Fuori, al riparo</label>
-            <label><input type="radio" name="dove" value="serra">Veranda / serra</label>
-            <label><input type="radio" name="dove" value="interno">In casa</label>
+        <div class="field"><span class="flabel" id="pf-dove-l">Dove sta</span>
+          <div class="seg tiles" role="radiogroup" aria-labelledby="pf-dove-l">
+            <label><input type="radio" name="dove" value="aperto"><span class="ti" aria-hidden="true">🌦️</span>Fuori, prende la pioggia</label>
+            <label><input type="radio" name="dove" value="riparato"><span class="ti" aria-hidden="true">⛱️</span>Fuori, al riparo</label>
+            <label><input type="radio" name="dove" value="serra"><span class="ti" aria-hidden="true">🪟</span>Veranda / serra</label>
+            <label><input type="radio" name="dove" value="interno"><span class="ti" aria-hidden="true">🏠</span>In casa</label>
           </div>
         </div>
         <div class="field pf-casa-only"><span class="flabel" id="pf-t-titolo">Temperatura in casa (°C)</span>
@@ -1001,10 +1034,13 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
     else for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d))); if(fatte.has(d.date)) dep=0; }
     if(fatte.has(oggi)) dep=0;
+    // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
+    let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
     fut.forEach((d,i)=>{
       const pl=pioggiaL(p,k,d.date>=oggi?pioggiaAttesa(d):d);
       let end=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pl));
+      if(i===0 && !fatte.has(oggi)) acqua=+Math.max(0,1-end/k.tawL).toFixed(2);
       const next=fut[i+1], momento=d.tmin<=2&&!k.interno?'metà giornata':'mattina presto';
       const innaffia=(motivo,extra=1.1)=>{ const l=Math.max(0.05,end*(k.vaso?extra:1)); const g={data:d.date,azione:'innaffia',litri:+l.toFixed(l<2?2:1),momento,motivo}; end=0; return g; };
       let g;
@@ -1024,7 +1060,7 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
       else g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Terriccio ancora umido'};
       giorni.push(g); dep=end;
     });
-    out.piante.push({id:p.id, valutazione:'', fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:[]});
+    out.piante.push({id:p.id, acqua, soglia, valutazione:'', fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:[]});
   }
   const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
@@ -1357,7 +1393,7 @@ function activePlan(){
   // oltre l'ultimo giorno del piano di Claude vale il calcolo automatico (prima comparivano giorni “niente da fare”)
   let fine=''; best.data.piante.forEach(x=>(x.giorni||[]).forEach(g=>{ if(g.data>fine) fine=g.data; }));
   const conAuto=best.data.piante.map(x=>{ const b=local?.piante.find(y=>y.id===x.id); if(!b) return x; const date=new Set((x.giorni||[]).map(g=>g.data));
-    return {...x, giorni:[...(x.giorni||[]), ...b.giorni.filter(g=>!date.has(g.data)).map(g=>({...g,auto:true}))].sort((a,c)=>a.data<c.data?-1:1)}; });
+    return {...x, acqua:x.acqua??b.acqua, soglia:x.soglia??b.soglia, giorni:[...(x.giorni||[]), ...b.giorni.filter(g=>!date.has(g.data)).map(g=>({...g,auto:true}))].sort((a,c)=>a.data<c.data?-1:1)}; });
   const piante=[...conAuto, ...(local?local.piante.filter(x=>!ids.has(x.id)):[])];
   const stale = best.source==='claude' ? (best.plantsSig && best.plantsSig!==plantsSig()) : false;
   return {...best, data:{...best.data, piante}, stale, fine};
@@ -1433,7 +1469,13 @@ function renderAlerts(AP){
   const avv=[...dom.map(a=>/^Stanotte/.test(a.testo)?a.testo:'Domani: '+a.testo), ...avvPiano];
   setHTML($('#alerts'),avv.map(a=>'<div class="alert">'+ICON.warn+'<div>'+esc(a)+'</div></div>').join(''));
 }
-function taskCard({p,g,st}){
+// livello dell'acqua nel terriccio (dal calcolo): barra con la tacca sotto la quale si innaffia
+function livello(pp){
+  if(pp?.acqua==null) return '';
+  const a=Math.round(Math.max(0,Math.min(1,pp.acqua))*100), sg=Math.round((pp.soglia||0)*100), basso=pp.acqua<=pp.soglia;
+  return `<div class="lev${basso?' basso':''}" role="img" aria-label="Acqua nel terriccio circa ${a}%"><i style="width:${a}%"></i><b style="left:${sg}%"></b></div><div class="levt">Acqua nel terriccio ~${a}%${basso?' · sotto la tacca: da innaffiare':''}</div>`;
+}
+function taskCard({p,g,st,pp}){
   const imp=S.impostazioni, pid=esc(p.id);
   // già segnata oggi (qui o su Telegram): mostra l'esito e, se l'hai segnata nell'app, Annulla
   if(st){
@@ -1449,7 +1491,7 @@ function taskCard({p,g,st}){
   let what;
   if(inn) what=[dose(g.litri,imp), g.momento].filter(Boolean).join(' · ');
   else { const l=params(p,ctx()).rawL*1.1; what='Se è asciutta: '+fmtL(l)+' ('+dose(l,imp)+')'; }
-  return `<div class="task"><div class="task-top"><span class="ic ${inn?'water':'check'}" aria-hidden="true">${esc(icoDi(p))}</span><div class="info"><div class="name">${esc(p.nome)}</div><div class="what">${esc(what)}</div><div class="why">${esc(g.motivo)}</div></div>${inn?`<div class="amt">${esc(fmtL(g.litri))}</div>`:''}</div>${acts}</div>`;
+  return `<div class="task"><div class="task-top"><span class="ic ${inn?'water':'check'}" aria-hidden="true">${esc(icoDi(p))}</span><div class="info"><div class="name">${esc(p.nome)}</div><div class="what">${esc(what)}</div>${livello(pp)}</div>${inn?`<div class="amt">${esc(fmtL(g.litri))}</div>`:''}</div>${acts}</div>`;
 }
 function renderOggi(AP){
   renderWeather(); renderAlerts(AP);
@@ -1469,10 +1511,12 @@ function renderOggi(AP){
   const todo=items.filter(x=>x.st || (x.g && (x.g.azione==='innaffia'||x.g.azione==='controlla')));
   const rest=items.filter(x=>!todo.includes(x)), aperte=todo.filter(x=>!x.st);
   const inn=aperte.filter(x=>x.g.azione==='innaffia'), nCtrl=aperte.length-inn.length, litri=inn.reduce((a,x)=>a+x.g.litri,0);
+  const hero=$('#heroBox'), num=$('#heroNum');
+  hero.className='hero '+(aperte.length?'da':'ok'); num.textContent=aperte.length?String(aperte.length):'✓';
   if(!todo.length){ head.textContent='Oggi niente acqua'; sub.textContent='La terra è ancora umida o è piovuto abbastanza.'; }
-  else if(!aperte.length){ head.textContent='Fatto tutto per oggi ✓'; sub.textContent='Il piano ti avvisa quando serve di nuovo.'; }
+  else if(!aperte.length){ head.textContent='Fatto tutto per oggi'; sub.textContent='Il piano ti avvisa quando serve di nuovo.'; }
   else {
-    head.textContent=inn.length?(inn.length===1?'1 pianta da innaffiare':inn.length+' piante da innaffiare'):(nCtrl===1?'1 pianta da controllare':nCtrl+' piante da controllare');
+    head.textContent=inn.length?(inn.length===1?'pianta da annaffiare':'piante da annaffiare'):(nCtrl===1?'pianta da controllare':'piante da controllare');
     sub.textContent=[inn.length?fmtL(litri)+' in tutto':'', inn.length&&nCtrl?(nCtrl===1?'1 da controllare':nCtrl+' da controllare'):''].filter(Boolean).join(' · ');
   }
   const vac=inVacanza(S.vacanza,t)?`<div class="alert info">${ICON.info}<div>Sei in vacanza fino al ${esc(dataBreve(S.vacanza.al))}: queste azioni sono per chi bagna al posto tuo.</div></div>`:'';
@@ -1585,8 +1629,8 @@ function renderPiante(AP){
     if(Math.abs(k.calib-1)>0.01) notes.push(['','Imparato dalle tue risposte: beve il '+Math.round(Math.abs(k.calib-1)*100)+'% '+(k.calib<1?'in meno':'in più')+' del previsto.']);
     (pp?.consigli||[]).forEach(x=>notes.push(['','💬 '+x]));
     if(pp?.valutazione) notes.unshift(['','💬 '+pp.valutazione]);
-    return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ic leaf" aria-hidden="true">${esc(icoDi(p))}</span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
-      <div class="pbody"><div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
+    return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ring${pp&&pp.acqua!=null&&pp.acqua<=pp.soglia?' basso':''}" style="--p:${pp?.acqua!=null?Math.round(Math.max(0,Math.min(1,pp.acqua))*100):0}" aria-hidden="true"><span>${esc(icoDi(p))}</span></span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
+      <div class="pbody">${livello(pp)}<div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
       ${notes.length?'<ul class="notes">'+notes.map(([cls,x])=>`<li class="${cls}">${esc(x)}</li>`).join('')+'</ul>':''}
       <div class="pbtn"><button class="btn" type="button" data-scheda="${esc(p.id)}">📖 Scheda</button><button class="btn" type="button" data-edit="${esc(p.id)}">Modifica</button></div></div></details>`;
   }).join(''));

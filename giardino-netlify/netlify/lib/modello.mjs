@@ -230,10 +230,13 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
     else for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d))); if(fatte.has(d.date)) dep=0; }
     if(fatte.has(oggi)) dep=0;
+    // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
+    let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
     fut.forEach((d,i)=>{
       const pl=pioggiaL(p,k,d.date>=oggi?pioggiaAttesa(d):d);
       let end=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pl));
+      if(i===0 && !fatte.has(oggi)) acqua=+Math.max(0,1-end/k.tawL).toFixed(2);
       const next=fut[i+1], momento=d.tmin<=2&&!k.interno?'metà giornata':'mattina presto';
       const innaffia=(motivo,extra=1.1)=>{ const l=Math.max(0.05,end*(k.vaso?extra:1)); const g={data:d.date,azione:'innaffia',litri:+l.toFixed(l<2?2:1),momento,motivo}; end=0; return g; };
       let g;
@@ -253,7 +256,7 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
       else g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Terriccio ancora umido'};
       giorni.push(g); dep=end;
     });
-    out.piante.push({id:p.id, valutazione:'', fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:[]});
+    out.piante.push({id:p.id, acqua, soglia, valutazione:'', fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:[]});
   }
   const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
