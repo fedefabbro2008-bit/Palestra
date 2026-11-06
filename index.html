@@ -942,6 +942,10 @@ body.kb-open main{scroll-padding-top:calc(var(--head-h, 0px) + 12px);}
 .sess-side-btn{flex-shrink:0; min-height:34px; padding:6px 12px; border-radius:100px; border:1px solid var(--border); background:var(--card-2); color:var(--text-dim); font:inherit; font-size:13px; display:inline-flex; align-items:center; gap:5px;}
 .sess-side-btn.on{border-color:var(--text-dim); color:var(--text);}
 .sess-side-btn .ic{width:14px; height:14px;}
+/* ⋯ dell'esercizio in allenamento: spostalo, mettilo in superset, aggiungine uno al superset */
+.sess-ex-tools{display:flex; flex-wrap:wrap; gap:8px; width:100%;}
+.sess-ex-tools .sess-side-btn:disabled{opacity:.4;}
+.spare-open.free-open{margin-top:8px;}
 .es-side{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); margin:-2px 0 10px; line-height:1.35;}
 .es-side input{width:18px; height:18px; flex:0 0 auto; accent-color:var(--accent);}
 .sess-ex-sub select{
@@ -1614,6 +1618,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
         <div class="card-info" id="infoToday"><p>La giornata evidenziata è quella che tocca, dopo l'ultima che hai fatto. Tocca un'altra giornata per scegliere quella.</p><p><b>Questo mese</b>: allenamenti dall'1 del mese. <b>Settimane di fila</b>: settimane consecutive con almeno un allenamento (quella in corso non interrompe la serie); valgono anche le riserve, come giorni veri. <b>Totali</b>: tutti gli allenamenti registrati.</p></div>
         <div class="day-pills" id="dayPills"></div>
         <button class="spare-open" id="spareOpenBtn" type="button" aria-haspopup="dialog" aria-controls="spareSheet"></button>
+        <button class="spare-open free-open" id="freeOpenBtn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Pochi esercizi? <b>Allenamento libero</b></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
         <button class="spare-open resume-row" id="resumeBtn" type="button" style="display:none;"></button>
         <button class="complete-btn" id="startSessionBtn"><svg class="ic solid" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>Inizia allenamento</button>
         <div class="next-hint" id="nextHint"></div>
@@ -2084,7 +2089,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 <div class="sheet-overlay" id="subSheet">
   <div class="sheet">
     <div class="sheet-head">
-      <div><h3>Sostituisci esercizio</h3><div class="sheet-sub" id="subSheetSub"></div></div>
+      <div><h3 id="subSheetTitle">Sostituisci esercizio</h3><div class="sheet-sub" id="subSheetSub"></div></div>
       <button class="icon-btn" id="subSheetClose" aria-label="Chiudi"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <p class="sub-note" id="subNote"></p>
@@ -4997,6 +5002,7 @@ const KNEE_RE = /leg ?curl|leg ?press|leg ?extension|squat|affond|calf|ponte glu
    more  altri esercizi comuni, per muscolo (prima quello dell'esercizio da sostituire): già fatti fuori scheda, catalogo, consigliati
    Niente doppioni (anche rispetto agli esercizi della seduta) e mai esercizi che caricano il ginocchio */
 function subCandidates(exx){
+  const free = exx.muscle==null;   // aggiunta senza esercizio di riferimento: i più recenti di ogni muscolo
   const m = MUSCLES.includes(exx.muscle) ? exx.muscle : 'Altro';
   const seen = new Set(session ? session.exercises.map(x=>normName(x.name)) : [normName(exx.name)]);
   const ids = new Set((session ? session.exercises : [exx]).map(x=>x.exId).filter(Boolean));
@@ -5018,14 +5024,17 @@ function subCandidates(exx){
     meta: group==='rec' ? 'in scheda · '+dayLbl(d) : dayLbl(d)+' · '+(e.muscle==='Altro' ? PHASE_LBL[phaseOf(e)] : musc(e.muscle, secOf(e)))+' · '+e.reps });
   const libC = (mm, [name,sec,reps,type], group, safe)=> ({ name, muscle:mm, secondary:sec||null, type:type||'reps', exId:null, reps, group, mg:mm,
     meta: (group==='rec' ? 'consigliato · ' : (safe ? 'ok per ginocchio e polso · ' : ''))+(group==='rec' ? '' : musc(mm, sec)+' · ')+reps });
-  // 1. consigliati per questo muscolo
-  hist.filter(v=> v.muscle===m).forEach(v=> push(histC(v, 'rec')));
-  Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ if(e.muscle===m) push(planC(e, d, 'rec')); }));
-  (ALT_LIB[m]||[]).forEach(x=> push(libC(m, x, 'rec', true)));
+  // 1. consigliati per questo muscolo (aggiunta libera: gli ultimi fatti)
+  if(free) hist.filter(v=> v.muscle!=='Altro').slice(0, 10).forEach(v=> push(histC(v, 'rec')));
+  else {
+    hist.filter(v=> v.muscle===m).forEach(v=> push(histC(v, 'rec')));
+    Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ if(e.muscle===m) push(planC(e, d, 'rec')); }));
+    (ALT_LIB[m]||[]).forEach(x=> push(libC(m, x, 'rec', true)));
+  }
   // 2. il resto della scheda (riscaldamenti e stretching solo se si sostituisce uno di loro)
-  Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ if(e.muscle!=='Altro' || m==='Altro') push(planC(e, d, 'plan')); }));
+  Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ if(e.muscle!=='Altro' || (m==='Altro' && !free)) push(planC(e, d, 'plan')); }));
   // 3. altri esercizi comuni, muscolo per muscolo
-  [m, ...MUSCLES.filter(x=> x!==m)].forEach(mm=>{
+  (free ? MUSCLES : [m, ...MUSCLES.filter(x=> x!==m)]).forEach(mm=>{
     hist.filter(v=> v.muscle===mm).forEach(v=> push(histC(v, 'more')));
     (COMMON_LIB[mm]||[]).forEach(x=> push(libC(mm, x, 'more', false)));
     (ALT_LIB[mm]||[]).forEach(x=> push(libC(mm, x, 'more', true)));
@@ -5112,12 +5121,19 @@ function openSubSheet(ei){
   document.getElementById('subNote').textContent = done
     ? `${done===1?'La serie già fatta resta':'Le '+done+' serie già fatte restano'} su “${exx.name}”; quelle da fare passano al nuovo esercizio.`
     : "Numero di serie, recupero e riscaldamento restano quelli previsti; kg e ripetizioni ripartono dall'ultima volta che hai fatto il nuovo esercizio.";
+  subAdd = null;
+  document.getElementById('subSheetTitle').textContent = 'Sostituisci esercizio';
   subCands = subCandidates(exx);
   const m = MUSCLES.includes(exx.muscle) ? exx.muscle : 'Altro';
+  renderSubList(m==='Altro' ? 'Consigliati' : 'Consigliati per '+m);
+  document.getElementById('subSheet').classList.add('show');
+  const sh = document.querySelector('#subSheet .sheet'); if(sh) sh.scrollTop = 0;
+}
+function renderSubList(recTitle){
   const opt = (x,i)=> `<button type="button" class="sub-opt" data-i="${i}" data-q="${escapeHtml(subSearchText(x))}"><span class="so-name">${escapeHtml(x.name)}</span><span class="so-meta">${escapeHtml(x.meta)}</span></button>`;
   const of = g=> subCands.map((x,i)=>({x,i})).filter(o=> o.x.group===g);
   const grp = (title, body, note)=> body ? `<div class="sub-grp"><div class="sheet-sec">${title}</div>${note ? `<p class="sub-grp-note">${note}</p>` : ''}${body}</div>` : '';
-  let html = grp(m==='Altro' ? 'Consigliati' : 'Consigliati per '+escapeHtml(m), of('rec').map(o=> opt(o.x, o.i)).join(''))
+  let html = grp(escapeHtml(recTitle), of('rec').map(o=> opt(o.x, o.i)).join(''))
     + grp('Dalla scheda', of('plan').map(o=> opt(o.x, o.i)).join(''));
   const more = of('more'), mgs = [...new Set(more.map(o=> o.x.mg))];
   html += grp('Altri esercizi comuni', mgs.map(mg=> `<div class="sub-mg"><div class="sub-mg-h">${escapeHtml(mg==='Altro' ? 'Riscaldamento, stretching e cardio' : mg)}</div>`
@@ -5126,8 +5142,6 @@ function openSubSheet(ei){
   document.getElementById('subList').innerHTML = html;
   const q = document.getElementById('subSearch'); q.value = '';
   subFilter();
-  document.getElementById('subSheet').classList.add('show');
-  const sh = document.querySelector('#subSheet .sheet'); if(sh) sh.scrollTop = 0;
 }
 /* ricerca: tutte le parole scritte devono comparire (nome, muscolo, secondario o un altro nome del muscolo) */
 function subFilter(){
@@ -5144,14 +5158,22 @@ function subFilter(){
   const use = document.getElementById('subUseBtn');
   use.hidden = !raw;
   if(raw){
-    const exx = subEx, mm = muscleFromName(raw) || (exx && exx.muscle) || 'Altro';
+    const exx = subEx || (subAdd && subAdd.group), mm = muscleFromName(raw) || (exx && exx.muscle) || 'Altro';
     use.innerHTML = `<span class="so-name">Usa <b>«${escapeHtml(raw)}»</b></span><span class="so-meta">esercizio nuovo · ${escapeHtml(mm)}${muscleFromName(raw) ? ' (dal nome)' : ''}</span>`;
   }
 }
 function closeSubSheet(){ document.getElementById('subSheet').classList.remove('show'); subEx = null; }
+/* chiuso senza scegliere: un allenamento libero ancora vuoto si annulla (nessun allenamento finto nello storico) */
+function closeAddSheet(){
+  const wasAdd = !!subAdd; subAdd = null; closeSubSheet();
+  if(wasAdd && session && session.dayKey==='free' && !session.exercises.length){
+    session = null; saveSession(); stopTimer(); exitSessionView(); renderWorkout();
+  }
+}
 function subLost(){ closeSubSheet(); showToast("L'esercizio non è più nell'allenamento: riapri ⇄", null, null, 2600, 'warn'); }
 document.getElementById('subList').addEventListener('click', ev=>{
   const b = ev.target.closest('.sub-opt'); if(!b) return;
+  if(subAdd){ const c = subCands[+b.dataset.i], mode = subAdd; closeSubSheet(); subAdd = mode; addPicked(c); return; }
   const c = subCands[+b.dataset.i], ei = subIndex();
   if(ei<0){ subLost(); return; }
   closeSubSheet();
@@ -5159,6 +5181,13 @@ document.getElementById('subList').addEventListener('click', ev=>{
 });
 function subCustomGo(){
   const name = document.getElementById('subSearch').value.trim();
+  if(subAdd){
+    if(!name){ document.getElementById('subSearch').focus(); return; }
+    const mode = subAdd, g = mode.group;
+    closeSubSheet(); subAdd = mode;
+    addPicked({ name, muscle: muscleFromName(name) || (g && g.muscle) || 'Altro', secondary:null, type: g ? g.type : 'reps', exId:null });
+    return;
+  }
   const ei = subIndex(), exx = ei>=0 ? session.exercises[ei] : null;
   if(!name){ document.getElementById('subSearch').focus(); return; }
   if(!exx){ subLost(); return; }
@@ -5184,8 +5213,8 @@ document.getElementById('subSearch').addEventListener('keydown', e=>{
   if(vis.length===1) vis[0].click(); else if(!vis.length) subCustomGo(); else e.target.blur();
 });
 document.getElementById('subClear').addEventListener('click', ()=>{ const q = document.getElementById('subSearch'); q.value = ''; subFilter(); q.focus(); });
-document.getElementById('subSheetClose').addEventListener('click', closeSubSheet);
-document.getElementById('subSheet').addEventListener('click', e=>{ if(e.target.id==='subSheet') closeSubSheet(); });
+document.getElementById('subSheetClose').addEventListener('click', closeAddSheet);
+document.getElementById('subSheet').addEventListener('click', e=>{ if(e.target.id==='subSheet') closeAddSheet(); });
 
 function nextTarget(){
   const ex = session.exercises;
@@ -5246,7 +5275,9 @@ function renderSessionList(){
   const currentIdx = nt.ei, nextSi = nt.si;
   // titolo della barra: l'esercizio che hai davanti, non il nome della giornata troncato
   const titleEl = document.getElementById('sessTitle');
-  titleEl.innerHTML = currentIdx>=0
+  titleEl.innerHTML = !session.exercises.length
+    ? `<span class="st-kicker">${escapeHtml(session.dayName)}</span>Aggiungi un esercizio`
+    : currentIdx>=0
     ? `<span class="st-kicker">Ora · ${currentIdx+1} di ${session.exercises.length}</span>${escapeHtml(session.exercises[currentIdx].name)}`
     : `<span class="st-kicker">Completato</span>Premi Termina per salvare`;
   const hist = exerciseIndex();
@@ -5327,6 +5358,12 @@ function renderSessionList(){
         </select>
         <button type="button" class="sess-side-btn${sideOf(exx)?' on':''}" data-ei="${ei}" aria-pressed="${sideOf(exx)}" title="Ripetizioni (o secondi) di ogni lato: il peso sollevato conta i due lati">${sideOf(exx) ? ic('check')+'Per lato' : 'Per lato'}</button>
         ${!exx.linkNext ? `<div class="sess-rest-field"><label>Rec.</label><input type="text" inputmode="numeric" autocomplete="off" class="sess-rest-input" data-ei="${ei}" value="${num(exx.rest)}"><span>s</span></div>` : ''}
+        <div class="sess-ex-tools">
+          <button type="button" class="sess-side-btn sess-mv" data-ei="${ei}" data-d="-1" aria-label="Sposta su"${ei===0?' disabled':''}>${ic('chevU')}Su</button>
+          <button type="button" class="sess-side-btn sess-mv" data-ei="${ei}" data-d="1" aria-label="Sposta giù"${ei===session.exercises.length-1?' disabled':''}>${ic('chevD')}Giù</button>
+          ${ei<session.exercises.length-1 ? `<button type="button" class="sess-side-btn sess-link${exx.linkNext?' on':''}" data-ei="${ei}" aria-pressed="${!!exx.linkNext}">${ic('link')}${exx.linkNext ? 'Staccalo dal successivo' : 'Superset col successivo'}</button>` : ''}
+          <button type="button" class="sess-side-btn sess-add-grp" data-ei="${ei}">${ic('plus')}Esercizio in superset</button>
+        </div>
       </div>
       <div class="sess-col-head"><span>Serie</span><span>Prec</span><span>Kg</span><span>${T.short}${sideOf(exx)?'/lato':''}</span>${state.settings.showRpe?'<span>RPE</span>':''}<span></span></div>
       ${rows}
@@ -5353,6 +5390,9 @@ function renderSessionList(){
   });
 
   list.querySelectorAll('.hint-apply').forEach(b=> b.addEventListener('click', ()=> applyHint(+b.dataset.ei)));
+  list.querySelectorAll('.sess-mv').forEach(b=> b.addEventListener('click', ()=> sessMove(+b.dataset.ei, +b.dataset.d)));
+  list.querySelectorAll('.sess-link').forEach(b=> b.addEventListener('click', ()=> sessToggleLink(+b.dataset.ei)));
+  list.querySelectorAll('.sess-add-grp').forEach(b=> b.addEventListener('click', ()=>{ const x = session.exercises[+b.dataset.ei]; if(x) openAddSheet({ group:x }); }));
   list.querySelectorAll('.sess-sub-btn').forEach(b=> b.addEventListener('click', ()=> openSubSheet(+b.dataset.ei)));
   // esercizio finito riaperto a mano: si richiude col pulsante ⌃
   list.querySelectorAll('.sess-fold-btn').forEach(b=> b.addEventListener('click', ()=>{
@@ -5551,18 +5591,121 @@ function renderSessionList(){
     });
   });
 }
-document.getElementById('sessAddExBtn').addEventListener('click', ()=>{
-  if(!session) return;
-  // va in Allenamento: prima dello stretching, se c'è
-  const nx = {
-    exId: uid(), adhoc:true, name:'Nuovo esercizio', muscle:'Petto', secondary:null, type:'reps', phase:'main', perSide:false,
-    rest:90, linkNext:false, plan:{sets:1, reps:'8-10'}, hint:'', prevRef:[], prevIso:null,
-    sets:[{kg:0, val:8, rpe:null, done:false, at:null}]
-  };
-  const at = session.exercises.findIndex(x=> x.phase==='cool');
-  if(at>0 && !session.exercises[at-1].linkNext) session.exercises.splice(at, 0, nx); else session.exercises.push(nx);
+document.getElementById('sessAddExBtn').addEventListener('click', ()=>{ if(session) openAddSheet({}); });
+
+/* ===================== ESERCIZI IN ALLENAMENTO: SPOSTARE E SUPERSET =====================
+   Un superset si sposta tutto insieme; dentro il superset un esercizio scambia il posto col vicino; dal bordo del
+   superset esce e diventa a sé. Il recupero del gruppo sta sull'ultimo esercizio e resta al gruppo. */
+function sessRange(L, i){ let a=i, b=i; while(a>0 && L[a-1].linkNext) a--; while(b<L.length-1 && L[b].linkNext) b++; return [a, b]; }
+function sessRelink(L, a, b, rest){
+  for(let i=a; i<=b; i++) L[i].linkNext = i<b;
+  if(b>a || rest!=null){ const last = L[b]; last.rest = num(rest)>0 ? num(rest) : (num(last.rest)>0 ? num(last.rest) : 90); }
+}
+function sessAfterChange(x){
   saveSession(); renderSession(); updateSessionElapsed();
-});
+  if(x) requestAnimationFrame(()=>{ const el = document.querySelector(`#sessList .sess-ex[data-k="${sk(x)}"]`); if(el) try{ el.scrollIntoView({ block:'center', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){} });
+}
+function sessMove(ei, dir){
+  const L = session && session.exercises, x = L && L[ei];
+  if(!x || !(dir===1 || dir===-1)) return;
+  const [a, b] = sessRange(L, ei);
+  if(b>a){
+    const gRest = L[b].rest, j = ei+dir;
+    if(j>=a && j<=b){ L[ei] = L[j]; L[j] = x; sessRelink(L, a, b, gRest); sessAfterChange(x); return; }
+    // dal bordo del superset: esce e si mette subito fuori
+    L.splice(ei, 1);
+    sessRelink(L, a, b-1, gRest);
+    x.linkNext = false; if(!(num(x.rest)>0)) x.rest = num(gRest)>0 ? num(gRest) : 90;
+    L.splice(dir<0 ? a : b, 0, x);
+    sessAfterChange(x); return;
+  }
+  // esercizio a sé: salta tutto il blocco vicino (un superset resta intero)
+  let t;
+  if(dir<0){ if(ei===0) return; t = sessRange(L, ei-1)[0]; }
+  else { if(ei===L.length-1) return; t = sessRange(L, ei+1)[1]; }
+  L.splice(ei, 1); L.splice(t, 0, x);
+  // portato fra esercizi di un'altra sezione: prende quella (come nella scheda)
+  const i = L.indexOf(x), pp = L[i-1] ? (L[i-1].phase||'main') : null, np = L[i+1] ? (L[i+1].phase||'main') : null, mp = x.phase||'main';
+  if(mp!==pp && mp!==np) x.phase = pp || np || mp;
+  sessAfterChange(x);
+}
+function sessToggleLink(ei){
+  const L = session && session.exercises, x = L && L[ei];
+  if(!x || ei>=L.length-1) return;
+  if(x.linkNext){ x.linkNext = false; if(!(num(x.rest)>0)) x.rest = 90; }
+  else { x.linkNext = true; const nx = L[ei+1]; nx.phase = x.phase || 'main'; }
+  sessAfterChange(x);
+}
+
+/* aggiungere un esercizio: dall'elenco (fatti di recente, scheda, esercizi comuni) o scritto a mano, così lo storico lo riconosce */
+let subAdd = null;   // null = sostituzione; { group: esercizio } = nel suo superset; {} = in fondo
+function sessExFrom(c, base){
+  const name = String(c && c.name || '').trim(), k = normName(name);
+  let planEx = null;
+  Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ if(!planEx && normName(e.name)===k) planEx = e; }));
+  const lib = (ALT_LIB[c.muscle]||[]).concat(COMMON_LIB[c.muscle]||[]).find(a=> normName(a[0])===k);
+  const id = c.exId || subId(name);
+  const type = EX_TYPES[c.type] ? c.type : (planEx ? planEx.type : ((lib && lib[3]) || 'reps'));
+  const prev = findPrevEntry(id, name);
+  const det = prev ? workDetail(prev.entry.detail) : [];
+  const count = Math.max(1, Math.min(10, planEx ? (Math.round(num(planEx.sets))||3) : (det.length || 3)));
+  const eLike = { id, name, type, muscle: MUSCLES.includes(c.muscle) ? c.muscle : 'Altro', secondary: c.secondary||null,
+    reps: c.reps || (planEx && planEx.reps) || (lib && lib[2]) || '', kg: planEx ? num(planEx.kg) : 0, sets: count };
+  const sets = [];
+  for(let i=0;i<count;i++){
+    const p = det.length ? det[Math.min(i, det.length-1)] : null;
+    sets.push({ kg: p ? p.kg : eLike.kg, val: p ? p.val : planStartVal(eLike), rpe:null, done:false, at:null });
+  }
+  const h = hintFor(eLike, prev);
+  return { exId:id, adhoc:true, name, muscle:eLike.muscle, secondary:eLike.secondary, type, perSide: sideOf(c),
+    phase: base.phase || (planEx ? phaseOf(planEx) : 'main'),
+    rest: base.rest!=null ? base.rest : (planEx && num(planEx.rest)>0 ? num(planEx.rest) : 90), linkNext:false,
+    plan:{ sets:count, reps:eLike.reps }, hint:h.hint, hintKind:h.kind, hintAct:h.act||null, prevRef: det, prevIso: prev ? prev.iso : null, sets };
+}
+function addPicked(c){
+  const mode = subAdd; subAdd = null;
+  if(!session || !c || !String(c.name||'').trim()) return;
+  const L = session.exercises;
+  if(mode && mode.group){
+    const gi = L.indexOf(mode.group);
+    if(gi<0){ showToast("L'esercizio non è più nell'allenamento", null, null, 2600, 'warn'); return; }
+    const [, b] = sessRange(L, gi), last = L[b];
+    const nx = sessExFrom(c, { phase: mode.group.phase || 'main', rest: num(last.rest)>0 ? num(last.rest) : 90 });
+    last.linkNext = true;
+    L.splice(b+1, 0, nx);
+    sessAfterChange(nx); showToast('Aggiunto al superset: '+nx.name, null, null, 2400);
+    return;
+  }
+  const nx = sessExFrom(c, {});
+  // in Allenamento: prima dello stretching, se c'è
+  const at = nx.phase==='cool' ? -1 : L.findIndex(x=> (x.phase||'main')==='cool');
+  if(at>0 && !L[at-1].linkNext) L.splice(at, 0, nx); else if(at===0) L.unshift(nx); else L.push(nx);
+  sessAfterChange(nx); showToast('Aggiunto: '+nx.name, null, null, 2000);
+}
+function openAddSheet(mode){
+  if(!session) return;
+  subAdd = mode || {}; subEx = null;
+  const g = subAdd.group;
+  document.getElementById('subSheetTitle').textContent = g ? 'Aggiungi al superset' : 'Aggiungi esercizio';
+  document.getElementById('subSheetSub').textContent = g ? 'Insieme a: '+g.name : (session.exercises.length ? 'In fondo, prima dello stretching' : session.dayName);
+  document.getElementById('subNote').textContent = g
+    ? 'Si fa subito dopo, senza recupero in mezzo: il recupero resta alla fine del giro.'
+    : 'Scegli dall\'elenco o scrivi il nome: kg e ripetizioni ripartono dall\'ultima volta che l\'hai fatto.';
+  subCands = subCandidates(g || { name:'', muscle:null, exId:null, sets:[] });
+  renderSubList(g && MUSCLES.includes(g.muscle) && g.muscle!=='Altro' ? 'Consigliati per '+g.muscle : 'Fatti di recente');
+  document.getElementById('subSheet').classList.add('show');
+  const sh = document.querySelector('#subSheet .sheet'); if(sh) sh.scrollTop = 0;
+}
+/* allenamento libero: fuori scheda (non sposta la rotazione), con gli esercizi che scegli */
+function startFreeSession(){
+  if(session) return;
+  lastSummary = null; hideToast();
+  session = { id: uid(), dayKey:'free', dayName:'Allenamento libero', startedAt: Date.now(), note:'', exercises:[] };
+  sessExpanded = new Set(); sessMetaOpen = new Set(); etaOpen = false;
+  saveSession(); enterSessionView();
+  openAddSheet({});
+}
+document.getElementById('freeOpenBtn').addEventListener('click', startFreeSession);
 document.getElementById('sessNotes').addEventListener('input', (e)=>{
   if(!session) return; session.note = e.target.value; saveSession();
 });
@@ -5691,6 +5834,14 @@ function saveWarnings(sess){
   });
   return out;
 }
+/* fine dell'allenamento: l'ultima serie spuntata, non il tocco su Termina. Finito e ricordato di premere Termina
+   venti minuti dopo, quei venti minuti di recupero non entrano nella durata */
+function lastDoneAt(sess){
+  const now = Date.now(), start = num(sess.startedAt);
+  let last = 0;
+  sess.exercises.forEach(x=> x.sets.forEach(st=>{ if(st.done && num(st.at)>last) last = num(st.at); }));
+  return last ? Math.min(now, Math.max(start, last)) : now;
+}
 async function finalizeSession(){
   if(!session) return;
   const entries = buildEntries(session);
@@ -5728,7 +5879,7 @@ async function finalizeSession(){
   });
   const record = {
     id: session.id || uid(), dayKey: session.dayKey, dayName: session.dayName, ...(session.forDay ? {forDay: String(session.forDay)} : {}),
-    startedAt: session.startedAt, endedAt: Date.now(),
+    startedAt: session.startedAt, endedAt: lastDoneAt(session),
     note: session.note || '', entries
   };
   // lo stesso allenamento già nello storico (per esempio terminato anche in un'altra finestra): resta una volta sola, questa
