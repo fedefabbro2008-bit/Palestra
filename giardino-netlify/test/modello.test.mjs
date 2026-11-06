@@ -154,3 +154,28 @@ test("specie riconosciuta dal nome", () => {
   for (const [n, k] of Object.entries(casi)) assert.equal(M.specieDaNome(n), k, n);
   for (const k of Object.keys(M.SPECIE)) if (k !== "altro") assert.ok(M.ALIAS[k], k + ": nomi per la ricerca");
 });
+
+test("scheda dell'app per ogni specie, senza Claude", () => {
+  for (const k of Object.keys(M.SPECIE)) {
+    const sc = M.schedaAuto({ id: "x", nome: "X", specie: k, colt: "vaso", vaso: 2, luce: 8, dove: "aperto" }, 44);
+    assert.ok(M.INFO[k] && sc.descrizione && sc.consigli.length, k + ": testi");
+    for (const c of ["luce", "temperatura", "terreno", "acqua", "umidita", "concime"]) assert.ok(sc.condizioni[c], k + ": " + c);
+    if (M.SPECIE[k].ann) assert.ok(sc.fasi.length >= 3 && /dalla semina/.test(sc.fasi[0].quando), k + ": fasi");
+    else assert.deepEqual(Object.keys(sc.stagioni), ["inverno", "primavera", "estate", "autunno"], k + ": stagioni");
+  }
+  const nep = M.schedaAuto({ nome: "Nepenthes", specie: "nepenthes", colt: "vaso", vaso: 12, luce: 0, dove: "interno" }, 44);
+  assert.match(nep.condizioni.concime, /Niente concime/); assert.match(nep.condizioni.acqua, /piovana/);
+  const ag = M.schedaAuto({ nome: "Aglio", specie: "aglio", colt: "vaso", vaso: 30, luce: 4, dove: "aperto" }, 44);
+  assert.equal(ag.fasi.find((f) => /bulbo/i.test(f.fase)).cosa.includes("smetti"), true);
+  const bas = M.schedaAuto({ nome: "Basilico", specie: "basilico", colt: "vaso", vaso: 1, luce: 8, dove: "aperto", materiale: "chiuso" }, 44);
+  assert.ok(bas.consigli.some((c) => /Vaso piccolo/.test(c)) && bas.consigli.some((c) => /senza fori/.test(c)), "consigli dalla pianta");
+});
+
+test("diagnosi guidata: troppa, poca, incerta, altre cause", () => {
+  assert.equal(M.diagnosi(["bagnato", "appassita", "gialle_molli"]).registra, "meno");
+  assert.equal(M.diagnosi(["secco", "appassita"]).registra, "piu");
+  assert.equal(M.diagnosi(["bagnato", "secco"]).verdetto, "incerto");
+  const nep = M.diagnosi(["punte"], { specie: "nepenthes" });
+  assert.equal(nep.verdetto, "altro"); assert.match(nep.altri[0], /piovana o distillata/);
+  assert.equal(M.diagnosi([]).verdetto, "bene");
+});

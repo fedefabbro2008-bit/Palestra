@@ -94,7 +94,7 @@ export function pianoAttivo(data, met, oggi) {
       return { ...x, giorni: [...(x.giorni || []), ...b.giorni.filter((g) => !date.has(g.data)).map((g) => ({ ...g, auto: true }))].sort((a, c) => (a.data < c.data ? -1 : 1)) }; });
     return { piano: { avvisi: pc.data.avvisi || [], sintesi: pc.data.sintesi || "", piante: [...piante, ...base.piante.filter((x) => !ids.has(x.id))] }, fonte: "Claude", past, fut, base };
   }
-  return { piano: { ...base, sintesi: "" }, fonte: "calcolo automatico", past, fut, base };
+  return { piano: base, fonte: "calcolo automatico", past, fut, base };
 }
 
 /* ---------------- Telegram ---------------- */

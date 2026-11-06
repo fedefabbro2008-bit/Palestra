@@ -164,6 +164,9 @@ details[open]>summary .chev{transform:rotate(90deg)}
 .hint{font-size:.8rem;color:var(--muted)}
 .sugg{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:8px 10px;border-radius:12px;background:var(--leaf-soft);color:var(--ink);font-size:.88rem}
 .sugg b{color:var(--leaf)} .sugg .btn{flex:none}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--water);text-decoration:underline;cursor:pointer}
+.diag{margin-top:6px;border-top:1px solid var(--line);padding-top:12px} .diag summary{cursor:pointer;font-weight:650;list-style:none;padding:6px 0} .diag summary::-webkit-details-marker{display:none}
+.diag .sint{display:grid;gap:10px;margin:10px 0 12px} .diag[open] summary{margin-bottom:4px}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
 @media (max-width:359px){.grid2{grid-template-columns:minmax(0,1fr)}}
 input[type=text],input[type=number],input[type=date],select,textarea{display:block;width:100%;min-width:0;max-width:100%;
@@ -390,6 +393,7 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
     <div class="card stack" id="schedaPanel" hidden>
       <div class="row between"><h2 id="schTitolo">Scheda</h2><button class="btn small ghost" type="button" id="schChiudi">Chiudi</button></div>
       <div id="schBody" class="stack"></div>
+      <div id="schDiag"></div>
     </div>
     <div class="card" id="plantFormPanel" hidden>
       <form id="plantForm" class="form" autocomplete="off" novalidate>
@@ -838,8 +842,6 @@ function localPlan(){
   const fut=futDays(); if(!fut.length||!S.plants.length) return null;
   const w=activeWeather();
   const pl=pianoLocale({piante:S.plants, past:pastDays(), fut, eventi:allEvents(), oggi:today(), lat:S.location?.lat, vacanza:S.vacanza, suolo:w?.source==='open-meteo'?w.suolo??null:null});
-  const rain=fut.reduce((a,d)=>a+(d.rain||0),0), minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
-  pl.sintesi='Prossimi 7 giorni: '+fmt(rain)+' mm di pioggia, temperature tra '+fmt(minT,0)+' e '+fmt(maxT,0)+' °C.';
   return pl;
 }
 const plantsSig = () => JSON.stringify(S.plants.map(p=>[p.id,p.specie,p.fase,p.data_semina,p.colt,p.vaso,p.diametro,p.area,p.num,luceOre(p),p.dove,p.consociate||[]]));
@@ -1125,7 +1127,7 @@ function renderSiri(){
   if(sel._h!==h){ sel.innerHTML=h; sel._h=h; sel.value=zone.includes(prima)?prima:''; }
   $('#siriUrl').textContent=location.origin+'/api/siri/fatto'+(sel.value?'?zona='+encodeURIComponent(sel.value):'');
 }
-const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],meno:['➖','meno acqua (da foto)'],piu:['➕','più acqua (da foto)']};
+const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)']};
 const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
 function renderDiario(){
   const ev=allEvents(), t=today(), lim=addDays(t,-29);
@@ -1171,7 +1173,7 @@ function renderCalendario(){
   setHTML($('#calGiorno'),'<div class="evday">'+esc(dayLabel(calSel))+' · '+esc(dataBreve(calSel))+'</div>'+(del.length?del.map(e=>{ const [ic,lab]=EV_LABEL[e.tipo]||['•',e.tipo];
     return `<div class="ev"><span class="e" aria-hidden="true">${ic}</span><span><b>${esc(nome[e.plantId])}</b> ${esc(lab)}${e.litri?' · '+fmt(+e.litri,2)+' L':''}</span><span></span></div>`; }).join(''):'<div class="sub">Niente segnato in questo giorno.</div>'));
 }
-/* ================= Scheda della pianta (scritta da Claude) e calendario dei mesi ================= */
+/* ================= Scheda della pianta (dell'app, o scritta da Claude) e calendario dei mesi ================= */
 const FASE_ICO={germinazione:'🌱',piantina:'🌿',vegetativa:'🍃',fioritura:'🌸',fruttificazione:'🍅',maturazione:'🧺',riposo:'💤'};
 const STAG_ICO={inverno:'❄️ Inverno',primavera:'🌷 Primavera',estate:'☀️ Estate',autunno:'🍂 Autunno'};
 const COND_ICO={luce:'☀️ Luce',temperatura:'🌡️ Temperatura',terreno:'🪨 Terreno',acqua:'💧 Acqua',umidita:'💨 Umidità',concime:'🌱 Concime'};
@@ -1185,41 +1187,60 @@ function tabellaMesi(righe){
 function periodo(righe,chiave){ const m=righe.filter(r=>r[chiave]).map(r=>meseNome(r.mese)); return m.length?(m.length>1?m[0]+' – '+m[m.length-1]:m[0]):''; }
 function htmlScheda(p){
   const sp=SPECIE[p.specie]||SPECIE.altro, sc=p.scheda, vecchia=schedaVecchia(p), lat=S.location?.lat, ora=stagioneDi(today(),lat);
+  const claude=!!sc && !vecchia, X=claude?sc:schedaAuto(p,lat);
   let h=`<div class="sub">${esc(sp.ico+' '+sp.nome)}${p.data_semina?' · '+(p.tipo_data==='trapianto'?'trapiantata':'seminata')+' il '+esc(new Date(p.data_semina+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'})):''}</div>`;
-  if(sc && !vecchia){
-    h+=`<div><span class="chip leaf">Scheda di Claude · ${esc(dataBreve(String(sc.aggiornata).slice(0,10)))}</span></div>`;
-    if(sc.descrizione) h+=`<p>${esc(sc.descrizione)}</p>`;
-    const c=Object.keys(COND_ICO).filter(k=>sc.condizioni?.[k]);
-    if(c.length) h+='<h3 class="sez">Condizioni ideali</h3><div class="voci">'+c.map(k=>`<div><b>${COND_ICO[k]}</b><span>${esc(sc.condizioni[k])}</span></div>`).join('')+'</div>';
-    const st=Object.keys(STAG_ICO).filter(k=>sc.stagioni?.[k]);
-    if(st.length) h+='<h3 class="sez">Nelle stagioni</h3><div class="voci">'+st.map(k=>`<div class="${k===ora?'ora':''}"><b>${STAG_ICO[k]}</b><span>${esc(sc.stagioni[k])}</span></div>`).join('')+'</div>';
-    if(sc.fasi?.length) h+='<h3 class="sez">Fasi di crescita</h3><div class="voci">'+sc.fasi.map(f=>`<div><b>${esc(f.quando)} · ${esc(f.fase)}</b>${f.cosa?'<span>'+esc(f.cosa)+'</span>':''}</div>`).join('')+'</div>';
-    const righe=[...(sc.calendario||[])].sort((a,b)=>a.mese<b.mese?-1:1);
-    if(righe.length) h+='<h3 class="sez">Calendario dei mesi</h3>'+tabellaMesi(righe);
-    const fr=sc.frutti||[periodo(righe,'frutti')&&'Frutti: '+periodo(righe,'frutti'), periodo(righe,'raccolta')&&'Raccolta: '+periodo(righe,'raccolta')].filter(Boolean).join(' · ');
-    if(fr) h+=`<div class="alert info">${ICON.info}<div><b>Frutti e raccolto</b><br>${esc(fr)}</div></div>`;
-    if(sc.consigli?.length) h+='<h3 class="sez">Consigli</h3><ul class="notes">'+sc.consigli.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
-  } else {
-    // calendario automatico dal modello, finché Claude non scrive la scheda
+  // «Altra pianta» ma il nome dice di più: propone la specie (con i suoi valori il calcolo è più preciso)
+  const sug=p.specie==='altro'?specieDaNome(p.nome):null;
+  if(sug) h+=`<div class="sugg"><span>Dal nome sembra: <b>${esc(SPECIE[sug].ico+' '+SPECIE[sug].nome)}</b>. Con la specie giusta il calcolo dell'acqua è più preciso.</span><button type="button" class="btn small" data-usa-specie="${sug}" data-pid="${esc(p.id)}">Usa</button></div>`;
+  h+=`<div><span class="chip leaf">${claude?'Scheda di Claude · '+esc(dataBreve(String(sc.aggiornata).slice(0,10))):'Scheda dell\'app'}</span></div>`;
+  if(X.descrizione) h+=`<p>${esc(X.descrizione)}</p>`;
+  const c=Object.keys(COND_ICO).filter(k=>X.condizioni?.[k]);
+  if(c.length) h+='<h3 class="sez">Condizioni ideali</h3><div class="voci">'+c.map(k=>`<div><b>${COND_ICO[k]}</b><span>${esc(X.condizioni[k])}</span></div>`).join('')+'</div>';
+  const st=Object.keys(STAG_ICO).filter(k=>X.stagioni?.[k]);
+  if(st.length) h+='<h3 class="sez">Nelle stagioni</h3><div class="voci">'+st.map(k=>`<div class="${k===ora?'ora':''}"><b>${STAG_ICO[k]}</b><span>${esc(X.stagioni[k])}</span></div>`).join('')+'</div>';
+  if(X.fasi?.length) h+='<h3 class="sez">Fasi di crescita</h3><div class="voci">'+X.fasi.map(f=>`<div><b>${esc(f.quando)} · ${esc(f.fase)}</b>${f.cosa?'<span>'+esc(f.cosa)+'</span>':''}</div>`).join('')+'</div>';
+  let righe=claude?[...(sc.calendario||[])].sort((a,b)=>a.mese<b.mese?-1:1):[];
+  if(righe.length) h+='<h3 class="sez">Calendario dei mesi</h3>'+tabellaMesi(righe);
+  else {
+    // calendario dal modello (fasi della specie)
     const cal=calendarioAuto(p,lat);
     if(cal.mesi.length){
       // nella fase dei frutti (o del bulbo) l'icona è quella della pianta: 🍅, 🍋, 🧄…
-      const righe=cal.mesi.map(m=>({mese:m.mese, fase:(m.fase==='fruttificazione'?sp.ico:(FASE_ICO[m.fase]||''))+' '+m.nome, frutti:m.frutti, raccolta:m.raccolta}));
+      righe=cal.mesi.map(m=>({mese:m.mese, fase:(m.fase==='fruttificazione'?sp.ico:(FASE_ICO[m.fase]||''))+' '+m.nome, frutti:m.frutti, raccolta:m.raccolta}));
       h+='<h3 class="sez">'+(cal.tipo==='ciclo'?'Calendario dalla semina al raccolto':'Calendario di un anno tipico')+'</h3><p class="hint">Stimato dall\'app con le fasi della specie.</p>'+tabellaMesi(righe);
-      const fr=[periodo(righe,'frutti')&&'Frutti: '+periodo(righe,'frutti'), periodo(righe,'raccolta')&&'Raccolta: '+periodo(righe,'raccolta')].filter(Boolean).join(' · ');
-      if(fr) h+=`<div class="alert info">${ICON.info}<div><b>Frutti e raccolto</b><br>${esc(fr)}</div></div>`;
     } else h+='<p class="sub">Aggiungi la data di semina o di trapianto (Modifica) per vedere il calendario dei mesi.</p>';
   }
-  if(!sc || vecchia){
+  const fr=(claude?sc.frutti:'')||[periodo(righe,'frutti')&&'Frutti: '+periodo(righe,'frutti'), periodo(righe,'raccolta')&&'Raccolta: '+periodo(righe,'raccolta')].filter(Boolean).join(' · ')||X.frutti;
+  if(fr) h+=`<div class="alert info">${ICON.info}<div><b>Frutti e raccolto</b><br>${esc(fr)}</div></div>`;
+  if(X.consigli?.length) h+='<h3 class="sez">Consigli</h3><ul class="notes">'+X.consigli.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+  if(!claude){
     const testo=(vecchia?'Aggiorna':'Compila')+' la scheda della pianta «'+p.nome+'» nell\'app Giardino.';
-    h+=`<div class="alert info">${ICON.info}<div class="stack"><span>${vecchia?'La scheda di Claude è stata scritta per un\'altra specie o data di semina.':'Claude può scrivere la scheda completa: condizioni ideali, come sta nelle stagioni, fasi di crescita settimana per settimana, frutti.'} In una chat con il connettore Giardino scrivi: <b>“${esc(testo)}”</b></span><div><button class="btn small" type="button" data-copia="${esc(testo)}">Copia la richiesta</button></div></div></div>`;
+    h+=`<p class="hint">${vecchia?'La scheda di Claude era per un\'altra specie o data di semina: per ora vale quella dell\'app. ':''}Con il connettore, Claude può scriverne una più personale: <button class="linkbtn" type="button" data-copia="${esc(testo)}">copia la richiesta</button>.</p>`;
   }
   return h;
+}
+// Diagnosi guidata: sintomi spuntati → troppa o poca acqua (e l'app corregge il calcolo) oppure un'altra causa
+function htmlDiag(p){
+  return `<details class="diag"><summary>🩺 Come sta? Diagnosi guidata</summary>
+    <p class="hint">Spunta quello che vedi. L'app ti dice se è un problema d'acqua e, se serve, corregge il calcolo per questa pianta.</p>
+    <div class="sint">${SINTOMI.map(x=>`<label class="check"><input type="checkbox" value="${x.id}"><span>${esc(x.testo)}</span></label>`).join('')}</div>
+    <div class="row"><button class="btn primary" type="button" data-diag="${esc(p.id)}">Valuta</button></div>
+    <div class="stack" id="diagEsito" aria-live="polite"></div></details>`;
+}
+function valutaDiag(pid){
+  const p=S.plants.find(x=>x.id===pid); if(!p) return;
+  const sint=[...document.querySelectorAll('#schDiag .sint input:checked')].map(i=>i.value), r=diagnosi(sint,p);
+  if(!sint.length){ setHTML($('#diagEsito'),'<p class="hint">Spunta almeno un sintomo.</p>'); return; }
+  let h=`<div class="alert ${r.registra?'warn':'info'}">${ICON[r.registra?'warn':'info']}<div><b>${esc(r.titolo)}</b>${r.testo?'<br>'+esc(r.testo):''}</div></div>`;
+  if(r.altri.length) h+='<ul class="notes">'+r.altri.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+  if(r.registra) h+=`<p class="hint">${esc(r.impara)}</p><div class="row"><button class="btn" type="button" data-diag-reg="${r.registra}" data-pid="${esc(p.id)}">${r.registra==='meno'?'Registra: dai meno acqua':'Registra: dai più acqua'}</button></div>`;
+  setHTML($('#diagEsito'),h);
 }
 let schedaId=null;
 function openScheda(id){
   const p=S.plants.find(x=>x.id===id); if(!p) return;
   schedaId=id; $('#schTitolo').textContent=icoDi(p)+' '+p.nome; $('#schBody').innerHTML=htmlScheda(p);
+  $('#schDiag').innerHTML=htmlDiag(p);
   $('#plantListBox').hidden=true; $('#plantFormPanel').hidden=true; $('#schedaPanel').hidden=false; window.scrollTo({top:0});
 }
 function closeScheda(){ schedaId=null; $('#schedaPanel').hidden=true; $('#plantListBox').hidden=false; }
@@ -1433,6 +1454,12 @@ function wire(){
   $('#addPlantBtn').addEventListener('click',()=>openForm(null));
   $('#plantList').addEventListener('click',e=>{ const b=e.target.closest('[data-edit]'); if(b) openForm(b.dataset.edit); const sc=e.target.closest('[data-scheda]'); if(sc) openScheda(sc.dataset.scheda); });
   $('#schChiudi').addEventListener('click',closeScheda);
+  $('#schDiag').addEventListener('click',e=>{
+    const v=e.target.closest('[data-diag]'); if(v){ valutaDiag(v.dataset.diag); return; }
+    const r=e.target.closest('[data-diag-reg]'); if(r){ addEvent(r.dataset.pid,r.dataset.diagReg,{}); renderAll(); r.disabled=true; r.textContent='✔ Registrato'; toast(r.dataset.diagReg==='meno'?'Registrato: imparo a dare meno acqua':'Registrato: imparo a dare più acqua'); }
+  });
+  $('#schBody').addEventListener('click',e=>{ const u=e.target.closest('[data-usa-specie]'); if(!u) return;
+    const p=S.plants.find(x=>x.id===u.dataset.pid); if(!p) return; p.specie=u.dataset.usaSpecie; saveMain(); renderAll(); openScheda(p.id); toast('Specie aggiornata: '+SPECIE[p.specie].nome); });
   $('#schBody').addEventListener('click',async e=>{ const b=e.target.closest('[data-copia]'); if(b) toast(await copyText(b.dataset.copia)?'Copiato: incollalo nella chat di Claude':'Copia non riuscita'); });
   $('#plantForm').addEventListener('submit',submitForm);
   $('#plantForm').addEventListener('change',e=>{

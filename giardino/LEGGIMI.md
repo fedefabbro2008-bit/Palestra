@@ -58,6 +58,13 @@ e push su `main`. Nessuna chiave API a pagamento: Claude lavora solo attraverso 
 Prove in locale (dalla cartella `giardino-netlify`, con Playwright installato in `test/`): `npm test`.
 Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 
+## Senza Claude (tutto dentro l'app)
+- **Meteo dei primi giorni da due modelli**: per oggi, domani e dopodomani (solo i giorni che ICON-2I copre per intero, ora per ora) pioggia, massima e minima sono la media tra il modello di Open-Meteo e **ICON-2I** di ItaliaMeteo-ARPAE (2,2 km). Fuori dall'Italia resta il primo.
+- **Specie riconosciuta dal nome** («Nepenthes mirabilis» → Nepenthes, «Pomodori ciliegini» → Pomodoro): nuova pianta = scelta da sola; pianta come «Altra pianta» = proposta nella scheda.
+- **Scheda dell'app** per ogni specie: descrizione, condizioni ideali, stagioni (perenni) o fasi settimana per settimana (annuali), calendario dei mesi, consigli della specie + consigli dai dati della pianta (vaso, luce, posto). La scheda di Claude, se c'è, la sostituisce.
+- **Diagnosi guidata** (Scheda → Come sta?): sintomi da spuntare → troppa o poca acqua (registra «meno»/«più» e il calcolo impara) o altre cause (calcare, ferro, luce, oidio, ragnetto, scottature).
+- **Sintesi della settimana e prossima innaffiatura** per pianta anche nel calcolo automatico (app, Telegram /settimana, connettore).
+
 ## Come si calcola (vasi)
 
 - Acqua disponibile = 25% del volume del vaso, ridotta del 6% per ogni pianta in più (radici), minimo 60%.

@@ -109,6 +109,104 @@ export function specieDaNome(nome){
   }
   return punti>=4 ? best : null;
 }
+/* ---------------- Schede dell'app (senza Claude) ----------------
+   d: descrizione; luce, temp, terreno, acqua, umid: condizioni ideali; per: periodo (semina, trapianto, raccolta in Italia);
+   cons: consigli; frutti: periodo dei frutti o del raccolto. Claude, se collegato, può scrivere una scheda più personale. */
+export const INFO = {
+  pomodoro:{d:'Ortaggio estivo che ama caldo e sole; in vaso serve un contenitore grande e un tutore.',luce:'Pieno sole, almeno 6–8 ore',temp:'Ideale 20–28 °C; sotto 10 °C si ferma, sopra 32 °C i fiori cadono',terreno:'Ricco, sciolto e drenante, con compost',acqua:'Regolare e abbondante con i frutti, al piede e mai sulle foglie',umid:'Media; con foglie bagnate arrivano peronospora e muffe',per:'Semina in semenzaio febbraio–marzo, trapianto aprile–maggio, raccolta luglio–settembre',cons:['Togli i germogli ascellari (femminelle) una volta a settimana.','Annaffiature irregolari spaccano i frutti e causano il marciume apicale.','Pacciama il vaso con paglia per tenere il terriccio fresco.'],frutti:'Luglio – settembre'},
+  zucchina:{d:'Pianta vigorosa e generosa: una sola pianta occupa circa un metro quadro.',luce:'Pieno sole',temp:'Ideale 18–30 °C; teme il gelo e il freddo sotto 10 °C',terreno:'Molto ricco di sostanza organica, fresco',acqua:'Abbondante e costante, al piede, soprattutto con i frutti',umid:'Media; le foglie bagnate prendono l\'oidio (mal bianco)',per:'Semina aprile–maggio (anche diretta), raccolta giugno–settembre',cons:['Raccogli le zucchine a 15–20 cm: la pianta ne produce di più.','Se i frutti marciscono in punta servono più api: impollina a mano con un pennello.'],frutti:'Giugno – settembre'},
+  cetriolo:{d:'Rampicante estivo che cresce in fretta e vuole acqua costante.',luce:'Pieno sole o leggera mezz\'ombra nelle ore calde',temp:'Ideale 20–28 °C; sotto 12 °C soffre',terreno:'Ricco, soffice e drenante',acqua:'Costante: con la siccità i frutti diventano amari',umid:'Medio-alta, ma foglie asciutte',per:'Semina aprile–maggio, raccolta giugno–agosto',cons:['Dagli una rete o un tutore su cui arrampicarsi.','Raccogli spesso i frutti ancora giovani.'],frutti:'Giugno – agosto'},
+  melone:{d:'Ortaggio da frutto che ama il caldo e il terreno asciutto in superficie verso la maturazione.',luce:'Pieno sole',temp:'Ideale 22–30 °C; teme il freddo sotto 12 °C',terreno:'Ricco, caldo, ben drenato',acqua:'Regolare in crescita; riducila quando i frutti maturano per un sapore più dolce',umid:'Bassa-media',per:'Semina aprile–maggio, raccolta luglio–agosto',cons:['Metti una tavoletta sotto i frutti per non farli marcire.','Cima i rami dopo 4–5 foglie per avere più frutti.'],frutti:'Luglio – agosto'},
+  peperone:{d:'Ortaggio lento a partire ma molto produttivo con il caldo; il peperoncino è ottimo in vaso.',luce:'Pieno sole',temp:'Ideale 20–30 °C; sotto 12 °C si blocca',terreno:'Ricco e ben drenato',acqua:'Regolare, senza ristagni; un po\' di stress rende i peperoncini più piccanti',umid:'Media',per:'Semina in semenzaio gennaio–marzo, trapianto maggio, raccolta luglio–ottobre',cons:['Usa un tutore: i rami carichi si spezzano.','Il peperoncino in vaso si può portare in casa d\'inverno e vive più anni.'],frutti:'Luglio – ottobre'},
+  melanzana:{d:'Ortaggio da clima caldo, tra i più esigenti di calore.',luce:'Pieno sole',temp:'Ideale 22–30 °C; sotto 15 °C cresce poco',terreno:'Profondo, ricco e fresco',acqua:'Abbondante e regolare, soprattutto con i frutti',umid:'Media',per:'Semina in semenzaio febbraio–marzo, trapianto maggio, raccolta luglio–settembre',cons:['Tieni 5–6 frutti per pianta per averli più grandi.','Controlla le foglie: la dorifora e gli afidi la amano.'],frutti:'Luglio – settembre'},
+  lattuga:{d:'Ortaggio da foglia a crescita rapida, adatto alle stagioni miti.',luce:'Sole in primavera e autunno, mezz\'ombra d\'estate',temp:'Ideale 12–20 °C; con il caldo va a seme e diventa amara',terreno:'Soffice, fresco, ricco',acqua:'Poca ma spesso: radici corte, il terriccio non deve seccare',umid:'Media',per:'Semina scalare da febbraio a ottobre, raccolta dopo 50–70 giorni',cons:['Semina poche piante ogni 2–3 settimane per averne sempre.','D\'estate ombreggia nelle ore calde.'],frutti:'Raccolta delle foglie da 6–8 settimane dopo la semina'},
+  spinaci:{d:'Ortaggi da foglia rustici, ottimi per l\'autunno e l\'inverno.',luce:'Sole o mezz\'ombra',temp:'Ideale 10–20 °C; resistono al freddo, col caldo vanno a seme',terreno:'Ricco e fresco',acqua:'Regolare, terriccio sempre leggermente umido',umid:'Media',per:'Semina agosto–ottobre e febbraio–aprile, raccolta dopo 40–60 giorni',cons:['Raccogli le foglie esterne: la pianta continua a produrre.','La rucola d\'estate va all\'ombra.'],frutti:'Raccolta delle foglie da 5–8 settimane dopo la semina'},
+  cavolo:{d:'Ortaggi autunnali e invernali, lenti ma resistenti al freddo.',luce:'Pieno sole',temp:'Ideale 15–20 °C; reggono il gelo leggero',terreno:'Ricco, profondo, ben concimato',acqua:'Regolare, soprattutto all\'inizio dopo il trapianto',umid:'Media',per:'Semina giugno–luglio, trapianto agosto–settembre, raccolta ottobre–febbraio',cons:['Proteggi con una rete dalla cavolaia (farfalla bianca).','Un po\' di freddo rende il sapore più dolce.'],frutti:'Ottobre – febbraio'},
+  fagiolo:{d:'Legume facile, nano o rampicante; arricchisce il terreno di azoto.',luce:'Pieno sole',temp:'Ideale 18–28 °C; teme il freddo',terreno:'Sciolto, non troppo concimato',acqua:'Moderata; abbondante in fioritura e con i baccelli',umid:'Media',per:'Semina diretta aprile–luglio, raccolta dopo 60–90 giorni',cons:['Non serve concime: lo fa da solo con le radici.','Raccogli i fagiolini spesso, ancora teneri.'],frutti:'Giugno – settembre'},
+  pisello:{d:'Legume da stagione fresca; seminato in autunno o a fine inverno.',luce:'Sole',temp:'Ideale 10–20 °C; il caldo blocca la produzione',terreno:'Sciolto e drenante',acqua:'Moderata, di più in fioritura',umid:'Media',per:'Semina ottobre–novembre o febbraio–marzo, raccolta aprile–giugno',cons:['Dai una rete o delle canne ai tipi rampicanti.','Non serve concime.'],frutti:'Aprile – giugno'},
+  patata:{d:'Tubero facile anche in sacchi o vasi profondi.',luce:'Pieno sole',temp:'Ideale 15–22 °C; teme il gelo sulle foglie',terreno:'Sciolto, profondo, poco calcareo',acqua:'Regolare quando si formano i tuberi (dopo la fioritura); poi riduci',umid:'Media; foglie bagnate favoriscono la peronospora',per:'Messa a dimora marzo–aprile, raccolta giugno–luglio',cons:['Rincalza (aggiungi terra alla base) quando le piante sono alte 20 cm.','Raccogli quando le foglie ingialliscono.'],frutti:'Giugno – luglio'},
+  carota:{d:'Radici da semina diretta: non sopportano il trapianto.',luce:'Sole',temp:'Ideale 15–22 °C',terreno:'Sabbioso, profondo, senza sassi',acqua:'Regolare: sbalzi di acqua spaccano le radici',umid:'Media',per:'Semina febbraio–luglio, raccolta dopo 80–110 giorni',cons:['Dirada le piantine a 4–5 cm.','Serve un vaso profondo almeno 25–30 cm.'],frutti:'Raccolta 3–4 mesi dopo la semina'},
+  ravanello:{d:'L\'ortaggio più veloce: pronto in un mese.',luce:'Sole o mezz\'ombra',temp:'Ideale 10–20 °C',terreno:'Soffice e fresco',acqua:'Frequente e leggera: se secca diventa piccante e legnoso',umid:'Media',per:'Semina da febbraio a ottobre, raccolta dopo 25–35 giorni',cons:['Semina pochi semi ogni 10 giorni.','Va bene anche in un vaso basso.'],frutti:'Raccolta un mese dopo la semina'},
+  aglio:{d:'Si pianta lo spicchio in autunno; il bulbo si forma in primavera e si raccoglie a inizio estate.',luce:'Pieno sole',temp:'Resiste al gelo; il freddo invernale serve a formare il bulbo',terreno:'Sciolto e ben drenante, senza letame fresco',acqua:'Poca: solo se il terriccio è asciutto; mai ristagni. Smetti 2–3 settimane prima della raccolta',umid:'Bassa',per:'Spicchi a dimora ottobre–dicembre, raccolta giugno–luglio',cons:['Pianta lo spicchio con la punta in su, 3–4 cm sotto terra.','Togli lo stelo dei fiori, se compare, per un bulbo più grande.','Raccogli quando metà delle foglie è secca.'],frutti:'Giugno – luglio'},
+  cipolla:{d:'Bulbo da semina o da bulbilli; i porri restano in campo anche d\'inverno.',luce:'Pieno sole',temp:'Ideale 12–25 °C; resiste al freddo',terreno:'Sciolto e drenante',acqua:'Regolare in crescita, poca quando il bulbo matura',umid:'Bassa',per:'Bulbilli febbraio–marzo o settembre–ottobre, raccolta dopo 4–6 mesi',cons:['Smetti di bagnare quando le foglie si piegano.','Lascia asciugare i bulbi al sole qualche giorno.'],frutti:'Giugno – agosto'},
+  basilico:{d:'Aromatica annuale che ama il caldo; si raccoglie per tutta l\'estate.',luce:'Sole, meglio non quello del primo pomeriggio d\'estate',temp:'Ideale 20–28 °C; sotto 10 °C annerisce',terreno:'Soffice e ricco',acqua:'Regolare: terriccio umido ma non fradicio; bagna al piede',umid:'Media',per:'Semina marzo–maggio, raccolta giugno–settembre',cons:['Cima le punte sopra una coppia di foglie: diventa più folto.','Togli i fiori, altrimenti le foglie perdono aroma.'],frutti:'Foglie da giugno a settembre'},
+  prezzemolo:{d:'Aromatiche da foglia, facili in vaso.',luce:'Sole o mezz\'ombra',temp:'Ideale 10–25 °C; resiste al freddo',terreno:'Fresco e ricco',acqua:'Regolare, senza ristagni',umid:'Media',per:'Semina febbraio–settembre (germina lento, 3–4 settimane)',cons:['Taglia gli steli esterni alla base.','D\'estate sta meglio a mezz\'ombra.'],frutti:'Foglie quasi tutto l\'anno'},
+  menta:{d:'Perenne invadente: meglio in un vaso tutto suo.',luce:'Mezz\'ombra o sole non torrido',temp:'Resiste al freddo; d\'inverno la parte aerea secca e riparte in primavera',terreno:'Fresco e ricco',acqua:'Ama il terriccio sempre umido',umid:'Media',cons:['Taglia spesso i rami: ricaccia più fitta.','Rinvasa o dividi il cespo ogni anno.'],frutti:'Foglie da aprile a ottobre'},
+  rosmarino:{d:'Aromatiche mediterranee, perenni, che preferiscono il secco all\'umido.',luce:'Pieno sole',temp:'Resistono al freddo fino a circa −8 °C; temono il ristagno più del gelo',terreno:'Povero, sassoso e molto drenante',acqua:'Poca: solo quando il terriccio è asciutto in profondità',umid:'Bassa',cons:['Mai sottovaso pieno d\'acqua.','Pota leggermente dopo la fioritura.'],frutti:'Foglie tutto l\'anno'},
+  lavanda:{d:'Arbusto mediterraneo da fiore, profumato e molto resistente alla siccità.',luce:'Pieno sole',temp:'Resiste al freddo; teme l\'umidità invernale',terreno:'Povero, calcareo e drenante',acqua:'Poca; ancora meno d\'inverno',umid:'Bassa',cons:['Pota dopo la fioritura senza tagliare nel legno vecchio.','In vaso usa terriccio con sabbia o pomice.'],frutti:'Fioritura giugno – luglio'},
+  fragola:{d:'Perenne da frutto, ottima in vaso o in fioriera; produce per 2–3 anni.',luce:'Sole, almeno 6 ore',temp:'Resiste al freddo; i fiori temono le gelate tardive',terreno:'Leggermente acido, ricco e drenante',acqua:'Regolare, di più con i frutti; bagna senza bagnare i frutti',umid:'Media; frutti bagnati marciscono',cons:['Togli gli stoloni se vuoi più frutti.','Paglia sotto i frutti per tenerli puliti.'],frutti:'Maggio – giugno (rifiorenti fino all\'autunno)'},
+  agrumi:{d:'Alberi sempreverdi da frutto; in vaso vivono decenni con le cure giuste.',luce:'Pieno sole',temp:'Temono il gelo: sotto 3 °C vanno riparati; ideale 15–30 °C',terreno:'Specifico per agrumi, leggermente acido e drenante',acqua:'Regolare d\'estate quando i primi cm sono asciutti; poca d\'inverno',umid:'Media',cons:['Foglie gialle con nervature verdi: manca ferro, usa un concime con microelementi.','D\'inverno in un locale luminoso e fresco (5–12 °C), non al caldo.'],frutti:'Fioritura in primavera, frutti da ottobre a marzo'},
+  olivo:{d:'Albero mediterraneo molto resistente alla siccità.',luce:'Pieno sole',temp:'Resiste fino a circa −5/−8 °C; in vaso meno',terreno:'Drenante, anche povero',acqua:'Poca; di più in fioritura e in estate in vaso',umid:'Bassa',cons:['Il ristagno è il nemico principale.','Pota a fine inverno per aprire la chioma alla luce.'],frutti:'Olive da ottobre a dicembre'},
+  vite:{d:'Rampicante da frutto, resistente e longeva.',luce:'Pieno sole',temp:'Resiste al freddo invernale; le gemme temono le gelate di aprile',terreno:'Drenante, anche povero',acqua:'Poca: solo con siccità prolungata, di più in vaso',umid:'Bassa; l\'umidità favorisce peronospora e oidio',cons:['Pota d\'inverno lasciando poche gemme per tralcio.','Sfoglia intorno ai grappoli a inizio estate.'],frutti:'Uva da agosto a ottobre'},
+  fruttiferi:{d:'Alberi da frutto a foglia caduca; d\'inverno riposano.',luce:'Pieno sole',temp:'Resistono al freddo; i fiori temono le gelate tardive',terreno:'Profondo, fertile e drenante',acqua:'Regolare in primavera ed estate, soprattutto con i frutti',umid:'Media',cons:['Pota a fine inverno.','Dirada i frutti troppo fitti per averli più grandi.'],frutti:'Dalla tarda primavera all\'autunno, secondo la specie'},
+  rosa:{d:'Arbusto da fiore che rifiorisce da maggio all\'autunno se curato.',luce:'Sole, almeno 5–6 ore',temp:'Resistente al freddo',terreno:'Ricco, profondo, ben drenato',acqua:'Regolare e profonda, al piede; mai sulle foglie',umid:'Media; foglie bagnate prendono ticchiolatura e oidio',cons:['Taglia i fiori appassiti sopra una foglia a cinque foglioline.','Pota a fine inverno.'],frutti:'Fioritura maggio – ottobre'},
+  ortensia:{d:'Arbusto da fiore di mezz\'ombra, molto assetato d\'estate.',luce:'Mezz\'ombra, niente sole del pomeriggio',temp:'Resiste al freddo; soffre il caldo secco',terreno:'Acido, fresco e ricco',acqua:'Abbondante d\'estate; usa acqua piovana se l\'acqua di casa è calcarea',umid:'Medio-alta',cons:['Foglie afflosciate al pomeriggio: spesso è il caldo, controlla il terriccio prima di bagnare.','Il colore blu viene dal terreno acido.'],frutti:'Fioritura giugno – agosto'},
+  geranio:{d:'Fiori da balcone generosi e facili.',luce:'Sole',temp:'Temono il gelo: d\'inverno al riparo sopra 2–5 °C',terreno:'Universale per fiorite, drenante',acqua:'Regolare d\'estate, quando i primi cm sono asciutti; quasi niente d\'inverno',umid:'Bassa-media',cons:['Togli i fiori secchi per una fioritura continua.','Controlla la farfallina del geranio (fori nei boccioli).'],frutti:'Fioritura aprile – ottobre'},
+  arbusto:{d:'Arbusti e siepi da giardino o da grandi vasi.',luce:'Sole o mezz\'ombra, secondo la specie',temp:'In genere resistenti al freddo',terreno:'Universale, drenante',acqua:'Regolare il primo anno; poi solo con siccità (in vaso più spesso)',umid:'Media',cons:['Pota dopo la fioritura le specie da fiore, a fine inverno le altre.'],frutti:''},
+  felce:{d:'Pianta verde da ombra che vuole umidità costante.',luce:'Ombra luminosa, niente sole diretto',temp:'Ideale 15–24 °C',terreno:'Soffice, ricco di torba o fibra',acqua:'Terriccio sempre leggermente umido, mai secco del tutto',umid:'Alta: nebulizza o usa un sottovaso con argilla espansa bagnata',cons:['Punte marroni: aria troppo secca.','Lontano dai termosifoni.'],frutti:''},
+  prato:{d:'Tappeto erboso: l\'acqua si calcola sulla superficie.',luce:'Sole o mezz\'ombra secondo il miscuglio',temp:'Le graminacee comuni soffrono sopra 30 °C',terreno:'Drenante',acqua:'Poche volte e a fondo (radici profonde), la mattina presto',umid:'Media',cons:['Non tagliare troppo basso d\'estate (6–8 cm).'],frutti:''},
+  appartamento:{d:'Piante verdi da interno, in genere facili; il pericolo più comune è troppa acqua.',luce:'Molta luce indiretta, vicino a una finestra',temp:'Ideale 18–24 °C; sotto 12 °C soffrono',terreno:'Universale per piante verdi, drenante',acqua:'Quando i primi 2–3 cm sono asciutti; d\'inverno meno',umid:'Media; d\'inverno il riscaldamento secca l\'aria',cons:['Svuota il sottovaso 15 minuti dopo aver bagnato.','Gira il vaso ogni tanto perché cresca dritta.'],frutti:''},
+  orchidea:{d:'Epifita: le radici vivono all\'aria, nella corteccia, non in terra.',luce:'Luce intensa ma non sole diretto',temp:'Ideale 18–26 °C; un calo notturno di 5 °C in autunno aiuta a rifiorire',terreno:'Corteccia di pino, mai terriccio',acqua:'Ad immersione per 10 minuti quando le radici sono argentate; mai acqua nel cuore delle foglie',umid:'Alta',cons:['Radici verdi = bagnate, argentate = da bagnare.','Dopo la fioritura taglia lo stelo sopra il secondo nodo.'],frutti:'Fioritura in inverno e primavera'},
+  succulenta:{d:'Piante che accumulano acqua nelle foglie o nel fusto: muoiono più spesso per troppa acqua che per siccità.',luce:'Molta luce, anche sole diretto (abituale piano piano)',temp:'Ideale 15–30 °C; d\'inverno fresche e asciutte',terreno:'Per cactacee, con sabbia o pomice',acqua:'Solo quando il terriccio è completamente asciutto; quasi niente d\'inverno',umid:'Bassa',cons:['Usa vasi con foro e niente sottovaso pieno.','Foglie molli e trasparenti: troppa acqua.'],frutti:''},
+  nepenthes:{d:'Carnivora tropicale con le foglie ad ampolla; vive bene in casa con luce e umidità.',luce:'Molta luce indiretta, poche ore di sole tenue',temp:'Ideale 20–30 °C; sotto 12–15 °C soffre',terreno:'Sfagno, torba bionda e perlite; mai terriccio universale',acqua:'Terriccio sempre umido ma non fradicio, solo acqua piovana, distillata o di osmosi (niente calcare)',umid:'Alta (60% o più): senza umidità non fa nuove ampolle',cons:['Niente concime nel terriccio: brucia le radici.','Non riempire le ampolle e non nutrirla con carne.','Ampolle che seccano: aria troppo secca o poca luce.'],frutti:''},
+  carnivora:{d:'Carnivore delle torbiere (Dionaea, Sarracenia, Drosera): d\'estate fuori al sole, d\'inverno riposano al freddo.',luce:'Pieno sole',temp:'D\'inverno serve il freddo (0–10 °C) per il riposo',terreno:'Torba bionda e perlite, senza concime',acqua:'Sottovaso con 1–2 cm d\'acqua piovana o distillata in estate; terriccio umido d\'inverno',umid:'Alta',cons:['Mai acqua del rubinetto né concime.','Non far scattare le trappole per gioco: la pianta si indebolisce.'],frutti:''},
+  tropicale:{d:'Piante tropicali da foglia: crescono molto con luce e calore.',luce:'Molta luce indiretta; il sole diretto brucia le foglie',temp:'Ideale 18–27 °C; sotto 12 °C soffrono',terreno:'Drenante, con corteccia o perlite',acqua:'Quando i primi 3–5 cm sono asciutti',umid:'Medio-alta',cons:['Dai un tutore di cocco alla monstera.','Foglie gialle in basso: spesso troppa acqua.'],frutti:''},
+  sansevieria:{d:'Le piante più resistenti alla siccità e alla poca luce.',luce:'Tollera l\'ombra; cresce meglio con molta luce',temp:'Ideale 18–27 °C; sotto 10 °C a rischio',terreno:'Per cactacee o universale con molta pomice',acqua:'Solo con terriccio del tutto asciutto: ogni 2–4 settimane d\'estate, ogni 1–2 mesi d\'inverno',umid:'Bassa',cons:['Foglie molli alla base: marciume da troppa acqua.'],frutti:''},
+  ficus:{d:'Alberelli da interno che non amano gli spostamenti.',luce:'Molta luce, anche qualche ora di sole tenue',temp:'Ideale 18–25 °C; teme correnti fredde',terreno:'Universale drenante',acqua:'Quando i primi 3 cm sono asciutti',umid:'Media',cons:['Perde le foglie se lo sposti o con gli sbalzi di temperatura: poi le rifà.'],frutti:''},
+  spatifillo:{d:'Piante da interno di sottobosco tropicale, amano l\'umidità.',luce:'Luce indiretta, anche poca',temp:'Ideale 18–27 °C; sotto 13 °C soffrono',terreno:'Soffice e ricco',acqua:'Terriccio sempre leggermente umido; lo spatifillo si affloscia quando ha sete',umid:'Alta: nebulizza, sottovaso con argilla bagnata',cons:['Calathea: meglio acqua piovana o lasciata riposare (teme calcare e cloro).','Punte secche: aria secca.'],frutti:''},
+  oleandro:{d:'Arbusto mediterraneo da fiore, molto resistente (tutte le parti sono velenose).',luce:'Pieno sole',temp:'Resiste fino a circa −5 °C; in vaso proteggilo sotto zero',terreno:'Universale drenante',acqua:'Abbondante d\'estate in vaso, poca d\'inverno',umid:'Bassa',cons:['Pota dopo la fioritura.','Usa i guanti quando lo tagli.'],frutti:'Fioritura maggio – settembre'},
+  bulbose:{d:'Bulbi piantati in autunno che fioriscono in primavera e poi riposano d\'estate.',luce:'Sole',temp:'Il freddo invernale serve alla fioritura',terreno:'Drenante: il bulbo marcisce nel bagnato',acqua:'Moderata da autunno a fioritura; niente acqua quando le foglie seccano',umid:'Bassa',cons:['Pianta i bulbi a una profondità pari a 2–3 volte la loro altezza.','Lascia seccare le foglie dopo la fioritura: nutrono il bulbo dell\'anno dopo.'],frutti:'Fioritura febbraio – aprile'},
+  altro:{d:'Specie non nell\'elenco: l\'app usa valori medi. Se la riconosci, sceglila tra le specie per un calcolo più preciso.',luce:'Secondo la specie',temp:'Secondo la specie',terreno:'Universale drenante',acqua:'Quando i primi 2–3 cm di terriccio sono asciutti',umid:'Media',cons:['Segna «Terreno ancora umido» o «Era secca» quando capita: l\'app impara il consumo giusto.'],frutti:''}
+};
+const FASE_COSA={germinazione:'Terriccio sempre leggermente umido, mai fradicio, al caldo.',
+  piantina:'Annaffiature leggere e frequenti; dopo il trapianto qualche giorno senza sole forte.',
+  vegetativa:'Bagna a fondo quando i primi 2–3 cm sono asciutti; inizia il concime, se serve.',
+  fioritura:'Acqua regolare: con la siccità i fiori cadono.',
+  fruttificazione:'Il periodo in cui beve di più: regolarità, niente sbalzi.',
+  maturazione:'Riduci un po\' l\'acqua: più sapore e meno marciumi.'};
+const STAGIONI_MESI={inverno:[11,0,1],primavera:[2,3,4],estate:[5,6,7],autunno:[8,9,10]};
+function testoConcime(sp){
+  const c=sp.conc||{}, parti=[c.V&&'ogni '+c.V+' giorni in crescita', c.F&&'ogni '+c.F+' in fioritura', c.T&&'ogni '+c.T+' con i frutti'].filter(Boolean);
+  if(!parti.length) return sp.acquaDolce ? 'Niente concime: le radici si bruciano' : 'Non serve';
+  return sp.concTipo.charAt(0).toUpperCase()+sp.concTipo.slice(1)+', '+parti.join(', ');
+}
+// Consigli calcolati dai dati della pianta (vaso, luce, posto), oltre a quelli della specie.
+export function consigliPianta(p){
+  const sp=SPECIE[p.specie]||SPECIE.altro, out=[], h=luceOre(p), dentro=alCoperto(p);
+  if(p.colt==='vaso' && (+p.vaso||10)<=3 && !dentro && h>=6) out.push('Vaso piccolo al sole: d\'estate può servire acqua anche due volte al giorno.');
+  if(p.colt==='vaso' && p.materiale==='chiuso') out.push('Vaso senza fori: dai solo la dose indicata e, se prende la pioggia, svuota l\'acqua in più.');
+  if(sp.cat==='casa' && !dentro && sp.gelo>=8) out.push('È una pianta da interno: all\'aperto solo d\'estate, in ombra luminosa, e dentro prima che la notte scenda sotto '+sp.gelo+' °C.');
+  if(['orto','frutti'].includes(sp.cat) && h<4) out.push('Ha meno di 4 ore di sole: crescerà meno e farà pochi frutti.');
+  if(p.dove==='interno' && ['orto','frutti','aromatiche'].includes(sp.cat)) out.push('In casa ha poca luce: tienila alla finestra più luminosa (meglio a sud).');
+  return out;
+}
+// Scheda della pianta fatta dall'app con i dati della specie: stessa forma di quella scritta da Claude.
+export function schedaAuto(p, lat){
+  const k=SPECIE[p.specie]?p.specie:'altro', sp=SPECIE[k], I=INFO[k]||INFO.altro, dentro=alCoperto(p)||sp.cat==='casa';
+  const out={auto:true, descrizione:I.d+(I.per?' '+I.per+'.':''), frutti:I.frutti||'',
+    condizioni:{luce:I.luce, temperatura:I.temp, terreno:I.terreno, acqua:I.acqua, umidita:I.umid, concime:testoConcime(sp)},
+    stagioni:{}, fasi:[], consigli:[...I.cons, ...consigliPianta(p)]};
+  if(sp.ann){
+    let da=0;
+    ORDINE_FASI.forEach((f,i)=>{ const a=sp.ciclo[i]; if(a==null) return;
+      const s1=Math.floor(da/7)+1, s2=Math.max(s1,Math.ceil(a/7)), bulbo=/bulbo/i.test(sp.fasiNomi?.[f]||'');
+      out.fasi.push({quando:'settimane '+s1+(s2>s1?'–'+s2:''), fase:nomeFase(k,f), cosa:bulbo?'Acqua regolare senza ristagni; smetti 2–3 settimane prima della raccolta.':FASE_COSA[f]});
+      da=a; });
+    if(out.fasi.length) out.fasi[0].quando+=' dalla semina';
+  } else {
+    const cal=sp.cal||SPECIE.altro.cal, sud=lat!=null&&lat<0;
+    const T={R:'riposo: acqua ridotta, solo con il terriccio asciutto, niente concime', V:'crescita: acqua regolare'+(sp.conc?.V?' e concime ogni '+sp.conc.V+' giorni':''),
+      F:'fioritura: non far seccare il terriccio', T:'frutti: è quando beve di più', M:'maturazione e raccolta: un po\' meno acqua'};
+    for(const [st,mesi] of Object.entries(STAGIONI_MESI)){
+      const lettere=[...new Set(mesi.map(m=>cal[sud?(m+6)%12:m]))];
+      let t=lettere.map(x=>T[x]).join('; '); t=t.charAt(0).toUpperCase()+t.slice(1)+'.';
+      if(st==='inverno') t+= dentro ? ' Più luce possibile, lontano dai termosifoni.' : sp.gelo>=8 ? ' Teme il freddo: sotto '+sp.gelo+' °C va al riparo.' : sp.gelo>0 ? ' Sotto '+sp.gelo+' °C portala al riparo.' : ' Resiste fino a circa '+sp.gelo+' °C'+(p.colt==='vaso'?', in vaso un paio di gradi in meno':'')+'.';
+      if(st==='estate') t+= dentro ? ' Niente sole diretto dietro i vetri.' : ' Con più di 30 °C bagna all\'alba e controlla i vasi piccoli anche la sera.';
+      out.stagioni[st]=t;
+    }
+  }
+  return out;
+}
 export const CATEGORIE = {orto:'Orto', aromatiche:'Aromatiche', frutti:'Frutti', fiori:'Fiori, arbusti e prato', casa:'In casa', altro:'Altro'};
 export const FASI = {
   germinazione:{nome:'Semina / germinazione',kc:0,radici:0.25,p:0.20,l:'G'},
@@ -327,7 +425,10 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
       else g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Terriccio ancora umido'};
       giorni.push(g); dep=end;
     });
-    out.piante.push({id:p.id, acqua, soglia, valutazione:'', fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:[]});
+    const prima=giorni.find(g=>g.azione==='innaffia'), ctrl=giorni.find(g=>g.azione==='controlla');
+    const valutazione=prima ? 'Prossima innaffiatura: '+(prima.data===oggi?'oggi':giornoBreve(prima.data))+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'
+      : ctrl ? 'Nei prossimi giorni basta la riserva; '+giornoBreve(ctrl.data)+' tocca il terriccio.' : 'Nei prossimi '+giorni.length+' giorni non serve acqua.';
+    out.piante.push({id:p.id, acqua, soglia, valutazione, fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:consigliPianta(p)});
   }
   const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
@@ -337,7 +438,24 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
   // grandine nei prossimi 3 giorni (domani lo dice anche l'avviso della sera): per preparare teli o un riparo
   const gr=fut.slice(0,3).find(d=>+d.code===96||+d.code===99), scoperte=piante.filter(p=>p.dove==='aperto'||!p.dove);
   if(gr&&scoperte.length) out.avvisi.push('Possibile grandine '+(gr.date===oggi?'oggi':new Date(gr.date+'T12:00:00').toLocaleDateString('it-IT',{weekday:'long'}))+': tieni pronti teli o un riparo per '+scoperte.map(p=>p.nome).join(', ')+'.');
+  out.sintesi=sintesiSettimana(out, fut, piante);
   return out;
+}
+const giornoBreve = iso => new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'});
+// Due righe sulla settimana, come le scriverebbe un giardiniere: meteo, chi va bagnato e quando, chi no.
+export function sintesiSettimana(piano, fut, piante){
+  if(!fut.length) return '';
+  const rain=fut.reduce((a,d)=>a+(d.rain||0),0), minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
+  const max=fut.reduce((a,d)=>(d.rain||0)>(a.rain||0)?d:a,fut[0]);
+  let t='Prossimi '+fut.length+' giorni: '+fmtN(rain)+' mm di pioggia'+((max.rain||0)>=5?' (la più forte '+giornoBreve(max.date)+', '+fmtN(max.rain,0)+' mm)':'')+', temperature tra '+fmtN(minT,0)+' e '+fmtN(maxT,0)+' °C.';
+  const nome=id=>piante.find(p=>p.id===id)?.nome||'';
+  const si=[], no=[];
+  for(const pp of piano.piante){ const g=pp.giorni.filter(x=>x.azione==='innaffia'); if(!nome(pp.id)) continue;
+    if(g.length) si.push(nome(pp.id)+' '+g.map(x=>giornoBreve(x.data)).join(', ')); else no.push(nome(pp.id)); }
+  si.sort((a,b)=>a.localeCompare(b,'it')); no.sort((a,b)=>a.localeCompare(b,'it'));
+  if(si.length) t+=' Da innaffiare: '+si.join('; ')+'.';
+  if(no.length) t+=' '+(no.length===1?no[0]+': niente acqua':no.slice(0,-1).join(', ')+' e '+no.at(-1)+': niente acqua')+(rain>=10&&piante.some(p=>!alCoperto(p)&&no.includes(p.nome))?', basta la pioggia o la riserva.':', basta la riserva.');
+  return t;
 }
 const fmtN=(n,d=1)=>(Math.round(n*10**d)/10**d).toLocaleString('it-IT');
 
@@ -415,6 +533,49 @@ export function avvisiDomani(piante, domani, notte){
   const raff=+domani.raffiche||0;
   if((domani.wind||0)>=50||raff>=60){ const vasi=fuori.filter(p=>p.colt==='vaso'); if(vasi.length) out.push({tipo:'vento', testo:((domani.wind||0)>=50?'Vento fino a '+Math.round(domani.wind)+' km/h'+(raff>domani.wind?', raffiche fino a '+Math.round(raff):''):'Raffiche fino a '+Math.round(raff)+' km/h')+': lega o avvicina al muro i vasi alti ('+vasi.map(p=>p.nome).join(', ')+').', piante:vasi.map(p=>p.id)}); }
   return out;
+}
+
+/* ---------------- Diagnosi guidata (senza foto e senza Claude) ----------------
+   L'utente spunta i sintomi; il punteggio dice se il problema è l'acqua (troppa o poca) o altro.
+   «registra» = meno | piu: la correzione che l'app può imparare (come le risposte «umido» e «secco»). */
+export const SINTOMI = [
+  {id:'bagnato', testo:'Il terriccio è ancora bagnato a 2–3 cm, anche giorni dopo', troppa:3},
+  {id:'secco', testo:'Il terriccio è secco, duro o staccato dalle pareti del vaso', poca:3},
+  {id:'appassita', testo:'Foglie afflosciate o cadenti'},
+  {id:'gialle_molli', testo:'Foglie basse gialle e molli', troppa:2},
+  {id:'croccanti', testo:'Foglie secche e croccanti, bordi arricciati', poca:2},
+  {id:'marciume', testo:'Base del fusto scura o molle, odore di marcio', troppa:3},
+  {id:'moscerini', testo:'Moscerini o muffa bianca sul terriccio', troppa:2},
+  {id:'punte', testo:'Solo le punte o i bordi delle foglie marroni'},
+  {id:'pallide', testo:'Foglie nuove pallide o gialle tra le nervature verdi'},
+  {id:'filata', testo:'Fusti lunghi e deboli, piegati verso la luce'},
+  {id:'polvere', testo:'Polvere bianca sulle foglie'},
+  {id:'ragnatele', testo:'Puntini chiari e sottili ragnatele sotto le foglie'},
+  {id:'bruciate', testo:'Macchie chiare e secche sul lato al sole'}
+];
+export function diagnosi(sintomi, p={}){
+  const s=new Set(sintomi||[]), sp=SPECIE[p.specie]||SPECIE.altro;
+  let troppa=0, poca=0;
+  for(const x of SINTOMI) if(s.has(x.id)){ troppa+=x.troppa||0; poca+=x.poca||0; }
+  if(s.has('appassita')){ if(s.has('bagnato')||s.has('marciume')) troppa+=3; else if(s.has('secco')) poca+=3; else poca+=1; }
+  const altri=[];
+  if(s.has('punte')) altri.push(sp.acquaDolce ? 'Punte marroni: per questa pianta l\'acqua del rubinetto è troppo calcarea. Usa acqua piovana o distillata.' : 'Punte marroni: aria troppo secca o acqua calcarea. Lontano dai termosifoni; nebulizza o usa acqua piovana.');
+  if(s.has('pallide')) altri.push('Foglie nuove pallide con le nervature verdi: manca ferro o il terriccio è troppo calcareo. Un concime con microelementi (ferro chelato) risolve in 2–3 settimane.');
+  if(s.has('filata')) altri.push('Fusti lunghi verso la luce: ha poca luce. Spostala in un posto più luminoso, piano piano se prima era all\'ombra.');
+  if(s.has('polvere')) altri.push('Polvere bianca: è oidio (mal bianco), un fungo. Togli le foglie colpite, bagna solo al piede, lascia circolare l\'aria.');
+  if(s.has('ragnatele')) altri.push('Puntini e ragnatele: ragnetto rosso, ama l\'aria secca. Lava le foglie sotto la doccia e nebulizza spesso.');
+  if(s.has('bruciate')) altri.push('Macchie chiare sul lato al sole: scottature. Abituala al sole piano piano o ombreggia nelle ore calde.');
+  let r;
+  if(troppa>=3 && troppa>=poca+2) r={verdetto:'troppa', titolo:'Troppa acqua', registra:'meno',
+    testo:'Le radici stanno senza aria. Non bagnare finché i primi 3–4 cm non sono asciutti, svuota il sottovaso e controlla che il foro non sia chiuso.'+(s.has('marciume')?' Se la base è molle, sfila la pianta: taglia le radici scure e rinvasa in terriccio nuovo e asciutto.':''),
+    impara:'L\'app conterà che questa pianta beve meno e allungherà gli intervalli.'};
+  else if(poca>=3 && poca>=troppa+2) r={verdetto:'poca', titolo:'Poca acqua', registra:'piu',
+    testo:'Bagna a fondo, finché l\'acqua esce dal foro'+(s.has('secco')?'; se il terriccio è staccato dal vaso, immergi il vaso in un secchio d\'acqua per 15–20 minuti':'')+'. Le foglie si riprendono in qualche ora; quelle croccanti non tornano verdi.',
+    impara:'L\'app conterà che questa pianta beve di più e accorcerà gli intervalli.'};
+  else if(troppa+poca>0) r={verdetto:'incerto', titolo:'Non è chiaro', registra:null,
+    testo:'I segni vanno in direzioni diverse. Infila un dito nel terriccio per 3 cm: se è bagnato aspetta, se è secco bagna. Poi rispondi ai promemoria con «Terreno ancora umido» o «Era secca»: l\'app impara da lì.'};
+  else r={verdetto:altri.length?'altro':'bene', titolo:altri.length?'Non è l\'acqua':'Nessun segno di problemi d\'acqua', registra:null, testo:altri.length?'':'Se qualcosa non ti convince, controlla il terriccio con un dito prima di ogni innaffiatura.'};
+  return {...r, altri, punti:{troppa, poca}};
 }
 
 /* ---------------- Concimazione ---------------- */

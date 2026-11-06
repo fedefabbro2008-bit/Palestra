@@ -42,7 +42,9 @@ function descrivi(p, data, oggi, met) {
   const cal = M.calendarioAuto(p, lat);
   if (cal.tipo === "ciclo") L.push(`  fasi stimate dall'app: ` + cal.mesi.map((x) => `${x.mese} ${x.nome.toLowerCase()}`).join(" · "));
   const sc = p.scheda;
-  L.push(`  scheda: ${daScrivere(p) ? (sc ? "DA AGGIORNARE (specie o data di semina cambiate)" : "DA COMPILARE") + ": scrivila tu, vedi «Come scrivere le schede» in fondo" : "compilata il " + String(sc.aggiornata).slice(0, 10)}`);
+  const sug = p.specie === "altro" ? M.specieDaNome(p.nome) : null;
+  if (sug) L.push(`  specie impostata «Altra pianta», ma dal nome sembra ${M.SPECIE[sug].nome} (specie «${sug}»): se è così proponi all'utente di cambiarla, il calcolo diventa più preciso`);
+  L.push(`  scheda: ${daScrivere(p) ? (sc ? "DA AGGIORNARE (specie o data di semina cambiate)" : "DA COMPILARE") + ": per ora l'app mostra la sua scheda automatica della specie; scrivine una personale, vedi «Come scrivere le schede» in fondo" : "compilata il " + String(sc.aggiornata).slice(0, 10)}`);
   if (p.note) L.push(`  note dell'utente: ${p.note}`);
   return L.join("\n");
 }

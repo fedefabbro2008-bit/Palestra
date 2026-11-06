@@ -79,8 +79,9 @@ test("flusso completo a 390 px", async (t) => {
   assert.deepEqual(await page.locator("#plantList .pname").evaluateAll((els) => els.map((e) => e.firstChild.textContent.trim())), ["Fioriera aromatiche", "Limone in terrazzo", "Pothos in salotto"]);
   await page.click("#addPlantBtn");
   await page.fill("#pf-nome", "Aglio");
+  assert.equal(await page.inputValue("#pf-specie"), "aglio", "specie riconosciuta dal nome");
   await page.click("#pf-specie-btn"); await page.fill("#pf-cerca", "agl");
-  assert.deepEqual(await page.locator("#pf-plist [data-sp]").evaluateAll((els) => els.map((e) => e.dataset.sp)), ["aglio"]);
+  assert.deepEqual(await page.locator("#pf-plist [data-sp]").evaluateAll((els) => els.map((e) => e.dataset.sp)), ["aglio", "appartamento"], "aglio e aglaonema");
   await page.fill("#pf-cerca", "limone");
   assert.deepEqual(await page.locator("#pf-plist [data-sp]").evaluateAll((els) => els.map((e) => e.dataset.sp)), ["agrumi"], "trova anche i sinonimi");
   await page.fill("#pf-cerca", ""); const tutte = await page.locator("#pf-plist [data-sp]").evaluateAll((els) => els.map((e) => e.textContent));
@@ -132,6 +133,15 @@ test("flusso completo a 390 px", async (t) => {
   assert.equal(await page.locator("#schBody table.mesi tr.ora").count(), 1, "il mese corrente è evidenziato");
   assert.match(await page.textContent("#schBody"), /Raccolta: /);
   assert.ok(await page.isVisible("#schBody [data-copia]"));
+  // senza Claude: scheda dell'app con condizioni e fasi
+  assert.match(await page.textContent("#schBody"), /Scheda dell'app[\s\S]*Condizioni ideali[\s\S]*Fasi di crescita[\s\S]*Ingrossamento del bulbo/);
+  // diagnosi guidata: terriccio bagnato + foglie gialle molli → troppa acqua, registrata
+  await page.click("#schDiag summary");
+  await page.check('#schDiag input[value="bagnato"]'); await page.check('#schDiag input[value="gialle_molli"]');
+  await page.click("#schDiag [data-diag]");
+  assert.match(await page.textContent("#diagEsito"), /Troppa acqua/);
+  await page.click("#schDiag [data-diag-reg]");
+  assert.ok(await page.evaluate(() => S.eventi_app.some((e) => e.tipo === "meno")), "evento «meno» registrato");
   const codice = await page.evaluate(() => window.GiardinoNet.codice());
   await quando(page, () => !localStorage.getItem("giardino:net:pending"));
   const sul = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": codice } }))).text()).data;
