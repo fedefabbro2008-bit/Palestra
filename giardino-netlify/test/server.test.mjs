@@ -44,6 +44,25 @@ test("dati: il codice viaggia nell'intestazione (e ?code= vale ancora per le app
   assert.deepEqual(st.mcp, { active: false }); assert.deepEqual(st.telegram, { configured: false }); assert.ok(st.crediti.limite === 300 && !("key" in st.crediti));
 });
 
+test("meteo: se Open-Meteo non risponde, MET Norway con i giorni passati dall'ultimo meteo buono", async () => {
+  const { meteo } = await import("../netlify/lib/core.mjs");
+  const st = getStore({ name: "giardino" }), key = "c-meteo-44.30,11.70";
+  await st.delete(key);
+  const buono = await meteo(44.3, 11.7);                     // Open-Meteo (finto) risponde
+  await st.setJSON(key, { at: Date.now() - 20 * 60e3, met: buono });   // scaduto: la prossima volta riprova
+  const vero = globalThis.fetch, oggi = buono.days.find((d) => d.date >= new Date().toISOString().slice(0, 10)).date;
+  const ts = [...Array(60)].map((_, h) => ({ time: new Date(Date.now() + h * 36e5).toISOString().slice(0, 13) + ":00:00Z", data: { instant: { details: { air_temperature: 9, wind_speed: 2 } }, next_1_hours: { summary: { symbol_code: "rain" }, details: { precipitation_amount: 1 } } } }));
+  let ua = "";
+  globalThis.fetch = async (u, o) => { u = String(u); if (u.includes("api.open-meteo.com") && !u.includes("historical")) return new Response("", { status: 502 });
+    if (u.includes("api.met.no")) { ua = o?.headers?.["user-agent"] || ""; return Response.json({ properties: { timeseries: ts } }); } return vero(u, o); };
+  try {
+    const m = await meteo(44.3, 11.7);
+    assert.match(m.fonte, /MET Norway/); assert.match(ua, /giardino-fede\.netlify\.app/, "MET chiede di farsi riconoscere");
+    assert.ok(m.days.some((d) => d.date < oggi), "giorni passati dall'ultimo meteo buono");
+    assert.ok(m.days.find((d) => d.date === oggi).rain > 0 && m.days.find((d) => d.date === oggi).prob === null);
+  } finally { globalThis.fetch = vero; }
+});
+
 test("meteo: due richieste in parallelo, poi 15 minuti dall'archivio", async () => {
   const { meteo } = await import("../netlify/lib/core.mjs");
   const st = getStore({ name: "giardino" }), key = "c-meteo-44.18,11.95";
@@ -190,6 +209,12 @@ test("Telegram: collegamento, /oggi con «Annaffiato» e «Terreno ancora umido�
   await webhook({ callback_query: { id: "cb3", data: `g|${OGGI}|bas|u`, message: { message_id: 5, chat: { id: 77 }, reply_markup: { inline_keyboard: ripristinata } } } });
   assert.equal((await leggiDati()).eventi.filter((e) => e.plantId === "bas" && e.tipo === "umido").length, 1);
 
+  // controllo della settimana da Telegram: «asciutto» quando il calcolo vedeva l'80% d'acqua → beve di più
+  inviati.length = 0;
+  await webhook({ callback_query: { id: "cbv", data: `v|${OGGI}|agl|s|80|50`, message: { message_id: 9, chat: { id: 77 }, reply_markup: { inline_keyboard: [] } } } });
+  const ver = (await leggiDati()).eventi.find((e) => e.tipo === "verifica" && e.plantId === "agl");
+  assert.ok(ver && ver.valutazione === "piu" && ver.esito === "secco" && ver.fonte === "telegram");
+  assert.match(inviati.find((x) => x[0] === "answerCallbackQuery")[1].text, /beve di più/);
   // /fatto balcone: solo la zona Balcone (il basilico ha già una risposta, resta il pomodoro)
   inviati.length = 0;
   await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto Balcone" } });

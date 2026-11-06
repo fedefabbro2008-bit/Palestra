@@ -9,6 +9,7 @@ import { store, reply, codiceDa, newToken, crediti, leggi, aggiorna, CAMPI, site
         con l'intestazione x-giardino-versione = "rev-updatedAt" già in mano all'app → { rev, updatedAt, invariato: true }
         se nel frattempo non è cambiato niente (pochi byte invece di tutti i dati: il controllo ogni 5 minuti costa quasi zero)
    GET  /api/dati?op=stato            → { mcp, telegram, crediti }  lo stato per le Impostazioni, in una richiesta sola
+   GET  /api/dati?op=meteo            → meteo del server, quando l'app non raggiunge Open-Meteo (anche la riserva MET Norway)
    POST /api/dati  { changes:{campo:valore}, add:[eventi], remove:[id eventi] }
         Unisce sul server: i campi cambiati sostituiscono quelli salvati, gli eventi si aggiungono o tolgono uno per uno.
         Così le modifiche fatte nel frattempo da Claude o da Telegram non si perdono.
@@ -28,6 +29,12 @@ export default async (request) => {
     if (op === "mcp") return await opMcp(request, st, code);
     if (op === "telegram") return await opTelegram(request, st, code);
     if (op === "crediti") { const { key, ...c } = await crediti(st); return reply(c); }
+    if (op === "meteo") {   // l'app non raggiunge Open-Meteo: il meteo del server (Open-Meteo o la riserva MET Norway)
+      const cur = await leggi(st, code), l = cur?.data?.location;
+      if (!l) return reply({ error: "manca la posizione" }, 409);
+      const met = await meteo(l.lat, l.lon);
+      return reply({ ...met, lat: l.lat, lon: l.lon });
+    }
     if (op === "stato") {
       const [m, t, c] = await Promise.all([st.get("m-" + code, { type: "json" }), st.get("t-" + code, { type: "json" }), crediti(st).catch(() => null)]);
       return reply({ mcp: statoMcp(m), telegram: statoTelegram(t), crediti: c ? (({ key, ...x }) => x)(c) : null });

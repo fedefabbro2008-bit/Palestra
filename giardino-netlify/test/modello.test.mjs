@@ -205,3 +205,27 @@ test("fasi a gradi-giorno: col freddo più piano, col caldo più in fretta; senz
   assert.equal(M.faseEffettiva(p, "2026-06-10", 11).fase, "piantina", "freddo: ancora piantina"); assert.equal(M.faseEffettiva(p, "2026-06-10", 12).fase, "vegetativa");
   assert.ok(M.calendarioAuto(p, 11).mesi.length > M.calendarioAuto(p, 12).mesi.length, "col freddo il ciclo dura più mesi");
 });
+
+test("controllo della settimana: quando, quale pianta, cosa impara", () => {
+  const piante = [{ id: "a", nome: "Aglio" }, { id: "b", nome: "Basilico" }];
+  assert.equal(M.verificaDaFare(piante, [], "2026-11-06"), null, "venerdì no");
+  const ev = [{ id: "1", plantId: "a", tipo: "umido", data: "2026-11-03" }];
+  assert.equal(M.verificaDaFare(piante, ev, "2026-11-07").id, "b", "sabato: la pianta senza risposte recenti");
+  assert.equal(M.verificaDaFare(piante, [...ev, { id: "2", plantId: "b", tipo: "verifica", data: "2026-11-07" }], "2026-11-08"), null, "già fatto questa settimana");
+  assert.equal(M.esitoVerifica("secco", 0.8, 0.5), "piu"); assert.equal(M.esitoVerifica("umido", 0.3, 0.5), "meno"); assert.equal(M.esitoVerifica("umido", 0.8, 0.5), "ok");
+  assert.ok(M.calibrazione([{ id: "v", plantId: "a", tipo: "verifica", valutazione: "piu", data: "2026-11-07" }], "a", "2026-11-08") > 1);
+  assert.equal(M.calibrazione([{ id: "v", plantId: "a", tipo: "verifica", valutazione: "ok", data: "2026-11-07" }], "a", "2026-11-08"), 1);
+});
+
+test("meteo di riserva MET Norway: giorni locali, pioggia senza doppi conteggi, notte", () => {
+  const t0 = Date.UTC(2026, 10, 6, 0), ts = [];
+  for (let h = 0; h < 48; h++) ts.push({ time: new Date(t0 + h * 36e5).toISOString().replace(".000", ""), data: { instant: { details: { air_temperature: 8 + (h % 24 > 10 && h % 24 < 16 ? 6 : 0), wind_speed: 3 } },
+    next_1_hours: { summary: { symbol_code: "rain" }, details: { precipitation_amount: 0.5 } }, next_6_hours: { summary: { symbol_code: "rain" }, details: { precipitation_amount: 3, air_temperature_max: 14, air_temperature_min: 8 } } } });
+  for (let h = 48; h < 9 * 24; h += 6) ts.push({ time: new Date(t0 + h * 36e5).toISOString().replace(".000", ""), data: { instant: { details: { air_temperature: 10, wind_speed: 2 } },
+    next_6_hours: { summary: { symbol_code: "cloudy" }, details: { precipitation_amount: 1.5, air_temperature_max: 12, air_temperature_min: 7 } } } });
+  const { days, notte } = M.giorniDaMet({ properties: { timeseries: ts } }, "UTC", 44, "2026-11-06", 9);
+  assert.equal(days[0].date, "2026-11-06"); assert.equal(days[0].rain, 12, "24 ore × 0,5 mm (non anche i 6 ore)");
+  assert.equal(days[0].tmax, 14); assert.equal(days[0].tmin, 8); assert.equal(days[0].cond, "pioggia"); assert.ok(days[0].et0 > 0);
+  assert.equal(days[3].rain, 6, "dopo due giorni: 4 × 1,5 mm ogni 6 ore"); assert.equal(days[3].cond, "nuvoloso");
+  assert.ok(notte.length >= 10 && notte[0].ora === "18");
+});

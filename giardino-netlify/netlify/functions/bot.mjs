@@ -61,6 +61,15 @@ async function uno(st, tkey, cr) {
       next.notificati[oggi] = data.plants.map((p) => ({ id: p.id, g: ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((g) => g.data === oggi) }))
         .filter((x) => x.g?.azione === "innaffia").map((x) => ({ id: x.id, litri: x.g.litri }));
     }
+    // il sabato, il controllo della settimana: una pianta da toccare con il dito
+    const pv = new Date(oggi + "T12:00:00Z").getUTCDay() === 6 && t.ultima_verifica !== oggi ? M.verificaDaFare(data.plants, data.eventi, oggi, data.vacanza) : null;
+    if (pv) {
+      const pb = ap.base.piante.find((x) => x.id === pv.id), a = Math.round((pb?.acqua ?? -1) * 100), sg = Math.round((pb?.soglia ?? -1) * 100);
+      const cb = (r) => `v|${oggi}|${pv.id}|${r}|${a}|${sg}`;
+      await invia(`🔍 <b>Controllo della settimana</b>\nInfila un dito nel terriccio di <b>${esc(pv.nome)}</b> per 2–3 cm: com'è?\n<i>Così l'app impara quanto beve davvero.</i>`,
+        { reply_markup: { inline_keyboard: [[{ text: "💦 Umido", callback_data: cb("u") }, { text: "🏜 Asciutto", callback_data: cb("s") }]] } });
+      next.ultima_verifica = oggi;
+    }
     next.ultimo_invio = oggi;
   }
 

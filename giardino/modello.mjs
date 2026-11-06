@@ -395,7 +395,7 @@ export function calibrazione(eventi, plantId, oggi){
   let f=1, verso=0, serie=0;
   const ev=eventiValidi(eventi,plantId).filter(e=>{ const g=giorniTra(e.data,oggi); return g>=0&&g<=60; }).sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
   for(const e of ev){
-    const v=(e.tipo==='umido'||e.tipo==='meno')?-1:(e.tipo==='secco'||e.tipo==='piu')?1:0;
+    const v=(e.tipo==='umido'||e.tipo==='meno'||(e.tipo==='verifica'&&e.valutazione==='meno'))?-1:(e.tipo==='secco'||e.tipo==='piu'||(e.tipo==='verifica'&&e.valutazione==='piu'))?1:0;
     if(!v) continue;
     serie = v===verso ? serie+1 : 1; verso=v;
     const passo=1+0.5*Math.min(serie-1,2);
@@ -403,6 +403,28 @@ export function calibrazione(eventi, plantId, oggi){
   }
   return Math.max(0.4,Math.min(2.5,f));
 }
+
+/* ---------------- Controllo della settimana (con il dito) ----------------
+   Il sabato e la domenica, se nei 7 giorni prima non c'è stato un controllo, l'app chiede di toccare il terriccio
+   (2–3 cm) della pianta di cui ha meno risposte recenti. La risposta si confronta con l'acqua che il calcolo dà nel
+   terriccio: «asciutto» quando il calcolo ne vede ancora molta → beve di più; «umido» quando il calcolo la dà sotto la
+   tacca → beve di meno; altrimenti il calcolo è giusto e non cambia niente. */
+const RISPOSTE=['fatto','secco','umido','saltato','meno','piu','verifica'];
+export function verificaDaFare(piante, eventi, oggi, vacanza){
+  const g=new Date(oggi+'T12:00:00Z').getUTCDay();
+  if((g!==6 && g!==0) || !piante?.length || inVacanza(vacanza, oggi)) return null;
+  if((eventi||[]).some(e=>e.tipo==='verifica' && giorniTra(e.data,oggi)>=0 && giorniTra(e.data,oggi)<7)) return null;
+  const ultima=p=>eventiValidi(eventi,p.id).filter(e=>['umido','secco','meno','piu','verifica'].includes(e.tipo)).map(e=>e.data).sort().pop()||'';
+  return [...pianteOrdinate(piante)].sort((a,b)=>ultima(a)<ultima(b)?-1:ultima(a)>ultima(b)?1:0)[0];
+}
+// risposta = 'umido' | 'secco'; acqua e soglia = frazione della riserva (dal calcolo, a fine giornata)
+export function esitoVerifica(risposta, acqua, soglia){
+  if(acqua==null || soglia==null) return 'ok';
+  if(risposta==='secco' && acqua>soglia+0.15) return 'piu';
+  if(risposta==='umido' && acqua<soglia) return 'meno';
+  return 'ok';
+}
+export const TESTO_VERIFICA = {ok:'Il calcolo era giusto: non cambia niente.', piu:'Il calcolo pensava che ci fosse più acqua: da ora conto che beve di più.', meno:'Il calcolo la dava già asciutta: da ora conto che beve di meno.'};
 
 /* ---------------- Parametri idrici di una pianta o di un vaso ---------------- */
 export function membriVaso(p, faseMain){
@@ -551,6 +573,35 @@ export function dose(litri, imp={}){
   const q=Math.max(0.25,Math.round(litri/a*4)/4), int=Math.floor(q), fr=FRAZ[+(q-int).toFixed(2)]||'';
   if(!int) return '≈ '+fr+' di annaffiatoio';
   return '≈ '+int+' '+(int>1?'annaffiatoi':'annaffiatoio')+(fr?' e '+fr:'');
+}
+
+/* ---------------- Meteo di riserva: MET Norway (servizio meteorologico norvegese, gratuito) ----------------
+   Se Open-Meteo non risponde. Previsioni ora per ora per ~2 giorni, poi ogni 6 ore fino a ~9 giorni (ore in UTC).
+   Si sommano per giorno locale: pioggia (next_1_hours finché c'è, poi next_6_hours), minima e massima, vento;
+   l'ET0 si stima con Hargreaves dalle temperature. Niente probabilità di pioggia, umidità del suolo o grandine. */
+export const urlMet = (lat, lon) => `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${(+lat).toFixed(4)}&lon=${(+lon).toFixed(4)}`;
+const COD_MET = s => /thunder/.test(s)?95: /snow|sleet/.test(s)?71: /rain/.test(s)?61: /fog/.test(s)?45: /^cloudy/.test(s)?3: /partlycloudy|fair/.test(s)?2: 0;
+export function giorniDaMet(j, tz, lat, oggi, ora){
+  const ts=j?.properties?.timeseries||[], fmt=new Intl.DateTimeFormat('en-CA',{timeZone:tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'});
+  const loc=t=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(t)).map(x=>[x.type,x.value])); return {d:p.year+'-'+p.month+'-'+p.day, h:+p.hour}; };
+  const per={}, notte=[], da=oggi, a=addDays(oggi,1);
+  ts.forEach((x,i)=>{
+    const {d,h}=loc(x.time), g=per[d]||(per[d]={date:d,tmax:-99,tmin:99,rain:0,wind:0,cod:{}}), det=x.data?.instant?.details||{};
+    if(det.air_temperature!=null){ g.tmax=Math.max(g.tmax,det.air_temperature); g.tmin=Math.min(g.tmin,det.air_temperature);
+      if((d===da&&h>=18)||(d===a&&h<=10)) notte.push({ora:String(h).padStart(2,'0'), t:det.air_temperature}); }
+    if(det.wind_speed!=null) g.wind=Math.max(g.wind,det.wind_speed*3.6);
+    const n1=x.data?.next_1_hours, n6=x.data?.next_6_hours, prossimo=ts[i+1]?Date.parse(ts[i+1].time)-Date.parse(x.time):0;
+    if(n1 && prossimo<=3600e3) g.rain+=n1.details?.precipitation_amount||0;
+    else if(n6){ g.rain+=n6.details?.precipitation_amount||0;
+      if(n6.details?.air_temperature_max!=null){ g.tmax=Math.max(g.tmax,n6.details.air_temperature_max); g.tmin=Math.min(g.tmin,n6.details.air_temperature_min); } }
+    const sym=(n1||n6||x.data?.next_12_hours)?.summary?.symbol_code; if(sym){ const c=COD_MET(sym); g.cod[c]=(g.cod[c]||0)+1; }
+  });
+  const days=Object.values(per).filter(g=>g.date>=oggi && g.tmax>-99).map(g=>{
+    const code=+Object.entries(g.cod).sort((x,y)=>y[1]-x[1]||(+y[0])-(+x[0]))[0]?.[0]||0, d={date:g.date, cond:condizioneMeteo(code), code, tmax:+g.tmax.toFixed(1), tmin:+g.tmin.toFixed(1),
+      rain:+g.rain.toFixed(1), prob:null, wind:Math.round(g.wind), raffiche:null, sole:null};
+    return {...d, et0:et0Hargreaves(d, lat)??0};
+  }).slice(0,8);
+  return {days, notte:notte.length?notte:null};
 }
 
 /* ---------------- Primi giorni da due modelli ----------------
