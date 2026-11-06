@@ -107,6 +107,10 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   const pc = (await leggiDati()).piano_claude.data.piante[0];
   assert.equal(pc.giorni.length, 1); assert.ok(pc.giorni[0].litri < 2);
   assert.match((await strumento("piano_automatico")).content[0].text, /calcolo automatico/);
+  // giorno di pioggia: per una pianta in casa il messaggio spiega perché va bagnata lo stesso
+  const { notaPioggia } = await import("../netlify/lib/core.mjs");
+  assert.equal(notaPioggia({ dove: "interno" }, { rain: 8 }), "in casa: la pioggia non la raggiunge");
+  assert.equal(notaPioggia({ dove: "aperto" }, { rain: 8 }), ""); assert.equal(notaPioggia({ dove: "interno" }, { rain: 0 }), "");
   assert.equal((await leggiDati()).piano_claude, null);
   // impostazioni
   assert.equal((await strumento("impostazioni", { ora_sera: 20, bicchiere: 0.3 })).isError, false);

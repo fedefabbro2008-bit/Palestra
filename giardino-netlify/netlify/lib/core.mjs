@@ -111,6 +111,9 @@ export const TIPI = { f: "fatto", s: "saltato", u: "umido", a: "secco", c: "conc
 export const ETICHETTE = { fatto: "annaffiata", saltato: "saltata", umido: "terreno ancora umido", secco: "era secca, annaffiata", concime: "concimata" };
 export const ESITI = ["fatto", "secco", "umido", "saltato"];
 const conZona = (p) => M.zonaDi(p) ? ` <i>(${esc(M.zonaDi(p))})</i>` : "";
+// Nei giorni di pioggia dice perché una pianta al coperto va bagnata lo stesso (altrimenti sembra un errore).
+const POSTO = { interno: "in casa", serra: "in veranda/serra", riparato: "al riparo" };
+export const notaPioggia = (p, giorno) => (giorno?.rain || 0) >= 1 && POSTO[p.dove] ? `${POSTO[p.dove]}: la pioggia non la raggiunge` : "";
 // Pulsanti per una pianta: “Annaffiato” e “Terreno ancora umido” su righe intere (si leggono bene sul telefono);
 // il nome serve solo se nel messaggio ci sono più piante; “Salto” solo nel messaggio del mattino.
 export function pulsantiAcqua(p, oggi, { conNome = true, salto = true, secca = false } = {}) {
@@ -129,7 +132,8 @@ export function messaggioMattina(data, ap, oggi, { prova = false } = {}) {
   for (const p of piante) {
     const g = azione(p);
     if (g?.azione === "innaffia") {
-      righe.innaffia.push(`💧 <b>${esc(p.nome)}</b>${conZona(p)}: ${fmt(g.litri, g.litri < 2 ? 2 : 1)} L (${esc(M.dose(g.litri, imp))}), ${esc(g.momento)}\n      <i>${esc(g.motivo)}</i>`);
+      const np = notaPioggia(p, d0);
+      righe.innaffia.push(`💧 <b>${esc(p.nome)}</b>${conZona(p)}: ${fmt(g.litri, g.litri < 2 ? 2 : 1)} L (${esc(M.dose(g.litri, imp))}), ${esc(g.momento)}\n      <i>${esc(g.motivo)}${np ? " — " + esc(np) : ""}</i>`);
       tastiera.push(...pulsantiAcqua(p, oggi, { conNome }));
     } else if (g?.azione === "controlla") {
       righe.controlla.push(`👆 <b>${esc(p.nome)}</b>${conZona(p)}: ${esc(g.motivo)}`);

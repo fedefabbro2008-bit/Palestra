@@ -953,7 +953,10 @@ function taskCard({p,g,st,pp}){
   let what;
   if(inn) what=[dose(g.litri,imp), g.momento].filter(Boolean).join(' · ');
   else { const l=params(p,ctx()).rawL*1.1; what='Se è asciutta: '+fmtL(l)+' ('+dose(l,imp)+')'; }
-  return `<div class="task"><div class="task-top"><span class="ic ${inn?'water':'check'}" aria-hidden="true">${esc(icoDi(p))}</span><div class="info"><div class="name">${esc(p.nome)}</div><div class="what">${esc(what)}</div>${livello(pp)}</div>${inn?`<div class="amt">${esc(fmtL(g.litri))}</div>`:''}</div>${acts}</div>`;
+  // giorno di pioggia ma pianta al coperto: lo dice, altrimenti sembra un errore
+  const piove=(futDays().find(d=>d.date===today())?.rain||0)>=1, posto={interno:'In casa',serra:'In veranda/serra',riparato:'Al riparo'}[p.dove];
+  const np=piove&&posto?`<div class="hint">☔ ${posto}: la pioggia non la raggiunge</div>`:'';
+  return `<div class="task"><div class="task-top"><span class="ic ${inn?'water':'check'}" aria-hidden="true">${esc(icoDi(p))}</span><div class="info"><div class="name">${esc(p.nome)}</div><div class="what">${esc(what)}</div>${np}${livello(pp)}</div>${inn?`<div class="amt">${esc(fmtL(g.litri))}</div>`:''}</div>${acts}</div>`;
 }
 function renderOggi(AP){
   renderWeather(); renderAlerts(AP);
