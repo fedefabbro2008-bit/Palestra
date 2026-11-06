@@ -1,4 +1,4 @@
-import { store, reply, codiceDa, newToken, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
+import { store, reply, codiceDa, newToken, crediti, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
@@ -21,6 +21,7 @@ export default async (request) => {
   try {
     if (op === "mcp") return await opMcp(request, st, code);
     if (op === "telegram") return await opTelegram(request, st, code);
+    if (op === "crediti") { const { key, ...c } = await crediti(st); return reply(c); }
     if (request.method === "GET") { const cur = await leggi(st, code); return reply(cur ? { rev: cur.rev, updatedAt: cur.updatedAt, data: cur.data } : { rev: 0, data: null }); }
     if (request.method !== "POST") return reply({ error: "metodo non consentito" }, 405);
     const raw = await request.text();

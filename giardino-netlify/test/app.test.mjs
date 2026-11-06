@@ -91,7 +91,11 @@ test("flusso completo a 390 px", async (t) => {
   await page.fill("#pf-semina", OGGI); await page.dispatchEvent("#pf-semina", "input");
   assert.match(await page.textContent("#pf-fase-hint"), /germinazione/);
   assert.ok((await page.locator("#pf-fase option").allTextContents()).includes("Ingrossamento del bulbo"));
+  await page.click("label:has(input[name=materiale][value=chiuso])");
+  assert.match(await page.textContent("#pf-mat-hint"), /dose esatta/);
+  await page.fill("#pf-riserva", "1,5");
   await page.fill("#pf-zona", "orto"); await page.click("button[type=submit]"); await page.waitForTimeout(200);
+  assert.deepEqual(await page.evaluate(() => { const p = S.plants.find((x) => x.nome === "Aglio"); return [p.materiale, p.riserva]; }), ["chiuso", 1.5]);
   // seconda pianta nella stessa zona, scelta con il pulsante rapido; la maiuscola viene da quella già esistente
   await page.click("#addPlantBtn"); await page.fill("#pf-nome", "Zucchine"); await scegliSpecie(page, "zucc", "zucchina");
   await page.click('#pf-zona-q [data-zona="orto"]'); await page.click('[data-vaso="30"]'); await page.click('[data-luce="8"]');
@@ -146,6 +150,18 @@ test("flusso completo a 390 px", async (t) => {
   // Oggi con le zone: sezione per zona
   await page.click("#tab-oggi");
   assert.ok((await page.locator("#todayList .zhead span").allTextContents()).includes("orto"));
+
+  // Diario a calendario: oggi ha l'icona dell'acqua (Pothos segnata più su)
+  await page.click("#tab-diario");
+  assert.equal(await page.locator("#cal [data-giorno]").count(), new Date(+OGGI.slice(0, 4), +OGGI.slice(5, 7), 0).getDate());
+  assert.match(await page.textContent(`#cal [data-giorno="${OGGI}"]`), /💧/);
+  await page.click(`#cal [data-giorno="${OGGI}"]`);
+  assert.match(await page.textContent("#calGiorno"), /annaffiata|innaffiata/);
+  await page.click("#calPrima"); assert.ok(!(await page.isDisabled("#calDopo")));
+
+  // Impostazioni: crediti e Siri con l'indirizzo per zona
+  await page.click("#tab-impostazioni"); await page.click("#set-crediti summary");
+  await quando(page, () => /pubblicazion/.test(document.querySelector("#credTesto").textContent));
 
   // Impostazioni: Siri con l'indirizzo per zona
   await page.click("#tab-impostazioni"); await page.click("#set-siri summary");

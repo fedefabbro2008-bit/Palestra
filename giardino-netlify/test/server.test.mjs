@@ -126,7 +126,13 @@ test("Telegram: collegamento, /oggi con «Annaffiato» e «Terreno ancora umido�
   assert.ok(!d.eventi.some((e) => e.plantId === "zuc"), "la zona Orto resta da fare");
   inviati.length = 0;
   await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto cantina" } });
-  assert.match(inviati.at(-1)[1].text, /Non trovo la zona/);
+  assert.match(inviati.at(-1)[1].text, /Non trovo «cantina»/);
+  // /fatto aglio: segna l'aglio anche se oggi non era in programma
+  inviati.length = 0;
+  await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto aglio" } });
+  assert.match(inviati.at(-1)[1].text, /Segnate come annaffiate: Aglio\./);
+  const ag = (await leggiDati()).eventi.find((e) => e.plantId === "agl" && e.tipo === "fatto");
+  assert.ok(ag && ag.litri > 0);
 });
 
 test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora umido» a tutta riga", async () => {
@@ -161,6 +167,8 @@ test("Siri: codice in intestazione, piano di oggi a voce, «ho innaffiato» per 
   assert.match(r.body, /Ho segnato come annaffiate: Zucchine\./);
   assert.ok((await leggiDati()).eventi.some((e) => e.plantId === "zuc" && e.fonte === "siri"));
   assert.match((await call(siri, "/api/siri/fatto?zona=Orto", { method: "POST", headers: H })).body, /niente da innaffiare in Orto/);
+  assert.match((await call(siri, "/api/siri/fatto?pianta=pomo", { method: "POST", headers: H })).body, /già segnato|Pomodoro/);
+  assert.match((await call(siri, "/api/siri/fatto?pianta=cactus", { method: "POST", headers: H })).body, /Non trovo la pianta cactus/);
 });
 
 test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calcolo automatico", async () => {
@@ -190,4 +198,19 @@ test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calc
   await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_avviso_sera: null });
   inviati.length = 0; await bot();
   assert.ok(!inviati.some((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude")), "non si ripete per lo stesso piano");
+});
+
+test("crediti Netlify: una versione contata una volta, avviso su Telegram sopra l'80% una volta al mese", async () => {
+  const c1 = (await call(dati, "/api/dati?op=crediti", { headers: H })).body, c2 = (await call(dati, "/api/dati?op=crediti", { headers: H })).body;
+  assert.equal(c1.pubblicazioni, 1); assert.equal(c2.pubblicazioni, 1); assert.equal(c1.limite, 300); assert.equal(c1.stima, 20);
+  const st = getStore({ name: "giardino" }), key = "u-" + c1.mese, u = await st.get(key, { type: "json" });
+  await st.setJSON(key, { ...u, versioni: [...u.versioni, ...Array.from({ length: 15 }, (_, i) => "v" + i)] });
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12), t = await st.get("t-" + CODE, { type: "json" });
+  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  inviati.length = 0; await bot();
+  assert.ok(inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "avviso crediti");
+  assert.ok(inviati.some((x) => x[0] === "sendMessage" && /Giardino —/.test(x[1].text)), "il messaggio del mattino parte lo stesso");
+  const t2 = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  inviati.length = 0; await bot();
+  assert.ok(!inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "una volta al mese");
 });

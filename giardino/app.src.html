@@ -262,20 +262,21 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .seg.tiles label,.seg.tiles3 label{flex-direction:column;gap:2px;min-height:64px;padding:8px 4px}
 .seg .ti{font-size:1.4rem;line-height:1}
 
+/* calendario del diario */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .wd{font-size:.72rem;color:var(--muted);text-align:center;font-weight:700;padding-bottom:2px}
+.cal .g{min-height:50px;border:1px solid var(--line);background:var(--surface-2);border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px 0 2px;font-size:.8rem;font-weight:600;cursor:pointer;color:var(--ink);min-width:0}
+.cal .g.vuoto{visibility:hidden}
+.cal .g.oggi{border-color:var(--water);color:var(--water)}
+.cal .g.sel{outline:2px solid var(--water);outline-offset:0}
+.cal .g.fut{opacity:.5}
+.cal .g i{font-style:normal;font-size:.82rem;line-height:1.1;white-space:nowrap}
+
 /* diario */
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column}
 .tile .tv{font-size:1.5rem;font-weight:800;color:var(--water)}
 .tile .tl{font-size:.82rem;color:var(--muted)}
-.chart{position:relative}
-.chart svg{display:block;width:100%;height:auto;overflow:visible}
-.chart .ax{font:11px var(--font);fill:var(--muted)}
-.chart .grid{stroke:var(--line);stroke-width:1}
-.chart .base{stroke:var(--muted);stroke-width:1}
-.chart .bar{fill:var(--bar);pointer-events:none}
-.chart .hit{fill:transparent;cursor:pointer}
-.chart .hit:focus{outline:none}
-.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-size:.8rem;padding:5px 8px;border-radius:8px;white-space:nowrap;transform:translate(-50%,-100%);margin-top:-8px;z-index:3}
 .ev{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:.9rem}
 .ev .e{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:.95rem;background:var(--surface-2)}
 .evday{font-weight:700;font-size:.8rem;color:var(--muted);margin-top:12px;text-transform:uppercase;letter-spacing:.05em}
@@ -416,6 +417,16 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
           <input type="text" id="pf-vaso" inputmode="decimal">
           <div class="quick" id="pf-vaso-q"><button type="button" data-vaso="2">Ø 15 cm · 2 L</button><button type="button" data-vaso="4">Ø 20 cm · 4 L</button><button type="button" data-vaso="12">Ø 30 cm · 12 L</button><button type="button" data-vaso="30">Ø 40 cm · 30 L</button></div>
         </div>
+        <div class="field pf-vaso-only"><span class="flabel" id="pf-mat-l">Il vaso è</span>
+          <div class="seg tiles3" role="radiogroup" aria-labelledby="pf-mat-l">
+            <label><input type="radio" name="materiale" value="plastica"><span class="ti" aria-hidden="true">🪣</span>Plastica</label>
+            <label><input type="radio" name="materiale" value="terracotta"><span class="ti" aria-hidden="true">🏺</span>Terracotta</label>
+            <label><input type="radio" name="materiale" value="chiuso"><span class="ti" aria-hidden="true">🚫</span>Senza fori</label>
+          </div>
+          <span class="hint" id="pf-mat-hint"></span>
+        </div>
+        <div class="field pf-vaso-only"><label for="pf-riserva">Sottovaso con riserva d'acqua (litri)</label><input type="text" id="pf-riserva" inputmode="decimal" placeholder="0 se non c'è">
+          <span class="hint">Vasi autoirriganti o sottovasi con riserva: la pianta beve dal basso, quindi si annaffia più di rado (riempiendo anche la riserva).</span></div>
         <div class="field"><label for="pf-luce">Ore di sole diretto al giorno</label>
           <input type="text" id="pf-luce" inputmode="decimal">
           <div class="quick" id="pf-luce-q"><button type="button" data-luce="2">🌥️ Ombra · 2 h</button><button type="button" data-luce="4">⛅ Mezz'ombra · 4 h</button><button type="button" data-luce="8">☀️ Pieno sole · 8 h</button></div>
@@ -478,7 +489,12 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
       <div class="tile"><span class="tv" id="dTot">0 L</span><span class="tl">di acqua negli ultimi 30 giorni</span></div>
       <div class="tile"><span class="tv" id="dNum">0</span><span class="tl">innaffiature negli ultimi 30 giorni</span></div>
     </div>
-    <div class="card stack"><h2>Litri al giorno</h2><div class="chart" id="chart"></div><span class="hint">Tocca una barra per il dettaglio. Contano le innaffiature segnate qui o su Telegram.</span></div>
+    <div class="card stack">
+      <div class="row between"><button class="btn small ghost" id="calPrima" type="button" aria-label="Mese prima">‹</button><h2 id="calTitolo"></h2><button class="btn small ghost" id="calDopo" type="button" aria-label="Mese dopo">›</button></div>
+      <div class="cal" id="cal" role="grid"></div>
+      <span class="hint">💧 annaffiata · 💦 era umida · ⏭ saltata · 🌱 concime. Tocca un giorno per vedere cosa hai fatto.</span>
+      <div id="calGiorno"></div>
+    </div>
     <div class="card stack"><h2>Per pianta</h2><div id="statList"></div></div>
     <div class="card stack"><h2>Registro</h2><div id="evList"></div></div>
   </section>
@@ -593,6 +609,15 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));max-widt
         <details class="more"><summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>Usa il codice di un altro dispositivo</summary>
           <div class="inrow"><input type="text" id="netOther" class="mono" placeholder="GRD-…" aria-label="Codice dell'altro dispositivo" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false"><button class="btn" id="netUse" type="button">Usa</button></div>
         </details>
+      </div>
+    </details>
+
+    <details class="set" id="set-crediti"><summary><span class="si">📊</span><span class="st">Crediti Netlify</span><span class="sv" id="credChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="body">
+        <p class="sub">Piano Free di Netlify: 300 crediti al mese. Ogni pubblicazione di una nuova versione dell'app ne costa 15; l'uso normale (app, Telegram, Claude, Siri) pochi. Se finiscono, il sito va in pausa fino al mese dopo. Telegram ti avvisa all'80%.</p>
+        <div id="credBarra"></div>
+        <div class="sub" id="credTesto">Calcolo…</div>
+        <div><a class="btn ghost" href="https://app.netlify.com/" target="_blank" rel="noopener">Conto esatto su Netlify (Usage)</a></div>
       </div>
     </details>
 
@@ -1052,6 +1077,7 @@ function renderPiante(AP){
     const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
       ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],['Quindi',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
     if(altri) facts.push(['Nel vaso anche',altri]);
+    if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
@@ -1105,7 +1131,7 @@ function renderDiario(){
   const val=giorni.map(d=>{ let s=0; for(const p of S.plants) for(const e of eventsOf(p.id,d)) if(e.tipo==='fatto'||e.tipo==='secco'){ s+=+e.litri||0; n++; } return s; });
   const tot=val.reduce((a,b)=>a+b,0);
   $('#dTot').textContent=fmt(tot)+' L'; $('#dNum').textContent=n;
-  drawChart(giorni,val);
+  renderCalendario();
   $('#statList').innerHTML=S.plants.length?piante().map(p=>{
     const e=eventiValidi(ev,p.id).filter(x=>x.data>=lim), f=e.filter(x=>x.tipo==='fatto'||x.tipo==='secco'), cal=calibrazione(ev,p.id,t), um=e.filter(x=>x.tipo==='umido').length;
     const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%'].filter(Boolean).join(' · ');
@@ -1122,27 +1148,26 @@ function renderDiario(){
   }
   $('#evList').innerHTML=h;
 }
-function drawChart(giorni,val){
-  const box=$('#chart'), W0=Math.max(260,Math.min(640,box.clientWidth||320)), H=160, ml=30, mr=4, mt=10, mb=22;
-  const max=Math.max(...val), step=max<=2?0.5:max<=5?1:max<=10?2:max<=25?5:max<=50?10:Math.ceil(max/50)*10, top=Math.max(step*2,Math.ceil(max/step)*step);
-  const cw=(W0-ml-mr)/giorni.length, bw=Math.min(16,Math.max(3,cw-2)), y=v=>mt+(H-mt-mb)*(1-v/top);
-  let s=`<svg viewBox="0 0 ${W0} ${H}" role="img" aria-label="Litri d'acqua dati al giorno negli ultimi 30 giorni">`;
-  for(let v=0; v<=top+1e-9; v+=step){ s+=`<line class="${v===0?'base':'grid'}" x1="${ml}" x2="${W0-mr}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${ml-5}" y="${y(v)+4}" text-anchor="end">${fmt(v)}</text>`; }
-  giorni.forEach((d,i)=>{
-    const x=ml+i*cw+(cw-bw)/2, v=val[i], yy=y(v), h=y(0)-yy, r=Math.min(3,bw/2,h);
-    s+=`<rect class="hit" x="${ml+i*cw}" y="${mt}" width="${cw}" height="${H-mt-mb}" data-i="${i}"/>`;
-    if(v>0) s+=`<path class="bar" d="M${x},${y(0)} V${yy+r} Q${x},${yy} ${x+r},${yy} H${x+bw-r} Q${x+bw},${yy} ${x+bw},${yy+r} V${y(0)} Z"/>`;
-    if(i%7===1||i===giorni.length-1) s+=`<text class="ax" x="${ml+i*cw+cw/2}" y="${H-6}" text-anchor="middle">${esc(dataBreve(d))}</text>`;
-  });
-  s+='</svg><div class="tip" id="chartTip" hidden></div>';
-  box.innerHTML=s;
-  const tip=$('#chartTip');
-  const show=el=>{ const i=+el.dataset.i, r=el.getBoundingClientRect(), b=box.getBoundingClientRect();
-    tip.textContent=dataBreve(giorni[i])+': '+(val[i]?fmt(val[i],2)+' L':'nessuna innaffiatura'); tip.hidden=false;
-    const w=tip.offsetWidth/2; tip.style.left=Math.min(b.width-w,Math.max(w,r.left-b.left+r.width/2))+'px'; tip.style.top=(y(val[i])*(b.width/W0))+'px'; };
-  box.querySelectorAll('.hit').forEach(el=>{ el.addEventListener('mouseenter',()=>show(el)); el.addEventListener('click',()=>show(el)); el.addEventListener('mouseleave',()=>tip.hidden=true); });
+// calendario del mese: un'icona per quello che è successo ogni giorno, tocco per il dettaglio
+let calMese=null, calSel=null;
+const CAL_ICO=[['fatto','💧'],['secco','💧'],['umido','💦'],['saltato','⏭'],['concime','🌱']];
+function renderCalendario(){
+  const t=today(); calMese=calMese||t.slice(0,7); calSel=calSel||t;
+  const [y,m]=calMese.split('-').map(Number), primo=new Date(y,m-1,1), giorni=new Date(y,m,0).getDate(), vuoti=(primo.getDay()+6)%7;
+  $('#calTitolo').textContent=primo.toLocaleDateString('it-IT',{month:'long',year:'numeric'});
+  $('#calDopo').disabled=calMese>=t.slice(0,7);
+  const ev=allEvents(), nomi=new Set(S.plants.map(p=>p.id));
+  let h=['L','M','M','G','V','S','D'].map(x=>`<span class="wd" aria-hidden="true">${x}</span>`).join('')+'<span class="g vuoto"></span>'.repeat(vuoti);
+  for(let g=1; g<=giorni; g++){
+    const d=calMese+'-'+String(g).padStart(2,'0'), del=S.plants.flatMap(p=>eventsOf(p.id,d)).filter(e=>nomi.has(e.plantId));
+    const ico=[...new Set(CAL_ICO.filter(([tp])=>del.some(e=>e.tipo===tp)).map(([,i])=>i))].slice(0,2).join('');
+    h+=`<button type="button" class="g${d===t?' oggi':''}${d===calSel?' sel':''}${d>t?' fut':''}" data-giorno="${d}" aria-label="${esc(dataBreve(d))}${del.length?': '+del.length+' voci':''}">${g}<i>${ico}</i></button>`;
+  }
+  setHTML($('#cal'),h);
+  const del=allEvents().filter(e=>e.data===calSel&&nomi.has(e.plantId)), nome=Object.fromEntries(S.plants.map(p=>[p.id,p.nome]));
+  setHTML($('#calGiorno'),'<div class="evday">'+esc(dayLabel(calSel))+' · '+esc(dataBreve(calSel))+'</div>'+(del.length?del.map(e=>{ const [ic,lab]=EV_LABEL[e.tipo]||['•',e.tipo];
+    return `<div class="ev"><span class="e" aria-hidden="true">${ic}</span><span><b>${esc(nome[e.plantId])}</b> ${esc(lab)}${e.litri?' · '+fmt(+e.litri,2)+' L':''}</span><span></span></div>`; }).join(''):'<div class="sub">Niente segnato in questo giorno.</div>'));
 }
-
 /* ================= Scheda della pianta (scritta da Claude) e calendario dei mesi ================= */
 const FASE_ICO={germinazione:'🌱',piantina:'🌿',vegetativa:'🍃',fioritura:'🌸',fruttificazione:'🍅',maturazione:'🧺',riposo:'💤'};
 const STAG_ICO={inverno:'❄️ Inverno',primavera:'🌷 Primavera',estate:'☀️ Estate',autunno:'🍂 Autunno'};
@@ -1238,6 +1263,7 @@ function markQuick(sel,attr,v){ const n=numOrNull(v); document.querySelectorAll(
 function syncForm(){
   const vaso=radioVal('colt')==='vaso';
   document.querySelectorAll('.pf-vaso-only').forEach(el=>el.hidden=!vaso);
+  $('#pf-mat-hint').textContent={terracotta:'La terracotta perde acqua anche dalle pareti: circa il 25% in più.',chiuso:'Senza fori l\'acqua in più resta sul fondo: l\'app ti dà la dose esatta (niente “finché esce dal foro”) e ti avvisa dopo la pioggia.'}[radioVal('materiale')]||'';
   const dv=radioVal('dove'), coperto=dv==='interno'||dv==='serra';
   document.querySelectorAll('.pf-casa-only').forEach(el=>el.hidden=!coperto);
   if(coperto){ const [t1,t2,t3]=TESTI_T[dv]; $('#pf-t-titolo').textContent=t1; $('#pf-t-tutte-l').textContent=t2; $('#pf-t-hint').textContent=t3;
@@ -1264,6 +1290,7 @@ function openForm(id){
   $('#pf-zona').value=zonaDi(p); renderZoneQuick();
   $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina';
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
+  setRadio('materiale',p.materiale||'plastica'); $('#pf-riserva').value=+p.riserva>0?numIn(p.riserva):'';
   $('#pf-vaso').value=numIn(p.vaso); $('#pf-diam').value=numIn(p.diametro); $('#pf-area').value=numIn(p.area); $('#pf-num').value=p.num||1;
   $('#pf-luce').value=numIn(luceOre(p)); $('#pf-ultima').value=p.ultima||''; $('#pf-concime').value=p.ultima_concime||''; $('#pf-rinvaso').value=p.data_rinvaso||''; $('#pf-note').value=p.note||'';
   $('#pf-cons').innerHTML=(p.consociate||[]).map(consRow).join('');
@@ -1292,6 +1319,7 @@ function submitForm(e){
   let zona=$('#pf-zona').value.trim().replace(/\s+/g,' ').slice(0,30); const zz=zoneEsistenti().find(z=>z.toLowerCase()===zona.toLowerCase()); if(zz) zona=zz;
   const data={nome:nome.slice(0,60),zona,specie:$('#pf-specie').value,fase:$('#pf-fase').value,data_semina:$('#pf-semina').value||'',tipo_data:$('#pf-tipo-data').value,colt,
     vaso:colt==='vaso'?(pos($('#pf-vaso').value)||10):null, diametro:colt==='vaso'?pos($('#pf-diam').value):null, consociate,
+    materiale:colt==='vaso'?(radioVal('materiale')||'plastica'):'plastica', riserva:colt==='vaso'?(pos($('#pf-riserva').value)||0):0,
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
     luce:luce==null?6:Math.max(0,Math.min(14,luce)), dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
     data_rinvaso:colt==='vaso'?($('#pf-rinvaso').value||''):'', note:$('#pf-note').value.trim().slice(0,500)};
@@ -1364,6 +1392,9 @@ function wire(){
     const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); }
   });
   $('#saveNote').addEventListener('click',()=>$('#saveNote').hidden=true);
+  const meseSposta=n=>{ const [y,m]=calMese.split('-').map(Number), d=new Date(y,m-1+n,1); calMese=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); renderCalendario(); };
+  $('#calPrima').addEventListener('click',()=>meseSposta(-1)); $('#calDopo').addEventListener('click',()=>meseSposta(1));
+  $('#cal').addEventListener('click',e=>{ const g=e.target.closest('[data-giorno]'); if(g){ calSel=g.dataset.giorno; renderCalendario(); } });
   $('#locBtn').addEventListener('click',()=>apriSezione('set-loc'));
   $('#obLocSet').addEventListener('click',()=>setLocation($('#obLoc'),$('#obLocSet'),$('#obLocInfo')));
   $('#obLoc').addEventListener('keydown',e=>{ if(e.key==='Enter') setLocation($('#obLoc'),$('#obLocSet'),$('#obLocInfo')); });
@@ -1500,6 +1531,12 @@ function wireNetlify(){
   $('#netCode').textContent=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
   $('#siriZona').addEventListener('change',renderSiri);
+  const crediti=()=>N.crediti().then(c=>{ const pct=Math.min(100,Math.round(c.stima/c.limite*100)), alto=c.stima>=240;
+      $('#credChip').textContent='~'+c.stima+' / '+c.limite; $('#credChip').className='sv'+(alto?'':' ok');
+      $('#credBarra').innerHTML=`<div class="lev${alto?' basso':''}" role="img" aria-label="Crediti usati circa ${pct}%"><i style="width:${pct}%"></i><b style="left:80%"></b></div>`;
+      $('#credTesto').textContent='Stima di '+new Date(c.mese+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long'})+': '+c.pubblicazioni+(c.pubblicazioni===1?' pubblicazione':' pubblicazioni')+' × 15 + uso ≈ '+c.stima+' crediti su '+c.limite+'.'; })
+    .catch(()=>{ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; });
+  crediti(); $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) crediti(); });
   $('#siriCopyUrl').addEventListener('click',async()=>toast(await copyText($('#siriUrl').textContent,$('#siriUrl'))?'Indirizzo copiato':'Seleziona e copia a mano'));
   $('#siriCopyCode').addEventListener('click',async()=>toast(await copyText(N.codice())?'Codice copiato: incollalo come valore di x-giardino-code':'Copia non riuscita'));
   $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });

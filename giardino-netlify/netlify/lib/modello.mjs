@@ -160,13 +160,19 @@ export function dateInnaffiate(p, eventi){
 }
 export function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
 // Ogni "era ancora umida" toglie il 10% al consumo stimato, ogni "era già secca" aggiunge il 12% (ultimi 60 giorni).
+// La stessa risposta più volte di fila corregge di più: 1ª volta −10% / +12%, 2ª −15% / +18%, dalla 3ª −20% / +24%.
+// Una risposta opposta riparte da capo. meno/piu = correzioni dalla diagnosi da foto.
 export function calibrazione(eventi, plantId, oggi){
-  let f=1;
-  for(const e of eventiValidi(eventi,plantId)){
-    if(giorniTra(e.data,oggi)>60||giorniTra(e.data,oggi)<0) continue;
-    if(e.tipo==='umido'||e.tipo==='meno') f*=0.9; else if(e.tipo==='secco'||e.tipo==='piu') f*=1.12;   // meno/piu: correzioni dalla diagnosi da foto
+  let f=1, verso=0, serie=0;
+  const ev=eventiValidi(eventi,plantId).filter(e=>{ const g=giorniTra(e.data,oggi); return g>=0&&g<=60; }).sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+  for(const e of ev){
+    const v=(e.tipo==='umido'||e.tipo==='meno')?-1:(e.tipo==='secco'||e.tipo==='piu')?1:0;
+    if(!v) continue;
+    serie = v===verso ? serie+1 : 1; verso=v;
+    const passo=1+0.5*Math.min(serie-1,2);
+    f *= v<0 ? 1-0.10*passo : 1+0.12*passo;
   }
-  return Math.max(0.5,Math.min(2,f));
+  return Math.max(0.4,Math.min(2.5,f));
 }
 
 /* ---------------- Parametri idrici di una pianta o di un vaso ---------------- */
@@ -198,15 +204,30 @@ export function params(p, ctx={}){
     // in vaso la chioma è al massimo larga circa il doppio del vaso: senza superficie indicata, quella tipica della specie
     // si riduce (una pianta da appartamento in un vasetto da 7 cm non ha la chioma di 30×30 cm)
     if(!(+p.area>0)){ const max=4*Apot; if(chioma>max){ kcA*=max/chioma; chioma=max; } }
-    const tawL=0.25*V*Math.max(0.6,1-0.06*(nTot-1));                              // più radici, meno acqua trattenuta
-    return {...base,vaso:true,V,D,Apot,chioma,area:Math.max(Apot,chioma),tawL,rawL:tawL*pMin,pMin,lPerMm:(kcA+0.15*Apot)*fl*calib,pioggiaArea:Apot*0.8};
+    const tawTerra=0.25*V*Math.max(0.6,1-0.06*(nTot-1));                              // più radici, meno acqua trattenuta
+    // materiale: la terracotta perde acqua anche dalle pareti (+25%); «chiuso» = vaso senza fori, l'acqua in più ristagna
+    const materiale=['terracotta','chiuso'].includes(p.materiale)?p.materiale:'plastica', fMat=materiale==='terracotta'?1.25:1;
+    // sottovaso con riserva d'acqua: la pianta la beve dal basso prima di asciugare il terriccio
+    const riserva=Math.max(0,Math.min(V,+p.riserva||0));
+    const tawL=tawTerra+riserva;
+    return {...base,vaso:true,V,D,Apot,chioma,area:Math.max(Apot,chioma),tawL,tawTerra,riserva,materiale,chiuso:materiale==='chiuso',
+      rawL:tawTerra*pMin+riserva,pMin,lPerMm:(kcA+0.15*Apot)*fl*calib*fMat,pioggiaArea:Apot*0.8};
   }
   const area=+p.area>0 ? +p.area : chioma;
   const tawL=sp.radici*fa.radici*(p.colt==='rialzata'?0.8:1)*120*area;            // 120 mm per metro di terreno medio
   return {...base,vaso:false,chioma,area,tawL,rawL:tawL*pMin,pMin,lPerMm:kcA/chioma*area*fl*calib,pioggiaArea:area*0.85};
 }
 // in casa conta la temperatura della stanza in quel giorno (d.date; senza data, oggi)
-export const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra)*k.lPerMm : (d?.et0||0)*k.lPerMm;
+export const consumoL = (k,d) => k.interno ? et0Casa(k.h, tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra)*k.lPerMm : (d?.et0||0)*k.lPerMm*fattoreVaso(k,d);
+// Effetto vaso all'aperto: l'ET0 conta già caldo e vento per il terreno, ma un vaso scalda e si asciuga anche dai lati.
+// Con 30 °C o più: +15% per i vasi fino a 10 L al sole (5+ ore), +7% per gli altri; con vento da 30 km/h: +10% / +5%.
+export function fattoreVaso(k,d){
+  if(!k.vaso || k.interno || !d) return 1;
+  let f=1;
+  if(d.tmax>=30) f+= k.V<=10 && k.h>=5 ? 0.15 : 0.07;
+  if(d.wind>=30) f+= k.V<=10 ? 0.10 : 0.05;
+  return f;
+}
 export const pioggiaL = (p,k,d) => p.dove!=='aperto' ? 0 : Math.max(0,(d?.rain||0)-1.5)*k.pioggiaArea;
 // Pioggia prevista: conta quella attesa, non quella massima. Con probabilità 80% o più vale tutta, sotto in proporzione
 // (20 mm al 56% contano 14 mm): così una pioggia incerta non fa saltare un'innaffiatura che serve.
@@ -220,7 +241,7 @@ export function inVacanza(v, data){ return !!(v&&v.dal&&v.al&&data>=v.dal&&data<
 const CAMPO=0.32, APPASS=0.12;
 export function deficitDaSuolo(theta){ return Math.max(0,Math.min(1,(CAMPO-theta)/(CAMPO-APPASS))); }
 export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
-  const out={avvisi:[], piante:[]};
+  const out={avvisi:[], piante:[]}, chiusiBagnati=new Set();
   if(!fut.length) return out;
   for(const p of piante){
     const k=params(p,{oggi,lat,eventi});
@@ -235,10 +256,11 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     const giorni=[];
     fut.forEach((d,i)=>{
       const pl=pioggiaL(p,k,d.date>=oggi?pioggiaAttesa(d):d);
+      if(k.chiuso && pl>0 && dep+consumoL(k,d)-pl < -0.1*k.tawL) chiusiBagnati.add(p.nome);
       let end=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pl));
       if(i===0 && !fatte.has(oggi)) acqua=+Math.max(0,1-end/k.tawL).toFixed(2);
       const next=fut[i+1], momento=d.tmin<=2&&!k.interno?'metà giornata':'mattina presto';
-      const innaffia=(motivo,extra=1.1)=>{ const l=Math.max(0.05,end*(k.vaso?extra:1)); const g={data:d.date,azione:'innaffia',litri:+l.toFixed(l<2?2:1),momento,motivo}; end=0; return g; };
+      const innaffia=(motivo,extra=1.1)=>{ const l=Math.max(0.05,end*(k.vaso&&!k.chiuso?extra:1)); const g={data:d.date,azione:'innaffia',litri:+l.toFixed(l<2?2:1),momento,motivo}; end=0; return g; };
       let g;
       if(fatte.has(d.date) && d.date!==oggi){ g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Già innaffiata'}; end=0; }
       else if(vacanza && vacanza.dal===addDays(d.date,1) && end>k.tawL*0.15){ g=innaffia('Domani parti: bagna a fondo finché esce dal foro',1.15); }
@@ -250,7 +272,7 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
       else if(end>=k.rawL){
         const nr=next?pioggiaL(p,k,pioggiaAttesa(next)):0;
         if(next&&nr>=end*0.6&&(next.prob??0)>=60&&end<k.tawL*0.85) g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Rinvia: pioggia prevista domani ('+fmtN(next.rain)+' mm)'};
-        else g=innaffia((k.vaso?'Vaso asciutto al ':'Riserva consumata al ')+Math.round(end/k.tawL*100)+'%'+(k.vaso?', bagna finché esce dal foro':''));
+        else g=innaffia((k.vaso?'Vaso asciutto al ':'Riserva consumata al ')+Math.round(end/k.tawL*100)+'%'+(!k.vaso?'':k.chiuso?': vaso senza fori, dai solo questa dose':', bagna finché esce dal foro')+(k.riserva?' e riempi la riserva':''));
       }
       else if(end>=k.rawL*0.8) g={data:d.date,azione:'controlla',litri:0,momento:'indifferente',motivo:'Tocca il terriccio: se asciutto a 2–3 cm, innaffia'};
       else g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Terriccio ancora umido'};
@@ -261,6 +283,7 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
   const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
   if(freddo.length) out.avvisi.push('Minima fino a '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
+  if(chiusiBagnati.size) out.avvisi.push('Pioggia sui vasi senza fori ('+[...chiusiBagnati].join(', ')+'): dopo la pioggia inclina il vaso e togli l\'acqua in più, altrimenti le radici marciscono.');
   if(maxT>=33) out.avvisi.push('Caldo intenso (fino a '+fmtN(maxT)+' °C): innaffia all\'alba e controlla i vasi piccoli anche la sera.');
   return out;
 }

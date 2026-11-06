@@ -98,3 +98,26 @@ test("avviso di gelo: in veranda/serra non dice di portare al riparo", () => {
   const [a] = M.avvisiDomani([{ id: "a", nome: "Basilico", specie: "basilico", colt: "vaso", dove: "aperto" }, { id: "b", nome: "Pomodori", specie: "pomodoro", colt: "vaso", dove: "serra" }], { tmin: 0, tmax: 9 }, [{ ora: "04", t: 0 }]);
   assert.match(a.testo, /porta al riparo o copri con tessuto non tessuto Basilico; in veranda\/serra chiudi bene e copri Pomodori\./);
 });
+
+test("calibrazione: la stessa risposta di fila corregge di più, una opposta riparte", () => {
+  const ev = (tipi) => tipi.map((tipo, i) => ({ id: "e" + i, plantId: "x", tipo, data: "2026-11-0" + (i + 1), fonte: "app" }));
+  assert.ok(Math.abs(M.calibrazione(ev(["umido"]), "x", "2026-11-09") - 0.9) < 1e-9);
+  assert.ok(Math.abs(M.calibrazione(ev(["umido", "umido", "umido"]), "x", "2026-11-09") - 0.9 * 0.85 * 0.8) < 1e-9);
+  assert.ok(Math.abs(M.calibrazione(ev(["umido", "secco"]), "x", "2026-11-09") - 0.9 * 1.12) < 1e-9);
+});
+
+test("vaso: terracotta beve di più, senza fori dose esatta, riserva allunga gli intervalli, caldo e vento sui vasi piccoli", () => {
+  const p = { id: "v", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 4, num: 1, luce: 7, dove: "aperto" };
+  const k = (x) => M.params({ ...p, ...x }, { oggi: "2026-07-15", lat: 44 });
+  assert.ok(Math.abs(k({ materiale: "terracotta" }).lPerMm / k({}).lPerMm - 1.25) < 1e-9);
+  const r = k({ riserva: 1 }); assert.ok(Math.abs(r.rawL - k({}).rawL - 1) < 1e-9 && r.riserva === 1);
+  const base = k({}), d = { date: "2026-07-15", et0: 5, tmax: 34, wind: 35 };
+  assert.ok(Math.abs(M.consumoL(base, d) / M.consumoL(base, { ...d, tmax: 25, wind: 5 }) - 1.25) < 1e-9, "+15% caldo +10% vento");
+  const giorni = ["2026-07-15", "2026-07-16", "2026-07-17"].map((date) => ({ date, et0: 6, tmax: 30, tmin: 18, rain: 0, prob: 0, wind: 5 }));
+  const piano = (x) => M.pianoLocale({ piante: [{ ...p, ...x }], fut: giorni, oggi: "2026-07-15", lat: 44 }).piante[0].giorni.find((g) => g.azione === "innaffia");
+  const ap = piano({}), ch = piano({ materiale: "chiuso" });
+  assert.match(ch.motivo, /senza fori/); assert.match(ap.motivo, /esce dal foro/);
+  // pioggia forte su vaso senza fori: avviso
+  const pioggia = giorni.map((g) => ({ ...g, rain: 40, prob: 100 }));
+  assert.match(M.pianoLocale({ piante: [{ ...p, materiale: "chiuso" }], fut: pioggia, oggi: "2026-07-15", lat: 44 }).avvisi.join(" "), /vasi senza fori/);
+});

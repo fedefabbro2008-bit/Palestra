@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, finePiano, messaggioFinePiano, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, esc, IMP_DEF, ESITI, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Per ogni bot Telegram collegato, all'ora locale:
@@ -14,15 +14,19 @@ export const config = { schedule: "@hourly" };
 
 export default async () => {
   const st = store();
+  // crediti Netlify: conta la versione pubblicata; sopra l'80% della stima avvisa una volta al mese
+  let cr = null; try { cr = await crediti(st); } catch (e) { console.error("crediti", e?.message); }
   const { blobs } = await st.list({ prefix: "t-" });
+  let avvisati = 0;
   for (const b of blobs) {
-    try { await uno(st, b.key); } catch (e) { console.error(b.key, e?.message || e); }
+    try { if (await uno(st, b.key, cr && cr.alto && !cr.avvisato ? cr : null)) avvisati++; } catch (e) { console.error(b.key, e?.message || e); }
   }
+  if (avvisati) await segnaAvvisoCrediti(st, cr);
   return new Response("ok");
 };
 
 
-async function uno(st, tkey) {
+async function uno(st, tkey, cr) {
   const t = await st.get(tkey, { type: "json" });
   if (!t?.chat_id) return;
   const code = tkey.slice(2);
@@ -32,7 +36,12 @@ async function uno(st, tkey) {
   const { oggi, ora } = oraLocale(t.tz || "Europe/Rome");
   const mattina = ora >= +imp.ora_mattina && ora < 21 && t.ultimo_invio !== oggi;
   const sera = ora >= +imp.ora_sera && ora < 23 && t.ultimo_avviso_sera !== oggi;
-  if (!mattina && !sera) return;
+  let avvisoCrediti = false;
+  if (cr && t.chat_id) {
+    await tg(t.token, "sendMessage", { chat_id: t.chat_id, parse_mode: "HTML", text: `📊 <b>Crediti Netlify</b>: stima ${cr.stima} su ${cr.limite} questo mese (${cr.pubblicazioni} pubblicazioni da 15 crediti).\nSe finiscono il sito va in pausa fino al mese prossimo: rimanda gli aggiornamenti dell'app. Il conto esatto è su app.netlify.com → Usage.` }, { ignora: true });
+    avvisoCrediti = true;
+  }
+  if (!mattina && !sera) return avvisoCrediti;
 
   const met = await meteo(cur.data.location.lat, cur.data.location.lon);
   const next = { ...t, tz: met.tz };
@@ -84,4 +93,5 @@ async function uno(st, tkey) {
     next.ultimo_avviso_sera = oggi;
   }
   await st.setJSON(tkey, next);
+  return avvisoCrediti;
 }

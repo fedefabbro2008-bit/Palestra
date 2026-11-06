@@ -14,7 +14,7 @@ App: **https://giardino-fede.netlify.app/**
 | Calcolo | `giardino/modello.mjs` (copiato in `giardino-netlify/netlify/lib/`) | bilancio idrico in litri per vaso o aiuola; 36 specie in 6 gruppi (orto, aromatiche, frutti, fiori, in casa, altro) |
 | Dati | `netlify/functions/dati.mjs` → Netlify Blobs | salvataggio con codice di sincronizzazione (nell'intestazione `x-giardino-code`, mai nell'indirizzo); chiave per Claude; collegamento del bot |
 | Claude | `netlify/functions/mcp.mjs` → `/mcp/<chiave>` | connettore MCP: `giardino`, `diario`, `salva_piano`, `registra`, `modifica_pianta`, `vacanza` |
-| Telegram | `netlify/functions/telegram.mjs` (webhook) + `bot.mjs` (ogni ora) | pulsanti **Annaffiato** / **Terreno ancora umido** (al mattino anche Salto); comandi /oggi /fatto [zona] /settimana /vacanza /aiuto; piano del mattino; la sera promemoria di ciò che manca e avvisi (gelo ora per ora, caldo, vento); riepilogo la domenica; backup come file ogni mese |
+| Telegram | `netlify/functions/telegram.mjs` (webhook) + `bot.mjs` (ogni ora) | pulsanti **Annaffiato** / **Terreno ancora umido** (al mattino anche Salto); comandi /oggi /fatto [zona o pianta] /settimana /vacanza /aiuto; piano del mattino; la sera promemoria di ciò che manca e avvisi (gelo ora per ora, caldo, vento); riepilogo la domenica; backup come file ogni mese |
 | Siri | `netlify/functions/siri.mjs` → `/api/siri/oggi` e `/api/siri/fatto[?zona=…]` | Comandi Rapidi “Ho innaffiato” e “Cosa innaffio oggi”: risposta in testo da far leggere a Siri; codice nell'intestazione `x-giardino-code` |
 | Prove | `giardino-netlify/test/`, `.github/workflows/giardino-test.yml` | a ogni modifica su GitHub: pagina ricostruita dai sorgenti, modello, funzioni del sito, interfaccia nel browser da 320 a 430 px |
 
@@ -67,8 +67,20 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - In casa ET₀ = 0,8 × eₛ(T)/eₛ(20) + 0,15 × ore di luce × PT(T)/PT(20): eₛ = pressione di vapore saturo (aria più calda, più secca),
   PT = fattore di Priestley-Taylor Δ/(Δ+γ). T = temperatura della stanza indicata per stagione (tipica: inverno 20, primavera 21,
   estate 26, autunno 21 °C), interpolata giorno per giorno tra metà gennaio, aprile, luglio e ottobre. A 20 °C vale 0,8 + 0,15 × ore.
-- Correzione appresa: −10% per ogni "era ancora umida", +12% per ogni "era secca" (ultimi 60 giorni, tra 0,5 e 2).
+- Correzione appresa (ultimi 60 giorni, tra 0,4 e 2,5): "era ancora umida" −10%, "era secca" +12%; la stessa risposta di fila
+  corregge di più (2ª volta −15% / +18%, dalla 3ª −20% / +24%), una risposta opposta riparte da capo.
+- Vaso: terracotta +25% (perde acqua dalle pareti); senza fori = dose esatta e avviso dopo la pioggia; sottovaso con riserva:
+  i suoi litri si aggiungono all'acqua disponibile. All'aperto, effetto vaso: con 30 °C o più +15% (vasi fino a 10 L al sole)
+  o +7%, con vento da 30 km/h +10% o +5%.
+- Pioggia prevista pesata con la probabilità (piena dall'80%). Veranda/serra: niente pioggia, temperature per stagione,
+  parte del sole doppia rispetto alla casa, gelo solo sotto la soglia meno 4 °C.
 - Piena terra all'aperto: se nessuno ha innaffiato negli ultimi 3 giorni, il punto di partenza è l'umidità reale del suolo
   (Open-Meteo, 0–27 cm; capacità di campo 0,32, appassimento 0,12 m³/m³).
 - Pioggia utile nel vaso = (pioggia − 1,5 mm) × superficie del vaso × 0,8; zero se riparato o in casa.
 - Dose = acqua consumata + 10%, cioè finché esce un po' dal foro.
+
+## Crediti Netlify (piano Free: 300 al mese)
+
+Ogni pubblicazione costa 15 crediti: si pubblica solo se cambia la cartella `giardino-netlify` (regola `ignore` in `netlify.toml`).
+`build-app.mjs` scrive un'impronta della versione (`netlify/lib/versione.mjs`); il bot conta le impronte nuove del mese, l'app
+mostra la stima in Impostazioni → Crediti Netlify e Telegram avvisa all'80%. Il conto esatto è su app.netlify.com → Usage.

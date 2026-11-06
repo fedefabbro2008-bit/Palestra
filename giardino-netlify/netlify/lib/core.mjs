@@ -7,6 +7,7 @@
 //   w-<segreto>   { code }                   dal webhook di Telegram al codice
 import { getStore } from "@netlify/blobs";
 import * as M from "./modello.mjs";
+import { VERSIONE } from "./versione.mjs";
 export { M };
 
 export const store = () => getStore({ name: "giardino", consistency: "strong" });
@@ -215,9 +216,21 @@ export function messaggioFinePiano(fine, oggi) {
   const url = "https://claude.ai/new?q=" + encodeURIComponent("Fammi il piano di innaffiatura della settimana per il mio giardino e salvalo.");
   return { testo, tastiera: { inline_keyboard: [[{ text: "✨ Apri Claude", url }]] } };
 }
+/* ---------------- Crediti Netlify (stima) ----------------
+   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot, Claude e Siri, con
+   questo traffico, pochi crediti al mese (stima prudente: 5). Le pubblicazioni si contano dalle impronte di versione viste. */
+export const CREDITI = { limite: 300, pubblicazione: 15, uso: 5, avviso: 240 };
+export async function crediti(st) {
+  const mese = oraLocale("Europe/Rome").oggi.slice(0, 7), key = "u-" + mese;
+  const u = (await st.get(key, { type: "json" })) || { versioni: [], avvisato: false };
+  if (!u.versioni.includes(VERSIONE)) { u.versioni.push(VERSIONE); await st.setJSON(key, u); }
+  const stima = u.versioni.length * CREDITI.pubblicazione + CREDITI.uso;
+  return { mese, pubblicazioni: u.versioni.length, stima, limite: CREDITI.limite, alto: stima >= CREDITI.avviso, avvisato: !!u.avvisato, key };
+}
+export async function segnaAvvisoCrediti(st, c) { const u = (await st.get(c.key, { type: "json" })) || { versioni: [] }; u.avvisato = true; await st.setJSON(c.key, u); }
 export const COMANDI = [
   { command: "oggi", description: "Il piano di oggi, con i pulsanti" },
-  { command: "fatto", description: "Segna come annaffiate le piante di oggi (es. /fatto balcone)" },
+  { command: "fatto", description: "Segna come annaffiate le piante di oggi (es. /fatto balcone, /fatto aglio)" },
   { command: "settimana", description: "I prossimi 7 giorni" },
   { command: "vacanza", description: "Es. /vacanza 10/8 20/8 oppure /vacanza no" },
   { command: "aiuto", description: "Cosa sa fare il bot" }
@@ -225,20 +238,30 @@ export const COMANDI = [
 
 /* ---------------- “Fatto” per tutte le piante di oggi (comando /fatto e Siri) ---------------- */
 // Segna come annaffiate le piante che oggi il piano dice di innaffiare (tutte o di una zona) e che non hanno già una risposta.
-export async function segnaFatte(st, code, ap, oggi, { zona = "", fonte = "telegram" } = {}) {
+// Con «pianta» (id) segna quella pianta anche se oggi il piano non la prevedeva (l'hai annaffiata di tua iniziativa).
+export async function segnaFatte(st, code, ap, oggi, { zona = "", pianta = "", fonte = "telegram" } = {}) {
   const z = String(zona || "").trim().toLowerCase(), fatte = [];
   await aggiorna(st, code, (d) => {
     fatte.length = 0;
     for (const p of M.pianteOrdinate(d.plants)) {
-      if (z && M.zonaDi(p).toLowerCase() !== z) continue;
+      if (pianta ? p.id !== pianta : z && M.zonaDi(p).toLowerCase() !== z) continue;
       const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
-      if (g?.azione !== "innaffia" || d.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo))) continue;
-      d.eventi.push({ id: `${fonte === "siri" ? "sr" : "tg"}-f-${oggi}-${p.id}`, plantId: p.id, tipo: "fatto", data: oggi, fonte, ts: new Date().toISOString(), litri: g.litri });
+      if ((!pianta && g?.azione !== "innaffia") || d.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo))) continue;
+      const litri = g?.azione === "innaffia" ? g.litri : +(M.params(p, { oggi, lat: d.location?.lat, eventi: d.eventi }).rawL * 1.1).toFixed(2);
+      d.eventi.push({ id: `${fonte === "siri" ? "sr" : "tg"}-f-${oggi}-${p.id}`, plantId: p.id, tipo: "fatto", data: oggi, fonte, ts: new Date().toISOString(), litri });
       fatte.push(p.nome);
     }
     if (!fatte.length) return false;
   });
   return fatte;
+}
+// Da un testo libero («balcone», «aglio»): prima una zona, poi una pianta (nome uguale, poi che inizia così, poi che lo contiene).
+export function trovaZonaOPianta(plants, testo) {
+  const q = String(testo || "").trim().toLowerCase(); if (!q) return {};
+  const zona = plants.map(M.zonaDi).find((z) => z && z.toLowerCase() === q);
+  if (zona) return { zona };
+  const p = plants.find((x) => x.nome.toLowerCase() === q) || plants.find((x) => x.nome.toLowerCase().startsWith(q)) || plants.find((x) => x.nome.toLowerCase().includes(q));
+  return p ? { pianta: p.id, nome: p.nome } : { nessuno: true };
 }
 // Testo da far leggere a Siri: cosa innaffiare oggi (tutte le piante o una zona).
 const parlato = (s) => String(s).replace(/≈\s*/g, "circa ").replace(/(\d)½/g, "$1 e mezzo").replace(/½/g, "mezzo").replace(/¼/g, "un quarto").replace(/¾/g, "tre quarti");
