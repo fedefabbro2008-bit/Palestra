@@ -1188,10 +1188,11 @@ function renderPiante(AP){
     const {k,uso,giorni}=schedaAcqua(p), pp=AP?.data?.piante.find(x=>x.id===p.id), nx=prossima(p,pp);
     const meta=[k.sp.nome.replace(/ \(.*\)$/,'')+(k.num>1?' ×'+k.num:''), k.vaso?'vaso '+fmt(k.V,1)+' L':COLT[p.colt]?.toLowerCase(), fmt(k.h,1)+' h di sole', DOVE_BREVE[p.dove]].filter(Boolean).join(' · ');
     const altri=k.membri.slice(1).map(m=>(SPECIE[m.specie]||SPECIE.altro).nome.split(' ')[0]+(m.num>1?' ×'+m.num:'')).join(', ');
-    const ogni = giorni==null ? '—' : giorni<1 ? 'anche più volte al giorno' : giorni>30 ? 'raramente' : 'circa ogni '+fmt(giorni,giorni<3?1:0)+' giorni';
+    // intervallo tra due innaffiature col consumo di oggi (quanto può perdere ÷ quanto beve al giorno), senza pioggia
+    const ogni = giorni==null ? '—' : giorni<1 ? 'anche più volte al giorno' : giorni<=45 ? 'circa ogni '+fmt(giorni,giorni<3?1:0)+' giorni' : giorni<=90 ? 'circa ogni '+fmt(giorni/30,0)+' mesi' : 'più di 3 mesi';
     const u=ultimaInnaffiatura(p,c.eventi);
     const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
-      ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],['Quindi',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
+      ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],[k.interno?'Innaffiare, a questo ritmo':'Innaffiare, se non piove',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
     if(p.orient) facts.push(['Sole diretto oggi','~'+fmt(k.h,1)+' h · '+(p.orient==='aperto'?'aperto':'verso '+({N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SO:'sud-ovest',O:'ovest',NO:'nord-ovest'}[p.orient]))]);
     if(altri) facts.push(['Nel vaso anche',altri]);
     if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
