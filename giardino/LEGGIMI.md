@@ -77,6 +77,10 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Annaffiata / Sotto la pioggia**: 💧 su ogni pianta (anche quando il piano non chiede acqua); 🌧 solo sulle piante al riparo, in veranda/serra o in casa (quelle «fuori, prende la pioggia» la ricevono già nel calcolo). «Sotto la pioggia» chiede dalle/alle e usa solo la pioggia **misurata** dalla stazione ARPAE più vicina (quarti d'ora, `?op=pioggia`): litri = mm × apertura del vaso; riempie solo quei litri. Senza misure non registra niente.
 - **Raccolta prevista** (`raccolta` = AAAA-MM, nel modulo o dalla scheda di Claude): le fasi automatiche delle annuali si adattano a quel mese.
 
+## Aspetto
+- **Liquid glass** (come l'app Palestra, stile iOS 26): barra delle schede a capsula di vetro sospesa, avvisi e finestre di vetro denso con sfocatura; riquadri e pulsanti con riflesso in alto e bordo di luce; pulsanti principali di vetro colorato; sfondo con due luci tenui. Senza `backdrop-filter` la barra torna piena.
+- **Animazioni**: vista e riquadri che entrano al cambio di scheda, giorni del meteo uno dopo l'altro, pulsanti che si abbassano al tocco, livello dell'acqua che si riempie, riquadri che si aprono, avvisi e finestre che entrano. Spente con «Riduci movimento» del telefono.
+
 ## Rete e velocità
 - **Sincronizzazione a costo quasi zero**: l'app manda la versione che ha (`x-giardino-versione: rev-updatedAt`); se sul server non è cambiato niente risponde `{invariato: true}` (~50 byte invece di tutti i dati) e lo schermo non si ridisegna.
 - **Avvio con una richiesta sola**: lo stato di Claude, Telegram e crediti (`/api/dati?op=stato`, una richiesta) si chiede solo quando apri Impostazioni.
