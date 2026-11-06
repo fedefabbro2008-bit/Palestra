@@ -42,7 +42,8 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   KEY = (await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "on" } })).body.token;
   assert.match(KEY, /^[A-Z2-7]{26}$/);
   assert.equal((await rpc("initialize", { protocolVersion: "2025-06-18" })).result.serverInfo.name, "giardino");
-  assert.equal((await rpc("tools/list")).result.tools.length, 7);
+  assert.equal((await rpc("tools/list")).result.tools.length, 12);
+  assert.equal((await rpc("initialize", {})).result.serverInfo.version, "2.0.0");
   const g = (await strumento("giardino")).content[0].text;
   const ordine = ["Basilico", "Pomodoro", "Zucchine", "Aglio"].map((n) => g.indexOf("**" + n + "**"));
   assert.ok(ordine.every((x, i) => x > 0 && (!i || x > ordine[i - 1])), "piante per zona e in ordine alfabetico");
@@ -63,7 +64,7 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   const agl = (await leggiDati()).plants.find((p) => p.id === "agl");
   assert.equal(agl.scheda.calendario.length, 2, "il mese 13 viene scartato");
   assert.equal(agl.scheda.specie, "aglio");
-  assert.match((await strumento("giardino")).content[0].text, /scheda: compilata il/);
+  assert.match((await strumento("giardino")).content[0].text, /scheda: compilata da te il/);
   assert.equal((await strumento("salva_scheda", { pianta: "agl", calendario: [] })).isError, true);
   // anche senza «salva_scheda» (elenco di strumenti vecchio nel client) la scheda si scrive con «modifica_pianta»
   assert.match((await strumento("giardino")).content[0].text, /Come scrivere le schede[\s\S]*modifica_pianta/);
@@ -80,8 +81,40 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(d.plants.find((p) => p.id === "agl").scheda.descrizione, "Bulbo da piantare in autunno.");
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d.plants.map((p) => (p.id === "agl" ? { ...p, scheda: { ...p.scheda, descrizione: "vecchia", aggiornata: "2020-01-01T00:00:00Z" } } : p)) } } });
   assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").scheda.descrizione, "Bulbo da piantare in autunno.");
+  // livello dell'acqua e prossima innaffiatura nel riepilogo
+  assert.match((await strumento("giardino")).content[0].text, /acqua nel terriccio a fine giornata ~\d+% \(si innaffia sotto \d+%\)/);
+  // una pianta in dettaglio: scheda dell'app se Claude non l'ha scritta
+  const pb = (await strumento("pianta", { pianta: "Basilico" })).content[0].text;
+  assert.match(pb, /Scheda dell'app[\s\S]*luce:/); assert.match(pb, /## Piano/);
+  // diagnosi: senza registra non scrive, con registra salva «meno»
+  const dg = (await strumento("diagnosi", { pianta: "bas", sintomi: ["bagnato", "gialle_molli", "inesistente"] })).content[0].text;
+  assert.match(dg, /Troppa acqua[\s\S]*registra: true/);
+  assert.ok(!(await leggiDati()).eventi.some((e) => e.plantId === "bas" && e.tipo === "meno"));
+  assert.match((await strumento("diagnosi", { pianta: "bas", sintomi: ["bagnato", "marciume"], registra: true })).content[0].text, /Registrato «meno»: correzione appresa ora ×0,9/);
+  const meno = (await leggiDati()).eventi.find((e) => e.plantId === "bas" && e.tipo === "meno");
+  assert.ok(meno && meno.fonte === "claude");
+  assert.equal((await strumento("diagnosi", { pianta: "bas", sintomi: [] })).isError, true);
+  // annulla: toglie l'evento per id
+  assert.match((await strumento("diario", { giorni: 3 })).content[0].text, new RegExp("\\[" + meno.id + "\\]"));
+  assert.match((await strumento("annulla", { id: meno.id })).content[0].text, /Tolto dal diario: Basilico — meno/);
+  assert.ok(!(await leggiDati()).eventi.some((e) => e.id === meno.id));
+  assert.equal((await strumento("annulla", { id: "nessuno" })).isError, true);
+  // nuova pianta senza specie: riconosciuta dal nome
+  assert.match((await strumento("modifica_pianta", { azione: "aggiungi", campi: { nome: "Monstera deliciosa", dove: "interno" } })).content[0].text, /Monstera \/ pothos \/ filodendro \(riconosciuta dal nome\)/);
+  // piano: litri oltre quello che il vaso trattiene ridotti, giorni fuori periodo scartati; poi di nuovo calcolo automatico
+  const sp = (await strumento("salva_piano", { piante: [{ id: "bas", giorni: [{ data: OGGI, azione: "innaffia", litri: 50 }, { data: "2020-01-01", azione: "innaffia", litri: 1 }] }] })).content[0].text;
+  assert.match(sp, /50 L ridotti a/); assert.match(sp, /1 giorni fuori dal periodo/);
+  const pc = (await leggiDati()).piano_claude.data.piante[0];
+  assert.equal(pc.giorni.length, 1); assert.ok(pc.giorni[0].litri < 2);
+  assert.match((await strumento("piano_automatico")).content[0].text, /calcolo automatico/);
+  assert.equal((await leggiDati()).piano_claude, null);
+  // impostazioni
+  assert.equal((await strumento("impostazioni", { ora_sera: 20, bicchiere: 0.3 })).isError, false);
+  assert.equal((await leggiDati()).impostazioni.ora_sera, 20);
+  assert.equal((await strumento("impostazioni", { ora_mattina: 2 })).isError, true);
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
   assert.equal((await strumento("vacanza", { annulla: true })).isError, true);
+  assert.match((await strumento("diagnosi", { pianta: "bas", sintomi: ["secco"], registra: true })).content[0].text, /Modifiche non permesse/);
   assert.equal((await call(mcp, "/mcp/AAAAAAAAAAAAAAAAAAAAAAAAAA", { method: "POST", body: { jsonrpc: "2.0", id: 1, method: "ping" } })).status, 401);
 });
 
