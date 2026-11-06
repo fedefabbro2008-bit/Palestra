@@ -922,7 +922,7 @@ function renderWeather(){
 function renderAlerts(AP){
   const t=today(), domani=futDays().find(d=>d.date===addDays(t,1));
   const dom=avvisiDomani(piante(),domani,activeWeather()?.notte), tipi=new Set(dom.map(a=>a.tipo));
-  const avvPiano=(AP?.data?.avvisi||[]).filter(a=>!(tipi.has('gelo')&&/minima|gelo|°C: proteggi/i.test(a)) && !(tipi.has('caldo')&&/caldo|massima/i.test(a)));
+  const avvPiano=(AP?.data?.avvisi||[]).filter(a=>!(tipi.has('gelo')&&/minima|gelo|°C: proteggi/i.test(a)) && !(tipi.has('caldo')&&/caldo|massima/i.test(a)) && !(tipi.has('grandine')&&/grandine/i.test(a)));
   const avv=[...dom.map(a=>/^Stanotte/.test(a.testo)?a.testo:'Domani: '+a.testo), ...avvPiano];
   setHTML($('#alerts'),avv.map(a=>'<div class="alert">'+ICON.warn+'<div>'+esc(a)+'</div></div>').join(''));
 }

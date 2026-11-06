@@ -1,0 +1,33 @@
+# Giardino · controllo del sito online: dopo ogni modifica su main (aspetta la pubblicazione di Netlify) e ogni mattina.
+# Se qualcosa non risponde (pubblicazione fallita, funzione rotta, sito in pausa per i crediti) il controllo fallisce
+# e GitHub manda l'email. Facoltativi, nei segreti del repository: GIARDINO_CODE (codice di sincronizzazione) e
+# GIARDINO_MCP (chiave del connettore) per provare anche i dati veri, solo in lettura.
+name: Giardino · sito online
+on:
+  push:
+    branches: [main]
+    paths: ["giardino/**", "giardino-netlify/**", ".github/workflows/giardino-sito.yml"]
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: giardino-sito
+  cancel-in-progress: true
+jobs:
+  controllo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Sito, app, dati, Claude, Siri, Telegram
+        working-directory: giardino-netlify
+        env:
+          GIARDINO_CODE: ${{ secrets.GIARDINO_CODE }}
+          GIARDINO_MCP: ${{ secrets.GIARDINO_MCP }}
+          ATTESA_MINUTI: ${{ github.event_name == 'push' && '12' || '1' }}
+        run: node test/sito-online.mjs

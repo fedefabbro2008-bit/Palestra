@@ -56,12 +56,13 @@ export function pota(ev) {
 const COND = (c) => c === 0 ? "sereno" : c <= 2 ? "poco nuvoloso" : c === 3 ? "nuvoloso" : (c === 45 || c === 48) ? "nebbia" : c >= 95 ? "temporale" : ((c >= 71 && c <= 77) || c === 85 || c === 86) ? "neve" : "pioggia";
 export async function meteo(lat, lon) {
   const q = new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", past_days: "3", forecast_days: "8",
-    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max" });
+    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max" });
   const r = await fetch("https://api.open-meteo.com/v1/forecast?" + q);
   if (!r.ok) throw new Error("Open-Meteo " + r.status);
   const j = await r.json(), d = j.daily, tz = j.timezone || "Europe/Rome";
   const out = { tz, days: d.time.map((t, i) => ({ date: t, cond: COND(d.weather_code[i]), tmax: d.temperature_2m_max[i], tmin: d.temperature_2m_min[i],
-    rain: d.precipitation_sum[i] ?? 0, prob: d.precipitation_probability_max[i], et0: d.et0_fao_evapotranspiration[i] ?? 0, wind: d.wind_speed_10m_max[i] })), suolo: null, notte: null };
+    rain: d.precipitation_sum[i] ?? 0, prob: d.precipitation_probability_max[i], et0: d.et0_fao_evapotranspiration[i] ?? 0, wind: d.wind_speed_10m_max[i],
+    raffiche: d.wind_gusts_10m_max?.[i] ?? null, code: d.weather_code[i] })), suolo: null, notte: null };
   // dati orari (umidità del suolo, temperature della notte) in una richiesta a parte: se non arrivano, il resto funziona lo stesso
   try {
     const r2 = await fetch("https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({ latitude: lat, longitude: lon, timezone: "auto", forecast_days: "2", hourly: M.ORARIO_PARAMS }));

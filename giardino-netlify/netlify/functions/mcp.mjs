@@ -58,8 +58,8 @@ async function toolGiardino(ctx) {
   const L = [`# Giardino — ${dl(oggi)} · ${data.location.name}${data.location.detail ? " (" + data.location.detail + ")" : ""}, lat ${fmt(data.location.lat, 3)}`];
   if (met.suolo != null) L.push(`Umidità del suolo adesso (0–27 cm): ${fmt(met.suolo * 100, 0)}% in volume (usata per le piante in piena terra).`);
   if (data.vacanza) L.push(`Vacanza: dal ${data.vacanza.dal} al ${data.vacanza.al} (giorno del rientro).`);
-  L.push("", "## Meteo (Open-Meteo, reale)", "giorno | cielo | min–max °C | pioggia mm (prob.) | ET0 mm | vento km/h");
-  for (const d of met.days.filter((x) => x.date >= M.addDays(oggi, -3))) L.push(`${d.date === oggi ? "**oggi** " : ""}${dl(d.date)} | ${d.cond} | ${fmt(d.tmin, 0)}–${fmt(d.tmax, 0)} | ${fmt(d.rain)}${d.prob != null ? " (" + d.prob + "%)" : ""} | ${fmt(d.et0)} | ${fmt(d.wind, 0)}`);
+  L.push("", "## Meteo (Open-Meteo, reale)", "giorno | cielo | min–max °C | pioggia mm (prob.) | ET0 mm | vento (raffiche) km/h");
+  for (const d of met.days.filter((x) => x.date >= M.addDays(oggi, -3))) L.push(`${d.date === oggi ? "**oggi** " : ""}${dl(d.date)} | ${d.cond}${d.code === 96 || d.code === 99 ? " con grandine" : ""} | ${fmt(d.tmin, 0)}–${fmt(d.tmax, 0)} | ${fmt(d.rain)}${d.prob != null ? " (" + d.prob + "%)" : ""} | ${fmt(d.et0)} | ${fmt(d.wind, 0)}${d.raffiche != null ? " (" + fmt(d.raffiche, 0) + ")" : ""}`);
   const piante = M.pianteOrdinate(data.plants);
   L.push("", `## Piante (${piante.length})`);
   for (const p of piante) L.push(descrivi(p, data, oggi, met));

@@ -285,6 +285,9 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
   if(freddo.length) out.avvisi.push('Minima fino a '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
   if(chiusiBagnati.size) out.avvisi.push('Pioggia sui vasi senza fori ('+[...chiusiBagnati].join(', ')+'): dopo la pioggia inclina il vaso e togli l\'acqua in più, altrimenti le radici marciscono.');
   if(maxT>=33) out.avvisi.push('Caldo intenso (fino a '+fmtN(maxT)+' °C): innaffia all\'alba e controlla i vasi piccoli anche la sera.');
+  // grandine nei prossimi 3 giorni (domani lo dice anche l'avviso della sera): per preparare teli o un riparo
+  const gr=fut.slice(0,3).find(d=>+d.code===96||+d.code===99), scoperte=piante.filter(p=>p.dove==='aperto'||!p.dove);
+  if(gr&&scoperte.length) out.avvisi.push('Possibile grandine '+(gr.date===oggi?'oggi':new Date(gr.date+'T12:00:00').toLocaleDateString('it-IT',{weekday:'long'}))+': tieni pronti teli o un riparo per '+scoperte.map(p=>p.nome).join(', ')+'.');
   return out;
 }
 const fmtN=(n,d=1)=>(Math.round(n*10**d)/10**d).toLocaleString('it-IT');
@@ -301,7 +304,7 @@ export function dose(litri, imp={}){
   return '≈ '+int+' '+(int>1?'annaffiatoi':'annaffiatoio')+(fr?' e '+fr:'');
 }
 
-/* ---------------- Gelo, caldo, vento ---------------- */
+/* ---------------- Gelo, caldo, vento, temporale e grandine ---------------- */
 export function gelo(p){ const sp=SPECIE[p.specie]||SPECIE.altro; return sp.gelo+(p.colt==='vaso'?2:0); }   // le radici in vaso gelano prima
 // notte (facoltativa) = temperature orarie dalla sera di oggi alla mattina di domani: [{ora:'HH', t}]
 export function avvisiDomani(piante, domani, notte){
@@ -325,7 +328,20 @@ export function avvisiDomani(piante, domani, notte){
     const delicate=fuori.filter(p=>(p.colt==='vaso'&&(+p.vaso||10)<=10&&luceOre(p)>=5)||['lattuga','fragola','ortensia','basilico'].includes(p.specie));
     if(delicate.length) out.push({tipo:'caldo', testo:'Massima di '+fmtN(domani.tmax)+' °C: bagna all\'alba e sposta all\'ombra nel pomeriggio '+delicate.map(p=>p.nome).join(', ')+'.', piante:delicate.map(p=>p.id)});
   }
-  if((domani.wind||0)>=50){ const vasi=fuori.filter(p=>p.colt==='vaso'); if(vasi.length) out.push({tipo:'vento', testo:'Vento fino a '+Math.round(domani.wind)+' km/h: lega o avvicina al muro i vasi alti ('+vasi.map(p=>p.nome).join(', ')+').', piante:vasi.map(p=>p.id)}); }
+  // temporale (codice meteo 95) e temporale con grandine (96, 99: Open-Meteo li dà dove il modello li calcola, Italia compresa)
+  const cod=+domani.code||0, scoperte=piante.filter(p=>p.dove==='aperto'||!p.dove);
+  if(cod===96||cod===99){
+    const vasi=scoperte.filter(p=>p.colt==='vaso'), terra=scoperte.filter(p=>p.colt!=='vaso');
+    const cosa=[vasi.length?'metti al riparo '+vasi.map(p=>p.nome).join(', '):'', terra.length?'copri con un telo, una cassetta o una rete antigrandine '+terra.map(p=>p.nome).join(', '):''].filter(Boolean).join('; ');
+    if(cosa) out.push({tipo:'grandine', testo:'Temporale con possibile grandine: '+cosa+'.', piante:scoperte.map(p=>p.id)});
+  } else if(cod===95){
+    const chiusi=fuori.filter(p=>p.colt==='vaso'&&p.materiale==='chiuso'), leggeri=fuori.filter(p=>p.colt==='vaso'&&(+p.vaso||10)<=10);
+    const cosa=[leggeri.length?'avvicina al muro i vasi leggeri ('+leggeri.map(p=>p.nome).join(', ')+')':'', chiusi.length?'dopo, svuota l\'acqua in più dai vasi senza fori ('+chiusi.map(p=>p.nome).join(', ')+')':''].filter(Boolean).join('; ');
+    if(cosa) out.push({tipo:'temporale', testo:'Temporale'+((domani.rain||0)>=1?' (circa '+fmtN(domani.rain,0)+' mm)':'')+': '+cosa+'.', piante:[...new Set([...leggeri,...chiusi].map(p=>p.id))]});
+  }
+  // vento medio da 50 km/h o raffiche da 60 km/h
+  const raff=+domani.raffiche||0;
+  if((domani.wind||0)>=50||raff>=60){ const vasi=fuori.filter(p=>p.colt==='vaso'); if(vasi.length) out.push({tipo:'vento', testo:((domani.wind||0)>=50?'Vento fino a '+Math.round(domani.wind)+' km/h'+(raff>domani.wind?', raffiche fino a '+Math.round(raff):''):'Raffiche fino a '+Math.round(raff)+' km/h')+': lega o avvicina al muro i vasi alti ('+vasi.map(p=>p.nome).join(', ')+').', piante:vasi.map(p=>p.id)}); }
   return out;
 }
 

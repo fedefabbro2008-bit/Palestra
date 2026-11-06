@@ -5,7 +5,7 @@ import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMat
    - mattino (default dalle 7): una volta al giorno il piano, solo se c'è qualcosa da fare;
    - sera (default dalle 19), una volta al giorno:
        · promemoria delle piante da innaffiare oggi ancora senza risposta;
-       · avvisi per domani (gelo con le temperature ora per ora della notte, caldo, vento);
+       · avvisi per domani (gelo con le temperature ora per ora della notte, caldo, vento e raffiche, temporale, grandine);
        · la domenica, il riepilogo della settimana;
        · il primo giorno utile di ogni mese, il file di backup;
        · se il piano di Claude finisce domani (o è già finito), una volta per piano, l'invito ad aggiornarlo;
@@ -75,7 +75,7 @@ async function uno(st, tkey, cr) {
     // 2. avvisi per domani
     const domani = met.days.find((d) => d.date === M.addDays(oggi, 1));
     const avv = M.avvisiDomani(fresco.plants, domani, met.notte);
-    if (avv.length) { const ic = { gelo: "🥶", caldo: "🔥", vento: "💨" }; await invia("🌙 <b>Per domani</b>\n" + avv.map((a) => `${ic[a.tipo]} ${esc(a.testo)}`).join("\n")); }
+    if (avv.length) { const ic = { gelo: "🥶", caldo: "🔥", vento: "💨", temporale: "⛈", grandine: "🧊" }; await invia("🌙 <b>Per domani</b>\n" + avv.map((a) => `${ic[a.tipo]} ${esc(a.testo)}`).join("\n")); }
     // 3. la domenica, il riepilogo della settimana
     if (new Date(oggi + "T12:00:00Z").getUTCDay() === 0) await invia(riepilogoSettimana(fresco, oggi));
     // 4. una volta al mese, il backup

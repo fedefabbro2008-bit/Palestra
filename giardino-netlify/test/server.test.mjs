@@ -117,6 +117,19 @@ test("Telegram: collegamento, /oggi con «Annaffiato» e «Terreno ancora umido�
   assert.equal(nuova.length, kb.length - 1);
   assert.equal(nuova.filter((r) => r[0].text.startsWith("✔ Basilico")).length, 1);
 
+  // «↩️ Annulla»: toglie la risposta e rimette i pulsanti com'erano
+  const annullaB = nuova.flat().find((b) => b.text === "↩️ Annulla");
+  assert.ok(annullaB && annullaB.callback_data.length <= 64, "pulsante Annulla (callback entro 64 byte)");
+  inviati.length = 0;
+  await webhook({ callback_query: { id: "cb2", data: annullaB.callback_data, message: { message_id: 5, chat: { id: 77 }, reply_markup: { inline_keyboard: nuova } } } });
+  assert.ok(!(await leggiDati()).eventi.some((e) => e.plantId === "bas" && e.fonte === "telegram"), "risposta tolta");
+  assert.match(inviati.find((x) => x[0] === "answerCallbackQuery")[1].text, /Annullato: Basilico/);
+  const ripristinata = inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard;
+  assert.deepEqual(ripristinata, kb, "pulsanti di prima");
+  // di nuovo «Terreno ancora umido» (serve per /fatto qui sotto)
+  await webhook({ callback_query: { id: "cb3", data: `g|${OGGI}|bas|u`, message: { message_id: 5, chat: { id: 77 }, reply_markup: { inline_keyboard: ripristinata } } } });
+  assert.equal((await leggiDati()).eventi.filter((e) => e.plantId === "bas" && e.tipo === "umido").length, 1);
+
   // /fatto balcone: solo la zona Balcone (il basilico ha già una risposta, resta il pomodoro)
   inviati.length = 0;
   await webhook({ message: { chat: { id: 77, type: "private" }, text: "/fatto Balcone" } });

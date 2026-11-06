@@ -121,3 +121,18 @@ test("vaso: terracotta beve di più, senza fori dose esatta, riserva allunga gli
   const pioggia = giorni.map((g) => ({ ...g, rain: 40, prob: 100 }));
   assert.match(M.pianoLocale({ piante: [{ ...p, materiale: "chiuso" }], fut: pioggia, oggi: "2026-07-15", lat: 44 }).avvisi.join(" "), /vasi senza fori/);
 });
+
+test("avvisi di temporale, grandine e raffiche", () => {
+  const vaso = { id: "b", nome: "Basilico", specie: "basilico", colt: "vaso", vaso: 4, dove: "aperto", materiale: "chiuso" };
+  const terra = { id: "z", nome: "Zucchine", specie: "zucchina", colt: "terra", dove: "aperto" };
+  const serra = { id: "s", nome: "Limone", specie: "agrumi", colt: "vaso", vaso: 40, dove: "serra" };
+  const dom = { tmin: 15, tmax: 26, wind: 20 };
+  const gr = M.avvisiDomani([vaso, terra, serra], { ...dom, code: 96 }).find((a) => a.tipo === "grandine");
+  assert.match(gr.testo, /metti al riparo Basilico; copri .* Zucchine/); assert.ok(!gr.testo.includes("Limone"), "in serra niente grandine");
+  const tm = M.avvisiDomani([vaso, serra], { ...dom, code: 95, rain: 18 }).find((a) => a.tipo === "temporale");
+  assert.match(tm.testo, /circa 18 mm.*vasi leggeri \(Basilico\).*senza fori \(Basilico\)/);
+  assert.match(M.avvisiDomani([vaso], { ...dom, raffiche: 72 }).find((a) => a.tipo === "vento").testo, /^Raffiche fino a 72 km\/h/);
+  assert.equal(M.avvisiDomani([vaso], { ...dom, code: 3, raffiche: 40 }).length, 0, "cielo coperto e raffiche deboli: niente avvisi");
+  const fut = ["2026-07-15", "2026-07-16", "2026-07-17"].map((date, i) => ({ date, et0: 5, tmax: 26, tmin: 15, rain: 0, prob: 0, wind: 5, code: i === 2 ? 99 : 1 }));
+  assert.match(M.pianoLocale({ piante: [vaso], fut, oggi: "2026-07-15", lat: 44 }).avvisi.join(" "), /Possibile grandine venerdì/);
+});

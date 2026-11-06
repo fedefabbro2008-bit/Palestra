@@ -1,3 +1,4 @@
+import { VERSIONE } from "../lib/versione.mjs";
 import { store, reply, codiceDa, newToken, crediti, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
@@ -9,13 +10,15 @@ import { store, reply, codiceDa, newToken, crediti, leggi, aggiorna, CAMPI, site
         Unisce sul server: i campi cambiati sostituiscono quelli salvati, gli eventi si aggiungono o tolgono uno per uno.
         Così le modifiche fatte nel frattempo da Claude o da Telegram non si perdono.
    GET/POST /api/dati?op=mcp          { action: on | new | off | write, on }   chiave per Claude
-   GET/POST /api/dati?op=telegram     { action: token, token } | { action: test } | { action: off } */
+   GET/POST /api/dati?op=telegram     { action: token, token } | { action: test } | { action: off }
+   GET  /api/dati?op=versione         → { versione }  impronta della versione online, senza codice (per il controllo dopo la pubblicazione) */
 
 export const config = { path: "/api/dati", rateLimit: { windowSize: 60, windowLimit: 120, aggregateBy: ["ip", "domain"] } };
 const MAX = 2 * 1024 * 1024;
 
 export default async (request) => {
   const url = new URL(request.url), code = codiceDa(request), op = url.searchParams.get("op") || "";
+  if (op === "versione") return reply({ versione: VERSIONE });
   if (!code) return reply({ error: "codice mancante o non valido" }, 400);
   const st = store();
   try {
