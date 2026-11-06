@@ -440,6 +440,88 @@ nav.tabs .tab:active{transform:scale(.94)}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,14px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 @keyframes sheetIn{from{opacity:0;transform:translate(-50%,40px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes pop{0%{transform:scale(.6)}100%{transform:scale(1)}}
+
+/* ===================== ANIMAZIONI IN PIÙ =====================
+   Meteo vivo, pillola che scorre nella barra, spruzzo d'acqua su «Fatto», festa quando hai finito, anelli e livelli
+   che si riempiono, riquadri che compaiono scorrendo, piante che ondeggiano piano. */
+nav.tabs .in{position:relative}
+.tab-pill{position:absolute;top:0;bottom:0;left:0;width:25%;border-radius:25px;background:var(--glass-pill);box-shadow:inset 0 1px 0 var(--glass-hi-soft);
+  z-index:-1;transform:translateX(calc(var(--i,0)*100%));pointer-events:none}
+.in:has(#tab-piante[aria-selected="true"]) .tab-pill{--i:1}
+.in:has(#tab-diario[aria-selected="true"]) .tab-pill{--i:2}
+.in:has(#tab-impostazioni[aria-selected="true"]) .tab-pill{--i:3}
+@supports selector(:has(a)){ nav.tabs .tab[aria-selected="true"]::before{background:transparent;box-shadow:none} }
+@supports not selector(:has(a)){ .tab-pill{display:none} }
+.spruzzo{position:fixed;width:0;height:0;z-index:60;pointer-events:none}
+.spruzzo i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50% 50% 50% 0;background:var(--water);opacity:0;
+  transform:rotate(var(--a)) translateY(0) rotate(-45deg);animation:schizzo .8s cubic-bezier(.15,.7,.3,1) forwards}
+.spruzzo i.f{background:var(--leaf);width:10px;height:6px;border-radius:10px 0}
+.spruzzo i.s{background:var(--warn);width:6px;height:6px;border-radius:50%}
+.spruzzo .onda{position:absolute;left:-20px;top:-20px;width:40px;height:40px;border-radius:50%;border:2px solid var(--water);opacity:0;animation:onda .6s ease-out forwards}
+.task{position:relative} .task.done.appena{overflow:hidden}
+@keyframes schizzo{0%{opacity:1;transform:rotate(var(--a)) translateY(0) rotate(-45deg) scale(.6)}
+  70%{opacity:1}100%{opacity:0;transform:rotate(var(--a)) translateY(calc(var(--d)*-1)) rotate(var(--r)) scale(1)}}
+@keyframes onda{0%{opacity:.7;transform:scale(.3)}100%{opacity:0;transform:scale(2.2)}}
+@media (prefers-reduced-motion: no-preference){
+  /* barra: la pillola scivola da una scheda all'altra, l'icona scelta fa un saltello */
+  .tab-pill{transition:transform .5s cubic-bezier(.3,1.35,.45,1)}
+  nav.tabs .tab[aria-selected="true"] svg{animation:saltello .5s cubic-bezier(.3,1.6,.5,1)}
+  /* titolo: la goccia cade all'apertura e oscilla mentre aggiorna */
+  .brand .goccia{transform-origin:50% 100%;animation:cade .9s cubic-bezier(.3,1.4,.5,1) both}
+  .brand .goccia.aggiorna{animation:oscilla 1s ease-in-out infinite}
+  /* meteo: il sole gira piano, le nuvole si spostano, pioggia e neve cadono, il lampo lampeggia */
+  .wx-raggi{transform-box:fill-box;transform-origin:center;animation:gira 18s linear infinite}
+  .wx-nuvola{animation:deriva 6s ease-in-out infinite alternate}
+  .wx-goccia{animation:piove 1.2s linear infinite}
+  .wx-fiocco{animation:nevica 2.4s ease-in-out infinite}
+  .wx-lampo{animation:lampo 3s steps(1) infinite}
+  .wx-nebbia{animation:deriva 4s ease-in-out infinite alternate-reverse}
+  .wx-day.today{animation:respira 4s ease-in-out infinite}
+  /* piante: ondeggiano piano, ognuna con il suo ritmo */
+  .ri{display:inline-block}
+  .ic,.ring>span,.ri{transform-origin:50% 85%;animation:ondeggia 5s ease-in-out infinite}
+  .task:nth-child(2n) .ic,.plant:nth-child(2n) .ring>span{animation-duration:6.2s;animation-delay:-1.3s}
+  .task:nth-child(3n) .ic,.plant:nth-child(3n) .ring>span{animation-duration:5.6s;animation-delay:-2.6s}
+  .ic:active,.ring:active>span{animation:scuoti .5s ease}
+  /* acqua nel terriccio: un riflesso scorre nel livello; anelli che si riempiono entrando */
+  .lev i{overflow:hidden}
+  .lev i::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);transform:translateX(-100%);animation:luccica 3.4s ease-in-out infinite}
+  section.view.entra .ring{animation:anello 1s cubic-bezier(.2,.8,.2,1) both}
+  section.view.entra .lev i{animation:growX .9s cubic-bezier(.2,.8,.2,1) both;transform-origin:left}
+  /* «Fatto»: il riquadro si riempie d'acqua e diventa verde, l'icona salta */
+  .task.done.appena{animation:fattoIn .55s cubic-bezier(.3,1.3,.5,1) both}
+  .task.done.appena::after{content:'';position:absolute;inset:0;background:linear-gradient(0deg,color-mix(in srgb,var(--water) 28%,transparent),transparent);transform-origin:bottom;animation:riempi .9s ease-out forwards;pointer-events:none}
+  .task.done.appena .ic{animation:pop .55s cubic-bezier(.3,1.7,.5,1) both}
+  .task.done.appena .chip{animation:riseIn .4s .15s cubic-bezier(.2,.8,.2,1) both}
+  .hnum.batti{animation:battito .5s cubic-bezier(.3,1.6,.5,1)}
+  /* avvisi: l'icona di attenzione pulsa */
+  .alert:not(.info) > svg:first-child{animation:pulsa 2.2s ease-in-out infinite}
+  /* finestre: il contenuto entra uno dopo l'altro */
+  .sheet:not([hidden]) > *{animation:riseIn .4s cubic-bezier(.2,.8,.2,1) both}
+  .sheet:not([hidden]) > *:nth-child(2){animation-delay:.05s} .sheet:not([hidden]) > *:nth-child(3){animation-delay:.1s} .sheet:not([hidden]) > *:nth-child(n+4){animation-delay:.15s}
+  /* scorrendo: i riquadri salgono quando entrano nello schermo */
+  @supports (animation-timeline: view()){
+    .task:not(.done),.plant,.lrow,.evday,details.set{animation:compari linear both;animation-timeline:view();animation-range:entry 0% entry 55%}
+  }
+}
+@keyframes saltello{0%{transform:scale(.8) translateY(2px)}60%{transform:scale(1.15) translateY(-3px)}100%{transform:none}}
+@keyframes cade{0%{opacity:0;transform:translateY(-14px) scaleY(1.15)}60%{opacity:1;transform:translateY(0) scale(1.08,.88)}100%{transform:none}}
+@keyframes oscilla{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(10deg)}}
+@keyframes gira{to{transform:rotate(360deg)}}
+@keyframes deriva{from{transform:translateX(-.8px)}to{transform:translateX(1.2px)}}
+@keyframes piove{0%{opacity:0;transform:translateY(-2px)}25%{opacity:1}100%{opacity:0;transform:translate(-1px,3px)}}
+@keyframes nevica{0%{opacity:0;transform:translateY(-2px)}30%{opacity:1}100%{opacity:0;transform:translate(1px,3px)}}
+@keyframes lampo{0%,86%,92%{opacity:1}88%,95%{opacity:.15}}
+@keyframes respira{0%,100%{box-shadow:inset 0 1px 0 var(--glass-hi-soft),0 0 0 0 color-mix(in srgb,var(--water) 0%,transparent)}50%{box-shadow:inset 0 1px 0 var(--glass-hi-soft),0 0 0 4px color-mix(in srgb,var(--water) 14%,transparent)}}
+@keyframes ondeggia{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+@keyframes scuoti{0%,100%{transform:rotate(0)}25%{transform:rotate(-12deg)}50%{transform:rotate(10deg)}75%{transform:rotate(-5deg)}}
+@keyframes luccica{0%,55%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+@keyframes anello{from{--p:0}}
+@keyframes fattoIn{0%{transform:scale(.97)}60%{transform:scale(1.015)}100%{transform:none}}
+@keyframes riempi{0%{transform:scaleY(0);opacity:1}60%{transform:scaleY(1);opacity:1}100%{transform:scaleY(1);opacity:0}}
+@keyframes battito{0%{transform:scale(1)}40%{transform:scale(1.22)}100%{transform:scale(1)}}
+@keyframes pulsa{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}
+@keyframes compari{from{opacity:.2;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
 </style>
 
 </head>
@@ -447,7 +529,7 @@ nav.tabs .tab:active{transform:scale(.94)}
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3c5 6.5 8 11 8 15a8 8 0 1 1-16 0c0-4 3-8.5 8-15z" fill="var(--water)"/><path d="M16 27c0-6 1.5-9 5-11-3.8.3-6 2.6-6.6 6" fill="none" stroke="var(--surface)" stroke-width="2" stroke-linecap="round"/></svg>
+      <svg class="goccia" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3c5 6.5 8 11 8 15a8 8 0 1 1-16 0c0-4 3-8.5 8-15z" fill="var(--water)"/><path d="M16 27c0-6 1.5-9 5-11-3.8.3-6 2.6-6.6 6" fill="none" stroke="var(--surface)" stroke-width="2" stroke-linecap="round"/></svg>
       <h1>Giardino</h1>
     </div>
     <button class="loc" id="locBtn" type="button" aria-label="Posizione">
@@ -773,6 +855,7 @@ nav.tabs .tab:active{transform:scale(.94)}
 
 <nav class="tabs" role="tablist" aria-label="Sezioni">
   <div class="in">
+    <i class="tab-pill" aria-hidden="true"></i>
     <button class="tab" role="tab" id="tab-oggi" data-view="oggi" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c4 5 6.5 8.4 6.5 11.5a6.5 6.5 0 1 1-13 0C5.5 11.4 8 8 12 3z"/></svg><span>Oggi</span></button>
     <button class="tab" role="tab" id="tab-piante" data-view="piante" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-9"/><path d="M12 12C12 7 8.5 4 4 4c0 5 3.5 8 8 8z"/><path d="M12 14c0-4 3-6.5 8-6.5 0 4-3 6.5-8 6.5z"/></svg><span>Piante</span></button>
     <button class="tab" role="tab" id="tab-diario" data-view="diario" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M16 3v4M8 3v4M3.5 10h17"/></svg><span>Diario</span></button>
@@ -1905,17 +1988,17 @@ const ICON = {
   info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>'
 };
 function wxIcon(cond){
-  const sun='<circle cx="12" cy="12" r="4.2" fill="var(--warn)"/><g stroke="var(--warn)" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g>';
-  const cloud='<path d="M7 18h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
-  const up='<path d="M7 15h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 15z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
+  const sun='<circle cx="12" cy="12" r="4.2" fill="var(--warn)"/><g class="wx-raggi" stroke="var(--warn)" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g>';
+  const cloud='<path class="wx-nuvola" d="M7 18h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
+  const up='<path class="wx-nuvola" d="M7 15h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 15z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
   let i;
   switch(cond){
     case 'sereno': i=sun; break;
     case 'poco nuvoloso': i='<g transform="translate(-3 -3) scale(.8)">'+sun+'</g><g transform="translate(3 3) scale(.8)">'+cloud+'</g>'; break;
-    case 'nebbia': i=up+'<path d="M5 19h14M7 22h10" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>'; break;
-    case 'neve': i=up+'<g fill="var(--water)"><circle cx="8" cy="19.5" r="1.2"/><circle cx="12" cy="21" r="1.2"/><circle cx="16" cy="19.5" r="1.2"/></g>'; break;
-    case 'temporale': i=up+'<path d="M12 15l-2 4h3l-2 4" stroke="var(--warn)" stroke-width="1.8" fill="none"/>'; break;
-    case 'pioggia': i=up+'<path d="M8 17.5l-1 3M12 17.5l-1 3M16 17.5l-1 3" stroke="var(--water)" stroke-width="1.8" stroke-linecap="round"/>'; break;
+    case 'nebbia': i=up+'<path class="wx-nebbia" d="M5 19h14M7 22h10" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>'; break;
+    case 'neve': i=up+'<g fill="var(--water)"><circle class="wx-fiocco" cx="8" cy="19.5" r="1.2"/><circle class="wx-fiocco" cx="12" cy="21" r="1.2" style="animation-delay:-.8s"/><circle class="wx-fiocco" cx="16" cy="19.5" r="1.2" style="animation-delay:-1.6s"/></g>'; break;
+    case 'temporale': i=up+'<path class="wx-lampo" d="M12 15l-2 4h3l-2 4" stroke="var(--warn)" stroke-width="1.8" fill="none"/>'; break;
+    case 'pioggia': i=up+'<g stroke="var(--water)" stroke-width="1.8" stroke-linecap="round"><path class="wx-goccia" d="M8 17.5l-1 3"/><path class="wx-goccia" d="M12 17.5l-1 3" style="animation-delay:-.4s"/><path class="wx-goccia" d="M16 17.5l-1 3" style="animation-delay:-.8s"/></g>'; break;
     default: i=cloud;
   }
   return '<svg viewBox="0 0 24 24" aria-hidden="true">'+i+'</svg>';
@@ -2091,8 +2174,8 @@ async function setLocation(inp, btn, info){
 /* ================= Aggiornamento dal server ================= */
 async function syncNow(){
   const st=$('#syncStatus');
-  $('#syncBtn').disabled=true; st.innerHTML=spin('Aggiorno…');
-  try{ await window.GiardinoNet.aggiorna(true); st.textContent='Aggiornato.'; }catch(e){ st.textContent='Non riuscito: '+e.message; } finally{ $('#syncBtn').disabled=false; }
+  $('#syncBtn').disabled=true; st.innerHTML=spin('Aggiorno…'); $('.brand .goccia')?.classList.add('aggiorna');
+  try{ await window.GiardinoNet.aggiorna(true); st.textContent='Aggiornato.'; }catch(e){ st.textContent='Non riuscito: '+e.message; } finally{ $('#syncBtn').disabled=false; $('.brand .goccia')?.classList.remove('aggiorna'); }
 }
 
 /* ================= Render ================= */
@@ -2152,7 +2235,7 @@ function taskCard({p,g,st,pp}){
     const ev=eventsOf(p.id,today()).find(e=>ESITI.includes(e.tipo));
     const lab={fatto:'✓ Innaffiata'+(ev?.litri?' · '+fmtL(+ev.litri):''),umido:'Era ancora umida',saltato:'Saltata per oggi'}[st]+(ev&&ev.fonte!=='app'?' ('+(FONTE_LABEL[ev.fonte]||ev.fonte)+')':'');
     const mio=S.eventi_app.some(e=>e.plantId===p.id&&e.data===today()&&ESITI.includes(e.tipo));
-    return `<div class="task done"><div class="task-top"><span class="ic leaf" aria-hidden="true">${esc(icoDi(p))}</span><div class="info"><div class="name">${esc(p.nome)}</div><div class="done-row" style="margin-top:4px"><span class="chip ${st==='fatto'?'leaf':st==='umido'?'water':''}">${esc(lab)}</span>${mio?`<button class="btn small ghost" type="button" data-undo="${pid}">Annulla</button>`:''}</div></div></div></div>`;
+    return `<div class="task done${p.id===appena?' appena':''}"><div class="task-top"><span class="ic leaf" aria-hidden="true">${esc(icoDi(p))}</span><div class="info"><div class="name">${esc(p.nome)}</div><div class="done-row" style="margin-top:4px"><span class="chip ${st==='fatto'?'leaf':st==='umido'?'water':''}">${esc(lab)}</span>${mio?`<button class="btn small ghost" type="button" data-undo="${pid}">Annulla</button>`:''}</div></div></div></div>`;
   }
   const inn=g.azione==='innaffia';
   const acts = inn
@@ -2185,7 +2268,9 @@ function renderOggi(AP){
   const rest=items.filter(x=>!todo.includes(x)), aperte=todo.filter(x=>!x.st);
   const inn=aperte.filter(x=>x.g.azione==='innaffia'), nCtrl=aperte.length-inn.length, litri=inn.reduce((a,x)=>a+x.g.litri,0);
   const hero=$('#heroBox'), num=$('#heroNum');
-  hero.className='hero '+(aperte.length?'da':'ok'); num.textContent=aperte.length?String(aperte.length):'✓';
+  const nuovoNum=aperte.length?String(aperte.length):'✓', primaNum=num.textContent;
+  hero.className='hero '+(aperte.length?'da':'ok'); num.textContent=nuovoNum;
+  if(primaNum!=='·'&&primaNum!==nuovoNum){ batti(num); if(nuovoNum==='✓'&&todo.length&&appena) requestAnimationFrame(()=>festa(num)); }
   if(!todo.length){ head.textContent='Oggi niente acqua'; sub.textContent='La terra è ancora umida o è piovuto abbastanza.'; }
   else if(!aperte.length){ head.textContent='Fatto tutto per oggi'; sub.textContent='Il piano ti avvisa quando serve di nuovo.'; }
   else {
@@ -2651,6 +2736,19 @@ function submitForm(e){
 /* ================= Navigazione ed eventi ================= */
 let caricaStato=()=>{};
 // rifà partire l'animazione d'ingresso di un elemento (classe «entra» per mezzo secondo)
+// effetti: spruzzo d'acqua dove tocchi, festa di gocce e foglie quando hai finito, battito del numero (spenti con «Riduci movimento»)
+var appena=null;
+const muovi=()=>!matchMedia('(prefers-reduced-motion: reduce)').matches;
+function particelle(x,y,n,tipi,lontano){
+  if(!muovi()) return;
+  const box=document.createElement('div'); box.className='spruzzo'; box.style.left=x+'px'; box.style.top=y+'px'; box.setAttribute('aria-hidden','true');
+  box.innerHTML='<b class="onda"></b>'+Array.from({length:n},(_,i)=>{ const a=(i/n)*360+Math.random()*24-12, d=lontano*(.55+Math.random()*.6), t=tipi[i%tipi.length];
+    return `<i class="${t}" style="--a:${a.toFixed(0)}deg;--d:${d.toFixed(0)}px;--r:${(Math.random()*120-60).toFixed(0)}deg;animation-delay:${(Math.random()*.06).toFixed(2)}s"></i>`; }).join('');
+  document.body.appendChild(box); setTimeout(()=>box.remove(),1100);
+}
+function spruzzo(el,e,n){ const r=el.getBoundingClientRect(), x=e&&e.clientX?e.clientX:r.left+r.width/2, y=e&&e.clientY?e.clientY:r.top+r.height/2; particelle(x,y,n||12,['g'],48); if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){} }
+function festa(el){ const r=el.getBoundingClientRect(); particelle(r.left+r.width/2,r.top+r.height/2,22,['g','f','g','s'],90); }
+function batti(el){ if(!muovi()) return; el.classList.remove('batti'); void el.offsetWidth; el.classList.add('batti'); }
 function entra(el){ if(!el) return; el.classList.remove('entra'); void el.offsetWidth; el.classList.add('entra'); clearTimeout(el._entra); el._entra=setTimeout(()=>el.classList.remove('entra'),700); }
 function switchView(v){
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.view===v)));
@@ -2682,6 +2780,7 @@ function onEvent(pid,tipo){
   if(ESITI.includes(tipo)) S.eventi_app=S.eventi_app.filter(e=>!(e.plantId===pid&&e.data===t&&ESITI.includes(e.tipo)));
   const extra={};
   if(tipo==='fatto'||tipo==='secco'){ const g=activePlan()?.data?.piante.find(x=>x.id===pid)?.giorni.find(x=>x.data===t); extra.litri=g?.azione==='innaffia'&&g.litri?g.litri:+(params(p,ctx()).rawL*1.1).toFixed(2); }
+  if(ESITI.includes(tipo)||tipo==='secco'){ appena=pid; clearTimeout(onEvent._t); onEvent._t=setTimeout(()=>{ appena=null; },1500); }
   addEvent(pid,tipo,extra); renderAll();
   toast({fatto:'Segnata come innaffiata',secco:'Registrato: era secca, innaffiata',umido:'Registrato: era umida. Imparo a dare meno acqua.',saltato:'Saltata per oggi',concime:'Concimazione registrata'}[tipo]||'Registrato');
 }
@@ -2708,9 +2807,9 @@ function wire(){
   $('#pf-zona-q').addEventListener('click',e=>{ const b=e.target.closest('[data-zona]'); if(!b) return; const z=$('#pf-zona'); z.value=z.value.trim().toLowerCase()===b.dataset.zona.toLowerCase()?'':b.dataset.zona; renderZoneQuick(); });
   document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));
   document.addEventListener('click',e=>{
-    const b=e.target.closest('[data-ev]'); if(b){ onEvent(b.dataset.pid,b.dataset.ev); return; }
+    const b=e.target.closest('[data-ev]'); if(b){ if((b.dataset.ev==='fatto'||b.dataset.ev==='secco')&&!S.eventi_app.some(x=>x.plantId===b.dataset.pid&&x.data===today()&&x.tipo===b.dataset.ev)) spruzzo(b,e); onEvent(b.dataset.pid,b.dataset.ev); return; }
     const u=e.target.closest('[data-undo]'); if(u){ undoOggi(u.dataset.undo); return; }
-    const tt=e.target.closest('[data-tutte]'); if(tt){ fattoTutte(tt.dataset.tutte); return; }
+    const tt=e.target.closest('[data-tutte]'); if(tt){ spruzzo(tt,e,18); fattoTutte(tt.dataset.tutte); return; }
     const vr=e.target.closest('[data-ver]'); if(vr){ rispondiVerifica(vr.dataset.pid, vr.dataset.ver); return; }
     const pg=e.target.closest('[data-pioggia]'); if(pg){ apriPioggia(pg.dataset.pioggia); return; }
     const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); }
