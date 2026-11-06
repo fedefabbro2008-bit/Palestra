@@ -409,17 +409,20 @@ export function dateInnaffiate(p, eventi){
 export function pioggiaPresa(p, eventi){
   const o={}; for(const e of eventiValidi(eventi,p.id)) if(e.tipo==='pioggia' && +e.litri>0) o[e.data]=(o[e.data]||0)+(+e.litri); return o;
 }
-// pioggia (mm) caduta tra due ore di oggi: ore = {'AAAA-MM-GGTHH:00': mm dell'ora che finisce lì}; senza dati orari,
-// la pioggia del giorno distribuita sulle 24 ore. Restituisce anche i litri entrati nel vaso (apertura × mm).
-export function pioggiaNelleOre(ore, giorno, dalle, alle, mmGiorno){
+// Pioggia MISURATA tra due ore di «giorno» (ora locale): misure = {quarti, ore} con chiavi ISO in UTC alla fine
+// dell'intervallo (ARPAE). Usa i quarti d'ora se ci sono, altrimenti le ore. «fino» = ora locale dell'ultima misura.
+export function pioggiaMisurataNelleOre(misure, giorno, dalle, alle, tz){
   const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; }, a=min(dalle), b=min(alle);
-  if(a==null||b==null||b<=a) return {mm:0, stima:false};
-  // il valore delle HH:00 è la pioggia dell'ora prima; le 00:00 del giorno dopo chiudono l'ultima ora
-  const dopo=addDays(giorno,1)+'T00:00', chiavi=Object.keys(ore||{}).filter(t=>t.startsWith(giorno)||t===dopo);
-  if(!chiavi.length) return {mm:+((mmGiorno||0)*(b-a)/1440).toFixed(1), stima:true};
-  let mm=0;
-  for(const t of chiavi){ const fine=t===dopo?1440:(+t.slice(11,13))*60, inizio=fine-60, sovr=Math.max(0,Math.min(b,fine)-Math.max(a,inizio)); mm+=(+ore[t]||0)*sovr/60; }
-  return {mm:+mm.toFixed(1), stima:false};
+  if(a==null||b==null||b<=a) return {mm:0, fino:null, completo:false};
+  const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+  const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return {d:p.year+'-'+p.month+'-'+p.day, m:+p.hour*60+(+p.minute)}; };
+  const usa=(serie,durata)=>{ let mm=0, ultimo=-1, n=0;
+    for(const [t,v] of Object.entries(serie||{})){ const e=loc(t), fine=e.d===giorno?e.m:(e.d===addDays(giorno,1)&&e.m===0?1440:null); if(fine==null) continue;
+      ultimo=Math.max(ultimo,fine); const sov=Math.max(0,Math.min(b,fine)-Math.max(a,fine-durata)); if(sov>0){ mm+=(+v||0)*sov/durata; n++; } }
+    return {mm:+mm.toFixed(1), ultimo, n}; };
+  let r=usa(misure?.quarti,15); if(!r.n && r.ultimo<0) r=usa(misure?.ore,60);
+  const fino=r.ultimo>=0?String(Math.floor(r.ultimo/60)%24).padStart(2,'0')+':'+String(r.ultimo%60).padStart(2,'0'):null;
+  return {mm:r.mm, fino, completo:r.ultimo>=b};
 }
 export const litriDaPioggia = (k, mm) => +Math.max(0,(mm||0)*k.pioggiaArea).toFixed(2);
 export function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
@@ -809,13 +812,9 @@ export function datiOrari(h, oggi, ora){
   if(i>=0){ let s=0,w=0; for(const [k,p] of strati){ const v=h[k]?.[i]; if(v!=null&&isFinite(v)){ s+=v*p; w+=p; } } if(w) suolo=+(s/w).toFixed(3); }
   const da=oggi+'T18:00', a=addDays(oggi,1)+'T10:00';
   const notte=h.time.map((t,j)=>({t:h.temperature_2m?.[j],ora:t.slice(11,13),k:t})).filter(x=>x.k>=da&&x.k<=a&&x.t!=null).map(({ora,t})=>({ora,t}));
-  // pioggia ora per ora di ieri e di oggi (per «l'ho messa sotto la pioggia»)
-  const pioggiaOre={}, ieri=addDays(oggi,-1);
-  const domani0=addDays(oggi,1)+'T00:00';
-  h.time.forEach((t,j)=>{ const v=h.precipitation?.[j]; if(v!=null && (t.startsWith(oggi)||t.startsWith(ieri)||t===domani0)) pioggiaOre[t]=v; });
-  return {suolo, notte:notte.length?notte:null, pioggiaOre:Object.keys(pioggiaOre).length?pioggiaOre:null};
+  return {suolo, notte:notte.length?notte:null};
 }
-export const ORARIO_PARAMS='temperature_2m,precipitation,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
+export const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm';
 
 /* ---------------- Meteo: richieste e lettura, uguali per app e server ----------------
    Due richieste a Open-Meteo, in parallelo: (1) il modello scelto da Open-Meteo, giornaliero e orario insieme

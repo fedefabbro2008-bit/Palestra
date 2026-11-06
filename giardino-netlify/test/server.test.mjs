@@ -88,6 +88,9 @@ test("pioggia misurata ARPAE: stazione più vicina, giorni completi, nei dati e 
   try { await C.aggiornaPioggiaMisurata(getStore({ name: "giardino" })); } finally { globalThis.fetch = vero; }
   const d = await leggiDati();
   assert.equal(d.pioggia_misurata.stazione, "Castrocaro");
+  // l'app chiede le misure per «l'ho messa sotto la pioggia»: dall'archivio (aggiornato da meno di 15 minuti)
+  const pg = (await call(dati, "/api/dati?op=pioggia", { headers: H })).body;
+  assert.ok(pg.disponibile && pg.stazione === "Castrocaro" && Object.keys(pg.ore).length >= 24);
   const giorni = M.conPioggiaMisurata([{ date: ieri, rain: 3 }, { date: OGGI, rain: 1 }], d.pioggia_misurata, OGGI);
   assert.ok(Object.values(d.pioggia_misurata.giorni).length >= 1);
   assert.equal(giorni[1].rain, 1, "oggi resta la previsione");

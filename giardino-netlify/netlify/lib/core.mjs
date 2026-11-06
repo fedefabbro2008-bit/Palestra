@@ -120,13 +120,26 @@ export function leggiArpae(testo, lat, lon, preferita) {
   if (!s) return null;
   let ore = s.h;
   if (!Object.keys(ore).length) { ore = {}; for (const [t, v] of Object.entries(s.q)) { const f = new Date(Math.ceil(Date.parse(t) / 36e5) * 36e5).toISOString().replace(".000", ""); ore[f] = (ore[f] || 0) + v; } }
-  return { stazione: { k: s.k, nome: s.nome || "stazione ARPAE", km: s.km }, ore };
+  return { stazione: { k: s.k, nome: s.nome || "stazione ARPAE", km: s.km }, ore, quarti: s.q };
 }
 // giorni locali completi (almeno 22 ore) dalle ore misurate
 export function giorniMisurati(ore, tz) {
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }), g = {};
   for (const [t, v] of Object.entries(ore || {})) { const d = fmt.format(new Date(Date.parse(t) - 30 * 60e3)); (g[d] ||= { mm: 0, n: 0 }); g[d].mm += +v || 0; g[d].n++; }
   return Object.fromEntries(Object.entries(g).filter(([, x]) => x.n >= 22).map(([d, x]) => [d, +x.mm.toFixed(1)]));
+}
+// Ore e quarti d'ora misurati per una posizione: archivio c-arpae-<lat,lon> (6 giorni), aggiornato con il file realtime.
+export async function misureArpae(st, lat, lon, testo, { massimaEta = 0 } = {}) {
+  const key = `c-arpae-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`, prima = (await st.get(key, { type: "json" }).catch(() => null)) || { ore: {}, quarti: {} };
+  if (massimaEta && prima.at && Date.now() - prima.at < massimaEta) return prima;
+  if (testo == null) { try { const r = await fetch(ARPAE_URL, { headers: { "user-agent": UA } }); testo = r.ok ? await r.text() : ""; } catch (e) { console.warn("ARPAE:", e?.message); testo = ""; } }
+  const letto = testo ? leggiArpae(testo, lat, lon, prima.stazione?.k) : null;
+  if (!letto) return prima.stazione ? prima : null;
+  const stessa = prima.stazione?.k === letto.stazione.k, limite = new Date(Date.now() - 6 * 864e5).toISOString();
+  const unisci = (a, b) => Object.fromEntries(Object.entries({ ...(stessa ? a || {} : {}), ...b }).filter(([t]) => t >= limite));
+  const c = { stazione: letto.stazione, ore: unisci(prima.ore, letto.ore), quarti: unisci(prima.quarti, letto.quarti), at: Date.now() };
+  await st.setJSON(key, c).catch(() => {});
+  return c;
 }
 // Ogni 3 ore (dal bot): aggiorna le ore misurate per ogni posizione in Emilia-Romagna e scrive i giorni completi nei dati.
 export async function aggiornaPioggiaMisurata(st) {
@@ -137,13 +150,9 @@ export async function aggiornaPioggiaMisurata(st) {
     if (!l || !inEmiliaRomagna(l.lat, l.lon)) continue;
     if (testo === null) { try { const r = await fetch(ARPAE_URL, { headers: { "user-agent": UA } }); testo = r.ok ? await r.text() : ""; } catch (e) { console.warn("ARPAE:", e?.message); testo = ""; } }
     if (!testo) return;
-    const key = `c-arpae-${(+l.lat).toFixed(2)},${(+l.lon).toFixed(2)}`, prima = (await st.get(key, { type: "json" }).catch(() => null)) || { ore: {} };
-    const letto = leggiArpae(testo, l.lat, l.lon, prima.stazione?.k);
-    if (!letto) continue;
-    const limite = new Date(Date.now() - 6 * 864e5).toISOString();
-    const ore = Object.fromEntries(Object.entries({ ...(prima.stazione?.k === letto.stazione.k ? prima.ore : {}), ...letto.ore }).filter(([t]) => t >= limite));
-    await st.setJSON(key, { stazione: letto.stazione, ore, at: Date.now() });
-    const giorni = giorniMisurati(ore, "Europe/Rome"), att = cur.data.pioggia_misurata;
+    const c = await misureArpae(st, l.lat, l.lon, testo);
+    if (!c?.stazione) continue;
+    const letto = c, giorni = giorniMisurati(c.ore, "Europe/Rome"), att = cur.data.pioggia_misurata;
     if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome)
       await aggiorna(st, code, (d) => { d.pioggia_misurata = { stazione: letto.stazione.nome, km: letto.stazione.km, giorni, aggiornato: new Date().toISOString() }; });
   }

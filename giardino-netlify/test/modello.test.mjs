@@ -245,12 +245,14 @@ test("raccolta presa dalla scheda di Claude se è per la stessa semina", () => {
   assert.equal(M.raccoltaDi({ ...p, data_semina: "2026-12-01" }), "", "scheda di un'altra semina");
 });
 
-test("messa sotto la pioggia: mm nelle ore scelte, litri nel vaso, riempie solo quei litri", () => {
-  const ore = { "2026-11-06T10:00": 1, "2026-11-06T11:00": 2, "2026-11-06T12:00": 4, "2026-11-07T00:00": 9 };
-  assert.equal(M.pioggiaNelleOre(ore, "2026-11-06", "10:00", "12:00").mm, 6, "ore 10-11 e 11-12");
-  assert.equal(M.pioggiaNelleOre(ore, "2026-11-06", "10:30", "11:00").mm, 1, "mezz'ora");
-  assert.equal(M.pioggiaNelleOre(ore, "2026-11-06", "23:00", "23:59").mm, 8.8, "l'ultima ora arriva dalle 00:00 del giorno dopo");
-  assert.equal(M.pioggiaNelleOre(null, "2026-11-06", "00:00", "12:00", 10).mm, 5, "senza ore: la pioggia del giorno in proporzione");
+test("messa sotto la pioggia: mm misurati (ARPAE) nelle ore scelte, litri nel vaso, riempie solo quei litri", () => {
+  // misure ARPAE: chiavi in UTC alla fine dell'intervallo; a novembre l'Italia è UTC+1
+  const quarti = { "2026-11-06T07:15:00Z": 0.4, "2026-11-06T07:30:00Z": 0.4, "2026-11-06T07:45:00Z": 0.4, "2026-11-06T08:00:00Z": 0.4, "2026-11-06T08:15:00Z": 2 };
+  const r = M.pioggiaMisurataNelleOre({ quarti }, "2026-11-06", "08:00", "09:15", "Europe/Rome");
+  assert.equal(r.mm, 3.6); assert.equal(r.fino, "09:15"); assert.equal(r.completo, true);
+  const parz = M.pioggiaMisurataNelleOre({ quarti }, "2026-11-06", "08:30", "10:00", "Europe/Rome");
+  assert.equal(parz.mm, 2.8, "dalle 8:30: 2 quarti + l'ultimo"); assert.equal(parz.completo, false, "misure solo fino alle 9:15");
+  assert.equal(M.pioggiaMisurataNelleOre({ ore: { "2026-11-06T08:00:00Z": 6 } }, "2026-11-06", "08:30", "09:00", "Europe/Rome").mm, 3, "senza quarti: le ore");
   const p = { id: "n", nome: "Nepenthes", specie: "nepenthes", fase: "auto", colt: "vaso", vaso: 12, diametro: 30, luce: 2, dove: "serra" };
   const fut = ["2026-11-06", "2026-11-07"].map((date) => ({ date, et0: 1, tmax: 12, tmin: 8, rain: 10, prob: 90 }));
   const k = M.params(p, { oggi: "2026-11-06", lat: 44 }), litri = M.litriDaPioggia(k, 6);

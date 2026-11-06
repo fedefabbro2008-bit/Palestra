@@ -1,5 +1,5 @@
 import { VERSIONE } from "../lib/versione.mjs";
-import { store, reply, codiceDa, newToken, crediti, correggiCrediti, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
+import { store, reply, codiceDa, newToken, crediti, correggiCrediti, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
@@ -9,6 +9,7 @@ import { store, reply, codiceDa, newToken, crediti, correggiCrediti, leggi, aggi
         con l'intestazione x-giardino-versione = "rev-updatedAt" già in mano all'app → { rev, updatedAt, invariato: true }
         se nel frattempo non è cambiato niente (pochi byte invece di tutti i dati: il controllo ogni 5 minuti costa quasi zero)
    GET  /api/dati?op=stato            → { mcp, telegram, crediti }  lo stato per le Impostazioni, in una richiesta sola
+   GET  /api/dati?op=pioggia          → pioggia misurata ARPAE (quarti d'ora e ore) della stazione più vicina
    GET  /api/dati?op=meteo            → meteo del server, quando l'app non raggiunge Open-Meteo (anche la riserva MET Norway)
    POST /api/dati  { changes:{campo:valore}, add:[eventi], remove:[id eventi] }
         Unisce sul server: i campi cambiati sostituiscono quelli salvati, gli eventi si aggiungono o tolgono uno per uno.
@@ -41,6 +42,13 @@ export default async (request) => {
       if (!l) return reply({ error: "manca la posizione" }, 409);
       const met = await meteo(l.lat, l.lon);
       return reply({ ...met, lat: l.lat, lon: l.lon });
+    }
+    if (op === "pioggia") {   // pioggia misurata dalla stazione ARPAE più vicina (ogni 15 minuti), per «l'ho messa sotto la pioggia»
+      const cur = await leggi(st, code), l = cur?.data?.location;
+      if (!l || !inEmiliaRomagna(l.lat, l.lon)) return reply({ disponibile: false, motivo: "Le misure ARPAE ci sono solo in Emilia-Romagna." });
+      const c = await misureArpae(st, l.lat, l.lon, null, { massimaEta: 15 * 60e3 });
+      if (!c?.stazione) return reply({ disponibile: false, motivo: "Le misure della stazione ARPAE non sono raggiungibili adesso: riprova tra poco." });
+      return reply({ disponibile: true, stazione: c.stazione.nome, km: c.stazione.km, ore: c.ore, quarti: c.quarti, aggiornato: c.at });
     }
     if (op === "stato") {
       const [m, t, c] = await Promise.all([st.get("m-" + code, { type: "json" }), st.get("t-" + code, { type: "json" }), crediti(st).catch(() => null)]);
