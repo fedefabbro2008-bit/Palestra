@@ -1,5 +1,5 @@
 import { VERSIONE } from "../lib/versione.mjs";
-import { store, reply, codiceDa, newToken, crediti, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
+import { store, reply, codiceDa, newToken, crediti, correggiCrediti, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
@@ -28,7 +28,14 @@ export default async (request) => {
   try {
     if (op === "mcp") return await opMcp(request, st, code);
     if (op === "telegram") return await opTelegram(request, st, code);
-    if (op === "crediti") { const { key, ...c } = await crediti(st); return reply(c); }
+    if (op === "crediti") {
+      if (request.method === "POST") {   // crediti rimasti letti su Netlify: la stima riparte da lì
+        const b = await request.json().catch(() => null), n = Math.round(+b?.rimasti);
+        if (!isFinite(n) || n < 0 || n > 300) return reply({ error: "scrivi i crediti rimasti, da 0 a 300" }, 400);
+        const { key, ...c } = await correggiCrediti(st, n); return reply(c);
+      }
+      const { key, ...c } = await crediti(st); return reply(c);
+    }
     if (op === "meteo") {   // l'app non raggiunge Open-Meteo: il meteo del server (Open-Meteo o la riserva MET Norway)
       const cur = await leggi(st, code), l = cur?.data?.location;
       if (!l) return reply({ error: "manca la posizione" }, 409);
@@ -75,7 +82,7 @@ function conSchede(nuove, vecchie) {
 }
 
 const statoMcp = (c) => c?.token ? { active: true, token: c.token, write: c.write === true } : { active: false };
-const statoTelegram = (x) => x ? { configured: true, username: x.username || "", collegato: !!x.chat_id } : { configured: false };
+const statoTelegram = (x) => x ? { configured: true, username: x.username || "", collegato: !!x.chat_id, chat_id: x.chat_id || null } : { configured: false };
 async function opMcp(request, st, code) {
   const mkey = "m-" + code;
   const f = await st.getWithMetadata(mkey, { type: "json" });

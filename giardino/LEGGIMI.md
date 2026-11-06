@@ -65,6 +65,16 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Diagnosi guidata** (Scheda → Come sta?): sintomi da spuntare → troppa o poca acqua (registra «meno»/«più» e il calcolo impara) o altre cause (calcare, ferro, luce, oidio, ragnetto, scottature).
 - **Sintesi della settimana e prossima innaffiatura** per pianta anche nel calcolo automatico (app, Telegram /settimana, connettore).
 
+## Precisione e riserve (senza Claude)
+- **Sole secondo la stagione**: con «Verso dove guarda» (bussola nella scheda della pianta) le ore di sole scritte valgono per quel giorno (`luce_data`) e cambiano da sole con le stagioni (geometria del sole, `oreSoleGeom`). In casa e in veranda la luce del giorno segue anche il sole previsto (`sunshine_duration`).
+- **Fasi a gradi-giorno**: le annuali con la data di semina avanzano con le temperature vere (storico di Open-Meteo, 400 giorni, una richiesta al giorno), poi con le previsioni e la stessa settimana dell'anno prima (`GRADI`, `etaEquivalente`).
+- **Controllo della settimana**: sabato e domenica, una pianta da toccare con il dito (app e Telegram il sabato); la risposta si confronta con l'acqua calcolata e il calcolo impara (`verificaDaFare`, `esitoVerifica`).
+- **Meteo di riserva**: se Open-Meteo non risponde, MET Norway dal server (giorni passati dall'ultimo meteo buono); l'app lo chiede al server (`?op=meteo`).
+- **Pioggia misurata**: ogni 3 ore il bot legge le stazioni ARPAE-SIMC (open data, solo Emilia-Romagna) e scrive nei dati i giorni completi della stazione più vicina (`pioggia_misurata`): nei giorni passati prende il posto della pioggia stimata.
+- **Bot di riserva su GitHub** (`giardino/riserva.mjs`, `.github/workflows/giardino-riserva.yml`, ogni mattina): sito vivo → copia cifrata dei dati nella cache di GitHub Actions; sito fermo (es. crediti finiti) → messaggio del mattino su Telegram da GitHub. Segreti: `GIARDINO_CODE`, `GIARDINO_TG_TOKEN`, `GIARDINO_TG_CHAT` (il numero è in Impostazioni → Telegram).
+- **Crediti**: in Impostazioni → Crediti Netlify si scrive il valore vero letto su Netlify e la stima riparte da lì.
+- **Badge «Powered by Netlify»** (piano gratuito): l'app gli lascia una fascia al centro sotto le schede.
+
 ## Rete e velocità
 - **Sincronizzazione a costo quasi zero**: l'app manda la versione che ha (`x-giardino-versione: rev-updatedAt`); se sul server non è cambiato niente risponde `{invariato: true}` (~50 byte invece di tutti i dati) e lo schermo non si ridisegna.
 - **Avvio con una richiesta sola**: lo stato di Claude, Telegram e crediti (`/api/dati?op=stato`, una richiesta) si chiede solo quando apri Impostazioni.

@@ -545,6 +545,7 @@ html.con-badge nav.tabs{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 54
         <div class="inrow" id="tgTokenRow"><input type="text" id="tgToken" class="mono" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Token del bot" aria-label="Token del bot"><button class="btn primary" id="tgSet" type="button">Collega</button></div>
         <div class="row"><a class="btn ghost" id="tgFather" href="https://t.me/BotFather" target="_blank" rel="noopener">Apri @BotFather</a><a class="btn primary" id="tgOpen" href="#" target="_blank" rel="noopener" hidden></a><button class="btn ghost" id="tgTest" type="button" hidden>Messaggio di prova</button><button class="btn ghost danger" id="tgOff" type="button" hidden>Scollega</button></div>
         <div id="tgStatus" class="sub" aria-live="polite"></div>
+        <div class="hint" id="tgRiserva" hidden></div>
       </div>
     </details>
 
@@ -641,6 +642,9 @@ html.con-badge nav.tabs{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 54
         <p class="sub">Piano Free di Netlify: 300 crediti al mese. Ogni pubblicazione di una nuova versione dell'app ne costa 15; l'uso normale (app, Telegram, Claude, Siri) pochi. Se finiscono, il sito va in pausa fino al mese dopo. Telegram ti avvisa all'80%.</p>
         <div id="credBarra"></div>
         <div class="sub" id="credTesto">Calcolo…</div>
+        <div class="field"><label for="credVeri">Crediti rimasti, letti su Netlify</label>
+          <div class="inrow"><input type="text" id="credVeri" inputmode="numeric" placeholder="Es. 104"><button class="btn" type="button" id="credSalva">Correggi</button></div>
+          <span class="hint">Su app.netlify.com → il tuo team → Usage. Da qui la stima riparte dal valore vero.</span></div>
         <div><a class="btn ghost" href="https://app.netlify.com/" target="_blank" rel="noopener">Conto esatto su Netlify (Usage)</a></div>
       </div>
     </details>
@@ -1631,6 +1635,9 @@ function renderTg(s){
   $('#tgOpen').hidden=!on; if(on){ $('#tgOpen').href='https://t.me/'+encodeURIComponent(s.username); $('#tgOpen').textContent='Apri @'+s.username; $('#tgOpen').className='btn '+(ok?'ghost':'primary'); }
   $('#tgTest').hidden=!ok; $('#tgOff').hidden=!on;
   $('#tgStatus').textContent=!on?'':ok?'Collegato: il piano arriva ogni mattina alle '+S.impostazioni.ora_mattina+'.':'Ora apri @'+s.username+' su Telegram e premi Avvia, poi torna qui.';
+  // bot di riserva su GitHub (se il sito va in pausa): servono il codice, il token e il numero della chat come segreti
+  $('#tgRiserva').hidden=!(ok&&s.chat_id);
+  if(ok&&s.chat_id) setHTML($('#tgRiserva'),'Bot di riserva su GitHub (se il sito va in pausa): nei segreti del repository metti GIARDINO_CODE (il codice di sincronizzazione), GIARDINO_TG_TOKEN (il token del bot) e GIARDINO_TG_CHAT = <b class="mono">'+esc(String(s.chat_id))+'</b>.');
 }
 function wireNetlify(){
   const N=window.GiardinoNet;
@@ -1640,7 +1647,10 @@ function wireNetlify(){
   const mostraCrediti=c=>{ if(!c){ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; return; } const pct=Math.min(100,Math.round(c.stima/c.limite*100)), alto=c.stima>=240;
       $('#credChip').textContent='~'+c.stima+' / '+c.limite; $('#credChip').className='sv'+(alto?'':' ok');
       $('#credBarra').innerHTML=`<div class="lev${alto?' basso':''}" role="img" aria-label="Crediti usati circa ${pct}%"><i style="width:${pct}%"></i><b style="left:80%"></b></div>`;
-      $('#credTesto').textContent='Stima di '+new Date(c.mese+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long'})+': '+c.pubblicazioni+(c.pubblicazioni===1?' pubblicazione':' pubblicazioni')+' × 15 + uso ≈ '+c.stima+' crediti su '+c.limite+'.'; };
+      $('#credTesto').textContent=c.corretta?'Usati ~'+c.stima+' su '+c.limite+' (rimasti ~'+Math.max(0,c.limite-c.stima)+'): dal valore vero che hai scritto il '+new Date(c.corretta.at).toLocaleDateString('it-IT',{day:'numeric',month:'long'})+' ('+c.corretta.rimasti+' rimasti), più 15 per ogni pubblicazione dopo.'
+        :'Stima di '+new Date(c.mese+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long'})+': '+c.pubblicazioni+(c.pubblicazioni===1?' pubblicazione':' pubblicazioni')+' × 15 + uso ≈ '+c.stima+' crediti su '+c.limite+'. Per il valore esatto scrivi qui sotto quelli che vedi su Netlify.'; };
+  $('#credSalva').addEventListener('click',async()=>{ const n=numOrNull($('#credVeri').value); if(n==null||n<0||n>300){ $('#credVeri').focus(); toast('Scrivi i crediti rimasti (0–300)'); return; }
+    try{ mostraCrediti(await N.crediti(n)); $('#credVeri').value=''; toast('Stima corretta: '+n+' crediti rimasti'); }catch(e){ toast(e.message); } });
   // Claude, Telegram e crediti in una richiesta sola e solo quando apri Impostazioni (prima: 3 richieste a ogni apertura dell'app)
   let statoAt=0;
   caricaStato=(forza)=>{ if(!forza&&Date.now()-statoAt<60000) return; statoAt=Date.now();

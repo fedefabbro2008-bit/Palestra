@@ -42,6 +42,12 @@ test("dati: il codice viaggia nell'intestazione (e ?code= vale ancora per le app
   assert.ok(nuovo.body.data && nuovo.body.rev === ora.rev + 1, "dopo una modifica arrivano i dati nuovi");
   // stato per le Impostazioni in una richiesta sola
   const st = (await call(dati, "/api/dati?op=stato", { headers: H })).body;
+  // crediti veri letti su Netlify: la stima riparte da lì
+  const cor = (await call(dati, "/api/dati?op=crediti", { method: "POST", headers: H, body: { rimasti: 104 } })).body;
+  assert.equal(cor.stima, 196); assert.equal(cor.corretta.rimasti, 104);
+  assert.equal((await call(dati, "/api/dati?op=crediti", { method: "POST", headers: H, body: { rimasti: 999 } })).status, 400);
+  { const g = getStore({ name: "giardino" }), k = "u-" + new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit" }).format(new Date());
+    const u = await g.get(k, { type: "json" }); delete u.correzione; await g.setJSON(k, u); }   // le prove dopo contano le pubblicazioni
   assert.deepEqual(st.mcp, { active: false }); assert.deepEqual(st.telegram, { configured: false }); assert.ok(st.crediti.limite === 300 && !("key" in st.crediti));
 });
 
@@ -335,4 +341,25 @@ test("crediti Netlify: una versione contata una volta, avviso su Telegram sopra 
   const t2 = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_invio: null, ultimo_avviso_sera: null });
   inviati.length = 0; await bot();
   assert.ok(!inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "una volta al mese");
+});
+
+test("bot di riserva su GitHub: copia cifrata col sito vivo, messaggio su Telegram col sito fermo", async () => {
+  const { riserva, cifra, decifra } = await import("../../giardino/riserva.mjs");
+  const { mkdtemp } = await import("node:fs/promises"), { tmpdir } = await import("node:os"), { join } = await import("node:path");
+  const file = join(await mkdtemp(join(tmpdir(), "riserva-")), "dati.enc"), x = { a: 1 };
+  assert.deepEqual(decifra(cifra(x, CODE), CODE), x); assert.throws(() => decifra(cifra(x, CODE), "ALTRO-CODICE-XXXXXXXX"));
+  const vero = globalThis.fetch, log = () => {};
+  // sito vivo: il «sito» sono le funzioni vere dei test
+  globalThis.fetch = async (u, o = {}) => { u = String(u); if (u.startsWith("https://sito.test")) return dati(new Request(u.replace("https://sito.test", B), { headers: o.headers })); return vero(u, o); };
+  try {
+    assert.equal((await riserva({ sito: "https://sito.test", codice: CODE, token: "123:abc", chat: 77, file, tentativi: 1, attesa: 0, log })).azione, "copia");
+    const copia = decifra(await (await import("node:fs/promises")).readFile(file, "utf8"), CODE);
+    assert.ok(copia.data.plants.length >= 4 && !JSON.stringify(copia).includes("123:abc"));
+    // sito fermo: messaggio di riserva con il piano di oggi, senza pulsanti
+    globalThis.fetch = async (u, o) => (String(u).startsWith("https://sito.test") ? new Response("Site not available", { status: 503 }) : vero(u, o));
+    inviati.length = 0;
+    assert.equal((await riserva({ sito: "https://sito.test", codice: CODE, token: "123:abc", chat: 77, file, tentativi: 1, attesa: 0, log })).azione, "telegram");
+    const m = inviati.find((y) => y[0] === "sendMessage")[1];
+    assert.match(m.text, /Il sito Giardino non risponde[\s\S]*copia di riserva[\s\S]*Giardino —/); assert.equal(m.chat_id, 77); assert.ok(!m.reply_markup);
+  } finally { globalThis.fetch = vero; }
 });

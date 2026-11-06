@@ -318,8 +318,17 @@ export async function crediti(st) {
   const mese = oraLocale("Europe/Rome").oggi.slice(0, 7), key = "u-" + mese;
   const u = (await st.get(key, { type: "json" })) || { versioni: [], avvisato: false };
   if (!u.versioni.includes(VERSIONE)) { u.versioni.push(VERSIONE); await st.setJSON(key, u); }
-  const stima = u.versioni.length * CREDITI.pubblicazione + CREDITI.uso;
-  return { mese, pubblicazioni: u.versioni.length, stima, limite: CREDITI.limite, alto: stima >= CREDITI.avviso, avvisato: !!u.avvisato, key };
+  // con il valore vero letto su Netlify (correzione) la stima parte da lì: + 15 per ogni pubblicazione dopo, + l'uso dei giorni passati
+  const k = u.correzione, giorni = k ? Math.max(0, (Date.now() - k.at) / 864e5) : 0;
+  const stima = k ? Math.round(CREDITI.limite - k.rimasti + Math.max(0, u.versioni.length - k.versioni) * CREDITI.pubblicazione + giorni * CREDITI.uso / 30)
+    : u.versioni.length * CREDITI.pubblicazione + CREDITI.uso;
+  return { mese, pubblicazioni: u.versioni.length, stima, limite: CREDITI.limite, alto: stima >= CREDITI.avviso, avvisato: !!u.avvisato, corretta: k ? { rimasti: k.rimasti, at: k.at } : null, key };
+}
+export async function correggiCrediti(st, rimasti) {
+  const c = await crediti(st), u = (await st.get(c.key, { type: "json" })) || { versioni: [] };
+  u.correzione = { rimasti, at: Date.now(), versioni: u.versioni.length };
+  await st.setJSON(c.key, u);
+  return crediti(st);
 }
 export async function segnaAvvisoCrediti(st, c) { const u = (await st.get(c.key, { type: "json" })) || { versioni: [] }; u.avvisato = true; await st.setJSON(c.key, u); }
 export const COMANDI = [
