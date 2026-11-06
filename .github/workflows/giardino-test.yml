@@ -40,3 +40,8 @@ jobs:
       - name: Modelli meteo disponibili (solo informativo)
         continue-on-error: true
         run: node test/meteo-modelli.mjs
+      - name: Fonti di dati e badge di Netlify (solo informativo)
+        continue-on-error: true
+        run: |
+          node test/fonti-dati.mjs
+          cd test && node badge-online.mjs
