@@ -314,3 +314,28 @@ test("schede: cambiano al tocco anche subito dopo un'altra (animazione in corso)
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("nav.tabs")).touchAction), "none", "la barra non fa scorrere né zoomare");
   assert.deepEqual(errori, []);
 });
+
+test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura torna dov'era", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-FINESTRA-METEO-ABCDEF";
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": CODE, "content-type": "application/json" },
+    body: JSON.stringify({ changes: { location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 } } }) }));
+  const ctx = await contesto(browser, { viewport: { width: 390, height: 600 } });
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await quando(page, () => document.querySelector("[data-wxd]"));
+  await page.evaluate(() => document.body.appendChild(Object.assign(document.createElement("div"), { id: "lungo", style: "height:2000px" })));   // pagina lunga
+  await page.evaluate(() => window.scrollTo(0, 120)); await page.waitForTimeout(100);
+  await page.evaluate(() => document.querySelector("[data-wxd]").click());
+  await quando(page, () => !document.getElementById("wxSheet").hidden);
+  assert.equal(await page.evaluate(() => document.body.style.position), "fixed", "pagina ferma");
+  assert.equal(await page.evaluate(() => document.body.style.top), "-120px", "nello stesso punto");
+  await page.mouse.move(195, 80); await page.mouse.wheel(0, 400); await page.waitForTimeout(200);
+  assert.equal(await page.evaluate(() => window.scrollY), 0, "la rotellina non fa scorrere la pagina sotto");
+  await page.click("#wxChiudi");
+  await quando(page, () => document.getElementById("wxSheet").hidden);
+  assert.equal(await page.evaluate(() => document.body.style.position), "");
+  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "alla chiusura torna dov'era");
+  assert.deepEqual(errori, []);
+});

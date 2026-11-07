@@ -352,8 +352,8 @@ html.con-badge{--badge:30px}
   right:calc(max(16px,env(safe-area-inset-right,0px)) - 9px) !important;transform-origin:100% 0 !important;transform:scale(.7) !important}
 @media (min-width:672px){ #nl-badge-frame{right:calc(50% - 320px + 16px - 9px) !important} }
 .lrow .mini{flex:none;display:flex;gap:4px} .lrow .mini .btn{min-width:40px;padding:6px 8px}
-.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:30}
-.sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 10px);width:min(560px,calc(100% - 24px));z-index:31;max-height:calc(100vh - 140px);overflow:auto}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:30;touch-action:none}
+.sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 10px);width:min(560px,calc(100% - 24px));z-index:31;max-height:calc(100vh - 140px);max-height:calc(100dvh - var(--tabh) - env(safe-area-inset-bottom,0px) - env(safe-area-inset-top,0px) - 30px);overflow:auto;overscroll-behavior:contain}
 .sheet .inrow .field{flex:1;min-width:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 12px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:.92rem;z-index:20;width:max-content;max-width:calc(100% - 32px);text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.18)}
 
@@ -2603,6 +2603,19 @@ function apriMeteo(data){
   $('#wxSheet').hidden=false; $('#wxBg').hidden=false; $('#wxChiudi').focus({preventScroll:true});
 }
 function chiudiMeteo(){ $('#wxSheet').hidden=true; $('#wxBg').hidden=true; }
+// Con una finestra aperta (meteo del giorno, sotto la pioggia) la pagina sotto non scorre: su iPhone overflow:hidden non
+// basta, quindi la pagina si ferma dov'è (corpo fisso, spostato in su di quanto era scorsa) e alla chiusura torna lì.
+(function(){
+  let y=0, ferma=false;
+  const aggiorna=()=>{
+    const aperta=[...document.querySelectorAll('.sheet')].some(x=>!x.hidden); if(aperta===ferma) return; ferma=aperta;
+    const b=document.body.style;
+    if(aperta){ y=window.scrollY; Object.assign(b,{position:'fixed',top:-y+'px',left:'0',right:'0',width:'100%'}); }
+    else { Object.assign(b,{position:'',top:'',left:'',right:'',width:''}); window.scrollTo(0,y); }
+  };
+  const mo=new MutationObserver(aggiorna);
+  document.querySelectorAll('.sheet').forEach(x=>mo.observe(x,{attributes:true,attributeFilter:['hidden']}));
+})();
 function chiudiPioggia(){ $('#pioggiaSheet').hidden=true; $('#pioggiaBg').hidden=true; pgPianta=null; }
 function salvaPioggia(){
   const c=calcolaPioggia(); if(!c||!(c.litri>0)) return;
