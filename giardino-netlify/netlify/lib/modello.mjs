@@ -504,7 +504,15 @@ export function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,event
 // Se il bilancio dell'acqua (pianoLocale) ha già stimato il fattore con le stesse risposte, vale quello (più preciso);
 // altrimenti questa regola semplice.
 const STIME=new Map();
-const firmaStima=(eventi,pid,oggi)=>oggi+'|'+eventiValidi(eventi,pid).filter(e=>RISPOSTE.includes(e.tipo)||e.tipo==='pioggia').map(e=>e.data+':'+e.tipo+':'+(e.esito||'')).sort().join(',');
+const FIRME=new WeakMap();   // firma per elenco di eventi (stesso elenco, stessa lunghezza): calibrazione() la chiede spesso
+const firmaStima=(eventi,pid,oggi)=>{
+  const ok=Array.isArray(eventi), ultimo=ok?eventi[eventi.length-1]:null;
+  let m=ok?FIRME.get(eventi):null;
+  if(ok && (!m || m.n!==eventi.length || m.u!==ultimo)){ m={n:eventi.length, u:ultimo, f:new Map()}; FIRME.set(eventi,m); }
+  const k=pid+'|'+oggi; if(m?.f.has(k)) return m.f.get(k);
+  const v=oggi+'|'+eventiValidi(eventi,pid).filter(e=>RISPOSTE.includes(e.tipo)||e.tipo==='pioggia').map(e=>e.data+':'+e.tipo+':'+(e.esito||'')).sort().join(',');
+  m?.f.set(k,v); return v;
+};
 export function calibrazione(eventi, plantId, oggi){
   const st=STIME.get(plantId); if(st && st.firma===firmaStima(eventi,plantId,oggi)) return st.f;
   let f=1, verso=0, serie=0;
@@ -663,7 +671,8 @@ const GRIGLIA_F=Array.from({length:37},(_,i)=>Math.exp((i-18)*0.05));
 const logSig=z=>z>=0?-Math.log1p(Math.exp(-z)):z-Math.log1p(Math.exp(z));
 export function stimaConsumo(g, k, eventi, pid, oggi){
   let mu=0;
-  for(const e of eventiValidi(eventi,pid)){ const a=giorniTra(e.data,oggi); if(a<0||a>90) continue; if(e.tipo==='meno') mu+=Math.log(0.85); else if(e.tipo==='piu') mu+=Math.log(1.18); }
+  // diagnosi da foto: −10% / +12% ciascuna, come la prima risposta della regola semplice
+  for(const e of eventiValidi(eventi,pid)){ const a=giorniTra(e.data,oggi); if(a<0||a>90) continue; if(e.tipo==='meno') mu+=Math.log(0.9); else if(e.tipo==='piu') mu+=Math.log(1.12); }
   // errore misurato in rapporto (logaritmo): «asciutta» col calcolo al 10% invece del 24% pesa come «umida» al 72% invece del 30%
   const q=k.rawL/k.tawL, S=0.25, SIG=0.3, DZ=logSig(1.5), L=x=>Math.log(Math.max(0.01,x));
   const vicino=x=>GRIGLIA_F.reduce((a,f)=>Math.abs(Math.log(f)-x)<Math.abs(Math.log(a)-x)?f:a, 1);

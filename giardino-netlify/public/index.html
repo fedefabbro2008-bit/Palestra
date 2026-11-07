@@ -1614,7 +1614,15 @@ function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sor
 // Se il bilancio dell'acqua (pianoLocale) ha già stimato il fattore con le stesse risposte, vale quello (più preciso);
 // altrimenti questa regola semplice.
 const STIME=new Map();
-const firmaStima=(eventi,pid,oggi)=>oggi+'|'+eventiValidi(eventi,pid).filter(e=>RISPOSTE.includes(e.tipo)||e.tipo==='pioggia').map(e=>e.data+':'+e.tipo+':'+(e.esito||'')).sort().join(',');
+const FIRME=new WeakMap();   // firma per elenco di eventi (stesso elenco, stessa lunghezza): calibrazione() la chiede spesso
+const firmaStima=(eventi,pid,oggi)=>{
+  const ok=Array.isArray(eventi), ultimo=ok?eventi[eventi.length-1]:null;
+  let m=ok?FIRME.get(eventi):null;
+  if(ok && (!m || m.n!==eventi.length || m.u!==ultimo)){ m={n:eventi.length, u:ultimo, f:new Map()}; FIRME.set(eventi,m); }
+  const k=pid+'|'+oggi; if(m?.f.has(k)) return m.f.get(k);
+  const v=oggi+'|'+eventiValidi(eventi,pid).filter(e=>RISPOSTE.includes(e.tipo)||e.tipo==='pioggia').map(e=>e.data+':'+e.tipo+':'+(e.esito||'')).sort().join(',');
+  m?.f.set(k,v); return v;
+};
 function calibrazione(eventi, plantId, oggi){
   const st=STIME.get(plantId); if(st && st.firma===firmaStima(eventi,plantId,oggi)) return st.f;
   let f=1, verso=0, serie=0;
@@ -1773,7 +1781,8 @@ const GRIGLIA_F=Array.from({length:37},(_,i)=>Math.exp((i-18)*0.05));
 const logSig=z=>z>=0?-Math.log1p(Math.exp(-z)):z-Math.log1p(Math.exp(z));
 function stimaConsumo(g, k, eventi, pid, oggi){
   let mu=0;
-  for(const e of eventiValidi(eventi,pid)){ const a=giorniTra(e.data,oggi); if(a<0||a>90) continue; if(e.tipo==='meno') mu+=Math.log(0.85); else if(e.tipo==='piu') mu+=Math.log(1.18); }
+  // diagnosi da foto: −10% / +12% ciascuna, come la prima risposta della regola semplice
+  for(const e of eventiValidi(eventi,pid)){ const a=giorniTra(e.data,oggi); if(a<0||a>90) continue; if(e.tipo==='meno') mu+=Math.log(0.9); else if(e.tipo==='piu') mu+=Math.log(1.12); }
   // errore misurato in rapporto (logaritmo): «asciutta» col calcolo al 10% invece del 24% pesa come «umida» al 72% invece del 30%
   const q=k.rawL/k.tawL, S=0.25, SIG=0.3, DZ=logSig(1.5), L=x=>Math.log(Math.max(0.01,x));
   const vicino=x=>GRIGLIA_F.reduce((a,f)=>Math.abs(Math.log(f)-x)<Math.abs(Math.log(a)-x)?f:a, 1);
@@ -2214,7 +2223,8 @@ const uid = () => Math.random().toString(36).slice(2,9);
 const GIORNI = ['dom','lun','mar','mer','gio','ven','sab'];
 const dayLabel = iso => { if(iso===today()) return 'Oggi'; if(iso===addDays(today(),1)) return 'Domani'; if(iso===addDays(today(),-1)) return 'Ieri'; const d=new Date(iso+'T12:00:00'); return GIORNI[d.getDay()]+' '+d.getDate(); };
 const dayShort = iso => { if(iso===today()) return 'Oggi'; const d=new Date(iso+'T12:00:00'); return GIORNI[d.getDay()]+' '+d.getDate(); };
-const dataBreve = iso => new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'short'});
+const BREVI=new Map();   // «7 nov»: la formattazione in italiano è lenta e le stesse date tornano spesso
+const dataBreve = iso => { let v=BREVI.get(iso); if(v===undefined){ v=new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'short'}); if(BREVI.size>800) BREVI.clear(); BREVI.set(iso,v); } return v; };
 const next7 = () => Array.from({length:7},(_,i)=>addDays(today(),i));
 const numOrNull = v => { if(v===''||v==null) return null; const n=parseFloat(String(v).trim().replace(',','.')); return isFinite(n)?n:null; };
 const numIn = v => v==null||v==='' ? '' : String(v).replace('.',',');
@@ -2342,7 +2352,18 @@ async function boot(){
   ready=true; renderAll(); entra($('#view-'+vistaAttiva())); entra($('#wxStrip'));
 }
 /* ================= Eventi (diario) ================= */
-const allEvents = () => [...S.eventi_app, ...EB.eventi.filter(e=>!S.eventi_app.some(a=>a.id===e.id))];
+// Eventi dell'app + quelli di Telegram/Claude, uniti una volta sola finché non cambiano, e divisi per pianta.
+// Prima si riunivano a ogni domanda («cosa è successo a questa pianta oggi?»), confrontando ogni evento con tutti gli altri:
+// con un diario lungo il Diario e il calendario lo facevano ~700 volte per ridisegno.
+let evMemo={a:null, b:null, k:'', all:[], per:new Map()};
+function eventiIndice(){
+  const a=S.eventi_app, b=EB.eventi, k=a.length+'|'+(a[0]?.id||'')+'|'+(a[a.length-1]?.id||'')+'|'+b.length;
+  if(evMemo.a===a && evMemo.b===b && evMemo.k===k) return evMemo;
+  const ids=new Set(a.map(e=>e.id));
+  evMemo={a, b, k, all:[...a, ...b.filter(e=>!ids.has(e.id))], per:new Map()};
+  return evMemo;
+}
+const allEvents = () => eventiIndice().all;
 const ESITI = ['fatto','secco','umido','saltato'];
 function addEvent(plantId, tipo, extra={}){
   S.eventi_app.push({id:'app-'+uid(), plantId, tipo, data:today(), fonte:'app', ts:new Date().toISOString(), ...extra});
@@ -2350,7 +2371,7 @@ function addEvent(plantId, tipo, extra={}){
   saveMain();
 }
 function removeEvent(id){ S.eventi_app=S.eventi_app.filter(e=>e.id!==id); saveMain(); }
-const eventsOf = (pid, data) => eventiValidi(allEvents(), pid).filter(e=>!data||e.data===data);
+const eventsOf = (pid, data) => { const m=eventiIndice(); let v=m.per.get(pid); if(!v){ v=eventiValidi(m.all,pid); m.per.set(pid,v); } return data ? v.filter(e=>e.data===data) : v.slice(); };
 
 /* ================= Meteo ================= */
 const fresco = w => w && Array.isArray(w.days) && w.days.some(d=>d.date===today());
@@ -2798,6 +2819,7 @@ function renderSiri(){
 const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito'],pioggia:['🌧','presa la pioggia']};
 const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
 function renderDiario(){
+  localPlan();   // la stima del consumo («stima −X%») è quella del bilancio: il piano la calcola (dalla memoria, se non è cambiato niente)
   const ev=allEvents(), t=today(), lim=addDays(t,-29);
   const giorni=Array.from({length:30},(_,i)=>addDays(t,i-29));
   let n=0;
@@ -2805,22 +2827,25 @@ function renderDiario(){
   const tot=val.reduce((a,b)=>a+b,0);
   $('#dTot').textContent=fmt(tot)+' L'; $('#dNum').textContent=n;
   renderCalendario();
-  $('#statList').innerHTML=S.plants.length?piante().map(p=>{
+  setHTML($('#statList'),S.plants.length?piante().map(p=>{
     const e=eventiValidi(ev,p.id).filter(x=>x.data>=lim), f=e.filter(x=>x.tipo==='fatto'||x.tipo==='secco'), cal=calibrazione(ev,p.id,t), um=e.filter(x=>x.tipo==='umido').length;
     const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%'].filter(Boolean).join(' · ');
     return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(det)}</span></span></div>`;
-  }).join(''):'<div class="empty">Nessuna pianta.</div>';
+  }).join(''):'<div class="empty">Nessuna pianta.</div>');
   const nomi=Object.fromEntries(S.plants.map(p=>[p.id,p.nome]));
   const recent=ev.filter(e=>e.data>=addDays(t,-60)&&nomi[e.plantId]).sort((a,b)=>(b.data+(b.ts||''))<(a.data+(a.ts||''))?-1:1);
-  if(!recent.length){ $('#evList').innerHTML='<div class="empty">Ancora niente. Segna le innaffiature in Oggi o con i pulsanti di Telegram.</div>'; return; }
+  if(!recent.length){ setHTML($('#evList'),'<div class="empty">Ancora niente. Segna le innaffiature in Oggi o con i pulsanti di Telegram.</div>'); return; }
   let h='', last='';
-  for(const e of recent){
+  const MAX=150, tutti=diarioTutto||recent.length<=MAX+30;
+  for(const e of tutti?recent:recent.slice(0,MAX)){
     if(e.data!==last){ h+='<div class="evday">'+esc(dayLabel(e.data))+' · '+esc(dataBreve(e.data))+'</div>'; last=e.data; }
     const [ic,lab]=EV_LABEL[e.tipo]||['•',e.tipo];
     h+=`<div class="ev"><span class="e" aria-hidden="true">${ic}</span><span><b>${esc(nomi[e.plantId])}</b> ${esc(lab)}${e.litri?' · '+fmt(+e.litri,2)+' L':''}${e.nota?' · '+esc(e.nota):''}${e.fonte&&e.fonte!=='app'?' <span class="chip">'+esc(FONTE_LABEL[e.fonte]||e.fonte)+'</span>':''}</span>${e.fonte==='app'?`<button class="btn small ghost" type="button" data-unev="${esc(e.id)}" aria-label="Elimina">×</button>`:'<span></span>'}</div>`;
   }
-  $('#evList').innerHTML=h;
+  if(!tutti) h+=`<button class="btn ghost wide" type="button" id="evTutti">Mostra tutti gli ultimi 60 giorni (${recent.length})</button>`;
+  setHTML($('#evList'),h);
 }
+let diarioTutto=false;
 // calendario del mese: un'icona per quello che è successo ogni giorno, tocco per il dettaglio
 let calMese=null, calSel=null;
 const CAL_ICO=[['fatto','💧'],['secco','💧'],['umido','💦'],['saltato','⏭'],['concime','🌱']];
@@ -3059,14 +3084,22 @@ function particelle(x,y,n,tipi,lontano){
 function spruzzo(el,e,n){ const r=el.getBoundingClientRect(), x=e&&e.clientX?e.clientX:r.left+r.width/2, y=e&&e.clientY?e.clientY:r.top+r.height/2; particelle(x,y,n||12,['g'],48); if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){} }
 function festa(el){ const r=el.getBoundingClientRect(); particelle(r.left+r.width/2,r.top+r.height/2,22,['g','f','g','s'],90); }
 function batti(el){ if(!muovi()) return; el.classList.remove('batti'); void el.offsetWidth; el.classList.add('batti'); }
-function entra(el){ if(!el) return; el.classList.remove('entra'); void el.offsetWidth; el.classList.add('entra'); clearTimeout(el._entra); el._entra=setTimeout(()=>el.classList.remove('entra'),700); }
+// animazione d'entrata. Una vista che era nascosta riparte da sola quando si mostra: basta la classe. Solo se l'elemento
+// era già visibile con l'animazione in corso serve farla ripartire (e quel «void offsetWidth» ricalcola tutta la pagina:
+// con un diario lungo era il 35% del tempo del cambio di scheda).
+function entra(el, appenaMostrato){
+  if(!el) return;
+  if(!appenaMostrato && el.classList.contains('entra')){ el.classList.remove('entra'); void el.offsetWidth; }
+  el.classList.add('entra'); clearTimeout(el._entra); el._entra=setTimeout(()=>el.classList.remove('entra'),700);
+}
 function switchView(v){
+  // in cima prima di cambiare vista: chiederlo dopo costringeva a ricalcolare subito tutta la pagina nuova
+  if(window.scrollY) window.scrollTo({top:0});
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.view===v)));
   document.querySelectorAll('section.view').forEach(s=>s.hidden=s.id!=='view-'+v);
   if(v==='diario'||daRifare.has(v)) renderVista(v);
-  entra($('#view-'+v));
+  entra($('#view-'+v), true);
   if(v==='impostazioni') caricaStato();
-  window.scrollTo({top:0});
 }
 function apriSezione(id){ switchView('impostazioni'); const d=$('#'+id); d.open=true; requestAnimationFrame(()=>d.scrollIntoView({block:'start',behavior:'smooth'})); }
 function planText(){
@@ -3135,7 +3168,8 @@ function wire(){
     const vr=e.target.closest('[data-ver]'); if(vr){ rispondiVerifica(vr.dataset.pid, vr.dataset.ver); return; }
     const pg=e.target.closest('[data-pioggia]'); if(pg){ apriPioggia(pg.dataset.pioggia); return; }
     const wd=e.target.closest('[data-wxd]'); if(wd){ apriMeteo(wd.dataset.wxd); return; }
-    const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); }
+    const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); return; }
+    if(e.target.closest('#evTutti')){ diarioTutto=true; renderDiario(); }
   });
   $('#saveNote').addEventListener('click',()=>$('#saveNote').hidden=true);
   $('#pgDa').addEventListener('input',aggiornaPioggia); $('#pgA').addEventListener('input',aggiornaPioggia);

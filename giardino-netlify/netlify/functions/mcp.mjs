@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, meteo, oraLocale, pianoAttivo, finePiano, IMP_DEF, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, meteo, oraLocale, pianoAttivo, finePiano, calibrazioneVera, IMP_DEF, M } from "../lib/core.mjs";
 
 /* Giardino · server MCP per Claude (connettore personalizzato su claude.ai, gratis con il tuo account).
    Claude legge piante, meteo reale e piano calcolato; se lo permetti nell'app salva il suo piano della settimana,
@@ -176,7 +176,8 @@ async function toolRegistra(ctx, a) {
       ...(a.litri != null ? { litri: Math.max(0, +a.litri || 0) } : {}), ...(a.nota ? { nota: String(a.nota).slice(0, 200) } : {}) });
   });
   ctx.saved(out);
-  const pid = out.data.plants.find((p) => p.nome === nome)?.id, cal = pid ? M.calibrazione(out.data.eventi, pid, M.isoDate(new Date())) : 1;
+  const pid = out.data.plants.find((p) => p.nome === nome)?.id, loc = out.data.location;
+  const cal = pid ? calibrazioneVera(out.data, loc ? await meteo(loc.lat, loc.lon).catch(() => null) : null, pid, M.isoDate(new Date())) : 1;
   return `Registrato nel diario: ${nome} — ${a.tipo} (${data}).` + (["meno", "piu", "umido", "secco"].includes(a.tipo) ? ` Correzione appresa per questa pianta: ×${fmt(cal, 2)} (${cal < 1 ? "beve meno" : cal > 1 ? "beve di più" : "nessuna"} del calcolo di base).` : "");
 }
 const CAMPI_P = { nome: "s", specie: "specie", fase: "fase", data_semina: "data", tipo_data: ["semina", "trapianto"], colt: ["vaso", "terra", "rialzata"], vaso: "n", diametro: "n", num: "n", area: "n", luce: "n",
@@ -268,7 +269,8 @@ async function toolDiagnosi(ctx, a) {
     if (!(await ctx.canWrite())) return L.concat("", NO_WRITE).join("\n");
     const out = await aggiorna(ctx.store, ctx.code, (d) => { d.eventi.push({ id: "cl-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), plantId: p.id, tipo: r.registra, data: M.isoDate(new Date()), fonte: "claude", ts: new Date().toISOString(), nota: ("diagnosi: " + sint.join(", ")).slice(0, 200) }); });
     ctx.saved(out);
-    L.push("", `Registrato «${r.registra}»: correzione appresa ora ×${fmt(M.calibrazione(out.data.eventi, p.id, M.isoDate(new Date())), 2)}.`);
+    const loc = out.data.location, met = loc ? await meteo(loc.lat, loc.lon).catch(() => null) : null;
+    L.push("", `Registrato «${r.registra}»: correzione appresa ora ×${fmt(calibrazioneVera(out.data, met, p.id, M.isoDate(new Date())), 2)}.`);
   } else if (r.registra) L.push("", `Per far imparare l'app richiama con registra: true (salva «${r.registra}»), dopo averlo detto all'utente.`);
   return L.join("\n");
 }

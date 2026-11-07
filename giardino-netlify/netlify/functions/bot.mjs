@@ -90,7 +90,7 @@ async function uno(st, tkey, cr) {
     const avv = M.avvisiDomani(fresco.plants, domani, met.notte);
     if (avv.length) { const ic = { gelo: "🥶", caldo: "🔥", vento: "💨", temporale: "⛈", grandine: "🧊" }; await invia("🌙 <b>Per domani</b>\n" + avv.map((a) => `${ic[a.tipo]} ${esc(a.testo)}`).join("\n")); }
     // 3. la domenica, il riepilogo della settimana
-    if (new Date(oggi + "T12:00:00Z").getUTCDay() === 0) await invia(riepilogoSettimana(fresco, oggi));
+    if (new Date(oggi + "T12:00:00Z").getUTCDay() === 0) await invia(riepilogoSettimana(fresco, oggi, met));
     // 4. una volta al mese, il backup
     if ((t.ultimo_backup || "").slice(0, 7) !== oggi.slice(0, 7)) {
       try { await inviaFile(t.token, t.chat_id, `giardino-backup-${oggi}.json`, JSON.stringify(backup(fresco), null, 2), "🗂 Backup mensile del Giardino: in caso di bisogno importalo dall'app (Impostazioni → Backup)."); next.ultimo_backup = oggi; }

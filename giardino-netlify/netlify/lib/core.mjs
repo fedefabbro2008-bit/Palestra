@@ -294,14 +294,23 @@ export function messaggioSettimana(data, ap) {
   L.push(`\n<i>👆 = controlla con un dito. Dosi in bicchieri da ${fmt(imp.bicchiere, 2)} L e annaffiatoi da ${fmt(imp.annaffiatoio)} L nel messaggio del giorno.</i>`);
   return L.join("\n");
 }
-export function riepilogoSettimana(data, oggi) {
+// La correzione del consumo come la calcola il bilancio dell'acqua (la stessa che mostra l'app), anche quando il piano non
+// è stato appena calcolato con questi eventi (riepilogo della domenica, connettore dopo una registrazione).
+// Senza meteo resta la regola semplice.
+export function calibrazioneVera(data, met, pid, oggi) {
+  const p = data?.plants?.find((x) => x.id === pid);
+  if (!p || !Array.isArray(met?.days)) return M.calibrazione(data?.eventi || [], pid, oggi);
+  const lat = data.location?.lat, past = M.giorniPassati({ ...met, lat: met.lat ?? lat }, data.pioggia_misurata, oggi);
+  return M.bilancioPassato(p, M.params(p, { oggi, lat }), past, data.eventi || [], oggi).k.calib;
+}
+export function riepilogoSettimana(data, oggi, met) {
   const lat = data.location?.lat, da = M.addDays(oggi, -6);
   const L = [`📊 <b>La settimana del giardino</b> (${esc(dl(da))} – ${esc(dl(oggi))})`];
   let tot = 0;
   for (const p of M.pianteOrdinate(data.plants)) {
     const e = M.eventiValidi(data.eventi, p.id).filter((x) => x.data >= da && x.data <= oggi), f = e.filter((x) => x.tipo === "fatto" || x.tipo === "secco");
     const litri = f.reduce((s, x) => s + (+x.litri || 0), 0); tot += litri;
-    const um = e.filter((x) => x.tipo === "umido").length, se = e.filter((x) => x.tipo === "secco").length, cal = M.calibrazione(data.eventi, p.id, oggi);
+    const um = e.filter((x) => x.tipo === "umido").length, se = e.filter((x) => x.tipo === "secco").length, cal = calibrazioneVera(data, met, p.id, oggi);
     let nota = ""; if (um) nota += ` · ${um}× era umida`; if (se) nota += ` · ${se}× era secca`; if (Math.abs(cal - 1) > 0.01) nota += ` · ora conto il ${Math.round(Math.abs(cal - 1) * 100)}% ${cal < 1 ? "in meno" : "in più"}`;
     L.push(`• <b>${esc(p.nome)}</b>: ${f.length} ${f.length === 1 ? "volta" : "volte"}, ${fmt(litri)} L${nota}`);
   }

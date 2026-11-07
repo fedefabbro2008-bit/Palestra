@@ -368,3 +368,16 @@ test("bot di riserva su GitHub: copia cifrata col sito vivo, messaggio su Telegr
     assert.match(m.text, /Il sito Giardino non risponde[\s\S]*copia di riserva[\s\S]*Giardino —/); assert.equal(m.chat_id, 77); assert.ok(!m.reply_markup);
   } finally { globalThis.fetch = vero; }
 });
+
+test("correzione del consumo nei messaggi e nel connettore: la stessa del bilancio dell'app", async () => {
+  const C = await import("../netlify/lib/core.mjs"), M = await import("../netlify/lib/modello.mjs");
+  const oggi = "2026-07-20", serie = (da, n) => [...Array(n)].map((_, i) => ({ date: M.addDays(da, i), tmax: 18, tmin: 10, et0: 2, rain: 0, prob: 0, wind: 5 }));
+  const p = { id: "ba", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "riparato" };
+  const t0 = M.addDays(oggi, -12), eventi = [{ id: "f", plantId: "ba", tipo: "fatto", data: t0, fonte: "app" }, { id: "u", plantId: "ba", tipo: "umido", data: M.addDays(t0, 6), fonte: "telegram" }];
+  const met = { lat: 44, days: [...serie(M.addDays(oggi, -3), 3), ...serie(oggi, 7)], archivio: Object.fromEntries(serie(M.addDays(oggi, -120), 117).map((d) => [d.date, [d.tmin, d.tmax, 0, 2, null, 5]])) };
+  const data = { location: { lat: 44, lon: 11.9 }, plants: [p], eventi };
+  const atteso = M.pianoLocale({ piante: [p], past: M.giorniPassati(met, null, oggi), fut: met.days.filter((d) => d.date >= oggi), eventi, oggi, lat: 44 }).piante[0].calibrazione;
+  assert.ok(atteso < 0.95, "il controllo «era umida» abbassa il consumo");
+  assert.equal(C.calibrazioneVera({ ...data, eventi: [...eventi] }, met, "ba", oggi), atteso, "stessa stima anche con un elenco di eventi nuovo");
+  assert.match(C.riepilogoSettimana({ ...data, eventi: [...eventi] }, oggi, met), new RegExp("ora conto il " + Math.round((1 - atteso) * 100) + "% in meno"));
+});
