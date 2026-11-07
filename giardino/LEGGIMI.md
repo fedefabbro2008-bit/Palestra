@@ -89,6 +89,11 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Sincronizzazione a costo quasi zero**: l'app manda la versione che ha (`x-giardino-versione: rev-updatedAt`); se sul server non è cambiato niente risponde `{invariato: true}` (~50 byte invece di tutti i dati) e lo schermo non si ridisegna.
 - **Avvio con una richiesta sola**: lo stato di Claude, Telegram e crediti (`/api/dati?op=stato`, una richiesta) si chiede solo quando apri Impostazioni.
 - **Meteo con 3 richieste in parallelo** (giornaliero e orario insieme; più modelli; storico del giorno prima, una volta al giorno), lette dalla stessa funzione del modello (`urlMeteo`, `componiMeteo`, `archivioDa`) in app e server; sul server il risultato resta 15 minuti nell'archivio (`c-meteo-<lat>,<lon>`) e lo condividono bot, Claude, Telegram e Siri. Il piano dell'app si ricalcola solo se cambia qualcosa che conta.
+- **Animazioni che non pesano**: le icone del meteo sono a strati (raggi, nuvola, gocce, fiocchi, lampo, nebbia: ogni parte che si muove è un disegno a sé) e la casella di oggi «respira» con un anello che cambia solo opacità: tutto si muove senza ridisegnare la pagina (con l'app ferma il lavoro del telefono è sceso del 99%).
+- **Calcoli più rapidi**: le date si contano come numeri di giorno con una memoria (`numGiorno`, `isoDaNum`: niente oggetti Date nei cicli), i nomi brevi dei giorni si ricordano, la calibrazione non cerca niente per le piante senza controlli e altrimenti prova un fattore ogni tre e poi i vicini; il diario si divide per pianta una volta sola. Piano −40%, calendari −60%.
+- **Storico una volta sola sul telefono**: il meteo salvato non ripete storico e archivio (stanno solo in `storico`).
+- **ARPAE**: le righe delle stazioni lontane si scartano leggendo solo le coordinate (4 volte più rapido).
+- **Prove**: `npm test` rigenera prima la pagina (`pretest`), così pagina e impronta della versione sono sempre aggiornate.
 - **Schede al tocco**: la barra in basso cambia scheda già al tocco (anche mentre la pagina scorre per inerzia o c'è un'animazione: su iPhone quel tocco non diventa un «click»).
 - **Ridisegno solo della vista aperta**; gli aggiornamenti arrivati da soli si raggruppano in un ridisegno per fotogramma (e nessuno con l'app in background).
 - **Bot**: se oggi mattino e sera sono già fatti, non legge niente fino al giorno dopo.
