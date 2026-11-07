@@ -276,7 +276,7 @@ test("niente fuori schermo, chiaro e scuro, da 320 a 430 px", async (t) => {
       const fuori = await page.evaluate(() => {
         const vw = document.documentElement.clientWidth, out = [];
         for (const el of document.querySelectorAll("section.view:not([hidden]) *, nav.tabs *")) {
-          const r = el.getBoundingClientRect(); if (!r.width || el.closest("[hidden]")) continue;
+          const r = el.getBoundingClientRect(); if (!r.width || el.closest("[hidden]") || el.closest(".hfx")) continue;   // .hfx: meteo decorativo, tagliato dal riquadro
           if (r.right > vw + 0.5 || r.left < -0.5) out.push((el.id || el.className?.baseVal || el.className || el.tagName) + " " + Math.round(r.left) + "→" + Math.round(r.right));
           const s = getComputedStyle(el);
           if (el.scrollWidth > el.clientWidth + 1 && s.overflowX !== "visible" && s.textOverflow !== "ellipsis" && !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) out.push("scorre di lato: " + (el.id || el.className));
