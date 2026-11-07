@@ -4,9 +4,25 @@
 
 /* ---------------- Date ---------------- */
 export function isoDate(d){ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
-export function addDays(iso,n){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return isoDate(d); }
-export function giorniTra(a,b){ return Math.round((Date.parse(b+'T12:00:00Z')-Date.parse(a+'T12:00:00Z'))/864e5); }
-const meseDi = iso => new Date(iso+'T12:00:00').getMonth();
+// Le date si contano come numero del giorno (giorni dal 1970), con una memoria: i calcoli ripetono le stesse date migliaia
+// di volte (bilancio di 120 giorni, gradi-giorno dalla semina) e creare ogni volta un oggetto Date era la parte più lenta.
+const NUM=new Map(), ISO=new Map();
+export function numGiorno(iso){
+  let v=NUM.get(iso); if(v!==undefined) return v;
+  const m=/^(\d{4})-(\d{2})(?:-(\d{2}))?/.exec(typeof iso==='string'?iso:'');
+  v=m ? Math.round(Date.UTC(+m[1], +m[2]-1, m[3]?+m[3]:1)/864e5) : NaN;
+  if(NUM.size>20000) NUM.clear(); NUM.set(iso,v); return v;
+}
+export function isoDaNum(n){
+  let v=ISO.get(n); if(v!==undefined) return v;
+  v=Number.isFinite(n) ? new Date(n*864e5).toISOString().slice(0,10) : 'NaN-NaN-NaN';
+  if(ISO.size>20000) ISO.clear(); ISO.set(n,v); return v;
+}
+export const addDays = (iso,n) => isoDaNum(numGiorno(iso)+n);
+export const giorniTra = (a,b) => numGiorno(b)-numGiorno(a);
+// giorno dell'anno (1 = 1° gennaio)
+const giornoAnno = iso => numGiorno(iso)-numGiorno(String(iso).slice(0,4)+'-01-01')+1;
+const meseDi = iso => +String(iso).slice(5,7)-1;
 
 /* ---------------- Specie ----------------
    kc: [iniziale, sviluppo, piena stagione, fine stagione, riposo] (FAO-56 semplificato)
@@ -33,8 +49,8 @@ export const SPECIE = {
   patata:{nome:'Patata',cat:'orto',ico:'🥔',kc:[0.5,0.75,1.15,0.75,0.3],area:0.20,radici:0.5,p:0.35,ann:true,ciclo:[20,35,55,75,null,115],trap:0,gelo:0,conc:{V:30},concTipo:'concime per ortaggi ricco di potassio',rinvaso:0},
   carota:{nome:'Carota / rapa',cat:'orto',ico:'🥕',kc:[0.7,0.85,1.05,0.95,0.3],area:0.01,radici:0.4,p:0.35,ann:true,ciclo:[14,35,70,null,null,100],trap:0,gelo:-3,conc:{V:30},concTipo:'concime povero di azoto',rinvaso:0},
   ravanello:{nome:'Ravanello',cat:'orto',ico:'🌱',kc:[0.7,0.8,0.9,0.85,0.3],area:0.01,radici:0.2,p:0.30,ann:true,ciclo:[5,12,25,null,null,35],trap:0,gelo:-2,conc:{},concTipo:'',rinvaso:0},
-  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',fasiNomi:{piantina:'Germoglio e prime foglie',fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
-  cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
+  aglio:{nome:'Aglio',cat:'orto',ico:'🧄',fotoperiodo:13,fasiNomi:{piantina:'Germoglio e prime foglie',fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.0,0.7,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[25,80,170,null,220,250],trap:0,gelo:-10,conc:{V:45},concTipo:'poco concime, senza eccesso di azoto',rinvaso:0},
+  cipolla:{nome:'Cipolla / porro / scalogno',cat:'orto',ico:'🧅',fotoperiodo:13.5,fasiNomi:{fruttificazione:'Ingrossamento del bulbo'},kc:[0.7,0.85,1.05,0.75,0.3],area:0.02,radici:0.3,p:0.30,ann:true,ciclo:[12,50,100,null,140,170],trap:50,gelo:-8,conc:{V:30},concTipo:'concime per ortaggi povero di azoto',rinvaso:0},
   // Aromatiche
   basilico:{nome:'Basilico',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,1.0,0.9,0.3],area:0.05,radici:0.25,p:0.30,ann:true,ciclo:[10,30,90,120,null,150],trap:30,gelo:8,conc:{V:21},concTipo:'concime liquido per aromatiche',rinvaso:0},
   prezzemolo:{nome:'Prezzemolo / erbe tenere',cat:'aromatiche',ico:'🌿',kc:[0.6,0.8,0.95,0.9,0.4],area:0.05,radici:0.3,p:0.35,ann:true,ciclo:[20,50,200,null,null,260],trap:40,gelo:-5,conc:{V:30},concTipo:'concime liquido per aromatiche',rinvaso:0},
@@ -236,47 +252,99 @@ const DA_LETTERA = {G:'germinazione',P:'piantina',V:'vegetativa',F:'fioritura',T
 const ORDINE_FASI = ['germinazione','piantina','vegetativa','fioritura','fruttificazione','maturazione'];
 
 /* ---------------- Gradi-giorno: le fasi delle annuali seguono le temperature vere ----------------
-   I giorni del ciclo (SPECIE.ciclo) valgono per un anno tipico. Ogni giorno vero conta (T − base) / (riferimento − base)
-   giorni «tipici» (da 0 a 1,6): col freddo la pianta cresce più piano, col caldo più in fretta. T = media del giorno:
-   misurata (storico di Open-Meteo dalla semina), prevista (prossimi giorni), poi la stessa settimana dell'anno scorso
-   e, se manca anche quella, una stima dal clima della latitudine. In casa e in veranda, la temperatura per stagione.
-   GRADI[specie] = [base, riferimento] in °C (riferimento ≈ media tipica durante il ciclo). Senza dati del meteo: giorni. */
-export const GRADI = {pomodoro:[10,21], zucchina:[10,21], cetriolo:[10,21], melone:[12,23], peperone:[10,21], melanzana:[12,22], lattuga:[4,14],
-  spinaci:[2,12], cavolo:[4,15], fagiolo:[10,20], pisello:[4,12], patata:[6,15], carota:[3,14], ravanello:[4,13], aglio:[0,10], cipolla:[4,13],
-  basilico:[10,21], prezzemolo:[4,14]};
+   I giorni del ciclo (SPECIE.ciclo) valgono per un anno tipico. Ogni giorno vero conta da 0 a 1,6 giorni «tipici»:
+   col freddo la pianta cresce più piano, col caldo più in fretta, oltre l'ottimo di nuovo più piano e alla massima si ferma.
+   Il ritmo si calcola ora per ora (24 temperature tra minima e massima, a sinusoide), non sulla media: in una giornata
+   da 2 a 12 °C la carota (base 3 °C) cresce nelle ore calde anche se la media è appena sopra la base, e in una giornata da
+   20 a 36 °C la lattuga rallenta nelle ore più calde. Temperature: misurate (storico di Open-Meteo dalla semina), previste
+   (prossimi giorni), poi la stessa settimana dell'anno scorso e, se manca anche quella, una stima dal clima della latitudine.
+   In casa e in veranda, la temperatura per stagione. Senza dati del meteo: giorni.
+   GRADI[specie] = [base, riferimento, ottimo, massima] in °C. Riferimento ≈ media tipica durante il ciclo (vale 1 giorno). */
+export const GRADI = {pomodoro:[10,21,28,36], zucchina:[10,21,30,38], cetriolo:[10,21,30,38], melone:[12,23,32,40], peperone:[10,21,28,36], melanzana:[12,22,30,38],
+  lattuga:[4,14,22,30], spinaci:[2,12,20,28], cavolo:[4,15,22,30], fagiolo:[10,20,28,36], pisello:[4,12,22,30], patata:[6,15,22,30], carota:[3,14,24,32],
+  ravanello:[4,13,22,30], aglio:[0,10,22,32], cipolla:[4,13,25,33], basilico:[10,21,30,38], prezzemolo:[4,14,24,32]};
+// ritmo a una temperatura: lineare dalla base all'ottimo (come i gradi-giorno classici), poi cala fino a 0 alla massima
+export function ritmoT(T, g){
+  const [tb,tr,to=tr+10,tm=to+8]=g;
+  if(!(T>tb) || !(T<tm)) return 0;
+  return Math.min(1.6, T<=to ? (T-tb)/(tr-tb) : (to-tb)/(tr-tb)*(tm-T)/(tm-to));
+}
+// ritmo di un giorno {t, tmin?, tmax?}: con minima e massima, media dei ritmi ora per ora; con la sola media, alla media
+export function ritmoGiorno(x, g){
+  if(x?.tmin==null || x?.tmax==null || !(x.tmax>=x.tmin)) return ritmoT(x?.t, g);
+  // 12 temperature (ogni 2 ore) bastano: la sinusoide è simmetrica, 24 darebbero lo stesso risultato
+  const m=(x.tmin+x.tmax)/2, a=(x.tmax-x.tmin)/2; let s=0;
+  for(let h=0;h<12;h++) s+=ritmoT(m+a*Math.sin((h+0.5)*Math.PI/12-Math.PI/2), g);
+  return s/12;
+}
+// ore di luce (dall'alba al tramonto) in un giorno a una latitudine
+export function durataGiorno(iso, lat){
+  const r=Math.PI/180, n=(giornoAnno(iso)+1);
+  const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), phi=(lat??44)*r;
+  const c=(Math.sin(-0.833*r)-Math.sin(phi)*Math.sin(dec))/(Math.cos(phi)*Math.cos(dec));
+  return c<=-1 ? 24 : c>=1 ? 0 : +(2*Math.acos(c)/r/15).toFixed(2);
+}
+// primo giorno, da «da» in poi, con almeno «ore» di luce (entro un anno)
+export function primoGiornoConLuce(da, lat, ore){ let d=da; for(let i=0;i<370;i++){ if(durataGiorno(d,lat)>=ore) return d; d=addDays(d,1); } return null; }
 const CLIMA=new Map(), ETA_CACHE=new Map(), kLat=lat=>lat==null?'x':(+lat).toFixed(2);
 // L'app e il server registrano qui il meteo della posizione (storico + previsioni): lo usano le fasi automatiche.
 export function registraClima(lat, c){ if(!c) return; CLIMA.set(kLat(lat), c); ETA_CACHE.clear(); }
 export function climaDa(met){
   if(!met || !met.storico) return null;
-  const prev={}; for(const d of met.days||[]) if(d.tmax!=null && d.tmin!=null) prev[d.date]=(d.tmax+d.tmin)/2;
-  return {storico:met.storico, prev};
+  const prev={}; for(const d of met.days||[]) if(d.tmax!=null && d.tmin!=null) prev[d.date]={t:(d.tmax+d.tmin)/2, tmin:d.tmin, tmax:d.tmax};
+  const mm={}; for(const [d,v] of Object.entries(met.archivio||{})) if(Array.isArray(v) && v[0]!=null && v[1]!=null) mm[d]=[v[0],v[1]];
+  return {storico:met.storico, prev, mm};
 }
-export function tempMedia(c, iso, lat){
+// temperatura di un giorno {t, tmin, tmax} (minima e massima quando si sanno)
+export function tempGiorno(c, iso, lat){
   if(c){
-    const v=c.prev[iso]??c.storico[iso]; if(v!=null) return v;
-    let s=0,n=0; for(let k=-7;k<=7;k++){ const x=c.storico[addDays(iso,k-365)]; if(x!=null){ s+=x; n++; } }   // stessa settimana, un anno fa
-    if(n>=5) return s/n;
+    const p=c.prev?.[iso]; if(p!=null) return typeof p==='number' ? {t:p} : p;
+    const s=c.storico?.[iso]; if(s!=null){ const m=c.mm?.[iso]; return m ? {t:s, tmin:m[0], tmax:m[1]} : {t:s}; }
+    let st=0,n=0,sn=0,sx=0,nm=0;   // stessa settimana, un anno fa
+    for(let k=-7;k<=7;k++){ const d=addDays(iso,k-365), x=c.storico?.[d]; if(x==null) continue; st+=x; n++; const m=c.mm?.[d]; if(m){ sn+=m[0]; sx+=m[1]; nm++; } }
+    if(n>=5) return nm>=5 ? {t:st/n, tmin:sn/nm, tmax:sx/nm} : {t:st/n};
   }
-  const L=Math.abs(lat??44), doy=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
-  return 27.5-0.31*L - (4+0.15*L)*Math.cos(2*Math.PI*(doy-15-(lat<0?182:0))/365);
+  const L=Math.abs(lat??44), doy=(giornoAnno(iso)+1);
+  return {t:27.5-0.31*L - (4+0.15*L)*Math.cos(2*Math.PI*(doy-15-(lat<0?182:0))/365)};
 }
-// giorni «tipici» di crescita dalla semina (o dal trapianto, più l'età della piantina) a «giorno»
+export const tempMedia = (c, iso, lat) => tempGiorno(c, iso, lat).t;
+// giorni «tipici» di crescita dalla semina (o dal trapianto, più l'età della piantina) a «giorno».
+// Fotoperiodo (aglio, cipolla): il bulbo comincia a ingrossare solo con le giornate lunghe (SPECIE.fotoperiodo ore di luce);
+// prima la pianta resta in crescita vegetativa anche se ha accumulato abbastanza caldo.
 export function etaEquivalente(p, giorno, lat){
-  const sp=SPECIE[p.specie]||SPECIE.altro, g=GRADI[p.specie], c=CLIMA.get(kLat(lat)), tr=p.tipo_data==='trapianto'?sp.trap:0;
-  const reali=giorniTra(p.data_semina, giorno);
-  if(!g || !c || reali<=0) return {eta:reali+tr, reali};
-  const k=[p.specie,p.data_semina,p.tipo_data,p.dove,JSON.stringify(p.tcasa||''),giorno,kLat(lat)].join('|');
+  const sp=SPECIE[p.specie]||SPECIE.altro, g=GRADI[p.specie], c=CLIMA.get(kLat(lat)), tr=p.tipo_data==='trapianto'?sp.trap:0, fp=sp.fotoperiodo;
+  const reali=giorniTra(p.data_semina, giorno), caldo=!!(g&&c);
+  if(reali<=0 || (!caldo && !fp)) return {eta:reali+tr, reali};
+  const k=[p.specie,p.data_semina,p.tipo_data,p.dove,JSON.stringify(p.tcasa||''),giorno,kLat(lat),caldo].join('|');
   if(ETA_CACHE.has(k)) return ETA_CACHE.get(k);
-  const [tb,tref]=g, casa=alCoperto(p), tc=casa?tempCasa(p):null;
-  let eq=tr, d=p.data_semina;
-  for(let i=0;i<Math.min(reali,600);i++){ const T=casa?tempCasaGiorno(tc,d,lat):tempMedia(c,d,lat); eq+=Math.max(0,Math.min(1.6,(T-tb)/(tref-tb))); d=addDays(d,1); }
+  const casa=alCoperto(p), tc=casa?tempCasa(p):null, soglia=fp?sp.ciclo[2]:null;
+  let eq=tr, d=p.data_semina, bulbo=false;
+  for(let i=0;i<Math.min(reali,600);i++){
+    let inc = !caldo ? 1 : casa ? ritmoT(tempCasaGiorno(tc,d,lat),g) : ritmoGiorno(tempGiorno(c,d,lat),g);
+    // in attesa resta appena sotto la fine della crescita vegetativa (0,2 giorni tipici)
+    if(fp && !bulbo && eq+inc>=soglia-0.2){ if(durataGiorno(d,lat)>=fp) bulbo=true; else inc=Math.max(0,soglia-0.2-eq); }
+    eq+=inc; d=addDays(d,1);
+  }
   const r={eta:+eq.toFixed(1), reali, ritmo:+((eq-tr)/reali).toFixed(2)};
+  if(fp && !bulbo && eq>=soglia-0.2-1e-6) r.attesaLuce=true;
   if(ETA_CACHE.size>3000) ETA_CACHE.clear(); ETA_CACHE.set(k,r); return r;
 }
+// Storico dei 400 giorni passati, una richiesta al giorno: temperature (fasi a gradi-giorno) e, per il bilancio dell'acqua
+// dei giorni passati, pioggia, evaporazione (ET0), sole e vento.
+export const STORICO_PARAMS='temperature_2m_mean,temperature_2m_max,temperature_2m_min,precipitation_sum,et0_fao_evapotranspiration,sunshine_duration,daylight_duration,wind_speed_10m_max';
 export const urlStorico = (lat, lon, oggi) => 'https://historical-forecast-api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat, longitude:lon, timezone:'auto',
-  start_date:addDays(oggi,-400), end_date:addDays(oggi,-1), daily:'temperature_2m_mean'});
+  start_date:addDays(oggi,-400), end_date:addDays(oggi,-1), daily:STORICO_PARAMS});
 export function storicoDa(j){ const d=j?.daily, o={}; if(d?.time) d.time.forEach((t,i)=>{ const v=d.temperature_2m_mean?.[i]; if(v!=null&&isFinite(v)) o[t]=v; }); return o; }
+// archivio compatto: {AAAA-MM-GG: [minima, massima, pioggia mm, ET0 mm, sole 0–1, vento km/h]}
+export function archivioDa(j){
+  const d=j?.daily, o={}, n=x=>x!=null&&isFinite(x)?+(+x).toFixed(2):null;
+  if(d?.time) d.time.forEach((t,i)=>{
+    const tn=n(d.temperature_2m_min?.[i]), tx=n(d.temperature_2m_max?.[i]); if(tn==null&&tx==null) return;
+    const sole=d.sunshine_duration?.[i]!=null && d.daylight_duration?.[i]>0 ? +(d.sunshine_duration[i]/d.daylight_duration[i]).toFixed(2) : null;
+    o[t]=[tn, tx, n(d.precipitation_sum?.[i]), n(d.et0_fao_evapotranspiration?.[i]), sole, n(d.wind_speed_10m_max?.[i])];
+  });
+  return o;
+}
 
 /* Raccolta prevista (p.raccolta = AAAA-MM, scritta dall'utente o da Claude nella scheda): le fasi automatiche si
    allungano o si accorciano in proporzione perché la maturazione cominci a metà di quel mese. */
@@ -302,9 +370,13 @@ export function faseEffettiva(p, oggi, lat){
   if(p.fase!=='auto') return {fase:FASI[p.fase]?p.fase:'vegetativa', auto:false};
   if(sp.ann){
     if(!p.data_semina) return {fase:'vegetativa', auto:true, nota:'manca la data di semina o trapianto'};
-    const {eta, ritmo}=etaPianta(p, oggi, lat);
+    const {eta, ritmo, attesaLuce}=etaPianta(p, oggi, lat);
     if(eta<0) return {fase:'germinazione', auto:true, eta, nota:'semina non ancora fatta'};
-    for(let i=0;i<ORDINE_FASI.length;i++){ if(sp.ciclo[i]!=null && eta<sp.ciclo[i]) return {fase:ORDINE_FASI[i], auto:true, eta, ritmo}; }
+    for(let i=0;i<ORDINE_FASI.length;i++){ if(sp.ciclo[i]!=null && eta<sp.ciclo[i]){
+      const r={fase:ORDINE_FASI[i], auto:true, eta, ritmo};
+      if(attesaLuce && r.fase==='vegetativa'){ const q=primoGiornoConLuce(oggi, lat, sp.fotoperiodo);
+        r.nota='il bulbo comincia con le giornate di '+fmtN(sp.fotoperiodo)+' ore di luce'+(q?' (dal '+new Date(q+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'long'})+')':''); }
+      return r; } }
     return {fase:'maturazione', auto:true, eta, ritmo, nota:'ciclo probabilmente concluso'};
   }
   let m=meseDi(oggi); if(lat!=null && lat<0) m=(m+6)%12;   // emisfero sud: stagioni invertite
@@ -322,7 +394,7 @@ const SOLE_CACHE = new Map();
 export function oreSoleGeom(iso, orient, lat){
   const k=iso+'|'+orient+'|'+Math.round((lat??44)*10);
   if(SOLE_CACHE.has(k)) return SOLE_CACHE.get(k);
-  const r=Math.PI/180, phi=(lat??44)*r, n=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  const r=Math.PI/180, phi=(lat??44)*r, n=(giornoAnno(iso)+1);
   const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), A=ORIENTAMENTI[orient];
   let min=0;
   for(let m=0;m<1440;m+=5){
@@ -370,7 +442,7 @@ export function tempCasa(p){ const t=p?.tcasa||{}, def=p?.dove==='serra'?TSERRA_
 // temperatura di un giorno: passa gradualmente da una stagione all'altra (metà gennaio, aprile, luglio, ottobre);
 // nell'emisfero sud le stagioni sono spostate di sei mesi
 export function tempCasaGiorno(tc, iso, lat){
-  const d=new Date(iso+'T12:00:00'); let g=Math.floor((d-new Date(d.getFullYear(),0,0))/864e5);
+  let g=giornoAnno(iso);
   if(lat!=null && lat<0) g=(g+183)%365||365;
   if(g<15) g+=365;
   const P=[[15,tc.inverno],[105,tc.primavera],[196,tc.estate],[288,tc.autunno],[380,tc.inverno]];
@@ -411,25 +483,42 @@ export function pioggiaPresa(p, eventi){
 }
 // Pioggia MISURATA tra due ore di «giorno» (ora locale): misure = {quarti, ore} con chiavi ISO in UTC alla fine
 // dell'intervallo (ARPAE). Usa i quarti d'ora se ci sono, altrimenti le ore. «fino» = ora locale dell'ultima misura.
+// Se «alle» è prima di «dalle» l'intervallo passa la mezzanotte: dalle = ieri (es. dalle 17:28 di ieri alle 07:15 di oggi).
 export function pioggiaMisurataNelleOre(misure, giorno, dalle, alle, tz){
-  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; }, a=min(dalle), b=min(alle);
-  if(a==null||b==null||b<=a) return {mm:0, fino:null, completo:false};
+  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; };
+  let a=min(dalle); const b=min(alle);
+  if(a==null||b==null||b===a) return {mm:0, fino:null, completo:false, notte:false};
+  const notte=b<a; if(notte) a-=1440;   // minuti contati dall'inizio di «giorno»: ieri sera è negativo
   const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
   const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return {d:p.year+'-'+p.month+'-'+p.day, m:+p.hour*60+(+p.minute)}; };
-  const usa=(serie,durata)=>{ let mm=0, ultimo=-1, n=0;
-    for(const [t,v] of Object.entries(serie||{})){ const e=loc(t), fine=e.d===giorno?e.m:(e.d===addDays(giorno,1)&&e.m===0?1440:null); if(fine==null) continue;
-      ultimo=Math.max(ultimo,fine); const sov=Math.max(0,Math.min(b,fine)-Math.max(a,fine-durata)); if(sov>0){ mm+=(+v||0)*sov/durata; n++; } }
+  const ieri=addDays(giorno,-1), domani=addDays(giorno,1);
+  const usa=(serie,durata)=>{ let mm=0, ultimo=null, n=0;
+    for(const [t,v] of Object.entries(serie||{})){ const e=loc(t), fine=e.d===giorno?e.m:e.d===ieri?e.m-1440:(e.d===domani&&e.m===0?1440:null); if(fine==null) continue;
+      if(fine>a) ultimo=Math.max(ultimo??-Infinity,fine); const sov=Math.max(0,Math.min(b,fine)-Math.max(a,fine-durata)); if(sov>0){ mm+=(+v||0)*sov/durata; n++; } }
     return {mm:+mm.toFixed(1), ultimo, n}; };
-  let r=usa(misure?.quarti,15); if(!r.n && r.ultimo<0) r=usa(misure?.ore,60);
-  const fino=r.ultimo>=0?String(Math.floor(r.ultimo/60)%24).padStart(2,'0')+':'+String(r.ultimo%60).padStart(2,'0'):null;
-  return {mm:r.mm, fino, completo:r.ultimo>=b};
+  let r=usa(misure?.quarti,15); if(!r.n && r.ultimo==null) r=usa(misure?.ore,60);
+  const u=r.ultimo, fino=u!=null?String(Math.floor(((u%1440)+1440)%1440/60)).padStart(2,'0')+':'+String(((u%60)+60)%60).padStart(2,'0'):null;
+  return {mm:r.mm, fino, completo:u!=null&&u>=b, notte};
 }
 export const litriDaPioggia = (k, mm) => +Math.max(0,(mm||0)*k.pioggiaArea).toFixed(2);
 export function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
 // Ogni "era ancora umida" toglie il 10% al consumo stimato, ogni "era già secca" aggiunge il 12% (ultimi 60 giorni).
 // La stessa risposta più volte di fila corregge di più: 1ª volta −10% / +12%, 2ª −15% / +18%, dalla 3ª −20% / +24%.
 // Una risposta opposta riparte da capo. meno/piu = correzioni dalla diagnosi da foto.
+// Se il bilancio dell'acqua (pianoLocale) ha già stimato il fattore con le stesse risposte, vale quello (più preciso);
+// altrimenti questa regola semplice.
+const STIME=new Map();
+const FIRME=new WeakMap();   // firma per elenco di eventi (stesso elenco, stessa lunghezza): calibrazione() la chiede spesso
+const firmaStima=(eventi,pid,oggi)=>{
+  const ok=Array.isArray(eventi), ultimo=ok?eventi[eventi.length-1]:null;
+  let m=ok?FIRME.get(eventi):null;
+  if(ok && (!m || m.n!==eventi.length || m.u!==ultimo)){ m={n:eventi.length, u:ultimo, f:new Map()}; FIRME.set(eventi,m); }
+  const k=pid+'|'+oggi; if(m?.f.has(k)) return m.f.get(k);
+  const v=oggi+'|'+eventiValidi(eventi,pid).filter(e=>RISPOSTE.includes(e.tipo)||e.tipo==='pioggia').map(e=>e.data+':'+e.tipo+':'+(e.esito||'')).sort().join(',');
+  m?.f.set(k,v); return v;
+};
 export function calibrazione(eventi, plantId, oggi){
+  const st=STIME.get(plantId); if(st && st.firma===firmaStima(eventi,plantId,oggi)) return st.f;
   let f=1, verso=0, serie=0;
   const ev=eventiValidi(eventi,plantId).filter(e=>{ const g=giorniTra(e.data,oggi); return g>=0&&g<=60; }).sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
   for(const e of ev){
@@ -470,6 +559,16 @@ export function membriVaso(p, faseMain){
   const altri = p.colt==='vaso' && Array.isArray(p.consociate) ? p.consociate.filter(c=>c&&SPECIE[c.specie]).map(c=>({specie:c.specie, fase:FASI[c.fase]?c.fase:faseMain, num:Math.max(1,Math.round(+c.num||1))})) : [];
   return [main, ...altri];
 }
+// Kc di un'annuale secondo l'età (giorni tipici, FAO-56): iniziale fino alla piantina, poi sale fino alla fine della crescita
+// vegetativa, resta pieno durante fioritura e frutti e scende durante la maturazione (prima saliva e scendeva a scatti).
+export function kcContinuo(sp, eta){
+  const c=sp.ciclo, kc=sp.kc, P=c[1], V=c[2], M=c[5], prod=c.slice(0,5).filter(x=>x!=null).pop();
+  if(!(eta>P)) return kc[0];
+  if(eta<V) return kc[0]+(kc[2]-kc[0])*(eta-P)/(V-P);
+  if(eta<=prod) return kc[2];
+  if(eta>=M) return kc[3];
+  return kc[2]+(kc[3]-kc[2])*(eta-prod)/(M-prod);
+}
 // ctx = {oggi, lat, eventi, luce (sostituisce le ore di luce), estate (usa i Kc di piena stagione)}
 export function params(p, ctx={}){
   const oggi=ctx.oggi||isoDate(new Date());
@@ -478,10 +577,11 @@ export function params(p, ctx={}){
   const membri=membriVaso(p, fe.fase), nTot=membri.reduce((a,m)=>a+m.num,0);
   const h=ctx.luce!=null?ctx.luce:luceOre(p, ctx.oggi, ctx.lat), interno=alCoperto(p), serra=p.dove==='serra', fl=interno?1:fattoreLuce(h);
   let kcA=0, chioma=0, pMin=1;
-  for(const m of membri){
+  membri.forEach((m,i)=>{
     const s=SPECIE[m.specie]||SPECIE.altro, f=FASI[m.fase]||FASI.vegetativa, a=s.area*m.num;
-    kcA+=s.kc[ctx.estate?2:f.kc]*a; chioma+=a; pMin=Math.min(pMin, f.p??s.p);
-  }
+    const kc = ctx.estate ? s.kc[2] : i===0 && s.ann && fe.auto && fe.eta!=null && fe.fase!=='riposo' ? kcContinuo(s, fe.eta) : s.kc[f.kc];
+    kcA+=kc*a; chioma+=a; pMin=Math.min(pMin, f.p??s.p);
+  });
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
   const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',faseRitmo:fe.ritmo??null,membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
@@ -520,7 +620,87 @@ export function fattoreVaso(k,d){
 export const pioggiaL = (p,k,d) => p.dove!=='aperto' ? 0 : Math.max(0,(d?.rain||0)-1.5)*k.pioggiaArea;
 // Pioggia prevista: conta quella attesa, non quella massima. Con probabilità 80% o più vale tutta, sotto in proporzione
 // (20 mm al 56% contano 14 mm): così una pioggia incerta non fa saltare un'innaffiatura che serve.
-export const pioggiaAttesa = d => !d || d.prob==null ? d : {...d, rain:(d.rain||0)*Math.min(1,Math.max(0,d.prob)/80)};
+// Con più modelli la media pesata è già il valore atteso (i modelli senza pioggia la abbassano): non si riduce di nuovo.
+export const pioggiaAttesa = d => !d || d.prob==null || d.ensemble ? d : {...d, rain:(d.rain||0)*Math.min(1,Math.max(0,d.prob)/80)};
+
+/* ---------------- Bilancio dell'acqua dei giorni passati ----------------
+   Lo stato del terriccio parte dall'ultima informazione certa nei MEMORIA giorni passati: un'innaffiatura (terriccio
+   pieno) o un controllo («era ancora umida» → al più il 60% della tacca; «asciutto» → almeno la tacca). Poi giorno per
+   giorno: consumo − pioggia − pioggia presa, con il meteo vero dei giorni passati (storico, pioggia misurata ARPAE).
+   Prima partiva sempre da metà tacca tre giorni fa: per le piante che bevono poco (succulente, piante da casa d'inverno)
+   l'innaffiatura si spostava avanti ogni giorno senza arrivare mai. Senza nessuna informazione resta il calcolo di prima. */
+export const MEMORIA = 120;
+// controlli col dito o risposte: {data: 'umido'|'secco'}
+export function osservazioni(eventi, pid){
+  const o={};
+  for(const e of eventiValidi(eventi,pid)){
+    const t = e.tipo==='umido'||e.tipo==='secco' ? e.tipo : e.tipo==='verifica' && (e.esito==='umido'||e.esito==='secco') ? e.esito : null;
+    if(t) o[e.data]=t;
+  }
+  return o;
+}
+// giorni passati per il bilancio: storico (archivio) + giorni passati delle previsioni + pioggia misurata (ARPAE)
+export function giorniPassati(met, mis, oggi, n=MEMORIA){
+  const da=addDays(oggi,-n), per=new Map(), lat=met?.lat??44;
+  for(const [date,v] of Object.entries(met?.archivio||{})) if(date>=da && date<oggi && Array.isArray(v)){
+    const d={date, tmin:v[0], tmax:v[1], rain:v[2]??0, et0:v[3], sole:v[4]??null, wind:v[5]??null};
+    if(d.et0==null) d.et0=et0Hargreaves(d, lat)??0;
+    per.set(date,d);
+  }
+  for(const d of met?.days||[]) if(d.date>=da && d.date<oggi) per.set(d.date,{...per.get(d.date), ...d});
+  return conPioggiaMisurata([...per.values()].sort((a,b)=>a.date<b.date?-1:1), mis, oggi);
+}
+// Bilancio giorno per giorno con il consumo × f: stato a fine dell'ultimo giorno e, per la calibrazione, quanto il calcolo
+// vedeva consumato (0–1 della riserva) la mattina di ogni controllo fatto dopo un'innaffiatura.
+function simula(g, k, f){
+  const T=k.tawL, R=k.rawL; let dep=R*0.5, ancorato=false, info=false, da=null; const pred=[];
+  for(const d of g){
+    if(d.o){
+      if(ancorato) pred.push({data:d.date, tipo:d.o, x:dep/T});
+      if(d.o==='umido') dep=Math.min(dep,0.6*R); else if(!d.w) dep=Math.max(dep,R);
+      info=true; da=d.date;
+    }
+    dep=Math.min(T, Math.max(0, dep+d.c*f-d.r));
+    if(d.w){ dep=0; ancorato=true; info=true; da=d.date; }
+  }
+  return {dep, pred, info, da};
+}
+/* Calibrazione: il fattore f (consumo vero / consumo calcolato) che rende il calcolo più coerente con le risposte.
+   Per ogni f tra 0,4 e 2,5 il bilancio si rifà da capo e ogni controllo fatto dopo un'innaffiatura dice quanto il calcolo
+   era giusto: «era ancora umida» quando il calcolo la dava oltre la tacca → beve meno; «era asciutta» quando la dava
+   ancora piena → beve di più, tanto più quanto più il calcolo era lontano. Le risposte coerenti col calcolo non spostano
+   niente; quelle vecchie contano meno (metà peso dopo circa 6 settimane). Le correzioni della diagnosi (meno/più acqua)
+   spostano il punto di partenza. Prima ogni risposta valeva ±10–24% fisso, qualunque fosse l'errore. */
+const GRIGLIA_F=Array.from({length:37},(_,i)=>Math.exp((i-18)*0.05));
+const logSig=z=>z>=0?-Math.log1p(Math.exp(-z)):z-Math.log1p(Math.exp(z));
+export function stimaConsumo(g, k, eventi, pid, oggi){
+  let mu=0;
+  // diagnosi da foto: −10% / +12% ciascuna, come la prima risposta della regola semplice
+  for(const e of eventiValidi(eventi,pid)){ const a=giorniTra(e.data,oggi); if(a<0||a>90) continue; if(e.tipo==='meno') mu+=Math.log(0.9); else if(e.tipo==='piu') mu+=Math.log(1.12); }
+  // errore misurato in rapporto (logaritmo): «asciutta» col calcolo al 10% invece del 24% pesa come «umida» al 72% invece del 30%
+  const q=k.rawL/k.tawL, S=0.25, SIG=0.3, DZ=logSig(1.5), L=x=>Math.log(Math.max(0.01,x));
+  const vicino=x=>GRIGLIA_F.reduce((a,f)=>Math.abs(Math.log(f)-x)<Math.abs(Math.log(a)-x)?f:a, 1);
+  // senza controlli dopo un'innaffiatura conta solo il punto di partenza: niente ricerca (la maggior parte delle piante)
+  const n=simula(g,k,1).pred.length;
+  if(!n) return {f:+Math.max(0.4,Math.min(2.5,vicino(mu))).toFixed(3), n:0};
+  const ll=i=>{ const f=GRIGLIA_F[i], {pred}=simula(g,k,f); let v=-((Math.log(f)-mu)**2)/(2*SIG*SIG);
+    for(const o of pred){ const w=Math.exp(-Math.max(0,giorniTra(o.data,oggi))/60), z=o.tipo==='umido'?(L(q)-L(o.x))/S:(L(o.x)-L(0.8*q))/S; v+=w*Math.min(0,logSig(z)-DZ); }
+    return v; };
+  // prima un fattore ogni tre (13 bilanci invece di 37), poi i due vicini per parte del migliore
+  let bi=18, bv=-Infinity; const fatti=new Map(), prova=i=>{ if(i<0||i>=GRIGLIA_F.length) return; const v=fatti.has(i)?fatti.get(i):ll(i); fatti.set(i,v); if(v>bv+1e-9||(Math.abs(v-bv)<=1e-9&&Math.abs(i-18)<Math.abs(bi-18))){ bv=v; bi=i; } };
+  for(let i=0;i<GRIGLIA_F.length;i+=3) prova(i);
+  const c=bi; for(const d of [-2,-1,1,2]) prova(c+d);
+  return {f:+Math.max(0.4,Math.min(2.5,GRIGLIA_F[bi])).toFixed(3), n};
+}
+// stato di una pianta all'inizio di oggi, con il fattore di consumo stimato (k = parametri già corretti)
+export function bilancioPassato(p, k0, past, eventi, oggi){
+  const fatte=dateInnaffiate(p,eventi), presa=pioggiaPresa(p,eventi), oss=osservazioni(eventi,p.id);
+  const g=past.map(d=>({date:d.date, c:consumoL(k0,d), r:pioggiaL(p,k0,d)+(presa[d.date]||0), w:fatte.has(d.date), o:oss[d.date]||null}));
+  const cal=stimaConsumo(g, k0, eventi, p.id, oggi);
+  if(STIME.size>500) STIME.clear(); STIME.set(p.id, {f:cal.f, firma:firmaStima(eventi,p.id,oggi)});
+  const sim=simula(g,k0,cal.f), dep=sim.info ? sim.dep : simula(g.slice(-3),k0,cal.f).dep;
+  return {k:{...k0, calib:cal.f, lPerMm:k0.lPerMm*cal.f}, dep, fatte, presa, oss, n:cal.n, da:sim.info?sim.da:null};
+}
 
 /* ---------------- Piano locale (bilancio idrico giorno per giorno) ----------------
    opts = {piante, past, fut, eventi, oggi, lat, vacanza:{dal, al}}  (al = giorno del rientro) */
@@ -532,15 +712,16 @@ export function deficitDaSuolo(theta){ return Math.max(0,Math.min(1,(CAMPO-theta
 export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
   const out={avvisi:[], piante:[]}, chiusiBagnati=new Set();
   if(!fut.length) return out;
+  const perPianta=new Map(); for(const e of eventi||[]) if(e&&e.plantId){ const a=perPianta.get(e.plantId); if(a) a.push(e); else perPianta.set(e.plantId,[e]); }
   for(const p of piante){
-    const k=params(p,{oggi,lat,eventi});
-    const fatte=dateInnaffiate(p,eventi), presa=pioggiaPresa(p,eventi);
-    let dep=k.rawL*0.5;
+    const b=bilancioPassato(p, params(p,{oggi,lat}), past, perPianta.get(p.id)||[], oggi), k=b.k, {fatte, presa, oss}=b;
+    let dep=b.dep;
     const usaSuolo = suolo!=null && isFinite(suolo) && !k.vaso && p.dove==='aperto' && ![...fatte].some(d=>d>=addDays(oggi,-3));
     if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
-    else for(const d of past){ dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)-pioggiaL(p,k,d)-(presa[d.date]||0))); if(fatte.has(d.date)) dep=0; }
+    // oggi: il controllo del mattino, poi l'innaffiatura o la pioggia presa (riempie solo i litri presi)
+    if(oss[oggi]==='umido') dep=Math.min(dep,0.6*k.rawL); else if(oss[oggi]==='secco' && !fatte.has(oggi)) dep=Math.max(dep,k.rawL);
     if(fatte.has(oggi)) dep=0;
-    dep=Math.max(0, dep-(presa[oggi]||0));     // messa sotto la pioggia oggi: riempie solo i litri presi
+    dep=Math.max(0, dep-(presa[oggi]||0));
     // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
     let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
@@ -571,9 +752,10 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     const prima=giorni.find(g=>g.azione==='innaffia'), ctrl=giorni.find(g=>g.azione==='controlla');
     const valutazione=prima ? 'Prossima innaffiatura: '+(prima.data===oggi?'oggi':giornoBreve(prima.data))+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'
       : ctrl ? 'Nei prossimi giorni basta la riserva; '+giornoBreve(ctrl.data)+' tocca il terriccio.' : 'Nei prossimi '+giorni.length+' giorni non serve acqua.';
-    out.piante.push({id:p.id, acqua, soglia, valutazione, fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:consigliPianta(p)});
+    out.piante.push({id:p.id, acqua, soglia, valutazione, fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:consigliPianta(p),
+      calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da});
   }
-  const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
+  const minT=Math.min(...fut.map(d=>d.tmin_freddo??d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
   if(freddo.length) out.avvisi.push('Minima fino a '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
   if(chiusiBagnati.size) out.avvisi.push('Pioggia sui vasi senza fori ('+[...chiusiBagnati].join(', ')+'): dopo la pioggia inclina il vaso e togli l\'acqua in più, altrimenti le radici marciscono.');
@@ -584,7 +766,8 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
   out.sintesi=sintesiSettimana(out, fut, piante);
   return out;
 }
-const giornoBreve = iso => new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'});
+const BREVE=new Map();   // «sab 7»: la formattazione in italiano è lenta, si ricorda
+const giornoBreve = iso => { let v=BREVE.get(iso); if(!v){ v=new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'}); if(BREVE.size>500) BREVE.clear(); BREVE.set(iso,v); } return v; };
 // Due righe sulla settimana, come le scriverebbe un giardiniere: meteo, chi va bagnato e quando, chi no.
 export function sintesiSettimana(piano, fut, piante){
   if(!fut.length) return '';
@@ -681,12 +864,15 @@ export function avvisiDomani(piante, domani, notte){
   if(!domani) return [];
   const out=[], fuori=piante.filter(p=>!alCoperto(p)), daGelo=piante.filter(p=>p.dove!=='interno');
   const oraria = Array.isArray(notte) && notte.length ? notte : null;
-  const minima = oraria ? Math.min(...oraria.map(x=>x.t)) : domani.tmin;
+  // con più modelli: se il più freddo (+1 °C) scende sotto la previsione ora per ora, vale quello (meglio un telo in più)
+  const minOra = oraria ? Math.min(...oraria.map(x=>x.t)) : domani.tmin, freddo = domani.tmin_freddo!=null && domani.tmin_freddo<minOra ? domani.tmin_freddo : null;
+  const minima = freddo ?? minOra;
   const sogliaGelo=p=>gelo(p)-(p.dove==='serra'?4:0);   // il vetro della serra tiene circa 4 gradi
   const fredde=daGelo.filter(p=>minima<=sogliaGelo(p));
   if(fredde.length){
     let testo='Minima di '+fmtN(minima)+' °C';
-    if(oraria){
+    if(freddo!=null) testo='Minima fino a '+fmtN(minima)+' °C secondo il modello più freddo (gli altri '+fmtN(minOra)+' °C)';
+    else if(oraria){
       const soglia=Math.max(...fredde.map(sogliaGelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
       testo='Stanotte minima di '+fmtN(minima)+' °C verso le '+piu.ora+':00'+(sotto.length>1?' (sotto '+fmtN(soglia)+' °C dalle '+sotto[0].ora+':00 alle '+sotto[sotto.length-1].ora+':00)':'');
     }
@@ -823,17 +1009,51 @@ export const ORARIO_PARAMS='temperature_2m,soil_moisture_0_to_1cm,soil_moisture_
 export const DAILY_PARAMS='weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,et0_fao_evapotranspiration,wind_speed_10m_max,wind_gusts_10m_max,sunshine_duration,daylight_duration';
 export function urlMeteo(lat, lon){
   const q=o=>'https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({latitude:lat, longitude:lon, timezone:'auto', ...o});
-  return {base:q({past_days:'3', forecast_days:'8', daily:DAILY_PARAMS, hourly:ORARIO_PARAMS}), it:q({forecast_days:'3', hourly:MODELLO_IT_PARAMS, models:MODELLO_IT})};
+  return {base:q({past_days:'3', forecast_days:'8', daily:DAILY_PARAMS, hourly:ORARIO_PARAMS}), it:q({forecast_days:'3', hourly:MODELLO_IT_PARAMS, models:MODELLO_IT}),
+    modelli:q({forecast_days:'8', daily:MODELLI_PARAMS, models:MODELLI.join(',')})};
+}
+/* ---------------- Più modelli insieme (ensemble) ----------------
+   Una richiesta con sei modelli: ICON-2I (ItaliaMeteo-ARPAE, 2,2 km, 3 giorni), ICON (servizio tedesco, 2 km i primi
+   giorni), Météo-France (AROME 1,3 km, poi ARPEGE, 4 giorni), ECMWF IFS (9 km, il migliore oltre i 3 giorni), UK Met
+   Office e GFS (USA). Pioggia, minima, massima ed evaporazione sono la media pesata dei modelli che coprono il giorno:
+   i primi giorni pesano di più i modelli fitti, che vedono meglio Appennino e temporali; poi ECMWF. Un modello solo
+   sbaglia spesso dove cade la pioggia; la media sbaglia meno. La probabilità di pioggia unisce quella di Open-Meteo
+   e la quota di modelli che danno almeno 1 mm. Per il gelo conta anche il modello più freddo (+1 °C).
+   PESI[modello] = [oggi, domani, dopodomani, poi]. */
+export const MODELLI = ['italia_meteo_arpae_icon_2i','icon_seamless','meteofrance_seamless','ecmwf_ifs','ukmo_seamless','gfs_seamless'];
+export const MODELLI_PARAMS='precipitation_sum,temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration';
+const PESI = {italia_meteo_arpae_icon_2i:[2,2,1.5,1], icon_seamless:[1.5,1.5,1.25,1.25], meteofrance_seamless:[1.5,1.5,1,1], ecmwf_ifs:[1.5,1.5,1.5,2], ukmo_seamless:[1,1,1,1], gfs_seamless:[0.75,0.75,0.75,1]};
+export function ensembleGiorni(days, jm, oggi){
+  const d=jm?.daily; if(!Array.isArray(d?.time) || !Array.isArray(days)) return days;
+  const idx=new Map(d.time.map((t,i)=>[t,i])), ok=x=>x!=null && isFinite(x);
+  return days.map(day=>{
+    const i=idx.get(day.date); if(day.date<oggi || i==null) return day;
+    const lead=Math.min(3,Math.max(0,giorniTra(oggi,day.date)));
+    const v=MODELLI.map(m=>({m, w:PESI[m][lead], r:d['precipitation_sum_'+m]?.[i], x:d['temperature_2m_max_'+m]?.[i], n:d['temperature_2m_min_'+m]?.[i], e:d['et0_fao_evapotranspiration_'+m]?.[i]})).filter(x=>ok(x.r));
+    if(v.length<2) return day;
+    const media=k=>{ let s=0,w=0; for(const x of v) if(ok(x[k])){ s+=x[k]*x.w; w+=x.w; } return w?s/w:null; };
+    const W=v.reduce((a,x)=>a+x.w,0), pMod=v.reduce((a,x)=>a+(x.r>=1?x.w:0),0)/W*100;
+    const out={...day, rain:+media('r').toFixed(1), rain_modelli:v.map(x=>+(+x.r).toFixed(1)), modelli:v.map(x=>x.m), prob_modelli:Math.round(pMod), ensemble:true};
+    const tx=media('x'), tn=media('n'), et=media('e');
+    if(tx!=null) out.tmax=+tx.toFixed(1);
+    if(tn!=null) out.tmin=+tn.toFixed(1);
+    if(et!=null) out.et0=+et.toFixed(2);
+    const fr=v.map(x=>x.n).filter(ok); if(fr.length && out.tmin!=null) out.tmin_freddo=+Math.min(out.tmin, Math.min(...fr)+1).toFixed(1);
+    out.prob=Math.round(day.prob!=null ? (day.prob+pMod)/2 : pMod);
+    return out;
+  });
 }
 export const condizioneMeteo = c => c===0?'sereno': c<=2?'poco nuvoloso': c===3?'nuvoloso': (c===45||c===48)?'nebbia': c>=95?'temporale': ((c>=71&&c<=77)||c===85||c===86)?'neve': 'pioggia';
-// j = risposta della richiesta (1), jIT = della (2) o null; oggi e ora nel fuso della posizione (j.timezone)
-export function componiMeteo(j, jIT, oggi, ora){
+// j = risposta della richiesta di base, jIT = ICON-2I ora per ora (o null), jMod = più modelli (o null);
+// oggi e ora nel fuso della posizione (j.timezone). Con più modelli vale l'ensemble, altrimenti la media con ICON-2I.
+export function componiMeteo(j, jIT, oggi, ora, jMod){
   const d=j.daily;
   let days=d.time.map((t,i)=>({date:t, cond:condizioneMeteo(d.weather_code[i]), tmax:d.temperature_2m_max[i], tmin:d.temperature_2m_min[i],
     rain:d.precipitation_sum[i]??0, prob:d.precipitation_probability_max[i], et0:d.et0_fao_evapotranspiration[i]??0, wind:d.wind_speed_10m_max[i],
     raffiche:d.wind_gusts_10m_max?.[i]??null, code:d.weather_code[i],
     sole:d.sunshine_duration?.[i]!=null && d.daylight_duration?.[i]>0 ? +(d.sunshine_duration[i]/d.daylight_duration[i]).toFixed(2) : null}));
-  if(jIT?.hourly) days=mediaModelli(days, jIT.hourly, oggi);
+  const ens=ensembleGiorni(days, jMod, oggi);
+  if(ens!==days && ens.some(d=>d.ensemble)) days=ens; else if(jIT?.hourly) days=mediaModelli(days, jIT.hourly, oggi);
   return {tz:j.timezone||'Europe/Rome', days, ...datiOrari(j.hourly, oggi, ora)};
 }
 

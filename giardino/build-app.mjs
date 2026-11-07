@@ -14,12 +14,13 @@ const app = src.replace('/*@@MODELLO@@*/', () => modello);
 const cut = app.indexOf('<div class="wrap">');
 const head = app.slice(0, cut), body = app.slice(cut).replace('<script>', () => '<script>\n' + shim + '\n</script>\n<script>');
 await mkdir(join(NET, 'public'), { recursive: true }); await mkdir(join(NET, 'netlify', 'lib'), { recursive: true });
-await writeFile(join(NET, 'public', 'index.html'), `<!DOCTYPE html>
+const pagina = `<!DOCTYPE html>
 <html lang="it">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
+<meta name="giardino-build" content="@@BUILD@@">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -35,7 +36,9 @@ ${head}</head>
 ${body}
 </body>
 </html>
-`);
+`;
+// impronta della pagina: il service worker la confronta con quella della copia salvata per sapere se è una versione nuova
+await writeFile(join(NET, 'public', 'index.html'), pagina.replace('@@BUILD@@', createHash('sha256').update(pagina).digest('hex').slice(0, 12)));
 await copyFile(join(DIR, 'modello.mjs'), join(NET, 'netlify', 'lib', 'modello.mjs'));
 // Impronta della versione del sito: cambia a ogni pubblicazione che cambia qualcosa. Il bot conta le impronte nuove del mese
 // per stimare i crediti Netlify (ogni pubblicazione costa 15 crediti).

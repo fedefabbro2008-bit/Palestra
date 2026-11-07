@@ -6,6 +6,7 @@
 //   t-<codice>    { token, secret, chat_id, username, tz, ultimo_invio, ultimo_avviso_sera, notificati }   bot Telegram
 //   w-<segreto>   { code }                   dal webhook di Telegram al codice
 import { getStore } from "@netlify/blobs";
+import { gzipSync } from "node:zlib";
 import * as M from "./modello.mjs";
 import { VERSIONE } from "./versione.mjs";
 export { M };
@@ -13,6 +14,16 @@ export { M };
 export const store = () => getStore({ name: "giardino", consistency: "strong" });
 const HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 export const reply = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { ...HEADERS, ...extra } });
+// Risposte grandi compresse (gzip) se chi chiede le accetta: Netlify non comprime da solo quelle delle funzioni. I dati
+// dell'app (piante, diario, pioggia misurata) arrivano tutti a ogni salvataggio e a ogni controllo con novità: compressi
+// pesano circa un decimo. Sotto 1,5 KB non conviene. L'app le chiede in chiaro con x-giardino-gzip: no (se non le legge bene).
+export async function comprimi(request, res) {
+  if (!res || res.headers.has("content-encoding") || request.headers.get("x-giardino-gzip") === "no" || !/\bgzip\b/i.test(request.headers.get("accept-encoding") || "")) return res;
+  const testo = await res.text(), h = new Headers(res.headers);
+  if (Buffer.byteLength(testo) < 1500) return new Response(testo, { status: res.status, headers: h });
+  h.set("content-encoding", "gzip"); h.set("vary", "accept-encoding"); h.delete("content-length");
+  return new Response(gzipSync(testo), { status: res.status, headers: h });
+}
 
 const ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 export function newToken(n = 26) { const b = new Uint8Array(n); crypto.getRandomValues(b); return Array.from(b, (x) => ALPHA[x & 31]).join(""); }
@@ -62,14 +73,14 @@ export async function meteo(lat, lon) {
   try { c = await st.get(key, { type: "json" }); } catch (e) { console.warn("cache del meteo:", e?.message); }
   if (c && ora - c.at < METEO_VALIDO && new Date(c.at).getUTCHours() === ora.getUTCHours()) { M.registraClima(lat, M.climaDa(c.met)); return c.met; }
   const u = M.urlMeteo(lat, lon);
-  // storico delle temperature (una richiesta al giorno) insieme alle previsioni, non dopo
-  const [r, rIT, temp] = await Promise.all([fetch(u.base).catch((e) => ({ ok: false, status: e?.message || "rete" })), fetch(u.it).catch(() => null),
+  // previsioni di base, più modelli insieme (ensemble) e storico dei giorni passati (una richiesta al giorno), in parallelo
+  const [r, rMod, sto] = await Promise.all([fetch(u.base).catch((e) => ({ ok: false, status: e?.message || "rete" })), fetch(u.modelli).catch(() => null),
     storicoTemperature(st, lat, lon, oraLocale(c?.met?.tz || "Europe/Rome").oggi).catch(() => null)]);
   if (!r.ok) return meteoRiserva(st, key, lat, lon, c?.met, "Open-Meteo " + r.status);
-  const j = await r.json(), jIT = rIT?.ok ? await rIT.json().catch(() => null) : null;
+  const j = await r.json(), jMod = rMod?.ok ? await rMod.json().catch(() => null) : null;
   const { oggi, ora: h } = oraLocale(j.timezone || "Europe/Rome");
-  const met = M.componiMeteo(j, jIT, oggi, h);
-  met.storico = temp;
+  const met = M.componiMeteo(j, null, oggi, h, jMod);
+  met.lat = lat; met.storico = sto?.temp || null; met.archivio = sto?.arch || null;
   M.registraClima(lat, M.climaDa(met));
   try { await st.setJSON(key, { at: ora.getTime(), met }); } catch (e) { console.warn("cache del meteo:", e?.message); }
   return met;
@@ -85,7 +96,7 @@ async function meteoRiserva(st, key, lat, lon, ultimo, errore) {
     if (!r.ok) throw new Error("MET Norway " + r.status);
     const { days, notte } = M.giorniDaMet(await r.json(), tz, lat, oggi, ora);
     if (!days.length) throw new Error("MET Norway senza dati");
-    const met = { tz, days: [...(ultimo?.days || []).filter((d) => d.date < oggi).slice(-3), ...days], suolo: null, notte, storico: ultimo?.storico || null, fonte: "MET Norway (riserva)" };
+    const met = { tz, lat, days: [...(ultimo?.days || []).filter((d) => d.date < oggi).slice(-3), ...days], suolo: null, notte, storico: ultimo?.storico || null, archivio: ultimo?.archivio || null, fonte: "MET Norway (riserva)" };
     M.registraClima(lat, M.climaDa(met));
     try { await st.setJSON(key, { at: Date.now(), met, riserva: true }); } catch {}
     return met;
@@ -102,9 +113,13 @@ async function meteoRiserva(st, key, lat, lon, ultimo, errore) {
 export const ARPAE_URL = "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl";
 export const inEmiliaRomagna = (lat, lon) => lat > 43.7 && lat < 45.15 && lon > 9.15 && lon < 12.85;
 export function leggiArpae(testo, lat, lon, preferita) {
-  const staz = new Map(), cosl = Math.cos(lat * Math.PI / 180);
+  const staz = new Map(), cosl = Math.cos(lat * Math.PI / 180), COORD = /"lon":\s*(-?\d+),\s*"lat":\s*(-?\d+)/;
   for (const l of testo.split("\n")) {
     if (!l.includes('"B13011"')) continue;
+    // le coordinate sono all'inizio della riga: le stazioni lontane si scartano senza leggere tutta la riga
+    // (prima si leggevano tutte le ~12.000 righe del file; ne servono poche decine)
+    const c = COORD.exec(l.slice(0, 240));
+    if (c && !(Math.hypot((c[2] / 1e5 - lat) * 111, (c[1] / 1e5 - lon) * 111 * cosl) <= 15)) continue;
     let o; try { o = JSON.parse(l); } catch { continue; }
     const la = o.lat / 1e5, lo = o.lon / 1e5, km = Math.hypot((la - lat) * 111, (lo - lon) * 111 * cosl);
     if (!(km <= 15)) continue;
@@ -154,20 +169,24 @@ export async function aggiornaPioggiaMisurata(st) {
     if (!testo) return;
     const c = await misureArpae(st, l.lat, l.lon, testo);
     if (!c?.stazione) continue;
-    const letto = c, giorni = giorniMisurati(c.ore, "Europe/Rome"), att = cur.data.pioggia_misurata;
+    const att = cur.data.pioggia_misurata, limite = M.addDays(M.isoDate(new Date()), -60), letto = c;
+    const giorni = { ...Object.fromEntries(Object.entries(att?.stazione === letto.stazione.nome ? att.giorni || {} : {}).filter(([d]) => d >= limite)), ...giorniMisurati(c.ore, "Europe/Rome") };
     if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome)
       await aggiorna(st, code, (d) => { d.pioggia_misurata = { stazione: letto.stazione.nome, km: letto.stazione.km, giorni, aggiornato: new Date().toISOString() }; });
   }
 }
-// Temperature medie dei 400 giorni passati (per le fasi a gradi-giorno): una richiesta al giorno, poi dall'archivio.
+// Storico dei 400 giorni passati: temperature (fasi a gradi-giorno) e pioggia, evaporazione, sole (bilancio dell'acqua).
+// Una richiesta al giorno, poi dall'archivio. Restituisce {temp, arch}.
 async function storicoTemperature(st, lat, lon, oggi) {
   const key = `c-storico-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`;
-  try { const c = await st.get(key, { type: "json" }); if (c?.giorno === oggi && c.temp) return c.temp; } catch {}
+  let c = null;
+  try { c = await st.get(key, { type: "json" }); if (c?.giorno === oggi && c.temp && c.arch) return c; } catch {}
   try {
     const r = await fetch(M.urlStorico(lat, lon, oggi));
-    if (r.ok) { const temp = M.storicoDa(await r.json()); if (Object.keys(temp).length) { await st.setJSON(key, { giorno: oggi, temp }).catch(() => {}); return temp; } }
-  } catch (e) { console.warn("storico delle temperature:", e?.message); }
-  return null;
+    if (r.ok) { const j = await r.json(), temp = M.storicoDa(j), arch = M.archivioDa(j);
+      if (Object.keys(temp).length) { const x = { giorno: oggi, temp, arch }; await st.setJSON(key, x).catch(() => {}); return x; } }
+  } catch (e) { console.warn("storico:", e?.message); }
+  return c?.temp ? c : null;
 }
 export function oraLocale(tz) {
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz || "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map((x) => [x.type, x.value]));
@@ -179,7 +198,8 @@ export function oraLocale(tz) {
 export function finePiano(pc) { let f = ""; for (const x of pc?.data?.piante || []) for (const g of x.giorni || []) if (g?.data > f) f = g.data; return f; }
 export function pianoAttivo(data, met, oggi) {
   const lat = data.location?.lat, giorni = M.conPioggiaMisurata(met.days, data.pioggia_misurata, oggi);
-  const past = giorni.filter((d) => d.date < oggi).slice(-3), fut = giorni.filter((d) => d.date >= oggi).slice(0, 7);
+  // giorni passati fino a 120: il bilancio dell'acqua parte dall'ultima innaffiatura o dall'ultimo controllo
+  const past = M.giorniPassati({ ...met, lat: met.lat ?? lat }, data.pioggia_misurata, oggi), fut = giorni.filter((d) => d.date >= oggi).slice(0, 7);
   const base = M.pianoLocale({ piante: data.plants, past, fut, eventi: data.eventi, oggi, lat, vacanza: data.vacanza, suolo: met.suolo });
   const pc = data.piano_claude;
   if (pc?.data?.piante?.some((x) => x.giorni?.some((g) => g.data === oggi))) {
@@ -285,14 +305,23 @@ export function messaggioSettimana(data, ap) {
   L.push(`\n<i>👆 = controlla con un dito. Dosi in bicchieri da ${fmt(imp.bicchiere, 2)} L e annaffiatoi da ${fmt(imp.annaffiatoio)} L nel messaggio del giorno.</i>`);
   return L.join("\n");
 }
-export function riepilogoSettimana(data, oggi) {
+// La correzione del consumo come la calcola il bilancio dell'acqua (la stessa che mostra l'app), anche quando il piano non
+// è stato appena calcolato con questi eventi (riepilogo della domenica, connettore dopo una registrazione).
+// Senza meteo resta la regola semplice.
+export function calibrazioneVera(data, met, pid, oggi) {
+  const p = data?.plants?.find((x) => x.id === pid);
+  if (!p || !Array.isArray(met?.days)) return M.calibrazione(data?.eventi || [], pid, oggi);
+  const lat = data.location?.lat, past = M.giorniPassati({ ...met, lat: met.lat ?? lat }, data.pioggia_misurata, oggi);
+  return M.bilancioPassato(p, M.params(p, { oggi, lat }), past, data.eventi || [], oggi).k.calib;
+}
+export function riepilogoSettimana(data, oggi, met) {
   const lat = data.location?.lat, da = M.addDays(oggi, -6);
   const L = [`📊 <b>La settimana del giardino</b> (${esc(dl(da))} – ${esc(dl(oggi))})`];
   let tot = 0;
   for (const p of M.pianteOrdinate(data.plants)) {
     const e = M.eventiValidi(data.eventi, p.id).filter((x) => x.data >= da && x.data <= oggi), f = e.filter((x) => x.tipo === "fatto" || x.tipo === "secco");
     const litri = f.reduce((s, x) => s + (+x.litri || 0), 0); tot += litri;
-    const um = e.filter((x) => x.tipo === "umido").length, se = e.filter((x) => x.tipo === "secco").length, cal = M.calibrazione(data.eventi, p.id, oggi);
+    const um = e.filter((x) => x.tipo === "umido").length, se = e.filter((x) => x.tipo === "secco").length, cal = calibrazioneVera(data, met, p.id, oggi);
     let nota = ""; if (um) nota += ` · ${um}× era umida`; if (se) nota += ` · ${se}× era secca`; if (Math.abs(cal - 1) > 0.01) nota += ` · ora conto il ${Math.round(Math.abs(cal - 1) * 100)}% ${cal < 1 ? "in meno" : "in più"}`;
     L.push(`• <b>${esc(p.nome)}</b>: ${f.length} ${f.length === 1 ? "volta" : "volte"}, ${fmt(litri)} L${nota}`);
   }
@@ -322,9 +351,9 @@ export function messaggioFinePiano(fine, oggi) {
   return { testo, tastiera: { inline_keyboard: [[{ text: "✨ Apri Claude", url }]] } };
 }
 /* ---------------- Crediti Netlify (stima) ----------------
-   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot, Claude e Siri, con
-   questo traffico, pochi crediti al mese (stima prudente: 5). Le pubblicazioni si contano dalle impronte di versione viste. */
-export const CREDITI = { limite: 300, pubblicazione: 15, uso: 5, avviso: 240 };
+   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot (ogni ora), Claude e Siri
+   ne consumano 10-20 al mese, misurati su Netlify (stima: 15). Le pubblicazioni si contano dalle impronte di versione viste. */
+export const CREDITI = { limite: 300, pubblicazione: 15, uso: 15, avviso: 240 };
 export async function crediti(st) {
   const mese = oraLocale("Europe/Rome").oggi.slice(0, 7), key = "u-" + mese;
   const u = (await st.get(key, { type: "json" })) || { versioni: [], avvisato: false };

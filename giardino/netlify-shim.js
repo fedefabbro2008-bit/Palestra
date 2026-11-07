@@ -16,9 +16,26 @@ const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) e
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null};
 
 /* ---------------- server ---------------- */
+// Le risposte grandi arrivano compresse (gzip). Se una non arriva o non si legge riprova subito in chiaro; se la colpa è
+// della compressione (risposta illeggibile, o due volte di fila) per una settimana le chiede in chiaro: un attimo senza
+// rete non la spegne. Una risposta «ok» senza dati non vale mai: cancellerebbe quelli sul telefono.
 async function api(method, body, op, keepalive, extra){
-  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
-  const j=await r.json().catch(()=>null);
+  const prova=async chiaro=>{
+    const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(chiaro?{'x-giardino-gzip':'no'}:{}),...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
+    const t=await r.text();   // interrotta (rete, o compressione che il browser non decodifica): errore di rete
+    let j=null; try{ j=JSON.parse(t); }catch(e){}
+    if(r.ok&&(j==null||typeof j!=='object')) throw Object.assign(new TypeError('risposta del server illeggibile'),{illeggibile:true});
+    return [r,j];
+  };
+  const chiaro=Date.now()-(+LS('inChiaro')||0)<7*864e5;
+  let r,j;
+  try{ [r,j]=await prova(chiaro); if(!chiaro&&LS('gzipKo')) LSset('gzipKo',null); }
+  catch(e){
+    if(chiaro||!(e instanceof TypeError)||navigator.onLine===false) throw e;
+    [r,j]=await prova(true);
+    const ko=(+LS('gzipKo')||0)+1;
+    if(e.illeggibile||ko>=2){ LSset('inChiaro',String(Date.now())); LSset('gzipKo',null); } else LSset('gzipKo',String(ko));
+  }
   if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')'));
   return j;
 }
@@ -41,7 +58,7 @@ let misurata=null;
 function conMisurata(m){
   if(!m||!Array.isArray(m.days)||!misurata) return m;
   const oggi=new Intl.DateTimeFormat('en-CA',{timeZone:m.tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km}};
+  return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km,giorni:misurata.giorni||{}}};
 }
 let primo=null;
 // Scarica i dati solo se sono cambiati: l'app dice quale versione ha già (rev e ora del salvataggio) e, se è la stessa,
@@ -95,34 +112,47 @@ function diffGiardino(nuovo){
 }
 
 /* ---------------- meteo ---------------- */
-// stesse richieste e stessi calcoli del bot (urlMeteo, componiMeteo nel modello), le due richieste in parallelo
+// stesse richieste e stessi calcoli del bot (urlMeteo, componiMeteo nel modello), in parallelo: previsioni di base,
+// più modelli insieme (ensemble) e storico dei giorni passati
 async function meteo(lat,lon){
   const u=urlMeteo(lat,lon);
-  // lo storico delle temperature (una volta al giorno) parte insieme alle previsioni, non dopo
-  const [r,rIT,temp]=await Promise.all([fetch(u.base),fetch(u.it).catch(()=>null),storico(lat,lon,isoDate(new Date())).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
-  const j=await r.json(), jIT=rIT&&rIT.ok?await rIT.json().catch(()=>null):null;
+  const [r,rMod,st]=await Promise.all([fetch(u.base),fetch(u.modelli).catch(()=>null),storico(lat,lon,isoDate(new Date())).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
+  const j=await r.json(), jMod=rMod&&rMod.ok?await rMod.json().catch(()=>null):null;
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
   const oggi=p.year+'-'+p.month+'-'+p.day;
-  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,jIT,oggi,+p.hour),storico:temp};
+  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,null,oggi,+p.hour,jMod),storico:st?.temp||null,archivio:st?.arch||null};
 }
-// temperature medie dei 400 giorni passati, per le fasi a gradi-giorno: scaricate una volta al giorno
+// storico dei 400 giorni passati (temperature per le fasi; pioggia, evaporazione e sole per il bilancio dell'acqua):
+// scaricato una volta al giorno. {temp, arch}
 async function storico(lat,lon,oggi){
-  const c=LSjson('storico'), qui=c&&c.lat===lat&&c.lon===lon&&c.temp;
-  if(qui&&c.giorno===oggi) return c.temp;
-  const scarica=fetch(urlStorico(lat,lon,oggi)).then(r=>r.ok?r.json():null).then(j=>{ const temp=j?storicoDa(j):{}; if(Object.keys(temp).length){ LSset('storico',JSON.stringify({giorno:oggi,lat,lon,temp})); return temp; } return null; }).catch(()=>null);
+  const c=storicoMem&&storicoMem.lat===lat&&storicoMem.lon===lon ? storicoMem : (storicoMem=LSjson('storico')), qui=c&&c.lat===lat&&c.lon===lon&&c.temp&&c.arch;
+  if(qui&&c.giorno===oggi) return c;
+  const scarica=fetch(urlStorico(lat,lon,oggi)).then(r=>r.ok?r.json():null).then(j=>{ const temp=j?storicoDa(j):{}, arch=j?archivioDa(j):{};
+    if(Object.keys(temp).length){ const x={giorno:oggi,lat,lon,temp,arch}; storicoMem=x; LSset('storico',JSON.stringify(x)); return x; } return null; }).catch(()=>null);
   // c'è già quello di ieri: si usa subito e il nuovo arriva per la prossima volta (l'avvio non aspetta)
-  if(qui) return c.temp;
+  if(qui) return c;
   return (await scarica)||null;
+}
+// storico e archivio (~25 KB) stanno una volta sola nella memoria del telefono, in 'storico': il meteo salvato non li ripete
+let storicoMem=null;
+const senzaStorico = m => { if(!m) return m; const {storico, archivio, ...r}=m; return r; };
+function conStorico(m){
+  if(!m) return m;
+  const s=storicoMem&&storicoMem.lat===m.lat&&storicoMem.lon===m.lon ? storicoMem : (storicoMem=LSjson('storico'));
+  return s&&s.lat===m.lat&&s.lon===m.lon&&s.temp ? {...m, storico:s.temp, archivio:s.arch||null} : m;
 }
 async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
-  const c=LSjson('meteo');
+  const c=conStorico(LSjson('meteo'));
   // previsioni valide un'ora e solo nello stesso giorno: il polling ogni 2 minuti non le riscarica
   if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=conMisurata(c); return nuovo; }
-  try{ const m=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(m)); docs.meteo_bot=conMisurata(m); return true; }catch(e){}
+  try{ const m=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(senzaStorico(m))); docs.meteo_bot=conMisurata(m); return true; }catch(e){}
   // Open-Meteo non risponde dal telefono: il meteo dal server (Open-Meteo dal server, o la riserva MET Norway)
   try{ const m=await api('GET',null,'meteo');
-    if(m&&Array.isArray(m.days)&&m.days.length){ const x={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString()}; LSset('meteo',JSON.stringify(x)); docs.meteo_bot=conMisurata(x); return true; } }catch(e){}
+    if(m&&Array.isArray(m.days)&&m.days.length){ const x={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString(),lat:loc.lat,lon:loc.lon};
+      // storico dal server (Open-Meteo non risponde dal telefono): lo si tiene per il bilancio dell'acqua e le fasi
+      if(x.storico&&x.archivio&&!(storicoMem&&storicoMem.lat===loc.lat&&storicoMem.lon===loc.lon&&storicoMem.arch)){ storicoMem={giorno:isoDate(new Date()),lat:loc.lat,lon:loc.lon,temp:x.storico,arch:x.archivio}; LSset('storico',JSON.stringify(storicoMem)); }
+      LSset('meteo',JSON.stringify(senzaStorico(x))); docs.meteo_bot=conMisurata(x); return true; } }catch(e){}
   const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=conMisurata(c); stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo;
 }
 
@@ -152,7 +182,7 @@ async function aggiorna(forza){
   if(inAttesa) await svuota(); else await coda;
   const dati=await scarica(), met=await caricaMeteo(!!forza);
   // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
-  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata(LSjson('meteo')||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
+  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata(conStorico(LSjson('meteo'))||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
   if(met||forza) emit('meteo_bot');
   if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();
@@ -179,8 +209,24 @@ function salvaPrimaDiUscire(){ Promise.resolve(window.salvaSubito?.()).then(()=>
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') salvaPrimaDiUscire(); else aggiorna(false).catch(()=>{}); });
 setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },300000);
 window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
-if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 window.addEventListener('pagehide',salvaPrimaDiUscire);
+// versione nuova: il service worker apre subito la copia salvata e intanto scarica quella del sito; se è cambiata lo dice qui.
+// Appena aperta (meno di 3 secondi, niente tocchi) l'app si ricarica subito; altrimenti la prossima volta che ci torni,
+// se non hai una finestra aperta o un campo in scrittura. Al massimo una volta al minuto (niente ricariche a catena).
+if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost')){
+  const avvio=Date.now(); let toccata=false, nuova=false;
+  for(const t of ['pointerdown','keydown']) addEventListener(t,()=>{ toccata=true; },{capture:true,passive:true});
+  const libera=()=>![...document.querySelectorAll('.sheet')].some(x=>!x.hidden) && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||'');
+  const ricarica=()=>{
+    let prima=0; try{ prima=+sessionStorage.getItem('ricaricata')||0; }catch{}
+    if(Date.now()-prima<60000) return;
+    try{ sessionStorage.setItem('ricaricata',String(Date.now())); }catch{}
+    nuova=false; Promise.resolve(window.salvaSubito?.()).catch(()=>{}).then(()=>location.reload());
+  };
+  navigator.serviceWorker.addEventListener('message',e=>{ if(e.data?.tipo!=='nuova-versione') return; nuova=true; if(!toccata&&Date.now()-avvio<3000&&libera()) ricarica(); });
+  document.addEventListener('visibilitychange',()=>{ if(nuova&&document.visibilityState==='visible'&&libera()) ricarica(); });
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
 
 const caps={ db:{doc, collection:()=>{ throw new Error('non disponibile'); }}, user:{ id:async()=>'locale', me:async()=>({id:'locale',name:''}) }, mcp:{} };
 window.claude={ use:async n=>caps[n]??null };

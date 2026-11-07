@@ -295,3 +295,70 @@ test("backup su iPhone: si condivide solo il file JSON (niente .txt con il titol
   assert.match(c.file[0][0], /^giardino-backup-\d{4}-\d{2}-\d{2}\.json$/);
   assert.equal(c.file[0][1], "application/json");
 });
+
+test("schede: cambiano al tocco anche subito dopo un'altra (animazione in corso), una volta sola", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const ctx = await contesto(browser), page = await ctx.newPage();
+  const errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await page.evaluate(() => { window.__cambi = 0; const o = window.switchView; window.switchView = (v) => { window.__cambi++; return o(v); }; });
+  const visibile = (v) => page.evaluate((v) => !document.getElementById("view-" + v).hidden, v);
+  await page.tap("#tab-piante");
+  assert.ok(await visibile("piante")); assert.equal(await page.evaluate(() => window.__cambi), 1, "tocco: un cambio solo (il click che segue non conta)");
+  await page.tap("#tab-diario");   // la vista di prima sta ancora entrando
+  assert.ok(await visibile("diario"), "secondo tocco durante l'animazione");
+  await page.waitForTimeout(800);
+  assert.equal(await page.evaluate(() => window.__cambi), 2);
+  await page.click("#tab-oggi");   // mouse o tastiera: il click
+  assert.ok(await visibile("oggi")); assert.equal(await page.evaluate(() => window.__cambi), 3);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("nav.tabs")).touchAction), "none", "la barra non fa scorrere né zoomare");
+  assert.deepEqual(errori, []);
+});
+
+test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura torna dov'era", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-FINESTRA-METEO-ABCDEF";
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": CODE, "content-type": "application/json" },
+    body: JSON.stringify({ changes: { location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 } } }) }));
+  const ctx = await contesto(browser, { viewport: { width: 390, height: 600 } });
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await quando(page, () => document.querySelector("[data-wxd]"));
+  await page.evaluate(() => document.body.appendChild(Object.assign(document.createElement("div"), { id: "lungo", style: "height:2000px" })));   // pagina lunga
+  await page.evaluate(() => window.scrollTo(0, 120)); await page.waitForTimeout(100);
+  await page.evaluate(() => document.querySelector("[data-wxd]").click());
+  await quando(page, () => !document.getElementById("wxSheet").hidden);
+  assert.equal(await page.evaluate(() => document.body.style.position), "fixed", "pagina ferma");
+  assert.equal(await page.evaluate(() => document.body.style.top), "-120px", "nello stesso punto");
+  await page.mouse.move(195, 80); await page.mouse.wheel(0, 400); await page.waitForTimeout(200);
+  assert.equal(await page.evaluate(() => window.scrollY), 0, "la rotellina non fa scorrere la pagina sotto");
+  await page.click("#wxChiudi");
+  await quando(page, () => document.getElementById("wxSheet").hidden);
+  assert.equal(await page.evaluate(() => document.body.style.position), "");
+  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "alla chiusura torna dov'era");
+  assert.deepEqual(errori, []);
+});
+
+test("storico salvato una volta sola sul telefono e usato per il bilancio dell'acqua", async (t) => {
+  const { addDays } = await import("../netlify/lib/modello.mjs");
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-STORICO-UNA-VOLTA-ABCDEF";
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": CODE, "content-type": "application/json" },
+    body: JSON.stringify({ changes: { location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 },
+      plants: [{ id: "su", nome: "Aloe", specie: "succulenta", fase: "auto", colt: "vaso", vaso: 2, luce: 4, dove: "interno" }] } }) }));
+  const ctx = await contesto(browser);
+  const time = [...Array(400)].map((_, i) => addDays(OGGI, i - 400)), n = (v) => time.map(() => v);
+  await ctx.route("https://historical-forecast-api.open-meteo.com/**", (r) => r.fulfill(json({ daily: { time, temperature_2m_mean: n(11), temperature_2m_max: n(16), temperature_2m_min: n(6),
+    precipitation_sum: n(0), et0_fao_evapotranspiration: n(1.2), sunshine_duration: n(18000), daylight_duration: n(36000), wind_speed_10m_max: n(8) } })));
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await quando(page, () => (localStorage.getItem("giardino:net:storico") || "").includes('"arch"') && localStorage.getItem("giardino:net:meteo"));
+  const r = await page.evaluate(() => { const m = JSON.parse(localStorage.getItem("giardino:net:meteo")), s = JSON.parse(localStorage.getItem("giardino:net:storico"));
+    return { meteoHaStorico: "storico" in m || "archivio" in m, arch: Object.keys(s.arch).length, passati: pastDays().length }; });
+  assert.equal(r.meteoHaStorico, false, "il meteo salvato non ripete lo storico");
+  assert.equal(r.arch, 400);
+  assert.ok(r.passati >= 100, "bilancio con " + r.passati + " giorni passati");
+  assert.deepEqual(errori, []);
+});
