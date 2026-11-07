@@ -46,8 +46,11 @@ export function buildBackup(data, now = Date.now()) {
   const days = data && data.days && typeof data.days === "object" ? data.days : {};
   const isos = Object.keys(logs).filter((k) => Array.isArray(logs[k]) && logs[k].length).sort();
   const n = isos.reduce((a, k) => a + logs[k].length, 0);
-  const file = { type: "palestra-backup", schemaVersion: 2, exportedAt: new Date(now).toISOString(), source: "telegram",
-    days, logs, settings: data && data.settings && typeof data.settings === "object" ? data.settings : {} };
+  // impostazioni complete come in «Backup completo»: tutte quelle del dispositivo che ha salvato per ultimo, con sopra
+  // quelle sincronizzate (tema, sfondo, testo per Claude…), che valgono per tutti i dispositivi
+  const obj = (o) => o && typeof o === "object" && !Array.isArray(o) ? o : {};
+  const settings = { ...obj(data && data.allSettings), ...obj(data && data.settings) };
+  const file = { type: "palestra-backup", schemaVersion: 2, exportedAt: new Date(now).toISOString(), source: "telegram", days, logs, settings };
   const nDays = Object.keys(days).length;
   const last = isos.length ? isos[isos.length - 1] : null;
   const caption = `Backup Palestra · ${dmy(now)}\n${n === 1 ? "1 allenamento" : n + " allenamenti"}${last ? " · ultimo " + last.slice(8, 10) + "/" + last.slice(5, 7) : ""} · scheda di ${nDays === 1 ? "1 giornata" : nDays + " giornate"}`

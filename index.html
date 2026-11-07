@@ -8509,6 +8509,8 @@ function stableStr(v){
 }
 function hsh(str){ let h = 0x811c9dc5; for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h>>>0).toString(36)+'.'+str.length.toString(36); }
 const sessHash = s=> hsh(stableStr(compactSession(s)));
+/* impostazioni intere per il backup su Telegram: cambiano spesso solo giornata di turno ed esportazione, che non contano */
+function fullSetHash(st){ const o = Object.assign({}, st); delete o.lastDay; delete o.lastExportAt; return hsh(stableStr(o)); }
 function syncSetPick(st){ const o = {}; SYNC_SET_KEYS.forEach(k=>{ if(st[k]!==undefined) o[k] = st[k]; }); return o; }
 const setHash = st=> hsh(stableStr(syncSetPick(st)));
 const daysHash = d=> hsh(stableStr(d));
@@ -8523,7 +8525,11 @@ function cleanSyncCode(raw){ const c = String(raw||'').toUpperCase().replace(/[^
 function syncNoteChange(key){
   if(!sync || !sync.code || syncApplying) return;
   if(key==='days') sync.daysAt = Date.now();
-  else if(key==='settings'){ const h = setHash(state.settings); if(h===sync.setHash) return; sync.setHash = h; sync.setAt = Date.now(); }
+  else if(key==='settings'){
+    const h = setHash(state.settings), f = fullSetHash(state.settings);
+    if(h===sync.setHash && f===sync.fullHash) return;   // niente che vada sul server
+    if(h!==sync.setHash){ sync.setHash = h; sync.setAt = Date.now(); }
+  }
   saveSync(); syncSoon();
 }
 function syncSoon(ms){ clearTimeout(syncTimer); syncTimer = setTimeout(()=> syncNow(), ms==null ? 2500 : ms); }
@@ -8621,12 +8627,12 @@ function syncLocalChanged(){
   const b = sync.base;
   if(!b || !b.logs || daysHash(state.days)!==b.days || setHash(state.settings)!==b.set) return true;
   const L = flatLogs(state.logs), ids = Object.keys(L);
-  return ids.length!==Object.keys(b.logs).length || ids.some(id=> b.logs[id]!==L[id].h);
+  return fullSetHash(state.settings)!==sync.fullHash || ids.length!==Object.keys(b.logs).length || ids.some(id=> b.logs[id]!==L[id].h);
 }
-function syncRememberBase(rev, wid, etag){
+function syncRememberBase(rev, wid, etag, pushed){
   const logs = Object.create(null); Object.values(flatLogs(state.logs)).forEach(x=>{ logs[x.s.id] = x.h; });
   sync.base = { logs, days:daysHash(state.days), set:setHash(state.settings) };
-  sync.rev = rev; sync.wid = wid || null; sync.etag = etag || null; sync.lastOk = Date.now(); sync.lastErr = null; sync.joining = false;
+  sync.rev = rev; sync.wid = wid || null; sync.etag = etag || null; sync.fullHash = pushed ? fullSetHash(state.settings) : sync.fullHash; sync.lastOk = Date.now(); sync.lastErr = null; sync.joining = false;
   saveSync();
 }
 async function syncNow(opts){
@@ -8662,18 +8668,19 @@ async function syncNow(opts){
         if(!yes) m = syncMerge(remote, { join: sync.joining, keepDeleted:true });
       }
       if(m.pull && syncApply(m)) m.push = true;
+      if(fullSetHash(state.settings)!==sync.fullHash) m.push = true;   // impostazioni del backup cambiate qui
       if(m.claudeLost) infoToast('Modifiche di Claude alla scheda non applicate: qui l\'hai cambiata dopo', 5000, 'warn');
       if(remote && remote.claude && num(remote.claude.at) > num(sync.claudeSeen)) sync.claudeSeen = num(remote.claude.at);
       if(!m.push){ syncRememberBase(num(remote.rev), remote.wid, remote.etag); saved = true; break; }
       const wid = Date.now().toString(36)+Math.random().toString(36).slice(2,10);
       const body = JSON.stringify({ baseRev: direct ? num(sync.rev) : num(remote.rev), logs: compactLogs(state.logs), days: state.days, daysAt: num(sync.daysAt),
-                                    settings: syncSetPick(state.settings), setAt: num(sync.setAt), wid });
+                                    settings: syncSetPick(state.settings), setAt: num(sync.setAt), allSettings: state.settings, wid });
       r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body, cache:'no-store' });
       if(r.status===409){ remote = await r.json(); direct = false; continue; }   // un altro dispositivo ha appena salvato: si riunisce
       if(r.status===413) throw new Error('big');
       if(!r.ok) throw new Error('http '+r.status);
       const j = await r.json();
-      syncRememberBase(num(j.rev), j.wid || wid, j.etag);
+      syncRememberBase(num(j.rev), j.wid || wid, j.etag, true);
       saved = true;
     }
     if(!saved) throw new Error('busy');   // altri dispositivi salvano di continuo: si riprova fra poco

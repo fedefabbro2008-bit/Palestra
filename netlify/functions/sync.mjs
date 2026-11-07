@@ -177,6 +177,10 @@ export default async (request) => {
     setAt: Number(body.setAt) || 0,
     wid: typeof body.wid === "string" ? body.wid.slice(0, 40) : null,   // chi ha scritto: l'app riconosce se la versione è davvero la sua
     // l'ultima modifica di Claude alla scheda (mcp.mjs): resta, l'app la mostra solo finché la scheda è quella di Claude
+    // tutte le impostazioni del dispositivo che ha salvato (anche quelle che non si sincronizzano: timer, recuperi,
+    // notifiche…): servono solo al backup su Telegram, che così è uguale a «Backup completo»
+    allSettings: body.allSettings && typeof body.allSettings === "object" && !Array.isArray(body.allSettings) ? body.allSettings
+      : (current && current.allSettings && typeof current.allSettings === "object" ? current.allSettings : undefined),
     claude: current && current.claude && typeof current.claude === "object" && !Array.isArray(current.claude) ? current.claude : undefined,
   };
   let res;
