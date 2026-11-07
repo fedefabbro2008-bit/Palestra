@@ -1351,9 +1351,10 @@ function ritmoT(T, g){
 // ritmo di un giorno {t, tmin?, tmax?}: con minima e massima, media dei ritmi ora per ora; con la sola media, alla media
 function ritmoGiorno(x, g){
   if(x?.tmin==null || x?.tmax==null || !(x.tmax>=x.tmin)) return ritmoT(x?.t, g);
+  // 12 temperature (ogni 2 ore) bastano: la sinusoide è simmetrica, 24 darebbero lo stesso risultato
   const m=(x.tmin+x.tmax)/2, a=(x.tmax-x.tmin)/2; let s=0;
-  for(let h=0;h<24;h++) s+=ritmoT(m+a*Math.sin((h+0.5)*Math.PI/12), g);
-  return s/24;
+  for(let h=0;h<12;h++) s+=ritmoT(m+a*Math.sin((h+0.5)*Math.PI/12-Math.PI/2), g);
+  return s/12;
 }
 // ore di luce (dall'alba al tramonto) in un giorno a una latitudine
 function durataGiorno(iso, lat){
@@ -2581,7 +2582,7 @@ function apriMeteo(data){
   const c=(et,v,nota)=>`<div class="wxd-c"><span class="eyebrow">${esc(et)}</span><b>${v}</b>${nota?`<small>${esc(nota)}</small>`:''}</div>`;
   const evap=d.et0!=null?(d.et0<1?'poca, terra che resta umida':d.et0<3?'normale':d.et0<5?'alta: i vasi si asciugano in fretta':'molto alta: controlla i vasi piccoli'):'';
   const vento=d.wind!=null?(d.wind<15?'debole':d.wind<30?'moderato':d.wind<50?'forte: lega le piante alte':'molto forte: metti al riparo i vasi'):'';
-  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.ensemble?'media di '+d.rain_modelli.length+' modelli ('+fmt(Math.min(...d.rain_modelli),1)+'–'+fmt(Math.max(...d.rain_modelli),1)+' mm)':d.rain_modelli?'media di due modelli ('+d.rain_modelli.map(x=>fmt(x,1)).join(' e ')+' mm)':'';
+  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.ensemble?(Math.max(...d.rain_modelli)>0?'media di '+d.rain_modelli.length+' modelli ('+fmt(Math.min(...d.rain_modelli),1)+'–'+fmt(Math.max(...d.rain_modelli),1)+' mm)':'nessuno dei '+d.rain_modelli.length+' modelli la prevede'):d.rain_modelli?'media di due modelli ('+d.rain_modelli.map(x=>fmt(x,1)).join(' e ')+' mm)':'';
   setHTML($('#wxGrid'),[
     c('Massima',d.tmax!=null?fmt(d.tmax,0)+'°':'–'),
     c('Minima',d.tmin!=null?fmt(d.tmin,0)+'°':'–',d.tmin!=null&&d.tmin<=2?'rischio gelo':d.tmin!=null&&d.tmin<=6?'notte fredda':''),

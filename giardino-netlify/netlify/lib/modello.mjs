@@ -256,9 +256,10 @@ export function ritmoT(T, g){
 // ritmo di un giorno {t, tmin?, tmax?}: con minima e massima, media dei ritmi ora per ora; con la sola media, alla media
 export function ritmoGiorno(x, g){
   if(x?.tmin==null || x?.tmax==null || !(x.tmax>=x.tmin)) return ritmoT(x?.t, g);
+  // 12 temperature (ogni 2 ore) bastano: la sinusoide è simmetrica, 24 darebbero lo stesso risultato
   const m=(x.tmin+x.tmax)/2, a=(x.tmax-x.tmin)/2; let s=0;
-  for(let h=0;h<24;h++) s+=ritmoT(m+a*Math.sin((h+0.5)*Math.PI/12), g);
-  return s/24;
+  for(let h=0;h<12;h++) s+=ritmoT(m+a*Math.sin((h+0.5)*Math.PI/12-Math.PI/2), g);
+  return s/12;
 }
 // ore di luce (dall'alba al tramonto) in un giorno a una latitudine
 export function durataGiorno(iso, lat){
