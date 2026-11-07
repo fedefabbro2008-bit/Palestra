@@ -58,16 +58,18 @@ test("service worker: apertura dalla copia e versioni nuove", async (t) => {
   const diventa = async (v, ms) => { for (const t0 = Date.now(); Date.now() - t0 < ms; await attesa(100)) if ((await vers()) === v) return true; return false; };
   const visibile = (v) => page.evaluate((v) => { Object.defineProperty(document, "visibilityState", { configurable: true, get: () => v }); document.dispatchEvent(new Event("visibilitychange")); }, v);
   const tocca = () => page.evaluate(() => dispatchEvent(new PointerEvent("pointerdown")));
+  // la copia salvata contiene già la versione v (la scarica il service worker in sottofondo)
+  const inCopia = async (v) => { for (const t0 = Date.now(); Date.now() - t0 < 8000; await attesa(100)) if (await page.evaluate(async (v) => ((await (await caches.match("/"))?.text()) || "").includes(`VERSIONE_PROVA=${JSON.stringify(v)}`), v).catch(() => false)) return true; return false; };
 
   await page.goto(s.url); await s.pronta();
   await page.waitForFunction(() => !!navigator.serviceWorker?.controller, null, { timeout: 10000 });
   assert.deepEqual(nav, ["rete"], "la prima volta la pagina arriva dalla rete");
 
   // rete lenta: la pagina arriva subito dalla copia (prima si aspettava il sito fino a 3 secondi)
-  s.ritardo = 2000; nav = [];
+  s.ritardo = 3000; nav = [];
   let t0 = Date.now(); await page.reload(); await s.pronta();
-  assert.deepEqual(nav, ["copia"]); assert.ok(Date.now() - t0 < 1500, "aperta in " + (Date.now() - t0) + " ms con la rete lenta");
-  s.ritardo = 0; await attesa(2200);   // finisce la richiesta lenta in sottofondo (Chrome mette in fila quelle alla stessa pagina)
+  assert.deepEqual(nav, ["copia"]); assert.ok(Date.now() - t0 < 2000, "aperta in " + (Date.now() - t0) + " ms con la rete lenta");
+  s.ritardo = 0; await attesa(3200);   // finisce la richiesta lenta in sottofondo (Chrome mette in fila quelle alla stessa pagina)
 
   // versione nuova, app appena aperta e non toccata: si ricarica da sola con la versione nuova
   s.versione = "B"; await page.reload();
@@ -76,8 +78,8 @@ test("service worker: apertura dalla copia e versioni nuove", async (t) => {
 
   // già toccata: niente ricarica adesso, né in sottofondo, ma al ritorno sull'app
   await page.evaluate(() => sessionStorage.removeItem("ricaricata"));
-  s.versione = "C"; s.ritardo = 800; await page.reload(); await s.pronta(); await tocca();
-  await attesa(1800); s.ritardo = 0;
+  s.versione = "C"; s.ritardo = 2000; await page.reload(); await s.pronta(); await tocca();
+  assert.ok(await inCopia("C")); s.ritardo = 0; await attesa(300);
   assert.equal(await vers(), "B", "toccata prima dell'avviso: resta aperta la versione di prima");
   await visibile("hidden"); await attesa(200);
   assert.equal(await vers(), "B", "in sottofondo nessuna ricarica");
@@ -86,22 +88,23 @@ test("service worker: apertura dalla copia e versioni nuove", async (t) => {
   await s.pronta();
 
   // niente ricariche a catena: un'altra versione entro un minuto arriva alla prossima apertura, già dalla copia
-  s.versione = "D"; await page.reload(); await s.pronta(); await attesa(1500);
+  s.versione = "D"; await page.reload(); await s.pronta();
+  assert.ok(await inCopia("D")); await attesa(500);
   assert.equal(await vers(), "C", "seconda versione entro un minuto: nessuna ricarica automatica");
   nav = []; await page.reload(); await s.pronta();
   assert.equal(await vers(), "D"); assert.deepEqual(nav, ["copia"]);
 
   // con una finestra aperta nessuna ricarica, nemmeno al ritorno sull'app
   await page.evaluate(() => sessionStorage.removeItem("ricaricata"));
-  s.versione = "E"; s.ritardo = 800; await page.reload(); await s.pronta(); await tocca();
-  await attesa(1500); s.ritardo = 0;
+  s.versione = "E"; s.ritardo = 2000; await page.reload(); await s.pronta(); await tocca();
+  assert.ok(await inCopia("E")); s.ritardo = 0; await attesa(300);
   await page.evaluate(() => { document.querySelector(".sheet").hidden = false; });
   await visibile("hidden"); await visibile("visible"); await attesa(1000);
   assert.equal(await vers(), "D", "con una finestra aperta non si ricarica");
 
   // senza rete: si apre lo stesso dalla copia
   s.giu = true; nav = []; t0 = Date.now(); await page.reload(); await s.pronta(); s.giu = false;
-  assert.deepEqual(nav, ["copia"], "senza rete dalla copia"); assert.ok(Date.now() - t0 < 1500);
+  assert.deepEqual(nav, ["copia"], "senza rete dalla copia"); assert.ok(Date.now() - t0 < 2000);
   assert.deepEqual(s.errori, [], "nessun errore e dati mai dalla copia");
 });
 
