@@ -442,6 +442,7 @@ nav.tabs .tab:active{transform:scale(.94)}
    Meteo vivo, pillola che scorre nella barra, spruzzo d'acqua su «Fatto», festa quando hai finito, anelli e livelli
    che si riempiono, riquadri che compaiono scorrendo, piante che ondeggiano piano. */
 nav.tabs .in{position:relative}
+nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 .tab-pill{position:absolute;top:0;bottom:0;left:0;width:25%;border-radius:25px;background:var(--glass-pill);box-shadow:inset 0 1px 0 var(--glass-hi-soft);
   z-index:-1;transform:translateX(calc(var(--i,0)*100%));pointer-events:none}
 .in:has(#tab-piante[aria-selected="true"]) .tab-pill{--i:1}
@@ -1063,15 +1064,23 @@ function wxDays(){
   return (w?.days||[]).filter(d=>d&&d.date).slice().sort((a,b)=>a.date<b.date?-1:1).map(d=>({...d, et0: d.et0!=null ? d.et0 : et0Hargreaves(d, lat)}));
 }
 const futDays = () => { const t=today(); return wxDays().filter(d=>d.date>=t && d.tmax!=null && d.tmin!=null).slice(0,7); };
-const pastDays = () => { const t=today(); return wxDays().filter(d=>d.date<t && d.date>=addDays(t,-3) && d.tmax!=null); };
+// giorni passati per il bilancio dell'acqua: fino a 120 giorni dallo storico (meteo automatico, anche se oggi vale quello
+// scritto a mano), con la pioggia misurata dalla stazione ARPAE dove c'è
+const pastDays = () => { const w=activeWeather(), wb=W.bot;
+  return giorniPassati({archivio:w?.archivio||wb?.archivio||null, days:wxDays().filter(d=>d.tmax!=null), lat:S.location?.lat}, w?.misurata||wb?.misurata||null, today()); };
 
 /* ================= Piano ================= */
 const ctx = () => ({oggi:today(), lat:S.location?.lat, eventi:allEvents()});
+// il piano si ricalcola solo se cambia qualcosa che conta (prima: a ogni ridisegno, più volte per ridisegno)
+let pianoMemo={k:'',v:null};
 function localPlan(){
   const fut=futDays(); if(!fut.length||!S.plants.length) return null;
-  const w=activeWeather();
-  const pl=pianoLocale({piante:S.plants, past:pastDays(), fut, eventi:allEvents(), oggi:today(), lat:S.location?.lat, vacanza:S.vacanza, suolo:w?.source==='open-meteo'?w.suolo??null:null});
-  return pl;
+  const w=activeWeather(), ev=S.eventi_app, suolo=w?.source==='open-meteo'?w.suolo??null:null;
+  const k=[today(), w?.updatedAt, JSON.stringify(fut), w?.archivio?Object.keys(w.archivio).length:0, JSON.stringify(w?.misurata?.giorni||null), suolo, S.location?.lat,
+    JSON.stringify(S.plants), ev.length, ev[0]?.id, ev.at(-1)?.id, EB.eventi.length, EB.aggiornato, JSON.stringify(S.vacanza||null)].join('|');
+  if(pianoMemo.k===k) return pianoMemo.v;
+  const pl=pianoLocale({piante:S.plants, past:pastDays(), fut, eventi:allEvents(), oggi:today(), lat:S.location?.lat, vacanza:S.vacanza, suolo});
+  pianoMemo={k, v:pl}; return pl;
 }
 const plantsSig = () => JSON.stringify(S.plants.map(p=>[p.id,p.specie,p.fase,p.data_semina,p.colt,p.vaso,p.diametro,p.area,p.num,luceOre(p),p.dove,p.consociate||[]]));
 const copreOggi = P => P?.data?.piante?.some(x=>x.giorni?.some(g=>g.data===today()));
@@ -1313,7 +1322,7 @@ function apriMeteo(data){
   const c=(et,v,nota)=>`<div class="wxd-c"><span class="eyebrow">${esc(et)}</span><b>${v}</b>${nota?`<small>${esc(nota)}</small>`:''}</div>`;
   const evap=d.et0!=null?(d.et0<1?'poca, terra che resta umida':d.et0<3?'normale':d.et0<5?'alta: i vasi si asciugano in fretta':'molto alta: controlla i vasi piccoli'):'';
   const vento=d.wind!=null?(d.wind<15?'debole':d.wind<30?'moderato':d.wind<50?'forte: lega le piante alte':'molto forte: metti al riparo i vasi'):'';
-  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.rain_modelli?'media di due modelli ('+d.rain_modelli.map(x=>fmt(x,1)).join(' e ')+' mm)':'';
+  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.ensemble?'media di '+d.rain_modelli.length+' modelli ('+fmt(Math.min(...d.rain_modelli),1)+'–'+fmt(Math.max(...d.rain_modelli),1)+' mm)':d.rain_modelli?'media di due modelli ('+d.rain_modelli.map(x=>fmt(x,1)).join(' e ')+' mm)':'';
   setHTML($('#wxGrid'),[
     c('Massima',d.tmax!=null?fmt(d.tmax,0)+'°':'–'),
     c('Minima',d.tmin!=null?fmt(d.tmin,0)+'°':'–',d.tmin!=null&&d.tmin<=2?'rischio gelo':d.tmin!=null&&d.tmin<=6?'notte fredda':''),
@@ -1424,13 +1433,14 @@ function renderPiante(AP){
     if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
+    if(pp && 'dal' in pp) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
-    if(k.faseNota) notes.push(['warn','Fase: '+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
+    if(k.faseNota) notes.push([/bulbo/.test(k.faseNota)?'':'warn',(/bulbo/.test(k.faseNota)?'☀️ ':'Fase: ')+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
     if(raccoltaDi(p)&&k.sp.ann&&p.fase==='auto') notes.push(['','🧺 Fasi adattate alla raccolta prevista'+(p.raccolta?'':' (dalla scheda di Claude)')+': '+new Date(raccoltaDi(p)+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})+'.']);
     else if(k.faseRitmo!=null && Math.abs(k.faseRitmo-1)>=0.1) notes.push(['','🌡️ Fase dalle temperature vere: dalla semina cresce '+(k.faseRitmo<1?'più piano':'più in fretta')+' del solito (~'+Math.round(Math.abs(k.faseRitmo-1)*100)+'%).']);
     if(cc.inStagione) notes.push([cc.dovuto?'warn':'','🌱 '+cc.testo]);
     rv.forEach(x=>notes.push(['warn','🪴 '+x]));
-    if(Math.abs(k.calib-1)>0.01) notes.push(['','Imparato dalle tue risposte: beve il '+Math.round(Math.abs(k.calib-1)*100)+'% '+(k.calib<1?'in meno':'in più')+' del previsto.']);
+    if(Math.abs(k.calib-1)>0.01) notes.push(['','Imparato '+(pp?.controlli?'da '+pp.controlli+(pp.controlli===1?' controllo':' controlli'):'dalle tue risposte')+': beve il '+Math.round(Math.abs(k.calib-1)*100)+'% '+(k.calib<1?'in meno':'in più')+' del previsto.']);
     (pp?.consigli||[]).forEach(x=>notes.push(['','💬 '+x]));
     if(pp?.valutazione) notes.unshift(['','💬 '+pp.valutazione]);
     return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ring${pp&&pp.acqua!=null&&pp.acqua<=pp.soglia?' basso':''}" style="--p:${pp?.acqua!=null?Math.round(Math.max(0,Math.min(1,pp.acqua))*100):0}" aria-hidden="true"><span>${esc(icoDi(p))}</span></span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
@@ -1789,7 +1799,19 @@ function wire(){
   $('#pf-plist').addEventListener('click',e=>{ const b=e.target.closest('[data-sp]'); if(b) scegliSpecie(b.dataset.sp); });
   $('#pf-zona').addEventListener('input',renderZoneQuick);
   $('#pf-zona-q').addEventListener('click',e=>{ const b=e.target.closest('[data-zona]'); if(!b) return; const z=$('#pf-zona'); z.value=z.value.trim().toLowerCase()===b.dataset.zona.toLowerCase()?'':b.dataset.zona; renderZoneQuick(); });
-  document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));
+  // Schede: cambiano al tocco, anche mentre la pagina scorre per inerzia o c'è un'animazione (su iPhone il tocco che ferma
+  // lo scorrimento non diventa un «click»: prima andava a vuoto). Con mouse e tastiera resta il click.
+  (function(){
+    const nav=$('nav.tabs'); let inizio=null, alTocco=0;
+    nav.addEventListener('touchstart',e=>{ const t=e.target.closest('.tab'), p=e.changedTouches[0]; inizio=t&&p?{t,x:p.clientX,y:p.clientY}:null; },{passive:true});
+    nav.addEventListener('touchend',e=>{
+      const a=inizio; inizio=null; const p=e.changedTouches[0]; if(!a||!p) return;
+      const t=document.elementFromPoint(p.clientX,p.clientY)?.closest('.tab');
+      if(t===a.t && Math.hypot(p.clientX-a.x,p.clientY-a.y)<30){ e.preventDefault(); alTocco=Date.now(); switchView(t.dataset.view); }
+    },{passive:false});
+    nav.addEventListener('touchcancel',()=>{ inizio=null; });
+    nav.addEventListener('click',e=>{ const t=e.target.closest('.tab'); if(t && Date.now()-alTocco>700) switchView(t.dataset.view); });
+  })();
   document.addEventListener('click',e=>{
     const b=e.target.closest('[data-ev]'); if(b){ if((b.dataset.ev==='fatto'||b.dataset.ev==='secco')&&!S.eventi_app.some(x=>x.plantId===b.dataset.pid&&x.data===today()&&x.tipo===b.dataset.ev)) spruzzo(b,e); onEvent(b.dataset.pid,b.dataset.ev); return; }
     const u=e.target.closest('[data-undo]'); if(u){ undoOggi(u.dataset.undo); return; }

@@ -1,63 +1,32 @@
-// Giardino · sonda informativa (non blocca): controlla le fonti di dati usate dagli algoritmi.
-//   1. Open-Meteo con più modelli nella stessa richiesta (giornaliero con il suffisso del modello)
-//   2. storico giornaliero completo (temperature, pioggia, evaporazione, sole) dall'archivio delle previsioni
-//   3. ARPAE: variabili misurate dalla stazione più vicina a Castrocaro (temperatura, pioggia, umidità…)
-const LUOGO = { latitude: 44.176, longitude: 11.95 };   // Castrocaro Terme
-const oggi = new Date().toISOString().slice(0, 10), giorno = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
-const MODELLI = ["ecmwf_ifs025", "ecmwf_ifs", "icon_seamless", "gfs_seamless", "meteofrance_seamless", "italia_meteo_arpae_icon_2i", "ukmo_seamless"];
-const DAILY = "precipitation_sum,temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration,precipitation_probability_max";
-async function prova(nome, url) {
-  try { const r = await fetch(url), j = await r.json().catch(() => null); return { ok: r.ok, status: r.status, j, motivo: j?.reason || "" }; }
-  catch (e) { console.log(nome, "→ errore", e.message); return { ok: false }; }
+// Giardino · sonda informativa (non blocca): gli algoritmi con i dati veri di Open-Meteo per Castrocaro.
+//   1. le tre richieste dell'app e del bot (base, più modelli, storico) lette da componiMeteo / archivioDa
+//   2. il bilancio dell'acqua con memoria e le fasi su piante di esempio
+const M = await import("../netlify/lib/modello.mjs");
+const lat = 44.176, lon = 11.95, u = M.urlMeteo(lat, lon);
+const oggi = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const ora = +new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Rome", hour: "2-digit", hourCycle: "h23" }).format(new Date());
+const prendi = async (url) => { try { const r = await fetch(url); return r.ok ? await r.json() : (console.log("  →", r.status, url.slice(0, 80)), null); } catch (e) { console.log("  → errore", e.message); return null; } };
+const [j, jMod, jSt] = await Promise.all([prendi(u.base), prendi(u.modelli), prendi(M.urlStorico(lat, lon, oggi))]);
+if (!j) { console.log("Open-Meteo non risponde"); process.exit(0); }
+const met = { lat, ...M.componiMeteo(j, null, oggi, ora, jMod), storico: jSt ? M.storicoDa(jSt) : null, archivio: jSt ? M.archivioDa(jSt) : null };
+console.log("più modelli:", jMod ? "ok" : "no", "· giorni", met.days.length, "· storico", Object.keys(met.storico || {}).length, "giorni · archivio", JSON.stringify(met.archivio || {}).length, "byte");
+for (const d of met.days.filter((x) => x.date >= oggi)) console.log("  ", d.date, d.cond.padEnd(14), "pioggia", String(d.rain).padStart(5), "mm", ("(" + d.prob + "%)").padEnd(6),
+  d.ensemble ? "modelli " + d.modelli.length + " [" + d.rain_modelli.join("/") + "] min " + d.tmin + (d.tmin_freddo < d.tmin ? " (più freddo " + d.tmin_freddo + ")" : "") + " et0 " + d.et0 : "base");
+M.registraClima(lat, M.climaDa(met));
+const past = M.giorniPassati(met, null, oggi);
+console.log("giorni passati per il bilancio:", past.length, "dal", past[0]?.date, "· pioggia totale", past.reduce((a, d) => a + (d.rain || 0), 0).toFixed(0), "mm · ET0 totale", past.reduce((a, d) => a + (d.et0 || 0), 0).toFixed(0), "mm");
+const piante = [
+  { id: "agl", nome: "Aglio", specie: "aglio", fase: "auto", data_semina: "2026-11-03", tipo_data: "semina", colt: "vaso", vaso: 30, num: 4, luce: 4, dove: "aperto", orient: "S", luce_data: "2026-11-06" },
+  { id: "car", nome: "Carote", specie: "carota", fase: "auto", data_semina: "2026-11-06", tipo_data: "semina", colt: "vaso", vaso: 50, num: 14, luce: 4, dove: "aperto", materiale: "terracotta" },
+  { id: "chl", nome: "Chlorophytum", specie: "appartamento", fase: "auto", colt: "vaso", vaso: 0.3, diametro: 7, luce: 1, dove: "interno" },
+  { id: "nep", nome: "Nepenthes", specie: "nepenthes", fase: "auto", colt: "vaso", vaso: 12, diametro: 30, luce: 2, dove: "serra" },
+  { id: "suc", nome: "Succulenta", specie: "succulenta", fase: "auto", colt: "vaso", vaso: 2, luce: 4, dove: "interno" }];
+const eventi = piante.map((p) => ({ id: "f" + p.id, plantId: p.id, tipo: "fatto", data: M.addDays(oggi, -12), fonte: "app" }));
+const fut = met.days.filter((d) => d.date >= oggi).slice(0, 7);
+for (const [nome, ev] of [["con un'innaffiatura 12 giorni fa", eventi], ["senza nessun evento", []]]) {
+  const pl = M.pianoLocale({ piante, past, fut, eventi: ev, oggi, lat, suolo: met.suolo });
+  console.log("piano", nome + ":");
+  for (const x of pl.piante) console.log("   ", piante.find((p) => p.id === x.id).nome.padEnd(13), "acqua", String(Math.round(x.acqua * 100)).padStart(3) + "%", "· dal", String(x.dal).padEnd(10), "·", x.valutazione);
 }
-// 1a. un modello alla volta: quali rispondono
-for (const m of MODELLI) {
-  const r = await prova(m, "https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({ ...LUOGO, timezone: "auto", forecast_days: "8", daily: DAILY, models: m }));
-  if (!r.ok) { console.log("modello", m, "→", r.status, r.motivo); continue; }
-  const d = r.j.daily, n = (k) => (d[k] || []).filter((x) => x != null).length;
-  console.log("modello", m.padEnd(28), "→ ok · giorni con pioggia", n("precipitation_sum"), "· max", n("temperature_2m_max"), "· et0", n("et0_fao_evapotranspiration"), "· prob", n("precipitation_probability_max"));
-  console.log("    pioggia", JSON.stringify(d.precipitation_sum), "max", JSON.stringify(d.temperature_2m_max));
-}
-// 1b. tutti insieme: nomi delle chiavi nella risposta
-{
-  const ms = MODELLI.filter((m) => m !== "ecmwf_ifs").join(",");
-  const r = await prova("insieme", "https://api.open-meteo.com/v1/forecast?" + new URLSearchParams({ ...LUOGO, timezone: "auto", forecast_days: "8", daily: "precipitation_sum,temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration", models: ms }));
-  console.log("più modelli insieme →", r.status, r.motivo, "· chiavi:", r.j?.daily ? Object.keys(r.j.daily).join(" ") : "");
-}
-// 2. storico giornaliero completo, 400 giorni
-{
-  const daily = "temperature_2m_mean,temperature_2m_max,temperature_2m_min,precipitation_sum,et0_fao_evapotranspiration,sunshine_duration,daylight_duration";
-  const r = await prova("storico", "https://historical-forecast-api.open-meteo.com/v1/forecast?" + new URLSearchParams({ ...LUOGO, timezone: "auto", start_date: giorno(-400), end_date: giorno(-1), daily }));
-  if (r.ok) {
-    const d = r.j.daily, ultimo = (k) => { for (let i = d.time.length - 1; i >= 0; i--) if (d[k][i] != null) return d.time[i]; return null; };
-    console.log("storico →", r.status, "giorni", d.time.length, "· byte", JSON.stringify(r.j).length);
-    for (const k of daily.split(",")) console.log("    ", k.padEnd(30), "valori", d[k].filter((x) => x != null).length, "· ultimo", ultimo(k));
-    console.log("    ultimi 5 giorni:", d.time.slice(-5).map((t, i) => t + " " + ["precipitation_sum", "et0_fao_evapotranspiration", "temperature_2m_min", "temperature_2m_max"].map((k) => d[k][d.time.length - 5 + i]).join("/")).join(" · "));
-  } else console.log("storico →", r.status, r.motivo);
-  // archivio ERA5-Land (clima di più anni) per confronto
-  const e = await prova("era5", "https://archive-api.open-meteo.com/v1/archive?" + new URLSearchParams({ ...LUOGO, timezone: "auto", start_date: "2016-01-01", end_date: giorno(-7), daily: "temperature_2m_max,temperature_2m_min", models: "era5_land" }));
-  console.log("ERA5-Land 10 anni →", e.status, e.motivo, e.ok ? "giorni " + e.j.daily.time.length + " · byte " + JSON.stringify(e.j).length : "");
-}
-// 3. ARPAE: tutte le variabili delle stazioni entro 15 km
-try {
-  const r = await fetch("https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl", { headers: { "user-agent": "giardino-fede.netlify.app/1.0 https://giardino-fede.netlify.app" } });
-  const testo = await r.text(), cosl = Math.cos(LUOGO.latitude * Math.PI / 180), staz = new Map();
-  console.log("ARPAE →", r.status, "byte", testo.length);
-  for (const l of testo.split("\n")) {
-    let o; try { o = JSON.parse(l); } catch { continue; }
-    const km = Math.hypot((o.lat / 1e5 - LUOGO.latitude) * 111, (o.lon / 1e5 - LUOGO.longitude) * 111 * cosl);
-    if (!(km <= 15)) continue;
-    const k = `${o.network}|${o.lon}|${o.lat}`, s = staz.get(k) || { km: +km.toFixed(1), nome: "", vars: {}, date: new Set() };
-    s.date.add(o.date);
-    for (const x of o.data || []) for (const [v, val] of Object.entries(x.vars || {})) {
-      if (v === "B01019") { s.nome = val.v; continue; }
-      const kk = v + " tr" + JSON.stringify(x.timerange || null) + " lv" + JSON.stringify(x.level || null);
-      (s.vars[kk] ||= []).push(o.date.slice(5, 16) + "=" + val.v);
-    }
-    staz.set(k, s);
-  }
-  for (const [k, s] of [...staz].sort((a, b) => a[1].km - b[1].km)) {
-    console.log("stazione", s.nome, s.km + " km", k, "· istanti", s.date.size);
-    for (const [v, a] of Object.entries(s.vars)) console.log("    ", v.padEnd(48), a.length, "valori · ultimi:", a.slice(-3).join(" "));
-  }
-} catch (e) { console.log("ARPAE → errore", e.message); }
+for (const p of piante.slice(0, 2)) { const f = M.faseEffettiva(p, oggi, lat), e = M.etaPianta(p, oggi, lat); console.log("fase", p.nome, f.fase, "· età tipica", e.eta, "· ritmo", e.ritmo, f.nota || ""); }
+console.log("calendario aglio:", M.calendarioAuto(piante[0], lat).mesi.map((m) => m.mese.slice(2) + " " + m.fase.slice(0, 4)).join(", "));

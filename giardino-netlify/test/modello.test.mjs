@@ -266,3 +266,103 @@ test("raccolta prevista rimasta prima di una nuova data di semina: non vale", ()
   assert.equal(M.raccoltaDi({ specie: "carota", fase: "auto", data_semina: "2027-05-10", raccolta: "2027-04" }), "");
   assert.equal(M.raccoltaDi({ specie: "carota", fase: "auto", data_semina: "2026-11-06", raccolta: "2027-04" }), "2027-04");
 });
+
+/* ---------------- algoritmi: bilancio con memoria, calibrazione, crescita, più modelli ---------------- */
+const serie = (da, n, extra = {}) => [...Array(n)].map((_, i) => ({ date: M.addDays(da, i), tmax: 18, tmin: 10, et0: 2, rain: 0, prob: 0, wind: 5, ...extra }));
+const ev = (plantId, tipo, data, extra = {}) => ({ id: plantId + tipo + data, plantId, tipo, data, fonte: "app", ...extra });
+
+test("bilancio con memoria: parte dall'ultima innaffiatura e la data non scivola in avanti ogni giorno", () => {
+  const p = { id: "su", nome: "Aloe", specie: "succulenta", fase: "vegetativa", colt: "vaso", vaso: 2, luce: 4, dove: "interno" };
+  const k = M.params(p, { oggi: "2026-11-07", lat: 44 }), c = M.consumoL(k, { date: "2026-11-07" }), giorni = Math.ceil(k.rawL / c);
+  assert.ok(giorni > 10 && giorni < 100, "succulenta: innaffiatura ogni " + giorni + " giorni");
+  const innaffiata = M.addDays("2026-11-07", -(giorni - 3));   // tra circa 3 giorni torna alla tacca
+  const piano = (oggi) => M.pianoLocale({ piante: [p], past: serie(M.addDays(oggi, -120), 120), fut: serie(oggi, 7), eventi: [ev("su", "fatto", innaffiata)], oggi, lat: 44 }).piante[0];
+  const a = piano("2026-11-07"), b = piano("2026-11-08"), prima = (x) => x.giorni.find((g) => g.azione === "innaffia")?.data;
+  assert.equal(a.dal, innaffiata, "stato calcolato dall'innaffiatura");
+  assert.ok(prima(a), "l'innaffiatura arriva nei prossimi giorni");
+  assert.equal(prima(b), prima(a), "un giorno dopo la data resta la stessa (prima si spostava)");
+  assert.ok(b.acqua < a.acqua, "e l'acqua nel terriccio cala");
+  // senza nessuna innaffiatura o controllo segnato: come prima (metà tacca tre giorni fa)
+  const vecchio = M.pianoLocale({ piante: [p], past: serie("2026-11-04", 3), fut: serie("2026-11-07", 7), oggi: "2026-11-07", lat: 44 }).piante[0];
+  const nuovo = M.pianoLocale({ piante: [p], past: serie("2026-07-10", 120), fut: serie("2026-11-07", 7), oggi: "2026-11-07", lat: 44 }).piante[0];
+  assert.equal(nuovo.acqua, vecchio.acqua); assert.equal(nuovo.dal, null);
+});
+
+test("controlli col dito: lo stato si corregge e il consumo stimato segue l'errore del calcolo", () => {
+  const p = { id: "ba", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "riparato" };
+  const k = M.params(p, { oggi: "2026-07-20", lat: 44 }), c = M.consumoL(k, { date: "2026-07-20", et0: 2, tmax: 18, wind: 5 }), giorni = k.rawL / c;
+  const oggi = "2026-07-20", past = serie("2026-03-22", 120), fut = serie(oggi, 7), piano = (eventi) => M.pianoLocale({ piante: [p], past, fut, eventi, oggi, lat: 44 }).piante[0];
+  // innaffiata, poi «era ancora umida» quando il calcolo la dava ben oltre la tacca → beve meno
+  const t0 = M.addDays(oggi, -10), dopo = M.addDays(t0, Math.ceil(giorni * 1.6));
+  const umida = [ev("ba", "fatto", t0), ev("ba", "umido", dopo)];
+  const u = piano(umida);
+  assert.ok(u.calibrazione < 0.85 && u.calibrazione > 0.4, "beve meno: ×" + u.calibrazione); assert.equal(u.controlli, 1);
+  assert.equal(M.calibrazione(umida, "ba", oggi), u.calibrazione, "l'app e il connettore vedono la stessa stima");
+  // «era asciutta» quando il calcolo la dava ancora quasi piena → beve di più
+  const s = piano([ev("ba", "fatto", t0), ev("ba", "verifica", M.addDays(t0, 2), { esito: "secco" })]);
+  assert.ok(s.calibrazione > 1.2, "beve di più: ×" + s.calibrazione);
+  // risposta coerente con il calcolo (umida poco dopo l'innaffiatura): niente correzione
+  assert.equal(piano([ev("ba", "fatto", t0), ev("ba", "umido", M.addDays(t0, 1))]).calibrazione, 1);
+  // la diagnosi da foto sposta il punto di partenza
+  assert.ok(piano([ev("ba", "meno", oggi)]).calibrazione < 1);
+});
+
+test("storico: archivio compatto e giorni passati con pioggia misurata ed evaporazione mancante", () => {
+  const j = { daily: { time: ["2026-11-04", "2026-11-05", "2026-11-06"], temperature_2m_min: [5, 6, 7], temperature_2m_max: [12, 13, 14], precipitation_sum: [0, 4.2, 10],
+    et0_fao_evapotranspiration: [1.1, null, 0.6], sunshine_duration: [18000, 0, 3600], daylight_duration: [36000, 36000, 36000], wind_speed_10m_max: [10, 20, 30] } };
+  const a = M.archivioDa(j);
+  assert.deepEqual(a["2026-11-04"], [5, 12, 0, 1.1, 0.5, 10]);
+  const met = { lat: 44, archivio: a, days: [{ date: "2026-11-06", tmin: 7.5, tmax: 14, rain: 9, et0: 0.7 }, { date: "2026-11-07", tmin: 8, tmax: 15, rain: 0, et0: 1 }] };
+  const g = M.giorniPassati(met, { giorni: { "2026-11-05": 6.4 } }, "2026-11-07");
+  assert.deepEqual(g.map((d) => d.date), ["2026-11-04", "2026-11-05", "2026-11-06"], "solo i giorni passati, in ordine");
+  assert.equal(g[1].rain, 6.4); assert.equal(g[1].misurata, true, "pioggia misurata ARPAE");
+  assert.ok(g[1].et0 > 0, "evaporazione mancante: stimata dalle temperature");
+  assert.equal(g[2].tmin, 7.5, "i giorni passati delle previsioni prevalgono sull'archivio");
+});
+
+test("crescita: ritmo ora per ora, caldo eccessivo e ore di luce", () => {
+  const car = M.GRADI.carota, lat = M.GRADI.lattuga;
+  assert.ok(M.ritmoGiorno({ t: 4, tmin: 0, tmax: 8 }, car) > 1.5 * M.ritmoT(4, car), "giornata fredda: le ore calde contano");
+  assert.equal(M.ritmoGiorno({ t: 15.5 }, M.GRADI.pomodoro), 0.5, "con la sola media: come prima");
+  assert.ok(M.ritmoGiorno({ t: 28, tmin: 20, tmax: 36 }, lat) < M.ritmoGiorno({ t: 19, tmin: 14, tmax: 24 }, lat), "lattuga: il caldo la rallenta");
+  assert.equal(M.ritmoT(31, lat), 0, "oltre la massima si ferma");
+  assert.ok(Math.abs(M.durataGiorno("2026-06-21", 44.2) - 15.5) < 0.15 && Math.abs(M.durataGiorno("2026-12-21", 44.2) - 8.9) < 0.15);
+  assert.equal(M.primoGiornoConLuce("2027-01-01", 44.2, 13), "2027-04-07");
+});
+
+test("aglio piantato presto in un autunno caldo: il bulbo aspetta le giornate lunghe", () => {
+  const st = {}; for (let d = "2026-01-01"; d <= "2027-12-31"; d = M.addDays(d, 1)) st[d] = 14;
+  M.registraClima(44.31, { storico: st, prev: {} });
+  const p = { id: "ag", nome: "Aglio", specie: "aglio", fase: "auto", data_semina: "2026-09-01", tipo_data: "semina", colt: "vaso", vaso: 20, dove: "aperto" };
+  const feb = M.faseEffettiva(p, "2027-02-15", 44.31);
+  assert.equal(feb.fase, "vegetativa", "a febbraio il caldo basterebbe, ma le giornate sono corte");
+  assert.match(feb.nota, /13 ore di luce \(dal 7 aprile\)/);
+  assert.equal(M.faseEffettiva(p, "2027-04-25", 44.31).fase, "fruttificazione", "da aprile ingrossa il bulbo");
+  assert.equal(M.faseEffettiva({ ...p, specie: "carota" }, "2027-02-15", 44.31).fase, "maturazione", "la carota non aspetta la luce");
+});
+
+test("Kc che cresce e cala con l'età delle annuali", () => {
+  const sp = M.SPECIE.pomodoro;
+  assert.equal(M.kcContinuo(sp, 20), sp.kc[0]); assert.equal(M.kcContinuo(sp, 75), sp.kc[2]); assert.equal(M.kcContinuo(sp, 120), sp.kc[2]);
+  assert.ok(Math.abs(M.kcContinuo(sp, 57.5) - (sp.kc[0] + sp.kc[2]) / 2) < 1e-9, "a metà sviluppo, a metà strada");
+  assert.ok(M.kcContinuo(sp, 160) < sp.kc[2] && M.kcContinuo(sp, 160) > sp.kc[3]); assert.equal(M.kcContinuo(sp, 300), sp.kc[3]);
+});
+
+test("più modelli: media pesata, probabilità e modello più freddo; con un modello solo resta la base", () => {
+  const days = ["2026-11-06", "2026-11-07", "2026-11-08"].map((date) => ({ date, rain: 10, prob: 80, tmax: 14, tmin: 6, et0: 1 }));
+  const d = { time: ["2026-11-07", "2026-11-08"] };
+  const val = { italia_meteo_arpae_icon_2i: [8, 0], ecmwf_ifs: [6, 0], gfs_seamless: [20, 0] };
+  for (const [m, r] of Object.entries(val)) { d["precipitation_sum_" + m] = r; d["temperature_2m_max_" + m] = [12, 13]; d["temperature_2m_min_" + m] = m === "gfs_seamless" ? [1, 4] : [5, 6]; d["et0_fao_evapotranspiration_" + m] = [0.8, 1]; }
+  const out = M.ensembleGiorni(days, { daily: d }, "2026-11-07");
+  assert.equal(out[0], days[0], "i giorni passati non cambiano");
+  assert.equal(out[1].rain, +((8 * 2 + 6 * 1.5 + 20 * 0.75) / 4.25).toFixed(1), "oggi: ICON-2I pesa di più di GFS");
+  assert.equal(out[1].prob, 90, "(80% di Open-Meteo + 100% dei modelli) / 2"); assert.equal(out[2].prob, 40);
+  assert.equal(out[1].tmin_freddo, 2, "il modello più freddo + 1 °C"); assert.equal(out[1].et0, 0.8);
+  assert.deepEqual(out[1].rain_modelli, [8, 6, 20]); assert.equal(M.pioggiaAttesa(out[1]), out[1], "la media è già il valore atteso");
+  const uno = M.ensembleGiorni(days, { daily: { time: d.time, precipitation_sum_ecmwf_ifs: [6, 0] } }, "2026-11-07");
+  assert.equal(uno[1].rain, 10, "un modello solo: resta la previsione di base");
+  // avviso del gelo: conta anche il modello più freddo
+  const limone = { id: "l", nome: "Limone", specie: "agrumi", colt: "vaso", dove: "aperto" };
+  assert.equal(M.avvisiDomani([limone], { tmin: 7, tmax: 14 }).length, 0);
+  assert.match(M.avvisiDomani([limone], { tmin: 7, tmin_freddo: 4.5, tmax: 14 })[0].testo, /secondo il modello più freddo \(gli altri 7 °C\)/);
+});

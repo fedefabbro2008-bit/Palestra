@@ -41,7 +41,7 @@ let misurata=null;
 function conMisurata(m){
   if(!m||!Array.isArray(m.days)||!misurata) return m;
   const oggi=new Intl.DateTimeFormat('en-CA',{timeZone:m.tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km}};
+  return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km,giorni:misurata.giorni||{}}};
 }
 let primo=null;
 // Scarica i dati solo se sono cambiati: l'app dice quale versione ha già (rev e ora del salvataggio) e, se è la stessa,
@@ -95,23 +95,25 @@ function diffGiardino(nuovo){
 }
 
 /* ---------------- meteo ---------------- */
-// stesse richieste e stessi calcoli del bot (urlMeteo, componiMeteo nel modello), le due richieste in parallelo
+// stesse richieste e stessi calcoli del bot (urlMeteo, componiMeteo nel modello), in parallelo: previsioni di base,
+// più modelli insieme (ensemble) e storico dei giorni passati
 async function meteo(lat,lon){
   const u=urlMeteo(lat,lon);
-  // lo storico delle temperature (una volta al giorno) parte insieme alle previsioni, non dopo
-  const [r,rIT,temp]=await Promise.all([fetch(u.base),fetch(u.it).catch(()=>null),storico(lat,lon,isoDate(new Date())).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
-  const j=await r.json(), jIT=rIT&&rIT.ok?await rIT.json().catch(()=>null):null;
+  const [r,rMod,st]=await Promise.all([fetch(u.base),fetch(u.modelli).catch(()=>null),storico(lat,lon,isoDate(new Date())).catch(()=>null)]); if(!r.ok) throw new Error('Open-Meteo '+r.status);
+  const j=await r.json(), jMod=rMod&&rMod.ok?await rMod.json().catch(()=>null):null;
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:j.timezone||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
   const oggi=p.year+'-'+p.month+'-'+p.day;
-  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,jIT,oggi,+p.hour),storico:temp};
+  return {source:'open-meteo',updatedAt:new Date().toISOString(),lat,lon,...componiMeteo(j,null,oggi,+p.hour,jMod),storico:st?.temp||null,archivio:st?.arch||null};
 }
-// temperature medie dei 400 giorni passati, per le fasi a gradi-giorno: scaricate una volta al giorno
+// storico dei 400 giorni passati (temperature per le fasi; pioggia, evaporazione e sole per il bilancio dell'acqua):
+// scaricato una volta al giorno. {temp, arch}
 async function storico(lat,lon,oggi){
-  const c=LSjson('storico'), qui=c&&c.lat===lat&&c.lon===lon&&c.temp;
-  if(qui&&c.giorno===oggi) return c.temp;
-  const scarica=fetch(urlStorico(lat,lon,oggi)).then(r=>r.ok?r.json():null).then(j=>{ const temp=j?storicoDa(j):{}; if(Object.keys(temp).length){ LSset('storico',JSON.stringify({giorno:oggi,lat,lon,temp})); return temp; } return null; }).catch(()=>null);
+  const c=LSjson('storico'), qui=c&&c.lat===lat&&c.lon===lon&&c.temp&&c.arch;
+  if(qui&&c.giorno===oggi) return c;
+  const scarica=fetch(urlStorico(lat,lon,oggi)).then(r=>r.ok?r.json():null).then(j=>{ const temp=j?storicoDa(j):{}, arch=j?archivioDa(j):{};
+    if(Object.keys(temp).length){ const x={giorno:oggi,lat,lon,temp,arch}; LSset('storico',JSON.stringify(x)); return x; } return null; }).catch(()=>null);
   // c'è già quello di ieri: si usa subito e il nuovo arriva per la prossima volta (l'avvio non aspetta)
-  if(qui) return c.temp;
+  if(qui) return c;
   return (await scarica)||null;
 }
 async function caricaMeteo(forza){

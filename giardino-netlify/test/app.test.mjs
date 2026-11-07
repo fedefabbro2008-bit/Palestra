@@ -295,3 +295,22 @@ test("backup su iPhone: si condivide solo il file JSON (niente .txt con il titol
   assert.match(c.file[0][0], /^giardino-backup-\d{4}-\d{2}-\d{2}\.json$/);
   assert.equal(c.file[0][1], "application/json");
 });
+
+test("schede: cambiano al tocco anche subito dopo un'altra (animazione in corso), una volta sola", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const ctx = await contesto(browser), page = await ctx.newPage();
+  const errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await page.evaluate(() => { window.__cambi = 0; const o = window.switchView; window.switchView = (v) => { window.__cambi++; return o(v); }; });
+  const visibile = (v) => page.evaluate((v) => !document.getElementById("view-" + v).hidden, v);
+  await page.tap("#tab-piante");
+  assert.ok(await visibile("piante")); assert.equal(await page.evaluate(() => window.__cambi), 1, "tocco: un cambio solo (il click che segue non conta)");
+  await page.tap("#tab-diario");   // la vista di prima sta ancora entrando
+  assert.ok(await visibile("diario"), "secondo tocco durante l'animazione");
+  await page.waitForTimeout(800);
+  assert.equal(await page.evaluate(() => window.__cambi), 2);
+  await page.click("#tab-oggi");   // mouse o tastiera: il click
+  assert.ok(await visibile("oggi")); assert.equal(await page.evaluate(() => window.__cambi), 3);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("nav.tabs")).touchAction), "none", "la barra non fa scorrere né zoomare");
+  assert.deepEqual(errori, []);
+});
