@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { TOKEN_RE, tg, findChat, sendBackup, nextRun } from "../lib/telegram.mjs";
 
 /* Palestra · sincronizzazione tra dispositivi.
    GET  /api/sync?code=XXXX   -> i dati salvati per quel codice, oppure {}
@@ -75,6 +76,55 @@ async function mcpKey(request, store, code) {
   return reply(state(next));
 }
 
+/* backup su Telegram (vedi ../lib/telegram.mjs e telegram-backup.mjs). Solo chi ha il codice:
+   GET  ...&op=tg                                    -> { active, chatName, bot, last, next }   (mai il token)
+   POST ...&op=tg {action:"on", token, chatId?}      -> controlla il bot, trova la chat, manda subito un backup, salva
+                  {action:"send"}                    -> manda adesso un backup (al più uno al minuto)
+                  {action:"off"}                     -> scollega e dimentica il token */
+async function tgKey(request, store, code) {
+  const key = "t-" + code;
+  let cur = null;
+  try { cur = await store.get(key, { type: "json" }); } catch (e) { return reply({ error: "lettura non riuscita" }, 503); }
+  const state = (c) => c && c.token ? { active: true, chatName: c.chatName || "", bot: c.bot || "", last: c.last || null, next: nextRun() } : { active: false, next: nextRun() };
+  if (request.method === "GET") return reply(state(cur));
+  let body = null;
+  try { body = await request.json(); } catch (e) { return reply({ error: "JSON non valido" }, 400); }
+  const action = body && body.action;
+  if (action === "off") {
+    try { await store.delete(key); } catch (e) { return reply({ error: "non riuscito" }, 500); }
+    return reply({ active: false, next: nextRun() });
+  }
+  if (action === "send") {
+    if (!cur || !cur.token) return reply({ error: "Telegram non collegato" }, 409);
+    if (cur.last && Date.now() - Number(cur.last.at || 0) < 60000) return reply({ error: "Hai appena inviato un backup: riprova fra un minuto" }, 429);
+    const at = Date.now();
+    let last;
+    try { await sendBackup(store, code, cur, at); last = { at, ok: true }; }
+    catch (e) { last = { at, ok: false, error: String(e.message || "errore").slice(0, 200) }; }
+    const next = { ...cur, last };
+    try { await store.setJSON(key, next); } catch (e) { /* esito non salvato */ }
+    return last.ok ? reply(state(next)) : reply({ ...state(next), error: last.error }, 502);
+  }
+  if (action !== "on") return reply({ error: "azione non valida" }, 400);
+  const token = String(body.token || "").trim();
+  if (!TOKEN_RE.test(token)) return reply({ error: "Token non valido: è come 123456789:ABC… e lo dà @BotFather" }, 400);
+  const chatIn = String(body.chatId == null ? "" : body.chatId).trim();
+  if (chatIn && !/^-?\d{3,20}$/.test(chatIn)) return reply({ error: "Chat ID non valido: è un numero (anche con il meno davanti)" }, 400);
+  try {
+    const me = await tg(token, "getMe");
+    let chat = chatIn ? { id: chatIn, name: "" } : await findChat(token);
+    if (!chat) return reply({ error: "Il bot non ha ancora messaggi: su Telegram apri @" + (me.username || "il tuo bot") + ", scrivigli un messaggio qualsiasi e riprova" }, 404);
+    if (!chat.name) { try { const c = await tg(token, "getChat", { chat_id: chat.id }); chat.name = c.title || [c.first_name, c.last_name].filter(Boolean).join(" ") || c.username || "chat"; } catch (e) { chat.name = "chat " + chat.id; } }
+    const conf = { token, chatId: chat.id, chatName: chat.name, bot: me.username || "", at: Date.now() };
+    // primo backup subito: se Telegram lo rifiuta, non si salva niente
+    const at = Date.now();
+    await sendBackup(store, code, conf, at);
+    conf.last = { at, ok: true };
+    await store.setJSON(key, conf);
+    return reply(state(conf));
+  } catch (e) { return reply({ error: String(e.message || "errore").slice(0, 200) }, 502); }
+}
+
 function cleanCode(raw) {
   const c = String(raw || "").trim().toUpperCase();
   return /^[A-Z0-9-]{16,64}$/.test(c) ? c : null;
@@ -85,7 +135,9 @@ export default async (request) => {
   if (!code) return reply({ error: "codice mancante o non valido" }, 400);
   if (request.method !== "GET" && request.method !== "POST") return reply({ error: "metodo non consentito" }, 405);
   const store = getStore({ name: "palestra-sync", consistency: "strong" });
-  if (new URL(request.url).searchParams.get("op") === "mcp") return mcpKey(request, store, code);
+  const op = new URL(request.url).searchParams.get("op");
+  if (op === "mcp") return mcpKey(request, store, code);
+  if (op === "tg") return tgKey(request, store, code);
   const key = "u-" + code;
 
   // lettura fallita: errore, mai "vuoto" (l'app penserebbe che hai cancellato tutto)

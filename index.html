@@ -1592,6 +1592,10 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 .mcp-adv{margin-top:4px; font-size:12px; color:var(--text-dim); line-height:1.5;}
 .mcp-adv summary{cursor:pointer; color:var(--text-dim); padding:6px 0; font-weight:600;}
 .mcp-adv p{margin:4px 0 8px;} .mcp-adv b.mono{overflow-wrap:anywhere; color:var(--text);}
+.tg-state{display:flex; flex-direction:column; gap:3px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-box,14px); font-size:13px; line-height:1.45;}
+.tg-state .k{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint);}
+.tg-state .ko{color:var(--warn);}
+#tgCard .field{margin:10px 0 0;} #tgCard .field input{font-size:16px;}
 .mcp-write{margin-top:8px; padding-top:12px; border-top:1px solid var(--border);}
 .sync-st.warn{color:var(--warn);}
 </style>
@@ -2006,7 +2010,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card" id="syncCard">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 00-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0014.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>Più dispositivi e senza rete<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoSync"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoSync"><p><b>Sincronizzazione</b>: scheda, storico e impostazioni (tema, animazioni, RPE, sfondo, testo per Claude) uguali su iPhone, iPad, Android e computer. Attivala su un dispositivo, copia il codice e inseriscilo sugli altri con <b>Ho già un codice</b>: i dati si uniscono, non si sovrascrivono. Poi si sincronizza da solo a ogni modifica, quando apri l'app e appena torna la rete; durante un allenamento aspetta che finisca.</p><p>Il <b>codice è la chiave</b> dei tuoi dati: chi lo conosce li legge e li modifica. Non condividerlo.</p><p><b>Senza rete</b>: l'app resta salvata sul dispositivo e si apre anche in palestra senza campo; se la rete è lenta, dopo 3 secondi apre la copia salvata. Le versioni nuove arrivano da sole quando c'è rete.</p><p>Per funzionare su Netlify servono, accanto a index.html, anche <b>sw.js</b>, <b>netlify.toml</b>, <b>package.json</b> e la cartella <b>netlify/functions</b> con sync.mjs e mcp.mjs.</p></div>
+      <div class="card-info" id="infoSync"><p><b>Sincronizzazione</b>: scheda, storico e impostazioni (tema, animazioni, RPE, sfondo, testo per Claude) uguali su iPhone, iPad, Android e computer. Attivala su un dispositivo, copia il codice e inseriscilo sugli altri con <b>Ho già un codice</b>: i dati si uniscono, non si sovrascrivono. Poi si sincronizza da solo a ogni modifica, quando apri l'app e appena torna la rete; durante un allenamento aspetta che finisca.</p><p>Il <b>codice è la chiave</b> dei tuoi dati: chi lo conosce li legge e li modifica. Non condividerlo.</p><p><b>Senza rete</b>: l'app resta salvata sul dispositivo e si apre anche in palestra senza campo; se la rete è lenta, dopo 3 secondi apre la copia salvata. Le versioni nuove arrivano da sole quando c'è rete.</p><p>Per funzionare su Netlify servono, accanto a index.html, anche <b>sw.js</b>, <b>netlify.toml</b>, <b>package.json</b> e la cartella <b>netlify</b> (functions con sync.mjs, mcp.mjs e telegram-backup.mjs, e lib con telegram.mjs).</p></div>
       <div id="syncOff">
         <p class="sync-intro">Stessi dati su tutti i tuoi dispositivi.</p>
         <div class="btn-grid">
@@ -2055,6 +2059,30 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
         <div class="btn-grid" style="margin-top:12px;"><button class="btn" id="mcpNewBtn" type="button">Nuova chiave</button><button class="btn danger" id="mcpOffBtn" type="button">Disattiva</button></div>
       </div>
       <div class="bk-status sync-st" id="mcpStatus" hidden></div>
+    </div>
+
+    <div class="card" id="tgCard" hidden>
+      <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4L3 11l6 2.5L11.5 20 15 15l4.5 3.5z"/><path d="M9 13.5l6-4.5"/></svg>Backup su Telegram<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoTg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
+      <div class="card-info" id="infoTg"><p>Il <b>1° e il 16 di ogni mese</b> (verso le 8 d'inverno, le 9 d'estate) il server ti manda su Telegram il <b>backup completo</b>: scheda, storico e impostazioni, lo stesso file di «Backup completo». Funziona anche con l'app chiusa, perché parte dai dati <b>sincronizzati</b>.</p><p>Per ripristinarlo: scarica il file da Telegram e in <b>Backup e dati</b> tocca <b>Importa</b>.</p><p>Il <b>token</b> del bot resta sul server: l'app non lo rilegge e non lo mostra. <b>Scollega</b> lo cancella. Il bot può essere anche quello di un'altra tua app: in quel caso, se non trova la chat, scrivi il chat ID a mano.</p></div>
+      <div id="tgOff">
+        <p class="sync-intro">Due volte al mese ti arriva su Telegram il backup completo, da reimportare se perdi o cambi telefono.</p>
+        <ol class="clock-steps">
+          <li>In Telegram apri <b>@BotFather</b>, scrivi <b>/newbot</b> e copia il <b>token</b> che ti dà.</li>
+          <li>Apri il tuo bot e scrivigli un messaggio qualsiasi, per esempio «ciao».</li>
+          <li>Incolla qui il token e tocca <b>Collega</b>: arriva subito il primo backup.</li>
+        </ol>
+        <div class="field"><input type="password" id="tgToken" placeholder="Token del bot (123456789:ABC…)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Token del bot Telegram"></div>
+        <details class="mcp-adv"><summary>Chat ID (solo se il bot non trova la chat)</summary>
+          <p>Serve se il bot è già usato da un'altra app con un webhook. Il tuo chat ID è un numero: te lo dice per esempio @userinfobot.</p>
+          <div class="field"><input id="tgChat" inputmode="numeric" placeholder="Chat ID" autocomplete="off" aria-label="Chat ID di Telegram"></div>
+        </details>
+        <button class="btn primary mcp-on" id="tgOnBtn" type="button" style="margin-top:12px;">Collega Telegram</button>
+      </div>
+      <div id="tgOn" hidden>
+        <div class="tg-state" id="tgState"></div>
+        <div class="btn-grid" style="margin-top:12px;"><button class="btn" id="tgSendBtn" type="button">Invia ora</button><button class="btn danger" id="tgOffBtn" type="button">Scollega</button></div>
+      </div>
+      <div class="bk-status sync-st" id="tgStatus" hidden></div>
     </div>
 
     <div class="card">
@@ -3181,7 +3209,7 @@ if(IS_ANDROID){
   document.getElementById('fileBackupToggle').setAttribute('aria-label', 'Scarica il backup a fine allenamento');
 }
 /* impostazioni: prima stavano in fondo a Stats, mescolate ai grafici */
-function openSettings(){ refreshNotifUI(); renderSync(); try{ if(sync && sync.code) mcpRun(null); }catch(e){} renderBackupBanner(); renderAutoBackupInfo(); autoBackupInfo().then(renderAutoBackupInfo); document.getElementById('settingsSheet').classList.add('show'); }
+function openSettings(){ refreshNotifUI(); renderSync(); try{ if(sync && sync.code){ mcpRun(null); tgRun(null); } }catch(e){} renderBackupBanner(); renderAutoBackupInfo(); autoBackupInfo().then(renderAutoBackupInfo); document.getElementById('settingsSheet').classList.add('show'); }
 function closeSettings(){ document.getElementById('settingsSheet').classList.remove('show'); }
 document.getElementById('settingsBtn').addEventListener('click', openSettings);
 document.getElementById('settingsClose').addEventListener('click', closeSettings);
@@ -8667,6 +8695,7 @@ function renderSync(){
   const os = document.getElementById('offlineStatus');
   if(os) setText(os, swState==='ok' ? 'Si apre anche senza rete: l\'app è salvata su questo dispositivo.' : swState==='wait' ? 'Si apre anche senza rete dalla prossima apertura.' : 'Apertura senza rete non attiva: serve il file sw.js accanto a index.html (vedi la spiegazione).');
   renderMcp();
+  renderTg();
 }
 async function syncEnable(code, join){
   if(join){
@@ -8707,10 +8736,12 @@ document.getElementById('syncCopyBtn').addEventListener('click', ()=>{
 document.getElementById('syncOffBtn').addEventListener('click', async ()=>{
   // Claude collegato: la chiave resta sul server (vale per il codice, non per questo telefono): lo si dice
   const yes = await customConfirm('Smetti di sincronizzare questo dispositivo? I dati restano qui e sugli altri; per ricollegarlo ti servirà il codice.'
-    + (mcp && mcp.state==='on' ? '\n\nClaude resta collegato e continua a leggere i dati sincronizzati'+(mcp.write ? ' (e a poter cambiare la scheda, ma qui non arriverebbe più)' : '')+': per scollegarlo tocca prima Disattiva in «Claude legge i tuoi allenamenti».' : ''), 'Disattiva', 'Annulla');
+    + (mcp && mcp.state==='on' ? '\n\nClaude resta collegato e continua a leggere i dati sincronizzati'+(mcp.write ? ' (e a poter cambiare la scheda, ma qui non arriverebbe più)' : '')+': per scollegarlo tocca prima Disattiva in «Claude legge i tuoi allenamenti».' : '')
+    + (tgSt && tgSt.state==='on' ? '\n\nIl backup su Telegram continua ad arrivare (dai dati sincronizzati fino a ora): per fermarlo tocca prima Scollega in «Backup su Telegram».' : ''), 'Disattiva', 'Annulla');
   if(!yes) return;
   sync = {}; try{ localStorage.removeItem(SYNC_LS); }catch(e){}
   mcp = { state:'unknown', token:null, write:false, busy:false, msg:'', kind:'' };
+  tgSt = { state:'unknown', info:null, busy:false, msg:'', kind:'' };
   syncMsg = ''; renderSync(); showToast('Sincronizzazione disattivata su questo dispositivo');
 });
 
@@ -8789,6 +8820,67 @@ document.getElementById('mcpOffBtn').addEventListener('click', async ()=>{
 });
 document.getElementById('mcpCopyBtn').addEventListener('click', ()=>{ if(mcp.token) copyText(location.origin+'/mcp/'+mcp.token, 'Indirizzo copiato: incollalo in Claude, Connettori → Aggiungi connettore personalizzato'); });
 document.getElementById('mcpCopyKeyBtn').addEventListener('click', ()=>{ if(mcp.token) copyText('Bearer '+mcp.token, 'Valore copiato: incollalo in Request headers, alla voce Authorization'); });
+/* ===================== BACKUP SU TELEGRAM =====================
+   Il server (sync.mjs op=tg, telegram-backup.mjs) manda il backup dei dati sincronizzati il 1° e il 16 di ogni mese.
+   Qui si collega il bot (token, chat), si manda un backup subito e si scollega. Il token va al server e basta.
+   var: renderSync la legge e può essere chiamata prima di questa parte del codice */
+var tgSt = { state:'unknown', info:null, busy:false, msg:'', kind:'' };
+async function tgReq(body){
+  const url = SYNC_API+'?code='+encodeURIComponent(sync.code)+'&op=tg';
+  const r = await fetch(url, body ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body), cache:'no-store' } : { cache:'no-store' });
+  let j = null; try{ j = await r.json(); }catch(e){}
+  if(!r.ok){ const err = new Error(r.status===404 && !(j && j.error) ? 'nofn' : (j && j.error) || 'http '+r.status); err.data = j; throw err; }
+  return j || {};
+}
+async function tgRun(body){
+  if(!sync || !sync.code || tgSt.busy) return;
+  if(!/^https?:$/.test(location.protocol)){ if(body){ tgSt.msg = 'Funziona solo con l\'app pubblicata (Netlify).'; tgSt.kind = 'warn'; renderTg(); } return; }
+  tgSt.busy = true; if(body){ tgSt.msg = body.action==='off' ? 'Un momento…' : 'Invio a Telegram…'; tgSt.kind = ''; } renderTg();
+  try{
+    const j = await tgReq(body);
+    tgSt.state = j.active ? 'on' : 'off'; tgSt.info = j; tgSt.msg = ''; tgSt.kind = '';
+    if(body && body.action==='on'){ const t = document.getElementById('tgToken'), c = document.getElementById('tgChat'); if(t) t.value = ''; if(c) c.value = ''; infoToast('Collegato: controlla Telegram, è arrivato il primo backup', 4000); }
+    if(body && body.action==='send') infoToast('Backup inviato su Telegram', 2600);
+    if(body && body.action==='off') infoToast('Backup su Telegram scollegato', 2600);
+  }catch(e){
+    if(e.data && e.data.active!=null){ tgSt.state = e.data.active ? 'on' : 'off'; tgSt.info = e.data; }
+    if(body){
+      tgSt.msg = e.message==='nofn' ? 'Il server non risponde: pubblica anche la cartella netlify (functions e lib).'
+        : (navigator.onLine===false || e instanceof TypeError) ? 'Serve la rete: riprova quando sei connesso.' : e.message;
+      tgSt.kind = 'err';
+    }
+  }finally{ tgSt.busy = false; renderTg(); }
+}
+function renderTg(){
+  const card = document.getElementById('tgCard'); if(!card || !tgSt) return;
+  const on = !!(sync && sync.code);
+  card.hidden = !on; if(!on) return;
+  const active = tgSt.state==='on', i = tgSt.info || {};
+  document.getElementById('tgOff').hidden = active;
+  document.getElementById('tgOn').hidden = !active;
+  if(active){
+    const when = t=> t ? new Date(t).toLocaleDateString('it-IT', { day:'numeric', month:'long' })+' alle '+new Date(t).toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' }) : '—';
+    const last = i.last;
+    setHTML(document.getElementById('tgState'),
+      `<span class="k">Collegato</span><span>${escapeHtml(i.chatName || 'chat')}${i.bot ? ' · bot @'+escapeHtml(i.bot) : ''}</span>`
+      + `<span>Prossimo backup: <b>${escapeHtml(when(i.next))}</b></span>`
+      + (last ? `<span class="${last.ok ? '' : 'ko'}">Ultimo: ${escapeHtml(fmtAgo(num(last.at)))}${last.ok ? ' ✓' : ' · non riuscito: '+escapeHtml(String(last.error||''))}</span>` : ''));
+  }
+  ['tgOnBtn','tgSendBtn','tgOffBtn'].forEach(id=>{ const b = document.getElementById(id); if(b) b.disabled = tgSt.busy; });
+  const st = document.getElementById('tgStatus');
+  st.hidden = !tgSt.msg; setText(st, tgSt.msg); st.className = 'bk-status sync-st'+(tgSt.kind ? ' '+tgSt.kind : '');
+}
+document.getElementById('tgOnBtn').addEventListener('click', ()=>{
+  const token = document.getElementById('tgToken').value.trim(), chatId = document.getElementById('tgChat').value.trim();
+  if(!/^\d{5,12}:[A-Za-z0-9_-]{30,60}$/.test(token)){ tgSt.msg = 'Incolla il token che ti ha dato @BotFather: è come 123456789:ABC…'; tgSt.kind = 'warn'; renderTg(); document.getElementById('tgToken').focus(); return; }
+  if(!sync.lastOk){ tgSt.msg = 'Prima sincronizza almeno una volta (Sincronizza ora), poi riprova.'; tgSt.kind = 'warn'; renderTg(); return; }
+  tgRun({ action:'on', token, chatId });
+});
+document.getElementById('tgSendBtn').addEventListener('click', ()=> tgRun({ action:'send' }));
+document.getElementById('tgOffBtn').addEventListener('click', async ()=>{
+  if(!(await customConfirm('Scollegare il backup su Telegram? Non arriveranno più backup e il token del bot viene cancellato dal server.', 'Scollega', 'Annulla'))) return;
+  tgRun({ action:'off' });
+});
 /* ===================== CLAUDE HA MODIFICATO LA SCHEDA =====================
    Con «Claude può modificare la scheda» acceso, Claude cambia la scheda sul server (mcp.mjs) e lascia nei dati il segno
    "claude": quando, perché, cosa e l'impronta della scheda che ha scritto. La sincronizzazione la porta qui come da un
