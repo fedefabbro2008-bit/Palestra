@@ -8,6 +8,6 @@
   "scripts": {
     "pagina": "node ../giardino/build-app.mjs",
     "pretest": "node ../giardino/build-app.mjs",
-    "test": "node --import ./test/registra-finto.mjs --test test/modello.test.mjs test/server.test.mjs test/app.test.mjs"
+    "test": "node --import ./test/registra-finto.mjs --test test/modello.test.mjs test/server.test.mjs test/app.test.mjs test/sw.test.mjs"
   }
 }

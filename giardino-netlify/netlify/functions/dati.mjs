@@ -1,5 +1,5 @@
 import { VERSIONE } from "../lib/versione.mjs";
-import { store, reply, codiceDa, newToken, crediti, correggiCrediti, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
+import { store, reply, comprimi, codiceDa, newToken, crediti, correggiCrediti, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
@@ -21,7 +21,10 @@ import { store, reply, codiceDa, newToken, crediti, correggiCrediti, misureArpae
 export const config = { path: "/api/dati", rateLimit: { windowSize: 60, windowLimit: 120, aggregateBy: ["ip", "domain"] } };
 const MAX = 2 * 1024 * 1024;
 
-export default async (request) => {
+// risposte grandi compresse se il telefono le accetta (vedi comprimi in core.mjs)
+export default async (request) => comprimi(request, await gestisci(request));
+
+async function gestisci(request) {
   const url = new URL(request.url), code = codiceDa(request), op = url.searchParams.get("op") || "";
   if (op === "versione") return reply({ versione: VERSIONE });
   if (!code) return reply({ error: "codice mancante o non valido" }, 400);
@@ -75,7 +78,7 @@ export default async (request) => {
     console.error(e);
     return reply({ error: e?.message || "errore" }, 500);
   }
-};
+}
 
 // La scheda di ogni pianta la scrive Claude sul server: se l'app manda le piante senza scheda, o con una più vecchia,
 // resta quella più recente (l'app può essere rimasta indietro di qualche minuto).

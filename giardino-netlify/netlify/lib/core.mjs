@@ -6,6 +6,7 @@
 //   t-<codice>    { token, secret, chat_id, username, tz, ultimo_invio, ultimo_avviso_sera, notificati }   bot Telegram
 //   w-<segreto>   { code }                   dal webhook di Telegram al codice
 import { getStore } from "@netlify/blobs";
+import { gzipSync } from "node:zlib";
 import * as M from "./modello.mjs";
 import { VERSIONE } from "./versione.mjs";
 export { M };
@@ -13,6 +14,16 @@ export { M };
 export const store = () => getStore({ name: "giardino", consistency: "strong" });
 const HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 export const reply = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { ...HEADERS, ...extra } });
+// Risposte grandi compresse (gzip) se chi chiede le accetta: Netlify non comprime da solo quelle delle funzioni. I dati
+// dell'app (piante, diario, pioggia misurata) arrivano tutti a ogni salvataggio e a ogni controllo con novità: compressi
+// pesano circa un decimo. Sotto 1,5 KB non conviene. L'app le chiede in chiaro con x-giardino-gzip: no (se non le legge bene).
+export async function comprimi(request, res) {
+  if (!res || res.headers.has("content-encoding") || request.headers.get("x-giardino-gzip") === "no" || !/\bgzip\b/i.test(request.headers.get("accept-encoding") || "")) return res;
+  const testo = await res.text(), h = new Headers(res.headers);
+  if (Buffer.byteLength(testo) < 1500) return new Response(testo, { status: res.status, headers: h });
+  h.set("content-encoding", "gzip"); h.set("vary", "accept-encoding"); h.delete("content-length");
+  return new Response(gzipSync(testo), { status: res.status, headers: h });
+}
 
 const ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 export function newToken(n = 26) { const b = new Uint8Array(n); crypto.getRandomValues(b); return Array.from(b, (x) => ALPHA[x & 31]).join(""); }
@@ -340,9 +351,9 @@ export function messaggioFinePiano(fine, oggi) {
   return { testo, tastiera: { inline_keyboard: [[{ text: "✨ Apri Claude", url }]] } };
 }
 /* ---------------- Crediti Netlify (stima) ----------------
-   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot, Claude e Siri, con
-   questo traffico, pochi crediti al mese (stima prudente: 5). Le pubblicazioni si contano dalle impronte di versione viste. */
-export const CREDITI = { limite: 300, pubblicazione: 15, uso: 5, avviso: 240 };
+   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot (ogni ora), Claude e Siri
+   ne consumano 10-20 al mese, misurati su Netlify (stima: 15). Le pubblicazioni si contano dalle impronte di versione viste. */
+export const CREDITI = { limite: 300, pubblicazione: 15, uso: 15, avviso: 240 };
 export async function crediti(st) {
   const mese = oraLocale("Europe/Rome").oggi.slice(0, 7), key = "u-" + mese;
   const u = (await st.get(key, { type: "json" })) || { versioni: [], avvisato: false };

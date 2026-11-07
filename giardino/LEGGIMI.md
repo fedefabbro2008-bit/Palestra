@@ -99,7 +99,9 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Schede al tocco**: la barra in basso cambia scheda già al tocco (anche mentre la pagina scorre per inerzia o c'è un'animazione: su iPhone quel tocco non diventa un «click»).
 - **Ridisegno solo della vista aperta**; gli aggiornamenti arrivati da soli si raggruppano in un ridisegno per fotogramma (e nessuno con l'app in background).
 - **Bot**: se oggi mattino e sera sono già fatti, non legge niente fino al giorno dopo.
-- **Service worker**: prima la rete; se non risponde entro 3 secondi, la copia salvata.
+- **Apertura istantanea** (`sw.js`): pagina e icone arrivano subito dalla copia salvata sul telefono, anche con rete lenta o assente (con 2 s di rete lenta: ~40 ms invece di ~2 s); intanto la pagina del sito si scarica in sottofondo e aggiorna la copia. Se è una versione nuova (impronta `giardino-build` scritta da `build-app.mjs`) l'app si ricarica: subito se è appena aperta (meno di 3 s) e non l'hai toccata, altrimenti al ritorno sull'app, mai con una finestra aperta o un campo in scrittura, al massimo una volta al minuto. Dati (`/api`) e connettore (`/mcp`) non passano mai dalla copia.
+- **Risposte compresse**: le risposte grandi di `/api/dati` (tutti i dati, a ogni salvataggio e a ogni controllo con novità) arrivano in gzip, circa un decimo dei byte (Netlify non comprime da solo le risposte delle funzioni). Se una risposta non arriva o non si legge, l'app riprova subito in chiaro (`x-giardino-gzip: no`); se la colpa è della compressione (risposta illeggibile, o due errori di fila: un attimo senza rete non conta) per una settimana le chiede così. Una risposta «ok» senza dati non vale mai (non cancella quelli sul telefono).
+- **Prove della rete vera** (`test/sw.test.mjs`): server su localhost e Chromium: apertura dalla copia, versioni nuove, senza rete, compressione e ripiego in chiaro.
 
 ## Come si calcola (vasi)
 
@@ -128,3 +130,4 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 Ogni pubblicazione costa 15 crediti: si pubblica solo se cambia la cartella `giardino-netlify` (regola `ignore` in `netlify.toml`).
 `build-app.mjs` scrive un'impronta della versione (`netlify/lib/versione.mjs`); il bot conta le impronte nuove del mese, l'app
 mostra la stima in Impostazioni → Crediti Netlify e Telegram avvisa all'80%. Il conto esatto è su app.netlify.com → Usage.
+Uso normale (app, bot ogni ora, Claude, Siri): 10-20 crediti al mese misurati, nella stima 15.

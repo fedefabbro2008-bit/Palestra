@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inviati, OGGI } from "./rete-finta.mjs";
 import { getStore } from "@netlify/blobs";
+import { gunzipSync } from "node:zlib";
 import * as M from "../netlify/lib/modello.mjs";
 const dati = (await import("../netlify/functions/dati.mjs")).default;
 const mcp = (await import("../netlify/functions/mcp.mjs")).default;
@@ -49,6 +50,26 @@ test("dati: il codice viaggia nell'intestazione (e ?code= vale ancora per le app
   { const g = getStore({ name: "giardino" }), k = "u-" + new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit" }).format(new Date());
     const u = await g.get(k, { type: "json" }); delete u.correzione; await g.setJSON(k, u); }   // le prove dopo contano le pubblicazioni
   assert.deepEqual(st.mcp, { active: false }); assert.deepEqual(st.telegram, { configured: false }); assert.ok(st.crediti.limite === 300 && !("key" in st.crediti));
+});
+
+test("dati: risposte grandi compresse (gzip) se il telefono le accetta, in chiaro se le chiede così", async () => {
+  const HZ = { "x-giardino-code": "GRD-GZGZGZ-GZGZGZ-GZGZGZ-GZGZGZ" };
+  const eventi = [...Array(300)].map((_, i) => ({ id: "gz-" + i, plantId: "bas", tipo: "fatto", data: M.addDays(OGGI, -(i % 60)), litri: 0.3 }));
+  await call(dati, "/api/dati", { method: "POST", headers: HZ, body: { changes: { plants: PIANTE }, add: eventi } });
+  const chiedi = (h, path = "/api/dati", init = {}) => dati(new Request(B + path, { ...init, headers: { ...HZ, ...h } }));
+  const testo = await (await chiedi({})).text();
+  const z = await chiedi({ "accept-encoding": "gzip, deflate, br" }), buf = Buffer.from(await z.arrayBuffer());
+  assert.equal(z.headers.get("content-encoding"), "gzip"); assert.equal(z.headers.get("content-type"), "application/json"); assert.equal(z.headers.get("cache-control"), "no-store");
+  assert.equal(gunzipSync(buf).toString(), testo, "stesso contenuto");
+  assert.ok(buf.length * 5 < testo.length, `compressi ${buf.length} byte invece di ${testo.length}`);
+  // anche la risposta a un salvataggio (tutti i dati); in chiaro se l'app lo chiede, se il telefono non accetta gzip e se è piccola
+  const p = await chiedi({ "accept-encoding": "gzip", "content-type": "application/json" }, "/api/dati", { method: "POST", body: JSON.stringify({ changes: { vacanza: null } }) });
+  assert.equal(p.headers.get("content-encoding"), "gzip"); assert.equal(JSON.parse(gunzipSync(Buffer.from(await p.arrayBuffer()))).data.eventi.length, 300);
+  assert.equal((await chiedi({ "accept-encoding": "gzip", "x-giardino-gzip": "no" })).headers.get("content-encoding"), null);
+  assert.equal((await chiedi({ "accept-encoding": "br" })).headers.get("content-encoding"), null);
+  const piccola = await chiedi({ "accept-encoding": "gzip" }, "/api/dati?op=versione");
+  assert.equal(piccola.headers.get("content-encoding"), null); assert.ok((await piccola.json()).versione);
+  assert.equal((await dati(new Request(B + "/api/dati", { headers: { "accept-encoding": "gzip" } }))).status, 400);
 });
 
 test("meteo: se Open-Meteo non risponde, MET Norway con i giorni passati dall'ultimo meteo buono", async () => {
@@ -335,7 +356,7 @@ test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calc
 
 test("crediti Netlify: una versione contata una volta, avviso su Telegram sopra l'80% una volta al mese", async () => {
   const c1 = (await call(dati, "/api/dati?op=crediti", { headers: H })).body, c2 = (await call(dati, "/api/dati?op=crediti", { headers: H })).body;
-  assert.equal(c1.pubblicazioni, 1); assert.equal(c2.pubblicazioni, 1); assert.equal(c1.limite, 300); assert.equal(c1.stima, 20);
+  assert.equal(c1.pubblicazioni, 1); assert.equal(c2.pubblicazioni, 1); assert.equal(c1.limite, 300); assert.equal(c1.stima, 30);
   const st = getStore({ name: "giardino" }), key = "u-" + c1.mese, u = await st.get(key, { type: "json" });
   await st.setJSON(key, { ...u, versioni: [...u.versioni, ...Array.from({ length: 15 }, (_, i) => "v" + i)] });
   const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12), t = await st.get("t-" + CODE, { type: "json" });

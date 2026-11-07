@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
+<meta name="giardino-build" content="e76ef107431e">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -921,9 +922,26 @@ const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) e
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null};
 
 /* ---------------- server ---------------- */
+// Le risposte grandi arrivano compresse (gzip). Se una non arriva o non si legge riprova subito in chiaro; se la colpa è
+// della compressione (risposta illeggibile, o due volte di fila) per una settimana le chiede in chiaro: un attimo senza
+// rete non la spegne. Una risposta «ok» senza dati non vale mai: cancellerebbe quelli sul telefono.
 async function api(method, body, op, keepalive, extra){
-  const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
-  const j=await r.json().catch(()=>null);
+  const prova=async chiaro=>{
+    const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(chiaro?{'x-giardino-gzip':'no'}:{}),...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
+    const t=await r.text();   // interrotta (rete, o compressione che il browser non decodifica): errore di rete
+    let j=null; try{ j=JSON.parse(t); }catch(e){}
+    if(r.ok&&(j==null||typeof j!=='object')) throw Object.assign(new TypeError('risposta del server illeggibile'),{illeggibile:true});
+    return [r,j];
+  };
+  const chiaro=Date.now()-(+LS('inChiaro')||0)<7*864e5;
+  let r,j;
+  try{ [r,j]=await prova(chiaro); if(!chiaro&&LS('gzipKo')) LSset('gzipKo',null); }
+  catch(e){
+    if(chiaro||!(e instanceof TypeError)||navigator.onLine===false) throw e;
+    [r,j]=await prova(true);
+    const ko=(+LS('gzipKo')||0)+1;
+    if(e.illeggibile||ko>=2){ LSset('inChiaro',String(Date.now())); LSset('gzipKo',null); } else LSset('gzipKo',String(ko));
+  }
   if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')'));
   return j;
 }
@@ -1097,8 +1115,24 @@ function salvaPrimaDiUscire(){ Promise.resolve(window.salvaSubito?.()).then(()=>
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') salvaPrimaDiUscire(); else aggiorna(false).catch(()=>{}); });
 setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },300000);
 window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
-if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 window.addEventListener('pagehide',salvaPrimaDiUscire);
+// versione nuova: il service worker apre subito la copia salvata e intanto scarica quella del sito; se è cambiata lo dice qui.
+// Appena aperta (meno di 3 secondi, niente tocchi) l'app si ricarica subito; altrimenti la prossima volta che ci torni,
+// se non hai una finestra aperta o un campo in scrittura. Al massimo una volta al minuto (niente ricariche a catena).
+if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost')){
+  const avvio=Date.now(); let toccata=false, nuova=false;
+  for(const t of ['pointerdown','keydown']) addEventListener(t,()=>{ toccata=true; },{capture:true,passive:true});
+  const libera=()=>![...document.querySelectorAll('.sheet')].some(x=>!x.hidden) && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||'');
+  const ricarica=()=>{
+    let prima=0; try{ prima=+sessionStorage.getItem('ricaricata')||0; }catch{}
+    if(Date.now()-prima<60000) return;
+    try{ sessionStorage.setItem('ricaricata',String(Date.now())); }catch{}
+    nuova=false; Promise.resolve(window.salvaSubito?.()).catch(()=>{}).then(()=>location.reload());
+  };
+  navigator.serviceWorker.addEventListener('message',e=>{ if(e.data?.tipo!=='nuova-versione') return; nuova=true; if(!toccata&&Date.now()-avvio<3000&&libera()) ricarica(); });
+  document.addEventListener('visibilitychange',()=>{ if(nuova&&document.visibilityState==='visible'&&libera()) ricarica(); });
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
 
 const caps={ db:{doc, collection:()=>{ throw new Error('non disponibile'); }}, user:{ id:async()=>'locale', me:async()=>({id:'locale',name:''}) }, mcp:{} };
 window.claude={ use:async n=>caps[n]??null };
