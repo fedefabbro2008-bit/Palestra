@@ -366,3 +366,12 @@ test("più modelli: media pesata, probabilità e modello più freddo; con un mod
   assert.equal(M.avvisiDomani([limone], { tmin: 7, tmax: 14 }).length, 0);
   assert.match(M.avvisiDomani([limone], { tmin: 7, tmin_freddo: 4.5, tmax: 14 })[0].testo, /secondo il modello più freddo \(gli altri 7 °C\)/);
 });
+
+test("sotto la pioggia di notte: dalle 17:28 di ieri alle 07:15 di oggi", () => {
+  // novembre: Italia = UTC+1. Pioggia ieri 20:00–21:00 (2 mm), oggi 03:00–04:00 (1,2 mm), ieri 15:00 (fuori, 5 mm)
+  const ore = { "2026-11-07T14:00:00Z": 5, "2026-11-07T20:00:00Z": 2, "2026-11-08T03:00:00Z": 1.2, "2026-11-08T07:00:00Z": 0 };
+  const r = M.pioggiaMisurataNelleOre({ ore }, "2026-11-08", "17:28", "07:15", "Europe/Rome");
+  assert.equal(r.mm, 3.2); assert.equal(r.notte, true); assert.equal(r.completo, true);
+  assert.equal(M.pioggiaMisurataNelleOre({ ore }, "2026-11-08", "07:00", "07:00", "Europe/Rome").mm, 0, "stessa ora: niente");
+  assert.equal(M.pioggiaMisurataNelleOre({ ore }, "2026-11-08", "02:00", "05:00", "Europe/Rome").mm, 1.2, "di giorno come prima");
+});

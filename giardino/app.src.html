@@ -1319,7 +1319,7 @@ function aggiornaPioggia(){
   const c=calcolaPioggia(); if(!c) return;
   const {r,litri,manca,k}=c, staz='stazione ARPAE di '+esc(pgMisure.stazione)+' ('+fmt(pgMisure.km,1)+' km)';
   box.innerHTML=ICON.info+'<div>'+(r.mm>0?'Misurati dalla '+staz+': <b>'+fmt(r.mm,1)+' mm</b> in quelle ore. Nel vaso sono entrati circa <b>'+fmtL(litri)+'</b>'+(manca!=null?(litri>=manca?', abbastanza da riempire il terriccio.':' (al terriccio ne mancavano ~'+fmtL(manca)+').'):'.')
-      :'La '+staz+' non ha misurato pioggia in quelle ore.')
+      :'La '+staz+' non ha misurato pioggia in quelle ore.')+(r.notte?' <i>Da ieri alle '+esc($('#pgDa').value)+' a oggi alle '+esc($('#pgA').value)+'.</i>':'')
     +(!r.completo&&r.fino?' <i>Le misure arrivano fino alle '+r.fino+': più tardi puoi aggiungere il resto.</i>':'')+(k.chiuso&&litri>0?' Vaso senza fori: svuota l\'acqua in più.':'')+'</div>';
   $('#pgSalva').disabled=!(litri>0);
 }
@@ -1327,7 +1327,7 @@ function apriPioggia(pid){
   const p=S.plants.find(x=>x.id===pid); if(!p) return;
   pgPianta=pid; pgMisure=null; pgMotivo='';
   const ora=new Date(), prima=new Date(ora.getTime()-3600e3);
-  $('#pgSub').textContent=p.nome+': da che ora a che ora è stata sotto la pioggia, oggi?';
+  $('#pgSub').textContent=p.nome+': da che ora a che ora è stata sotto la pioggia? Se «dalle» è più tardi di «alle», conto da ieri sera.';
   $('#pgDa').value=prima.getDate()===ora.getDate()?oraHHMM(prima):'00:00'; $('#pgA').value=oraHHMM(ora);
   $('#pioggiaSheet').hidden=false; $('#pioggiaBg').hidden=false; aggiornaPioggia();
   window.GiardinoNet?.pioggia?.().then(m=>{ if(pgPianta!==pid) return; if(m?.disponibile) pgMisure=m; else pgMotivo=m?.motivo||'Misure non disponibili.'; aggiornaPioggia(); })

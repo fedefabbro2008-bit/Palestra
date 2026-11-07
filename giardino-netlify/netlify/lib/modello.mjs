@@ -483,18 +483,22 @@ export function pioggiaPresa(p, eventi){
 }
 // Pioggia MISURATA tra due ore di «giorno» (ora locale): misure = {quarti, ore} con chiavi ISO in UTC alla fine
 // dell'intervallo (ARPAE). Usa i quarti d'ora se ci sono, altrimenti le ore. «fino» = ora locale dell'ultima misura.
+// Se «alle» è prima di «dalle» l'intervallo passa la mezzanotte: dalle = ieri (es. dalle 17:28 di ieri alle 07:15 di oggi).
 export function pioggiaMisurataNelleOre(misure, giorno, dalle, alle, tz){
-  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; }, a=min(dalle), b=min(alle);
-  if(a==null||b==null||b<=a) return {mm:0, fino:null, completo:false};
+  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; };
+  let a=min(dalle); const b=min(alle);
+  if(a==null||b==null||b===a) return {mm:0, fino:null, completo:false, notte:false};
+  const notte=b<a; if(notte) a-=1440;   // minuti contati dall'inizio di «giorno»: ieri sera è negativo
   const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
   const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return {d:p.year+'-'+p.month+'-'+p.day, m:+p.hour*60+(+p.minute)}; };
-  const usa=(serie,durata)=>{ let mm=0, ultimo=-1, n=0;
-    for(const [t,v] of Object.entries(serie||{})){ const e=loc(t), fine=e.d===giorno?e.m:(e.d===addDays(giorno,1)&&e.m===0?1440:null); if(fine==null) continue;
-      ultimo=Math.max(ultimo,fine); const sov=Math.max(0,Math.min(b,fine)-Math.max(a,fine-durata)); if(sov>0){ mm+=(+v||0)*sov/durata; n++; } }
+  const ieri=addDays(giorno,-1), domani=addDays(giorno,1);
+  const usa=(serie,durata)=>{ let mm=0, ultimo=null, n=0;
+    for(const [t,v] of Object.entries(serie||{})){ const e=loc(t), fine=e.d===giorno?e.m:e.d===ieri?e.m-1440:(e.d===domani&&e.m===0?1440:null); if(fine==null) continue;
+      if(fine>a) ultimo=Math.max(ultimo??-Infinity,fine); const sov=Math.max(0,Math.min(b,fine)-Math.max(a,fine-durata)); if(sov>0){ mm+=(+v||0)*sov/durata; n++; } }
     return {mm:+mm.toFixed(1), ultimo, n}; };
-  let r=usa(misure?.quarti,15); if(!r.n && r.ultimo<0) r=usa(misure?.ore,60);
-  const fino=r.ultimo>=0?String(Math.floor(r.ultimo/60)%24).padStart(2,'0')+':'+String(r.ultimo%60).padStart(2,'0'):null;
-  return {mm:r.mm, fino, completo:r.ultimo>=b};
+  let r=usa(misure?.quarti,15); if(!r.n && r.ultimo==null) r=usa(misure?.ore,60);
+  const u=r.ultimo, fino=u!=null?String(Math.floor(((u%1440)+1440)%1440/60)).padStart(2,'0')+':'+String(((u%60)+60)%60).padStart(2,'0'):null;
+  return {mm:r.mm, fino, completo:u!=null&&u>=b, notte};
 }
 export const litriDaPioggia = (k, mm) => +Math.max(0,(mm||0)*k.pioggiaArea).toFixed(2);
 export function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
