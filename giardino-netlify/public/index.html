@@ -441,6 +441,19 @@ nav.tabs .tab:active{transform:scale(.94)}
 @keyframes sheetIn{from{opacity:0;transform:translate(-50%,40px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes pop{0%{transform:scale(.6)}100%{transform:scale(1)}}
 
+/* dettaglio di un giorno del meteo */
+.wx-day[data-wxd]{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.wx-day[data-wxd]:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+.wxd-head{display:flex;gap:12px;align-items:center}
+.wxd-head #wxIco svg{width:46px;height:46px;display:block}
+.wxd-head h2{margin:0}
+.wxd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (min-width:430px){.wxd-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.wxd-c{display:flex;flex-direction:column;gap:1px;min-width:0;padding:9px 11px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line);background-image:var(--glass-sheen)}
+.wxd-c b{font-size:1.15rem;font-variant-numeric:tabular-nums}
+.wxd-c small{color:var(--muted);font-size:.78rem;line-height:1.25}
+.wxd-pi .why-list{margin-top:4px}
+
 /* ===================== ANIMAZIONI IN PIÙ =====================
    Meteo vivo, pillola che scorre nella barra, spruzzo d'acqua su «Fatto», festa quando hai finito, anelli e livelli
    che si riempiono, riquadri che compaiono scorrendo, piante che ondeggiano piano. */
@@ -483,6 +496,11 @@ nav.tabs .in{position:relative}
   .task:nth-child(2n) .ic,.plant:nth-child(2n) .ring>span{animation-duration:6.2s;animation-delay:-1.3s}
   .task:nth-child(3n) .ic,.plant:nth-child(3n) .ring>span{animation-duration:5.6s;animation-delay:-2.6s}
   .ic:active,.ring:active>span{animation:scuoti .5s ease}
+  .wx-day[data-wxd]{transition:transform .12s ease}
+  .wx-day[data-wxd]:active{transform:scale(.94)}
+  #wxSheet:not([hidden]) .wxd-c{animation:riseIn .4s cubic-bezier(.2,.8,.2,1) both}
+  #wxSheet:not([hidden]) .wxd-c:nth-child(2){animation-delay:.03s} #wxSheet:not([hidden]) .wxd-c:nth-child(3){animation-delay:.06s} #wxSheet:not([hidden]) .wxd-c:nth-child(4){animation-delay:.09s}
+  #wxSheet:not([hidden]) .wxd-c:nth-child(5){animation-delay:.12s} #wxSheet:not([hidden]) .wxd-c:nth-child(n+6){animation-delay:.15s}
   /* acqua nel terriccio: un riflesso scorre nel livello; anelli che si riempiono entrando */
   .lev i{overflow:hidden}
   .lev i::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);transform:translateX(-100%);animation:luccica 3.4s ease-in-out infinite}
@@ -869,6 +887,13 @@ nav.tabs .in{position:relative}
   <div class="inrow"><div class="field"><label for="pgDa">Dalle</label><input type="time" id="pgDa"></div><div class="field"><label for="pgA">Alle</label><input type="time" id="pgA"></div></div>
   <div class="alert info" id="pgCalc"></div>
   <div class="row"><button class="btn primary" type="button" id="pgSalva">Registra</button><button class="btn ghost" type="button" id="pgAnnulla">Annulla</button></div>
+</div>
+<div class="sheet-bg" id="wxBg" hidden></div>
+<div class="sheet card stack" id="wxSheet" role="dialog" aria-modal="true" aria-labelledby="wxTit" hidden>
+  <div class="wxd-head"><span id="wxIco" aria-hidden="true"></span><div><h2 id="wxTit">Meteo</h2><p class="sub" id="wxCond"></p></div></div>
+  <div class="wxd-grid" id="wxGrid"></div>
+  <div id="wxExtra" class="stack"></div>
+  <div class="row"><button class="btn ghost" type="button" id="wxChiudi">Chiudi</button></div>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -2210,7 +2235,7 @@ function renderWeather(){
   const t=today(), days=wxDays().filter(d=>d.date>=t).slice(0,7), w=activeWeather();
   $('#wxBox').hidden=!S.location;
   if(!days.length){ setHTML($('#wxStrip'),''); $('#wxNote').hidden=false; $('#wxNote').textContent=ready?'Meteo in arrivo…':'Caricamento…'; return; }
-  setHTML($('#wxStrip'),days.map(d=>`<div class="wx-day${d.date===t?' today':''}" title="${esc(d.cond||'')}"><span class="d">${esc(dayShort(d.date))}</span>${wxIcon(d.cond)}<span class="t">${d.tmax!=null?fmt(d.tmax,0)+'°':'–'}</span><span class="tm">${d.tmin!=null?fmt(d.tmin,0)+'°':''}</span><span class="r">${(d.rain||0)>=0.2?fmt(d.rain)+' mm':''}</span></div>`).join(''));
+  setHTML($('#wxStrip'),days.map(d=>`<div class="wx-day${d.date===t?' today':''}" title="${esc(d.cond||'')}" role="button" tabindex="0" data-wxd="${esc(d.date)}" aria-label="${esc(dayLabel(d.date)+': '+(d.cond||'')+', dettagli')}"><span class="d">${esc(dayShort(d.date))}</span>${wxIcon(d.cond)}<span class="t">${d.tmax!=null?fmt(d.tmax,0)+'°':'–'}</span><span class="tm">${d.tmin!=null?fmt(d.tmin,0)+'°':''}</span><span class="r">${(d.rain||0)>=0.2?fmt(d.rain)+' mm':''}</span></div>`).join(''));
   const vecchio=!fresco(w), riserva=/MET/.test(w?.fonte||'');
   $('#wxNote').hidden=!vecchio&&!riserva; if(vecchio) $('#wxNote').textContent='Previsioni non aggiornate: il piano usa gli ultimi dati.';
   else if(riserva) $('#wxNote').textContent='Open-Meteo non risponde: previsioni di riserva da MET Norway (senza probabilità di pioggia).';
@@ -2350,6 +2375,38 @@ function apriPioggia(pid){
   window.GiardinoNet?.pioggia?.().then(m=>{ if(pgPianta!==pid) return; if(m?.disponibile) pgMisure=m; else pgMotivo=m?.motivo||'Misure non disponibili.'; aggiornaPioggia(); })
     .catch(e=>{ if(pgPianta!==pid) return; pgMotivo='Misure ARPAE non raggiungibili ('+e.message+'): riprova tra poco.'; aggiornaPioggia(); });
 }
+// Dettaglio di un giorno del meteo: numeri del giorno, cosa vogliono dire e cosa fare alle piante quel giorno
+function apriMeteo(data){
+  const d=wxDays().find(x=>x.date===data); if(!d) return;
+  const w=activeWeather(), t=today(), AP=activePlan();
+  $('#wxIco').innerHTML=wxIcon(d.cond);
+  const lunga=new Date(data+'T12:00:00').toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'});
+  $('#wxTit').textContent=data===t?'Oggi, '+lunga:data===addDays(t,1)?'Domani, '+lunga:lunga[0].toUpperCase()+lunga.slice(1);
+  $('#wxCond').textContent=(d.cond?d.cond[0].toUpperCase()+d.cond.slice(1):'')+(d.misurata?' · pioggia misurata da ARPAE':'');
+  const c=(et,v,nota)=>`<div class="wxd-c"><span class="eyebrow">${esc(et)}</span><b>${v}</b>${nota?`<small>${esc(nota)}</small>`:''}</div>`;
+  const evap=d.et0!=null?(d.et0<1?'poca, terra che resta umida':d.et0<3?'normale':d.et0<5?'alta: i vasi si asciugano in fretta':'molto alta: controlla i vasi piccoli'):'';
+  const vento=d.wind!=null?(d.wind<15?'debole':d.wind<30?'moderato':d.wind<50?'forte: lega le piante alte':'molto forte: metti al riparo i vasi'):'';
+  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.rain_modelli?'media di due modelli ('+d.rain_modelli.map(x=>fmt(x,1)).join(' e ')+' mm)':'';
+  setHTML($('#wxGrid'),[
+    c('Massima',d.tmax!=null?fmt(d.tmax,0)+'°':'–'),
+    c('Minima',d.tmin!=null?fmt(d.tmin,0)+'°':'–',d.tmin!=null&&d.tmin<=2?'rischio gelo':d.tmin!=null&&d.tmin<=6?'notte fredda':''),
+    c('Pioggia',fmt(d.rain||0,1)+' mm',[d.prob!=null&&!d.misurata?'probabilità '+fmt(d.prob,0)+'%':'',pioggiaNota].filter(Boolean).join(' · ')),
+    c('Evaporazione',d.et0!=null?fmt(d.et0,1)+' mm':'–',evap),
+    c('Vento',d.wind!=null?fmt(d.wind,0)+' km/h':'–',[d.raffiche!=null?'raffiche '+fmt(d.raffiche,0):'',vento].filter(Boolean).join(' · ')),
+    c('Sole',d.sole!=null?Math.round(d.sole*100)+'%':'–',d.sole!=null?'delle ore di luce':'')
+  ].join(''));
+  // stanotte, ora per ora (solo per oggi): la temperatura più bassa e quando
+  let extra='';
+  if(data===t&&Array.isArray(w?.notte)&&w.notte.length){ const m=w.notte.reduce((a,b)=>b.t<=a.t?b:a);
+    extra+=`<div class="alert ${m.t<=2?'':'info'}">${m.t<=2?ICON.warn:ICON.info}<div>Stanotte la minima è di <b>${fmt(m.t,0)} °C</b> verso le ${esc(m.ora)}:00.</div></div>`; }
+  if((d.rain||0)>=5&&!d.misurata) extra+=`<div class="alert info">${ICON.info}<div>Con ${fmt(d.rain,0)} mm le piante all'aperto si bagnano da sole: quelle al riparo no.</div></div>`;
+  const voci=AP&&S.plants.length?piante().map(p=>{ const g=AP.data.piante.find(x=>x.id===p.id)?.giorni.find(x=>x.data===data); return g?{p,g}:null; }).filter(Boolean):[];
+  if(voci.length){ const az=voci.filter(v=>v.g.azione!=='salta');
+    extra+=`<div class="wxd-pi"><span class="eyebrow">${az.length?'Quel giorno':'Quel giorno niente da fare'}</span><ul class="why-list">${(az.length?az:voci.slice(0,4)).map(({p,g})=>`<li><b>${esc(icoDi(p)+' '+p.nome)}</b>: ${g.azione==='innaffia'?'innaffia '+esc(fmtL(g.litri)):esc(g.motivo)}</li>`).join('')}</ul></div>`; }
+  setHTML($('#wxExtra'),extra);
+  $('#wxSheet').hidden=false; $('#wxBg').hidden=false; $('#wxChiudi').focus({preventScroll:true});
+}
+function chiudiMeteo(){ $('#wxSheet').hidden=true; $('#wxBg').hidden=true; }
 function chiudiPioggia(){ $('#pioggiaSheet').hidden=true; $('#pioggiaBg').hidden=true; pgPianta=null; }
 function salvaPioggia(){
   const c=calcolaPioggia(); if(!c||!(c.litri>0)) return;
@@ -2812,10 +2869,14 @@ function wire(){
     const tt=e.target.closest('[data-tutte]'); if(tt){ spruzzo(tt,e,18); fattoTutte(tt.dataset.tutte); return; }
     const vr=e.target.closest('[data-ver]'); if(vr){ rispondiVerifica(vr.dataset.pid, vr.dataset.ver); return; }
     const pg=e.target.closest('[data-pioggia]'); if(pg){ apriPioggia(pg.dataset.pioggia); return; }
+    const wd=e.target.closest('[data-wxd]'); if(wd){ apriMeteo(wd.dataset.wxd); return; }
     const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); }
   });
   $('#saveNote').addEventListener('click',()=>$('#saveNote').hidden=true);
   $('#pgDa').addEventListener('input',aggiornaPioggia); $('#pgA').addEventListener('input',aggiornaPioggia);
+  $('#wxChiudi').addEventListener('click',chiudiMeteo); $('#wxBg').addEventListener('click',chiudiMeteo);
+  $('#wxStrip').addEventListener('keydown',e=>{ const wd=e.target.closest('[data-wxd]'); if(wd&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); apriMeteo(wd.dataset.wxd); } });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#wxSheet').hidden) chiudiMeteo(); });
   $('#pgSalva').addEventListener('click',salvaPioggia); $('#pgAnnulla').addEventListener('click',chiudiPioggia); $('#pioggiaBg').addEventListener('click',chiudiPioggia);
   const meseSposta=n=>{ const [y,m]=calMese.split('-').map(Number), d=new Date(y,m-1+n,1); calMese=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); renderCalendario(); };
   $('#calPrima').addEventListener('click',()=>meseSposta(-1)); $('#calDopo').addEventListener('click',()=>meseSposta(1));
