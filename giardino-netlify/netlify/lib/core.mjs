@@ -35,6 +35,10 @@ export const siteUrl = (req) => (globalThis.Netlify?.env?.get("URL")) || new URL
 
 /* ---------------- Dati ---------------- */
 export const IMP_DEF = { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 19 };
+// Notifiche Telegram che si spengono dall'app (Impostazioni → Notifiche): impostazioni.notifiche = { tipo: false }, accese se
+// mancano. Le risposte ai comandi (/oggi, pulsanti) arrivano sempre, e così il messaggio di riserva da GitHub (sito fermo).
+export const NOTIFICHE = ["mattina", "sera", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"];
+export const notifica = (imp, tipo) => imp?.notifiche?.[tipo] !== false;
 export const vuoto = () => ({ location: null, plants: [], impostazioni: { ...IMP_DEF }, vacanza: null, eventi: [], piano_claude: null, meteo_manual: null });
 export const CAMPI = ["location", "plants", "impostazioni", "vacanza", "meteo_manual", "piano_claude"];
 

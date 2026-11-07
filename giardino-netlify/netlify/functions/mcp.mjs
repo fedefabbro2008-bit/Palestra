@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, meteo, oraLocale, pianoAttivo, finePiano, calibrazioneVera, IMP_DEF, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, meteo, oraLocale, pianoAttivo, finePiano, calibrazioneVera, IMP_DEF, NOTIFICHE, M } from "../lib/core.mjs";
 
 /* Giardino · server MCP per Claude (connettore personalizzato su claude.ai, gratis con il tuo account).
    Claude legge piante, meteo reale e piano calcolato; se lo permetti nell'app salva il suo piano della settimana,
@@ -295,10 +295,20 @@ async function toolPianoAutomatico(ctx) {
 async function toolImpostazioni(ctx, a) {
   const LIM = { bicchiere: [0.05, 2], annaffiatoio: [0.5, 30], ora_mattina: [4, 12], ora_sera: [15, 22] }, nuove = {};
   for (const [k, [lo, hi]] of Object.entries(LIM)) if (a[k] != null) { const v = +a[k]; if (!isFinite(v) || v < lo || v > hi) throw new Error(`${k} tra ${lo} e ${hi}`); nuove[k] = k.startsWith("ora") ? Math.round(v) : v; }
-  if (!Object.keys(nuove).length) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), ora_mattina, ora_sera.");
-  const out = await aggiorna(ctx.store, ctx.code, (d) => { d.impostazioni = { ...IMP_DEF, ...(d.impostazioni || {}), ...nuove }; });
+  // notifiche Telegram da accendere (true) o spegnere (false); le altre restano come sono
+  const notif = {};
+  for (const [k, v] of Object.entries(a.notifiche && typeof a.notifiche === "object" ? a.notifiche : {})) {
+    if (!NOTIFICHE.includes(k)) throw new Error("notifiche: " + k + " non esiste (" + NOTIFICHE.join(", ") + ")");
+    if (typeof v === "boolean") notif[k] = v;
+  }
+  if (!Object.keys(nuove).length && !Object.keys(notif).length) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), ora_mattina, ora_sera, notifiche.");
+  const out = await aggiorna(ctx.store, ctx.code, (d) => {
+    const prima = { ...IMP_DEF, ...(d.impostazioni || {}) }, n = { ...(prima.notifiche || {}) };
+    for (const [k, v] of Object.entries(notif)) { if (v) delete n[k]; else n[k] = false; }
+    d.impostazioni = { ...prima, ...nuove, notifiche: n };
+  });
   ctx.saved(out);
-  return "Impostazioni aggiornate: " + Object.entries(nuove).map(([k, v]) => k + " " + v).join(", ") + ".";
+  return "Impostazioni aggiornate: " + [...Object.entries(nuove).map(([k, v]) => k + " " + v), ...Object.entries(notif).map(([k, v]) => "notifica " + k + (v ? " accesa" : " spenta"))].join(", ") + ".";
 }
 
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -355,8 +365,9 @@ const TOOLS = [
     description: "Toglie il tuo piano salvato: app, promemoria Telegram e Siri tornano al calcolo automatico dell'app (meteo reale, aggiornato ogni giorno). Usalo se il piano è superato o l'utente lo chiede.",
     inputSchema: { type: "object", properties: {} }, annotations: { ...RW, destructiveHint: true, title: "Calcolo automatico" }, run: toolPianoAutomatico },
   { name: "impostazioni", title: "Misure e orari", write: true,
-    description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri) e l'ora del messaggio Telegram del mattino (4-12) e della sera (15-22).",
-    inputSchema: { type: "object", properties: { bicchiere: { type: "number" }, annaffiatoio: { type: "number" }, ora_mattina: { type: "integer" }, ora_sera: { type: "integer" } } }, annotations: { ...RW, title: "Impostazioni" }, run: toolImpostazioni },
+    description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri), l'ora del messaggio Telegram del mattino (4-12) e della sera (15-22) e accende (true) o spegne (false) le notifiche Telegram: mattina (piano del mattino), sera (promemoria delle piante ancora da innaffiare), avvisi (gelo, caldo, vento per domani), verifica (controllo del sabato col dito), riepilogo (domenica), backup (mensile), piano (fine del piano di Claude), crediti (crediti Netlify).",
+    inputSchema: { type: "object", properties: { bicchiere: { type: "number" }, annaffiatoio: { type: "number" }, ora_mattina: { type: "integer" }, ora_sera: { type: "integer" },
+      notifiche: { type: "object", properties: Object.fromEntries(NOTIFICHE.map((k) => [k, { type: "boolean" }])), additionalProperties: false } } }, annotations: { ...RW, title: "Impostazioni" }, run: toolImpostazioni },
   { name: "vacanza", title: "Imposta la vacanza", write: true,
     description: "Imposta (dal, al = giorno del rientro) o annulla il periodo in cui l'utente è via.",
     inputSchema: { type: "object", properties: { dal: { type: "string" }, al: { type: "string" }, annulla: { type: "boolean" } } }, annotations: { ...RW, title: "Vacanza" }, run: toolVacanza }

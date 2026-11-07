@@ -309,6 +309,36 @@ test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora um
   assert.equal(inviati.filter((x) => x[0] === "sendMessage").length, 0, "una volta al giorno");
 });
 
+test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della sera sì, anche senza mattino)", async () => {
+  const st = getStore({ name: "giardino" }), t0 = await st.get("t-" + CODE, { type: "json" });
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
+  const giro = async (notifiche) => {
+    const t = await st.get("t-" + CODE, { type: "json" });
+    await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: null, notificati: {} });
+    await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12, notifiche } } } });
+    inviati.length = 0; await bot();
+    const testi = inviati.filter((x) => x[0] === "sendMessage").map((x) => x[1].text);
+    return { mattino: testi.some((x) => x.includes("Giardino —")), sera: testi.some((x) => x.includes("Ancora da innaffiare")), backup: inviati.some((x) => x[0] === "sendDocument"), n: testi.length };
+  };
+  const tutte = await giro({});
+  assert.ok(tutte.mattino && tutte.sera, "con tutto acceso: mattino e sera");
+  const senzaMattino = await giro({ mattina: false, backup: false });
+  assert.ok(!senzaMattino.mattino, "mattino spento"); assert.ok(senzaMattino.sera, "la sera arriva lo stesso, con le piante di oggi"); assert.ok(!senzaMattino.backup, "backup spento");
+  const nessuna = await giro(Object.fromEntries(["mattina", "sera", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"].map((k) => [k, false])));
+  assert.equal(nessuna.n, 0, "tutto spento: nessun messaggio"); assert.ok(!nessuna.backup);
+  const t = await st.get("t-" + CODE, { type: "json" }), oggi = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+  assert.equal(t.ultimo_invio, oggi); assert.equal(t.ultimo_avviso_sera, oggi); assert.deepEqual(t.notificati, {}, "nessuna pianta segnata: domani niente innaffiature presunte");
+  // dal connettore: Claude riaccende il mattino e spegne il riepilogo; le altre restano come sono
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  const r = await strumento("impostazioni", { notifiche: { mattina: true, riepilogo: false } });
+  assert.match(r.content[0].text, /notifica mattina accesa.*notifica riepilogo spenta/);
+  const n = (await leggiDati()).impostazioni.notifiche;
+  assert.ok(!("mattina" in n) && n.riepilogo === false && n.sera === false && n.crediti === false);
+  assert.ok((await strumento("impostazioni", { notifiche: { boh: false } })).isError, "tipo sconosciuto");
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
+  await st.setJSON("t-" + CODE, { ...t0 });
+});
+
 test("Siri: codice in intestazione, piano di oggi a voce, «ho innaffiato» per zona", async () => {
   assert.equal((await call(siri, "/api/siri/oggi", { method: "POST" })).status, 401);
   assert.equal((await call(siri, "/api/siri/boh", { method: "POST", headers: H })).status, 404);

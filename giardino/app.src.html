@@ -302,6 +302,19 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .sv{flex:0 1 auto;min-width:0;max-width:48%;font-size:.86rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sv.ok{color:var(--leaf);font-weight:600}
 .set .body{padding:2px 14px 16px;display:flex;flex-direction:column;gap:12px}
+/* notifiche: interruttori come su iPhone */
+.notif{display:flex;flex-direction:column}
+.sw-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);cursor:pointer}
+.sw-row:first-child{border-top:0;padding-top:2px}
+.sw-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sw-t b{font-weight:600;font-size:.95rem}
+.sw-t span{font-size:.82rem;color:var(--muted);line-height:1.3}
+input.sw{-webkit-appearance:none;appearance:none;flex:none;width:51px;height:31px;margin:0;border-radius:999px;background:rgba(120,120,128,.32);position:relative;cursor:pointer;transition:background .2s}
+input.sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.22);transition:transform .25s cubic-bezier(.3,.8,.35,1.1)}
+input.sw:checked{background:var(--leaf)}
+input.sw:checked::after{transform:translateX(20px)}
+input.sw:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){input.sw,input.sw::after{transition:none}}
 .steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:.9rem}
 .code{font-family:var(--mono);font-size:.88rem;background:var(--surface-2);border:1px dashed var(--line);border-radius:12px;padding:11px 12px;word-break:break-all;-webkit-user-select:all;user-select:all}
 .prompt{display:flex;gap:10px;align-items:center;justify-content:space-between;width:100%;text-align:left;background:var(--surface-2);border:0;border-radius:12px;padding:10px 12px;font-size:.88rem;cursor:pointer}
@@ -733,7 +746,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 
     <details class="set" id="set-tg"><summary><span class="si">✈️</span><span class="st">Telegram</span><span class="sv" id="tgChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
       <div class="body">
-        <p class="sub">Ogni mattina ti scrive solo se c'è da fare, con i pulsanti Fatto, Era umida, Salto. La sera ti avvisa di gelo, caldo o vento. Gratis.</p>
+        <p class="sub">Ogni mattina ti scrive solo se c'è da fare, con i pulsanti Fatto, Era umida, Salto. La sera ti avvisa di gelo, caldo o vento. Scegli cosa ricevere in Notifiche. Gratis.</p>
         <ol class="steps" id="tgSteps">
           <li>Su Telegram apri <b>@BotFather</b>, invia <span class="mono">/newbot</span>, scegli un nome e copia il <b>token</b>.</li>
           <li>Incollalo qui sotto e premi <b>Collega</b>.</li>
@@ -743,6 +756,14 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
         <div class="row"><a class="btn ghost" id="tgFather" href="https://t.me/BotFather" target="_blank" rel="noopener">Apri @BotFather</a><a class="btn primary" id="tgOpen" href="#" target="_blank" rel="noopener" hidden></a><button class="btn ghost" id="tgTest" type="button" hidden>Messaggio di prova</button><button class="btn ghost danger" id="tgOff" type="button" hidden>Scollega</button></div>
         <div id="tgStatus" class="sub" aria-live="polite"></div>
         <div class="hint" id="tgRiserva" hidden></div>
+      </div>
+    </details>
+
+    <details class="set" id="set-not"><summary><span class="si">🔔</span><span class="st">Notifiche</span><span class="sv" id="notVal"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="body">
+        <p class="sub">Scegli cosa ti scrive il bot su Telegram. Le risposte ai tuoi comandi (/oggi e i pulsanti) arrivano sempre.</p>
+        <div class="notif" id="notList"></div>
+        <div class="hint" id="notHint" hidden></div>
       </div>
     </details>
 
@@ -1506,7 +1527,29 @@ function renderImpostazioni(){
   setVal($('#impB'),numIn(i.bicchiere)); setVal($('#impA'),numIn(i.annaffiatoio)); setVal($('#impM'),i.ora_mattina); setVal($('#impS'),i.ora_sera);
   $('#misVal').textContent='annaffiatoio '+fmt(i.annaffiatoio)+' L';
   $('#impEx').textContent='Esempio: 1,2 L = '+dose(1.2,i)+'; 3 L = '+dose(3,i)+'.';
-  renderVacanza(); renderMeteoSet(); renderSync(); renderSiri();
+  renderVacanza(); renderMeteoSet(); renderSync(); renderSiri(); renderNotifiche();
+}
+// notifiche Telegram: impostazioni.notifiche = {tipo:false} per quelle spente (le altre accese, anche quelle che arriveranno)
+const NOTIF=[
+  ['mattina','Piano del mattino',i=>'Cosa innaffiare oggi, con i pulsanti · alle '+i.ora_mattina],
+  ['sera','Promemoria della sera',i=>'Le piante di oggi ancora senza risposta · alle '+i.ora_sera],
+  ['avvisi','Avvisi per domani',()=>'Gelo, caldo, vento, temporali e grandine · la sera'],
+  ['verifica','Controllo del sabato',()=>"Una pianta da toccare con il dito: così l'app impara quanto beve"],
+  ['riepilogo','Riepilogo della domenica',()=>'Acqua data e piante della settimana'],
+  ['backup','Backup mensile',()=>'Il file con tutti i dati, una volta al mese'],
+  ['piano','Fine del piano di Claude',()=>'Quando il piano salvato da Claude sta per finire'],
+  ['crediti','Crediti Netlify',()=>"Se i crediti del mese stanno per finire (sopra l'80%)"]];
+const notAttiva=k=>S.impostazioni.notifiche?.[k]!==false;
+function chipNotifiche(){
+  const n=NOTIF.filter(([k])=>notAttiva(k)).length, h=$('#notHint');
+  $('#notVal').textContent=n===NOTIF.length?'tutte':n?n+' su '+NOTIF.length:'nessuna';
+  const t=!n?'Nessuna notifica: il bot risponde solo ai tuoi comandi.':!notAttiva('mattina')&&notAttiva('sera')?'Senza il piano del mattino, la sera ti scrive lo stesso le piante da innaffiare ancora senza risposta.':'';
+  h.textContent=t; h.hidden=!t;
+}
+function renderNotifiche(){
+  const i=S.impostazioni;
+  setHTML($('#notList'),NOTIF.map(([k,t,d])=>`<label class="sw-row"><span class="sw-t"><b>${t}</b><span>${esc(d(i))}</span></span><input type="checkbox" role="switch" class="sw" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></label>`).join(''));
+  chipNotifiche();
 }
 function renderSiri(){
   const sel=$('#siriZona'), prima=sel.value, zone=zoneEsistenti();
@@ -1940,9 +1983,15 @@ function wire(){
   $('#syncBtn').addEventListener('click',syncNow);
   $('#impSave').addEventListener('click',()=>{
     const b=numOrNull($('#impB').value), a=numOrNull($('#impA').value), m=numOrNull($('#impM').value), s=numOrNull($('#impS').value);
-    S.impostazioni={bicchiere:b>0?b:IMP_DEF.bicchiere, annaffiatoio:a>0?a:IMP_DEF.annaffiatoio, ora_mattina:m>=5&&m<=12?Math.round(m):IMP_DEF.ora_mattina, ora_sera:s>=16&&s<=22?Math.round(s):IMP_DEF.ora_sera};
+    S.impostazioni={...S.impostazioni, bicchiere:b>0?b:IMP_DEF.bicchiere, annaffiatoio:a>0?a:IMP_DEF.annaffiatoio, ora_mattina:m>=5&&m<=12?Math.round(m):IMP_DEF.ora_mattina, ora_sera:s>=16&&s<=22?Math.round(s):IMP_DEF.ora_sera};
     ['#impB','#impA','#impM','#impS'].forEach(x=>{ $(x).blur(); $(x)._last=undefined; });   // mostra i valori validati, anche se uguali a prima
     saveMain(); renderAll(); toast('Salvato');
+  });
+  $('#notList').addEventListener('change',e=>{
+    const x=e.target.closest('[data-not]'); if(!x) return;
+    const n={...(S.impostazioni.notifiche||{})}; if(x.checked) delete n[x.dataset.not]; else n[x.dataset.not]=false;
+    S.impostazioni={...S.impostazioni, notifiche:n}; saveMain(); chipNotifiche();
+    toast(x.getAttribute('aria-label')+(x.checked?': accesa':': spenta'));
   });
   $('#bkSave').addEventListener('click',scaricaBackup);
   $('#bkFile').addEventListener('change',e=>leggiBackup(e.target.files[0]));
@@ -2013,7 +2062,7 @@ function renderTg(s){
   $('#tgSteps').hidden=on; $('#tgTokenRow').hidden=on; $('#tgFather').hidden=on;
   $('#tgOpen').hidden=!on; if(on){ $('#tgOpen').href='https://t.me/'+encodeURIComponent(s.username); $('#tgOpen').textContent='Apri @'+s.username; $('#tgOpen').className='btn '+(ok?'ghost':'primary'); }
   $('#tgTest').hidden=!ok; $('#tgOff').hidden=!on;
-  $('#tgStatus').textContent=!on?'':ok?'Collegato: il piano arriva ogni mattina alle '+S.impostazioni.ora_mattina+'.':'Ora apri @'+s.username+' su Telegram e premi Avvia, poi torna qui.';
+  $('#tgStatus').textContent=!on?'':ok?(notAttiva('mattina')?'Collegato: il piano arriva ogni mattina alle '+S.impostazioni.ora_mattina+'.':'Collegato. Il piano del mattino è spento (Notifiche).'):'Ora apri @'+s.username+' su Telegram e premi Avvia, poi torna qui.';
   // bot di riserva su GitHub (se il sito va in pausa): servono il codice, il token e il numero della chat come segreti
   $('#tgRiserva').hidden=!(ok&&s.chat_id);
   if(ok&&s.chat_id) setHTML($('#tgRiserva'),'Bot di riserva su GitHub (se il sito va in pausa): nei segreti del repository metti GIARDINO_CODE (il codice di sincronizzazione), GIARDINO_TG_TOKEN (il token del bot) e GIARDINO_TG_CHAT = <b class="mono">'+esc(String(s.chat_id))+'</b>.');

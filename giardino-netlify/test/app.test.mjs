@@ -192,6 +192,18 @@ test("flusso completo a 390 px", async (t) => {
   assert.match(await page.textContent("#siriUrl"), /\/api\/siri\/fatto\?zona=orto$/);
   await page.click("#set-mis summary"); await page.fill("#impA", "12"); await page.fill("#impB", "0,3"); await page.click("#impSave");
   assert.deepEqual(await page.evaluate(() => [S.impostazioni.annaffiatoio, S.impostazioni.bicchiere]), [12, 0.3]);
+  // Notifiche: un interruttore per tipo, salvato subito sul server; salvare le misure non le cancella
+  await page.click("#set-not summary");
+  assert.equal(await page.textContent("#notVal"), "tutte"); assert.equal(await page.locator("#notList input.sw:checked").count(), 8);
+  await page.click('#notList [data-not="riepilogo"]'); await page.click('#notList [data-not="mattina"]');
+  assert.equal(await page.textContent("#notVal"), "6 su 8"); assert.match(await page.textContent("#notHint"), /la sera ti scrive lo stesso/);
+  await page.fill("#impA", "11"); await page.click("#impSave");
+  assert.deepEqual(await page.evaluate(() => S.impostazioni.notifiche), { riepilogo: false, mattina: false });
+  await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+  { const cod = await page.evaluate(() => window.GiardinoNet.codice()), srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": cod } }))).text()).data.impostazioni;
+    assert.equal(srv.annaffiatoio, 11); assert.deepEqual(srv.notifiche, { riepilogo: false, mattina: false }, "sul server: il bot le legge da qui"); }
+  await page.click('#notList [data-not="mattina"]');
+  assert.equal(await page.textContent("#notVal"), "7 su 8"); assert.ok(await page.isHidden("#notHint"));
   await page.click("#set-claude summary"); await page.click("#mcpOn");
   await quando(page, () => document.querySelector("#mcpUrl").textContent.length > 10);
   assert.match(await page.textContent("#mcpUrl"), /\/mcp\/[A-Z2-7]{26}$/);
