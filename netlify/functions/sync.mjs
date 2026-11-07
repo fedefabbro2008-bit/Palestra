@@ -140,6 +140,14 @@ export default async (request) => {
   if (op === "tg") return tgKey(request, store, code);
   const key = "u-" + code;
 
+  // l'app dice quale versione ha già (etag dell'ultima sincronizzazione): se sul server è ancora quella, risposta di
+  // pochi byte invece di tutto lo storico. È il caso di quasi ogni apertura dell'app: meno banda, meno crediti Netlify
+  const known = request.method === "GET" ? new URL(request.url).searchParams.get("etag") : null;
+  if (known) {
+    try { const m = await store.getMetadata(key); if (m && m.etag && m.etag === known) return reply({ same: true, etag: m.etag }); }
+    catch (e) { /* si legge tutto, qui sotto */ }
+  }
+
   // lettura fallita: errore, mai "vuoto" (l'app penserebbe che hai cancellato tutto)
   let current = null, etag = null;
   try {
@@ -147,7 +155,7 @@ export default async (request) => {
     if (found) { current = found.data; etag = found.etag || null; }
   } catch (e) { return reply({ error: "lettura non riuscita" }, 503); }
 
-  if (request.method === "GET") return reply(current || {});
+  if (request.method === "GET") return reply(current ? { ...current, etag } : {});
 
   let raw = "";
   try { raw = await request.text(); } catch (e) { return reply({ error: "corpo illeggibile" }, 400); }
@@ -182,7 +190,7 @@ export default async (request) => {
     try { fresh = await store.get(key, { type: "json" }); } catch (e) { fresh = null; }
     return reply(fresh || {}, 409);
   }
-  return reply({ ok: true, rev: data.rev, at: data.at, wid: data.wid });
+  return reply({ ok: true, rev: data.rev, at: data.at, wid: data.wid, etag: (res && res.etag) || null });
 };
 
 export const config = { path: "/api/sync" };

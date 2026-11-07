@@ -3209,7 +3209,7 @@ if(IS_ANDROID){
   document.getElementById('fileBackupToggle').setAttribute('aria-label', 'Scarica il backup a fine allenamento');
 }
 /* impostazioni: prima stavano in fondo a Stats, mescolate ai grafici */
-function openSettings(){ refreshNotifUI(); renderSync(); try{ if(sync && sync.code){ mcpRun(null); tgRun(null); } }catch(e){} renderBackupBanner(); renderAutoBackupInfo(); autoBackupInfo().then(renderAutoBackupInfo); document.getElementById('settingsSheet').classList.add('show'); }
+function openSettings(){ refreshNotifUI(); renderSync(); try{ if(sync && sync.code && Date.now()-(window.__extAt||0) > 600000){ window.__extAt = Date.now(); mcpRun(null); tgRun(null); } }catch(e){} renderBackupBanner(); renderAutoBackupInfo(); autoBackupInfo().then(renderAutoBackupInfo); document.getElementById('settingsSheet').classList.add('show'); }
 function closeSettings(){ document.getElementById('settingsSheet').classList.remove('show'); }
 document.getElementById('settingsBtn').addEventListener('click', openSettings);
 document.getElementById('settingsClose').addEventListener('click', closeSettings);
@@ -8616,10 +8616,17 @@ function syncApply(m){
   if(m.claude && m.days) showToast(m.claude.undo===true ? 'Claude ha rimesso la scheda com\'era' : 'Claude ha modificato la scheda', 'Vedi', claudeShow, 6000);
   return relinked;
 }
-function syncRememberBase(rev, wid){
+/* qualcosa è cambiato qui dall'ultima sincronizzazione? (storico, scheda, impostazioni sincronizzate) */
+function syncLocalChanged(){
+  const b = sync.base;
+  if(!b || !b.logs || daysHash(state.days)!==b.days || setHash(state.settings)!==b.set) return true;
+  const L = flatLogs(state.logs), ids = Object.keys(L);
+  return ids.length!==Object.keys(b.logs).length || ids.some(id=> b.logs[id]!==L[id].h);
+}
+function syncRememberBase(rev, wid, etag){
   const logs = Object.create(null); Object.values(flatLogs(state.logs)).forEach(x=>{ logs[x.s.id] = x.h; });
   sync.base = { logs, days:daysHash(state.days), set:setHash(state.settings) };
-  sync.rev = rev; sync.wid = wid || null; sync.lastOk = Date.now(); sync.lastErr = null; sync.joining = false;
+  sync.rev = rev; sync.wid = wid || null; sync.etag = etag || null; sync.lastOk = Date.now(); sync.lastErr = null; sync.joining = false;
   saveSync();
 }
 async function syncNow(opts){
@@ -8633,12 +8640,20 @@ async function syncNow(opts){
   syncBusy = true; syncLastTry = Date.now(); syncStatus('Sincronizzo…', '');
   const url = SYNC_API+'?code='+encodeURIComponent(sync.code);
   try{
-    let r = await fetch(url, { cache:'no-store' });
+    // versione del server già nota: se non è cambiata risponde "same" (pochi byte) invece di tutto lo storico
+    const known = sync.etag && sync.base && !sync.joining ? '&etag='+encodeURIComponent(sync.etag) : '';
+    let r = await fetch(url+known, { cache:'no-store' });
     if(!r.ok) throw new Error(r.status===404 ? 'nofn' : 'http '+r.status);
     let remote = await r.json();
-    let saved = false;
+    let saved = false, direct = false;
+    if(remote && remote.same){
+      if(!syncLocalChanged()){ sync.lastOk = Date.now(); sync.lastErr = null; saveSync(); saved = true; }   // niente di nuovo, da nessuna parte
+      // cambiato solo qui: il server è com'era all'ultima sincronizzazione, si manda e basta (se nel frattempo
+      // un altro dispositivo ha salvato, risponde 409 con i dati nuovi e si unisce come sempre)
+      else direct = true;
+    }
     for(let attempt=0; attempt<3 && !saved; attempt++){
-      let m = syncMerge(remote, { join: sync.joining });
+      let m = direct ? { push:true, pull:false, removed:[] } : syncMerge(remote, { join: sync.joining });
       if(m.removed.length > 3 && !opts.confirmed){
         syncBusy = false;
         const yes = await customConfirm('Sull\'altro dispositivo sono stati cancellati '+m.removed.length+' allenamenti. Cancellarli anche qui?', 'Cancella anche qui', 'Tienili');
@@ -8649,16 +8664,16 @@ async function syncNow(opts){
       if(m.pull && syncApply(m)) m.push = true;
       if(m.claudeLost) infoToast('Modifiche di Claude alla scheda non applicate: qui l\'hai cambiata dopo', 5000, 'warn');
       if(remote && remote.claude && num(remote.claude.at) > num(sync.claudeSeen)) sync.claudeSeen = num(remote.claude.at);
-      if(!m.push){ syncRememberBase(num(remote.rev), remote.wid); saved = true; break; }
+      if(!m.push){ syncRememberBase(num(remote.rev), remote.wid, remote.etag); saved = true; break; }
       const wid = Date.now().toString(36)+Math.random().toString(36).slice(2,10);
-      const body = JSON.stringify({ baseRev: num(remote.rev), logs: compactLogs(state.logs), days: state.days, daysAt: num(sync.daysAt),
+      const body = JSON.stringify({ baseRev: direct ? num(sync.rev) : num(remote.rev), logs: compactLogs(state.logs), days: state.days, daysAt: num(sync.daysAt),
                                     settings: syncSetPick(state.settings), setAt: num(sync.setAt), wid });
       r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body, cache:'no-store' });
-      if(r.status===409){ remote = await r.json(); continue; }   // un altro dispositivo ha appena salvato: si riunisce
+      if(r.status===409){ remote = await r.json(); direct = false; continue; }   // un altro dispositivo ha appena salvato: si riunisce
       if(r.status===413) throw new Error('big');
       if(!r.ok) throw new Error('http '+r.status);
       const j = await r.json();
-      syncRememberBase(num(j.rev), j.wid || wid);
+      syncRememberBase(num(j.rev), j.wid || wid, j.etag);
       saved = true;
     }
     if(!saved) throw new Error('busy');   // altri dispositivi salvano di continuo: si riprova fra poco
@@ -8708,6 +8723,7 @@ async function syncEnable(code, join){
     if(!num(remote.rev)){ showToast('Nessun dato con questo codice: controlla di averlo copiato intero dall\'altro dispositivo.', null, null, 5000, 'warn'); return false; }
   }
   sync = { code, joining: !!join, base:{ logs:{} }, daysAt: 0, setAt: 0, setHash: setHash(state.settings) };
+  window.__extAt = 0;
   saveSync(); renderSync();
   await syncNow({ confirmed:true, manual:true });
   if(sync.lastOk) showToast(join ? 'Collegato: dati uniti a quelli dell\'altro dispositivo' : 'Sincronizzazione attiva: usa lo stesso codice sugli altri dispositivi', null, null, 5000);
@@ -8742,6 +8758,7 @@ document.getElementById('syncOffBtn').addEventListener('click', async ()=>{
   sync = {}; try{ localStorage.removeItem(SYNC_LS); }catch(e){}
   mcp = { state:'unknown', token:null, write:false, busy:false, msg:'', kind:'' };
   tgSt = { state:'unknown', info:null, busy:false, msg:'', kind:'' };
+  window.__extAt = 0;   // ricollegato, lo stato di Claude e Telegram si rilegge subito
   syncMsg = ''; renderSync(); showToast('Sincronizzazione disattivata su questo dispositivo');
 });
 
@@ -8960,7 +8977,7 @@ async function claudeUndo(){
   showToast('Scheda rimessa com\'era', 'Rifai', ()=>{ if(!session) put(JSON.parse(JSON.stringify(after)), v.undo ? 'Scheda di nuovo com\'era' : 'Modifiche di Claude rimesse'); });
 }
 window.addEventListener('online', ()=>{ if(sync.code) syncSoon(500); });
-document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && sync.code && Date.now()-syncLastTry > 20000) syncSoon(300); });
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && sync.code && Date.now()-syncLastTry > 60000) syncSoon(300); });
 swInit();
 renderSync();
 if(sync.code) syncSoon(1200);
