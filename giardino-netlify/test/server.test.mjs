@@ -148,6 +148,11 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(m.isError, false);
   assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").zona, "Orto");
   assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { colore: "rosso" } })).isError, true);
+  // verso dove guarda: anche due direzioni (angolo), scritte in qualunque ordine; sigle sbagliate rifiutate
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { orient: "O, S", luce_data: OGGI } })).isError, false);
+  assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").orient, "S,O");
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { orient: "sopra" } })).isError, true);
+  await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { orient: "", luce_data: "" } });
   // temperatura in casa
   assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { tcasa: { inverno: 18 } } })).isError, false);
   assert.deepEqual((await leggiDati()).plants.find((p) => p.id === "agl").tcasa, { inverno: 18 });

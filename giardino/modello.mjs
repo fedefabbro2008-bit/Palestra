@@ -388,22 +388,34 @@ const LUCE_DA_ESPO = {sole:8, mezzombra:4, ombra:2};
 /* Sole diretto secondo la stagione. Con l'orientamento (verso dove guarda il balcone o la finestra) le ore di sole
    scritte dall'utente valgono per il giorno in cui le ha scritte (luce_data); negli altri giorni si scalano con la
    geometria del sole: ore in cui il sole è alto almeno 8° e davanti alla parete (entro 85° dalla sua direzione).
-   «aperto» = nessuna parete (orto, giardino): conta tutto il giorno. Senza orientamento resta il numero fisso. */
+   «aperto» = nessuna parete (orto, giardino): conta tutto il giorno. Senza orientamento resta il numero fisso.
+   Anche più direzioni insieme ("S,O": balcone d'angolo): il sole conta quando è davanti ad almeno una. */
 export const ORIENTAMENTI = {N:0, NE:45, E:90, SE:135, S:180, SO:225, O:270, NO:315, aperto:null};
+const ORDINE_ORIENT = ['N','NE','E','SE','S','SO','O','NO'];
+// "O, S" → "S,O" (ordine della bussola, senza doppioni né sigle sconosciute); con «aperto» resta solo «aperto»
+export function orientamento(o){
+  const v=new Set(String(o||'').split(/[\s,;]+/).map(x=>x.trim()).filter(x=>x in ORIENTAMENTI));
+  return v.has('aperto') ? 'aperto' : ORDINE_ORIENT.filter(x=>v.has(x)).join(',');
+}
+const NOMI_ORIENT = {N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SO:'sud-ovest',O:'ovest',NO:'nord-ovest'};
+export function nomeOrientamento(o){
+  const v=orientamento(o); if(!v) return ''; if(v==='aperto') return 'aperto';
+  const n=v.split(',').map(x=>NOMI_ORIENT[x]); return 'verso '+(n.length>1?n.slice(0,-1).join(', ')+' e '+n[n.length-1]:n[0]);
+}
 const SOLE_CACHE = new Map();
 export function oreSoleGeom(iso, orient, lat){
-  const k=iso+'|'+orient+'|'+Math.round((lat??44)*10);
+  const o=orientamento(orient), k=iso+'|'+o+'|'+Math.round((lat??44)*10);
   if(SOLE_CACHE.has(k)) return SOLE_CACHE.get(k);
   const r=Math.PI/180, phi=(lat??44)*r, n=(giornoAnno(iso)+1);
-  const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), A=ORIENTAMENTI[orient];
+  const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), dir=o&&o!=='aperto'?o.split(',').map(x=>ORIENTAMENTI[x]):null;
   let min=0;
   for(let m=0;m<1440;m+=5){
     const w=(m/60-12)*15*r, se=Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(w);
     if(se<Math.sin(8*r)) continue;
-    if(A!=null && A!==undefined){
+    if(dir){
       const el=Math.asin(se), ca=(Math.sin(dec)-Math.sin(el)*Math.sin(phi))/(Math.cos(el)*Math.cos(phi));
       let az=Math.acos(Math.max(-1,Math.min(1,ca)))/r; if(w>0) az=360-az;          // azimut da nord, in senso orario
-      const diff=Math.abs(((az-A+540)%360)-180); if(diff>85) continue;
+      if(!dir.some(A=>Math.abs(((az-A+540)%360)-180)<=85)) continue;               // davanti ad almeno una parete
     }
     min+=5;
   }
@@ -411,7 +423,7 @@ export function oreSoleGeom(iso, orient, lat){
 }
 export function luceOre(p, oggi, lat){
   const v=Number(p.luce), h=p.luce!=null && p.luce!=='' && isFinite(v) ? Math.max(0,Math.min(14,v)) : (LUCE_DA_ESPO[p.espo] ?? 6);
-  if(!oggi || !p.orient || !(p.orient in ORIENTAMENTI) || !/^\d{4}-\d{2}-\d{2}$/.test(p.luce_data||'') || p.luce_data===oggi) return h;
+  if(!oggi || !orientamento(p.orient) || !/^\d{4}-\d{2}-\d{2}$/.test(p.luce_data||'') || p.luce_data===oggi) return h;
   const g0=oreSoleGeom(p.luce_data,p.orient,lat), g=oreSoleGeom(oggi,p.orient,lat), max=oreSoleGeom(oggi,'aperto',lat);
   // in proporzione; se quel giorno il sole geometrico era quasi nullo (parete a nord d'inverno), si aggiunge la differenza
   const x = g0>=1.5 ? h*g/g0 : h+0.7*(g-g0);

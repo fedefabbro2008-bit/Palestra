@@ -396,3 +396,16 @@ test("pianta di casa fuori per più giorni: pioggia misurata giorno per giorno, 
   const presa = M.pioggiaPresa(p, Object.entries(r.giorni).map(([data, mm], i) => ({ id: "p" + i, plantId: "n", tipo: "pioggia", data, litri: +(mm * 0.05).toFixed(2) })));
   assert.deepEqual(Object.keys(presa).sort(), ["2026-11-02", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07"]);
 });
+
+test("verso dove guarda: anche più direzioni (balcone d'angolo)", () => {
+  assert.equal(M.orientamento("O, S"), "S,O"); assert.equal(M.orientamento("S,aperto"), "aperto"); assert.equal(M.orientamento("boh"), ""); assert.equal(M.orientamento("S"), "S");
+  assert.equal(M.nomeOrientamento("S,O"), "verso sud e ovest"); assert.equal(M.nomeOrientamento("E,S,O"), "verso est, sud e ovest");
+  for (const d of ["2026-12-21", "2026-06-21"]) {
+    const s = M.oreSoleGeom(d, "S", 44), o = M.oreSoleGeom(d, "O", 44), so = M.oreSoleGeom(d, "S,O", 44), ap = M.oreSoleGeom(d, "aperto", 44);
+    assert.ok(so >= Math.max(s, o) && so <= ap, `${d}: sud ${s}, ovest ${o}, angolo ${so}, aperto ${ap}`);
+    assert.equal(M.oreSoleGeom(d, "O,S", 44), so, "l'ordine non conta");
+  }
+  // le ore scritte d'inverno su un angolo sud-ovest crescono d'estate come la geometria dell'angolo
+  const p = { luce: 5, orient: "S,O", luce_data: "2026-12-21" };
+  assert.ok(M.luceOre(p, "2027-06-21", 44) > 5);
+});

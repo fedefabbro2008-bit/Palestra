@@ -720,12 +720,12 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
         </div>
         <div class="field pf-vaso-only"><label for="pf-riserva">Sottovaso con riserva d'acqua (litri)</label><input type="text" id="pf-riserva" inputmode="decimal" placeholder="0 se non c'è">
           <span class="hint">Vasi autoirriganti o sottovasi con riserva: la pianta beve dal basso, quindi si annaffia più di rado (riempiendo anche la riserva).</span></div>
-        <div class="field"><span class="flabel" id="pf-orient-l">Verso dove guarda <span class="opt">(facoltativo)</span></span>
-          <div class="seg bussola" role="radiogroup" aria-labelledby="pf-orient-l">
-            <label><input type="radio" name="orient" value="NO">↖ NO</label><label><input type="radio" name="orient" value="N">↑ Nord</label><label><input type="radio" name="orient" value="NE">↗ NE</label>
-            <label><input type="radio" name="orient" value="O">← Ovest</label><label><input type="radio" name="orient" value="aperto">☀️ Aperto</label><label><input type="radio" name="orient" value="E">→ Est</label>
-            <label><input type="radio" name="orient" value="SO">↙ SO</label><label><input type="radio" name="orient" value="S">↓ Sud</label><label><input type="radio" name="orient" value="SE">↘ SE</label>
-            <label class="tutta"><input type="radio" name="orient" value="">Non lo so</label>
+        <div class="field"><span class="flabel" id="pf-orient-l">Verso dove guarda <span class="opt">(facoltativo, anche più di uno)</span></span>
+          <div class="seg bussola" role="group" aria-labelledby="pf-orient-l">
+            <label><input type="checkbox" name="orient" value="NO">↖ NO</label><label><input type="checkbox" name="orient" value="N">↑ Nord</label><label><input type="checkbox" name="orient" value="NE">↗ NE</label>
+            <label><input type="checkbox" name="orient" value="O">← Ovest</label><label><input type="checkbox" name="orient" value="aperto">☀️ Aperto</label><label><input type="checkbox" name="orient" value="E">→ Est</label>
+            <label><input type="checkbox" name="orient" value="SO">↙ SO</label><label><input type="checkbox" name="orient" value="S">↓ Sud</label><label><input type="checkbox" name="orient" value="SE">↘ SE</label>
+            <label class="tutta"><input type="checkbox" name="orient" value="">Non lo so</label>
           </div>
           <span class="hint" id="pf-orient-hint">Il balcone, la parete o la finestra. Così le ore di sole cambiano da sole con le stagioni. «Aperto»: orto o giardino senza pareti intorno.</span>
         </div>
@@ -1586,7 +1586,7 @@ function renderPiante(AP){
     const u=ultimaInnaffiatura(p,c.eventi);
     const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
       ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],[k.interno?'Innaffiare, a questo ritmo':'Innaffiare, se non piove',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
-    if(p.orient) facts.push(['Sole diretto oggi','~'+fmt(k.h,1)+' h · '+(p.orient==='aperto'?'aperto':'verso '+({N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SO:'sud-ovest',O:'ovest',NO:'nord-ovest'}[p.orient]))]);
+    if(orientamento(p.orient)) facts.push(['Sole diretto oggi','~'+fmt(k.h,1)+' h · '+nomeOrientamento(p.orient)]);
     if(altri) facts.push(['Nel vaso anche',altri]);
     if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
@@ -1820,6 +1820,9 @@ function scegliSpecie(k,{auto=false}={}){
 function renderZoneQuick(){ const v=$('#pf-zona').value.trim().toLowerCase(); $('#pf-zona-q').innerHTML=zoneEsistenti().map(z=>`<button type="button" data-zona="${esc(z)}" class="${z.toLowerCase()===v?'on':''}">${esc(z)}</button>`).join(''); }
 const radioVal = n => document.querySelector(`input[name=${n}]:checked`)?.value;
 const setRadio = (n,v) => { const r=document.querySelector(`input[name=${n}][value="${v}"]`)||document.querySelector(`input[name=${n}]`); r.checked=true; };
+// verso dove guarda: anche più direzioni (balcone d'angolo), salvate come "S,O"; «Aperto» e «Non lo so» da soli
+const orientVal = () => orientamento([...document.querySelectorAll('input[name=orient]:checked')].map(x=>x.value).join(','));
+const setOrient = v => { const o=orientamento(v); document.querySelectorAll('input[name=orient]').forEach(x=>x.checked=o?o.split(',').includes(x.value):x.value===''); };
 function consRow(c){
   const i=uid();
   return `<div class="cons-row" data-cons>
@@ -1849,12 +1852,12 @@ function syncForm(){
   $('#pf-fase-hint').textContent=hint;
   document.querySelectorAll('.seg label').forEach(l=>l.classList.toggle('on',!!l.querySelector('input:checked')));
   markQuick('#pf-vaso-q','data-vaso',$('#pf-vaso').value); markQuick('#pf-luce-q','data-luce',$('#pf-luce').value);
-  const or=radioVal('orient');
+  const or=orientVal();
   $('#pf-luce-l').textContent=or?'Ore di sole diretto in questo periodo':'Ore di sole diretto al giorno';
   if(or){ const g=oreSoleGeom(today(),or,S.location?.lat), e=oreSoleGeom(addDays(today(),182),or,S.location?.lat);
-    const pe=editingId&&S.plants.find(x=>x.id===editingId), ora=pe&&pe.orient===or&&pe.luce_data&&pe.luce_data!==today()?luceOre(pe,today(),S.location?.lat):null;
+    const pe=editingId&&S.plants.find(x=>x.id===editingId), ora=pe&&orientamento(pe.orient)===or&&pe.luce_data&&pe.luce_data!==today()?luceOre(pe,today(),S.location?.lat):null;
     $('#pf-orient-hint').textContent='Oggi il sole può arrivare al massimo per ~'+fmt(g,0)+' h, fra sei mesi ~'+fmt(e,0)+' h (senza ostacoli): scrivi le ore che vedi adesso, al resto pensa l\'app.'+(ora!=null?' Le ore qui sotto le hai scritte il '+dataBreve(pe.luce_data)+': oggi l\'app conta ~'+fmt(ora,1)+' h.':''); }
-  else $('#pf-orient-hint').textContent='Il balcone, la parete o la finestra. Così le ore di sole cambiano da sole con le stagioni. «Aperto»: orto o giardino senza pareti intorno.';
+  else $('#pf-orient-hint').textContent='Il balcone, la parete o la finestra: per un angolo scegline due (es. Sud e Ovest). Così le ore di sole cambiano da sole con le stagioni. «Aperto»: orto o giardino senza pareti intorno.';
 }
 function openForm(id){
   const p=id?S.plants.find(x=>x.id===id):{nome:'',zona:'',specie:'pomodoro',fase:'auto',data_semina:'',tipo_data:'trapianto',colt:'vaso',vaso:12,diametro:null,area:'',num:1,luce:6,dove:'aperto',ultima:'',ultima_concime:'',data_rinvaso:'',note:'',consociate:[]};
@@ -1865,7 +1868,7 @@ function openForm(id){
   $('#pf-zona').value=zonaDi(p); renderZoneQuick();
   $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina'; $('#pf-raccolta').value=p.raccolta||'';
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
-  setRadio('materiale',p.materiale||'plastica'); setRadio('orient',p.orient||''); $('#pf-riserva').value=+p.riserva>0?numIn(p.riserva):'';
+  setRadio('materiale',p.materiale||'plastica'); setOrient(p.orient); $('#pf-riserva').value=+p.riserva>0?numIn(p.riserva):'';
   $('#pf-vaso').value=numIn(p.vaso); $('#pf-diam').value=numIn(p.diametro); $('#pf-area').value=numIn(p.area); $('#pf-num').value=p.num||1;
   $('#pf-luce').value=numIn(luceOre(p)); $('#pf-ultima').value=p.ultima||''; $('#pf-concime').value=p.ultima_concime||''; $('#pf-rinvaso').value=p.data_rinvaso||''; $('#pf-note').value=p.note||'';
   $('#pf-cons').innerHTML=(p.consociate||[]).map(consRow).join('');
@@ -1897,7 +1900,7 @@ function submitForm(e){
     materiale:colt==='vaso'?(radioVal('materiale')||'plastica'):'plastica', riserva:colt==='vaso'?(pos($('#pf-riserva').value)||0):0,
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
     raccolta:/^\d{4}-\d{2}$/.test($('#pf-raccolta').value)?$('#pf-raccolta').value:'',
-    luce:luce==null?6:Math.max(0,Math.min(14,luce)), orient:radioVal('orient')||'', dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
+    luce:luce==null?6:Math.max(0,Math.min(14,luce)), orient:orientVal(), dove:radioVal('dove')||'aperto', ultima:$('#pf-ultima').value||'', ultima_concime:$('#pf-concime').value||'',
     data_rinvaso:colt==='vaso'?($('#pf-rinvaso').value||''):'', note:$('#pf-note').value.trim().slice(0,500)};
   if(data.dove==='interno'||data.dove==='serra'){
     const def=data.dove==='serra'?TSERRA_DEF:TCASA_DEF;
@@ -1906,7 +1909,7 @@ function submitForm(e){
   }
   // le ore di sole valgono per il giorno in cui le scrivi: se cambiano (o cambia l'orientamento) la data si aggiorna
   const prima=editingId?S.plants.find(x=>x.id===editingId):null;
-  data.luce_data=!data.orient?'':(prima&&prima.orient===data.orient&&+prima.luce===+data.luce&&prima.luce_data)?prima.luce_data:today();
+  data.luce_data=!data.orient?'':(prima&&orientamento(prima.orient)===data.orient&&+prima.luce===+data.luce&&prima.luce_data)?prima.luce_data:today();
   if(editingId){ const p=S.plants.find(x=>x.id===editingId); if(p){ Object.assign(p,data); delete p.example; delete p.espo; } }
   else S.plants.push({id:uid(),...data});
   saveMain(); closeForm(); renderAll(); toast('Pianta salvata');
@@ -2153,6 +2156,9 @@ function wire(){
   $('#plantForm').addEventListener('submit',submitForm);
   $('#plantForm').addEventListener('change',e=>{
     // nelle piante dello stesso vaso, i nomi delle fasi seguono la specie scelta
+    if(e.target.name==='orient'){ const v=e.target.value, tutte=document.querySelectorAll('input[name=orient]');
+      if(!e.target.checked){ if(![...tutte].some(x=>x.checked)) setOrient(''); }
+      else tutte.forEach(x=>{ if(x!==e.target && (v===''||v==='aperto'||x.value===''||x.value==='aperto')) x.checked=false; }); }
     if(e.target.matches('[data-c=specie]')){ const f=e.target.closest('[data-cons]').querySelector('[data-c=fase]'); f.innerHTML=optFasi(f.value,{value:'',label:'Stessa fase'},e.target.value); }
     syncForm();
   });
