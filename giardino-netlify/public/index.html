@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="b0c1222f5a5a">
+<meta name="giardino-build" content="52928f32c2ed">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -379,6 +379,8 @@ html.con-badge{--badge:30px}
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:30;touch-action:none}
 .sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 10px);width:min(560px,calc(100% - 24px));z-index:31;max-height:calc(100vh - 140px);max-height:calc(100dvh - var(--tabh) - env(safe-area-inset-bottom,0px) - env(safe-area-inset-top,0px) - 30px);overflow:auto;overscroll-behavior:contain}
 .sheet .inrow .field{flex:1;min-width:0}
+.pg-quando{display:flex;flex-direction:column;gap:10px}
+.pg-dt{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:8px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 12px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:.92rem;z-index:20;width:max-content;max-width:calc(100% - 32px);text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.18)}
 
 /* ===================== LIQUID GLASS (come nell'app Palestra, stile iOS 26) =====================
@@ -406,12 +408,12 @@ html.con-badge{--badge:30px}
    I colori li sceglie luce() nello script; senza script restano acqua e foglia. */
 @property --luce-a{syntax:'<color>';inherits:true;initial-value:#1b6a9e}
 @property --luce-b{syntax:'<color>';inherits:true;initial-value:#2f7a45}
-:root{--luce-a:var(--water);--luce-b:var(--leaf);--luce-fa:19%;--luce-fb:11%}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--luce-fa:17%;--luce-fb:12%} }
-:root[data-theme="dark"]{--luce-fa:17%;--luce-fb:12%}
+:root{--luce-a:var(--water);--luce-b:var(--leaf);--luce-fa:28%;--luce-fb:14%}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--luce-fa:24%;--luce-fb:15%} }
+:root[data-theme="dark"]{--luce-fa:24%;--luce-fb:15%}
 html.luce-pronta{transition:--luce-a 4s ease,--luce-b 4s ease}
-body{background:radial-gradient(140% 70% at 0% 0%, color-mix(in srgb,var(--luce-a) var(--luce-fa),transparent), transparent 64%),
-  radial-gradient(120% 60% at 100% 100%, color-mix(in srgb,var(--luce-b) var(--luce-fb),transparent), transparent 60%), var(--bg);background-attachment:fixed}
+body{background:radial-gradient(170% 85% at 0% 0%, color-mix(in srgb,var(--luce-a) var(--luce-fa),transparent), transparent 68%),
+  radial-gradient(130% 65% at 100% 100%, color-mix(in srgb,var(--luce-b) var(--luce-fb),transparent), transparent 62%), var(--bg);background-attachment:fixed}
 /* barra delle schede: capsula di vetro sospesa, il contenuto le scorre sotto */
 nav.tabs{left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) * .45 + 4px);max-width:616px;margin:0 auto;border:1px solid var(--glass-line);border-radius:30px;padding:5px;
   background:var(--glass);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
@@ -979,7 +981,11 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 <div class="sheet card stack" id="pioggiaSheet" role="dialog" aria-modal="true" aria-labelledby="pgTitolo" hidden>
   <h2 id="pgTitolo">🌧 Sotto la pioggia</h2>
   <p class="sub" id="pgSub"></p>
-  <div class="inrow"><div class="field"><label for="pgDa">Dalle</label><input type="time" id="pgDa"></div><div class="field"><label for="pgA">Alle</label><input type="time" id="pgA"></div></div>
+  <div class="pg-quando">
+    <div class="field"><span class="flabel">Dal</span><div class="pg-dt"><input type="date" id="pgDaG" aria-label="Dal giorno"><input type="time" id="pgDa" aria-label="Dalle ore"></div></div>
+    <div class="field"><span class="flabel">Al</span><div class="pg-dt"><input type="date" id="pgAG" aria-label="Al giorno"><input type="time" id="pgA" aria-label="Alle ore"></div></div>
+  </div>
+  <div class="quick" id="pgVeloci"><button type="button" data-pgv="notte">Stanotte</button><button type="button" data-pgv="ieri">Da ieri mattina</button><button type="button" data-pgv="3">Ultimi 3 giorni</button><button type="button" data-pgv="7">Ultima settimana</button></div>
   <div class="alert info" id="pgCalc"></div>
   <div class="row"><button class="btn primary" type="button" id="pgSalva">Registra</button><button class="btn ghost" type="button" id="pgAnnulla">Annulla</button></div>
 </div>
@@ -1719,19 +1725,49 @@ function pioggiaPresa(p, eventi){
 // Se «alle» è prima di «dalle» l'intervallo passa la mezzanotte: dalle = ieri (es. dalle 17:28 di ieri alle 07:15 di oggi).
 function pioggiaMisurataNelleOre(misure, giorno, dalle, alle, tz){
   const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; };
-  let a=min(dalle); const b=min(alle);
+  const a=min(dalle), b=min(alle);
   if(a==null||b==null||b===a) return {mm:0, fino:null, completo:false, notte:false};
-  const notte=b<a; if(notte) a-=1440;   // minuti contati dall'inizio di «giorno»: ieri sera è negativo
-  const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
-  const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return {d:p.year+'-'+p.month+'-'+p.day, m:+p.hour*60+(+p.minute)}; };
-  const ieri=addDays(giorno,-1), domani=addDays(giorno,1);
-  const usa=(serie,durata)=>{ let mm=0, ultimo=null, n=0;
-    for(const [t,v] of Object.entries(serie||{})){ const e=loc(t), fine=e.d===giorno?e.m:e.d===ieri?e.m-1440:(e.d===domani&&e.m===0?1440:null); if(fine==null) continue;
-      if(fine>a) ultimo=Math.max(ultimo??-Infinity,fine); const sov=Math.max(0,Math.min(b,fine)-Math.max(a,fine-durata)); if(sov>0){ mm+=(+v||0)*sov/durata; n++; } }
-    return {mm:+mm.toFixed(1), ultimo, n}; };
-  let r=usa(misure?.quarti,15); if(!r.n && r.ultimo==null) r=usa(misure?.ore,60);
-  const u=r.ultimo, fino=u!=null?String(Math.floor(((u%1440)+1440)%1440/60)).padStart(2,'0')+':'+String(((u%60)+60)%60).padStart(2,'0'):null;
-  return {mm:r.mm, fino, completo:u!=null&&u>=b, notte};
+  const notte=b<a, r=pioggiaMisurataTra(misure, {d:notte?addDays(giorno,-1):giorno, t:dalle}, {d:giorno, t:alle}, tz);
+  return {mm:r.mm, fino:r.ultima?r.ultima.t:null, completo:r.completo, notte};
+}
+// Pioggia MISURATA tra due momenti anche di giorni diversi ({d:'YYYY-MM-DD', t:'HH:MM'}, ora locale): la pianta di casa
+// messa fuori per qualche giorno. Quarti d'ora o ore della stazione (ultimi 6 giorni); per i giorni interi più vecchi
+// i totali del giorno (misure.giorni, 60 giorni). Restituisce i mm in tutto e per giorno (per il bilancio di ogni giorno),
+// fin dove arrivano le misure («ultima») e i giorni senza misure.
+const FMT_TZ=new Map();
+function pioggiaMisurataTra(misure, da, a, tz){
+  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; };
+  const ass=(x)=>x?.d&&min(x.t)!=null&&isFinite(numGiorno(x.d))?numGiorno(x.d)*1440+min(x.t):NaN;
+  const A=ass(da), B=ass(a), vuoto={mm:0, giorni:{}, ultima:null, completo:false, senzaDati:[], conTotali:false};
+  if(!(B>A)) return vuoto;
+  const z=tz||'Europe/Rome';
+  let fmt=FMT_TZ.get(z); if(!fmt){ fmt=new Intl.DateTimeFormat('en-CA',{timeZone:z,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}); FMT_TZ.set(z,fmt); }
+  const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return numGiorno(p.year+'-'+p.month+'-'+p.day)*1440+(+p.hour%24)*60+(+p.minute); };
+  const giorni={}, coperti=new Set(); let ultimo=null;
+  const usa=(serie,durata,salta)=>{ const fatti=new Set();
+    for(const [t,v] of Object.entries(serie||{})){
+      const fine=loc(t); if(!isFinite(fine)) continue;
+      const g=Math.floor((fine-1)/1440); if(salta&&salta.has(g)) continue;
+      fatti.add(g); ultimo=Math.max(ultimo??-Infinity,fine);
+      const sov=Math.max(0,Math.min(B,fine)-Math.max(A,fine-durata));
+      if(sov>0){ const d=isoDaNum(Math.floor((Math.min(B,fine)-1)/1440)); giorni[d]=(giorni[d]||0)+(+v||0)*sov/durata; }
+    }
+    return fatti; };
+  const q=usa(misure?.quarti,15); q.forEach(g=>coperti.add(g));
+  usa(misure?.ore,60,q).forEach(g=>coperti.add(g));   // le ore solo nei giorni senza quarti d'ora
+  // giorni interi senza misure ora per ora: il totale del giorno
+  let finoTotali=-Infinity, conTotali=false; const senzaDati=[];
+  for(let D=Math.floor(A/1440); D*1440<B; D++){
+    if(coperti.has(D)) continue;
+    const g=isoDaNum(D), tot=misure?.giorni?.[g];
+    if(tot!=null&&D*1440>=A&&(D+1)*1440<=B){ giorni[g]=(giorni[g]||0)+(+tot||0); conTotali=true; finoTotali=Math.max(finoTotali,(D+1)*1440); }
+    else senzaDati.push(g);
+  }
+  const fino=Math.max(ultimo??-Infinity, finoTotali), tondi={};
+  for(const [d,v] of Object.entries(giorni)) if(v>=0.05) tondi[d]=+v.toFixed(1);
+  const mm=+Object.values(giorni).reduce((x,y)=>x+y,0).toFixed(1);
+  const ultima=isFinite(ultimo)?{d:isoDaNum(Math.floor(ultimo/1440)), t:String(Math.floor((ultimo%1440)/60)).padStart(2,'0')+':'+String(ultimo%60).padStart(2,'0')}:null;
+  return {mm, giorni:tondi, ultima, completo:fino>=B && !senzaDati.some(g=>numGiorno(g)*1440<Math.min(B,fino)), senzaDati, conTotali};
 }
 const litriDaPioggia = (k, mm) => +Math.max(0,(mm||0)*k.pioggiaArea).toFixed(2);
 function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
@@ -2736,29 +2772,55 @@ function rispondiVerifica(pid, risposta){
 // Niente previsioni: se le misure non ci sono, non si registra niente.
 let pgPianta=null, pgMisure=null, pgMotivo='';
 const oraHHMM = d => String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+// dal / al della finestra (giorno e ora); «al» nel futuro conta fino ad adesso
+const pgDa=()=>({d:$('#pgDaG').value,t:$('#pgDa').value}), pgAl=()=>({d:$('#pgAG').value,t:$('#pgA').value});
+const pgAdesso=()=>({d:today(),t:oraHHMM(new Date())}), pgK=x=>x.d+'T'+x.t;
 function calcolaPioggia(){
   const p=S.plants.find(x=>x.id===pgPianta); if(!p||!pgMisure) return null;
-  const r=pioggiaMisurataNelleOre(pgMisure, today(), $('#pgDa').value, $('#pgA').value, activeWeather()?.tz);
-  const k=params(p,ctx()), litri=litriDaPioggia(k, r.mm), pp=activePlan()?.data?.piante.find(x=>x.id===p.id);
+  const w=activeWeather(), da=pgDa(), al=pgAl(), ora=pgAdesso(), futuro=pgK(al)>pgK(ora), fine=futuro?ora:al;
+  // i totali dei giorni passati (60 giorni, li scrive il bot) servono per i giorni più vecchi delle misure ora per ora
+  const mis=w?.misurata?.stazione===pgMisure.stazione?{...pgMisure,giorni:w.misurata.giorni||{}}:pgMisure;
+  const r=pioggiaMisurataTra(mis, da, fine, w?.tz), k=params(p,ctx());
+  const perGiorno=Object.entries(r.giorni).sort().map(([d,mm])=>({d,mm,litri:litriDaPioggia(k,mm)})).filter(x=>x.litri>0);
+  const litri=+perGiorno.reduce((t,x)=>t+x.litri,0).toFixed(2), pp=activePlan()?.data?.piante.find(x=>x.id===p.id);
   const manca=pp?.acqua!=null?Math.max(0,(1-pp.acqua)*k.tawL):null;
-  return {p,k,r,litri,manca};
+  const gia=[...new Set(eventsOf(p.id).filter(e=>e.tipo==='pioggia'&&r.giorni[e.data]).map(e=>e.data))].sort();
+  return {p,k,r,litri,manca,perGiorno,futuro,da,fine,gia,ok:!!da.d&&!!da.t&&!!fine.d&&!!fine.t&&pgK(da)<pgK(fine)};
 }
 function aggiornaPioggia(){
   const box=$('#pgCalc');
   if(!pgMisure){ box.innerHTML=ICON.info+'<div>'+(pgMotivo?esc(pgMotivo):'<span class="spinner"></span> Leggo le misure della stazione ARPAE…')+'</div>'; $('#pgSalva').disabled=true; return; }
   const c=calcolaPioggia(); if(!c) return;
-  const {r,litri,manca,k}=c, staz='stazione ARPAE di '+esc(pgMisure.stazione)+' ('+fmt(pgMisure.km,1)+' km)';
-  box.innerHTML=ICON.info+'<div>'+(r.mm>0?'Misurati dalla '+staz+': <b>'+fmt(r.mm,1)+' mm</b> in quelle ore. Nel vaso sono entrati circa <b>'+fmtL(litri)+'</b>'+(manca!=null?(litri>=manca?', abbastanza da riempire il terriccio.':' (al terriccio ne mancavano ~'+fmtL(manca)+').'):'.')
-      :'La '+staz+' non ha misurato pioggia in quelle ore.')+(r.notte?' <i>Da ieri alle '+esc($('#pgDa').value)+' a oggi alle '+esc($('#pgA').value)+'.</i>':'')
-    +(!r.completo&&r.fino?' <i>Le misure arrivano fino alle '+r.fino+': più tardi puoi aggiungere il resto.</i>':'')+(k.chiuso&&litri>0?' Vaso senza fori: svuota l\'acqua in più.':'')+'</div>';
+  const {r,litri,manca,k,perGiorno}=c, staz='stazione ARPAE di '+esc(pgMisure.stazione)+' ('+fmt(pgMisure.km,1)+' km)';
+  if(!c.ok){ box.innerHTML=ICON.info+'<div>«Dal» deve venire prima di «Al».</div>'; $('#pgSalva').disabled=true; return; }
+  const quando=x=>esc((x.d===today()?'oggi':x.d===addDays(today(),-1)?'ieri':dataBreve(x.d))+' alle '+x.t);
+  const giorni=Object.entries(r.giorni).sort(), dett=giorni.length>1?' ('+giorni.map(([d,mm])=>esc(dataBreve(d))+' '+fmt(mm,1)).join(' · ')+')':'';
+  box.innerHTML=ICON.info+'<div>'+(r.mm>0?'Misurati dalla '+staz+': <b>'+fmt(r.mm,1)+' mm</b>'+dett+'. Nel vaso sono entrati circa <b>'+fmtL(litri)+'</b>'+(manca!=null?(litri>=manca?', abbastanza da riempire il terriccio.':' (al terriccio ne mancavano ~'+fmtL(manca)+').'):'.')
+      :'La '+staz+' non ha misurato pioggia '+(c.da.d===c.fine.d?'in quelle ore':'in quei giorni')+'.')
+    +' <i>Da '+quando(c.da)+' a '+quando(c.fine)+'.</i>'
+    +(c.futuro?' <i>Conto fino ad adesso: quando la riporti dentro aggiungi il resto.</i>':!r.completo&&r.ultima?' <i>Le misure arrivano fino a '+quando(r.ultima)+': più tardi puoi aggiungere il resto.</i>':'')
+    +(r.senzaDati.length?' <i>Non conto '+r.senzaDati.map(d=>esc(dataBreve(d))).join(', ')+': mancano le misure ora per ora.</i>':'')
+    +(c.gia.length?' <i>Hai già registrato pioggia per '+c.gia.map(d=>esc(dataBreve(d))).join(', ')+': si somma.</i>':'')
+    +(r.conTotali?' <i>Per i giorni più vecchi uso il totale del giorno.</i>':'')
+    +(k.chiuso&&litri>0?' Vaso senza fori: svuota l\'acqua in più.':'')+'</div>';
   $('#pgSalva').disabled=!(litri>0);
+}
+// scelte rapide: stanotte, da ieri mattina, ultimi 3 o 7 giorni da mezzanotte (fino ad adesso)
+function pgImposta(da,al){ $('#pgDaG').value=da.d; $('#pgDa').value=da.t; $('#pgAG').value=al.d; $('#pgA').value=al.t; aggiornaPioggia(); }
+function pgVeloce(v){
+  const t=today(), ora=pgAdesso();
+  if(v==='notte') pgImposta({d:addDays(t,-1),t:'20:00'}, ora.t<'08:00'?ora:{d:t,t:'08:00'});
+  else if(v==='ieri') pgImposta({d:addDays(t,-1),t:'08:00'}, ora);
+  else pgImposta({d:addDays(t,1-(+v)),t:'00:00'}, ora);   // giorni interi: oggi compreso
 }
 function apriPioggia(pid){
   const p=S.plants.find(x=>x.id===pid); if(!p) return;
   pgPianta=pid; pgMisure=null; pgMotivo='';
   const ora=new Date(), prima=new Date(ora.getTime()-3600e3);
-  $('#pgSub').textContent=p.nome+': da che ora a che ora è stata sotto la pioggia? Se «dalle» è più tardi di «alle», conto da ieri sera.';
-  $('#pgDa').value=prima.getDate()===ora.getDate()?oraHHMM(prima):'00:00'; $('#pgA').value=oraHHMM(ora);
+  $('#pgSub').textContent=p.nome+': da quando a quando è stata fuori sotto la pioggia? Anche più giorni.';
+  const t=today(), lim=addDays(t,-60);
+  for(const id of ['#pgDaG','#pgAG']){ $(id).min=lim; $(id).max=t; }
+  pgImposta({d:t,t:prima.getDate()===ora.getDate()?oraHHMM(prima):'00:00'}, {d:t,t:oraHHMM(ora)});
   $('#pioggiaSheet').hidden=false; $('#pioggiaBg').hidden=false; aggiornaPioggia();
   window.GiardinoNet?.pioggia?.().then(m=>{ if(pgPianta!==pid) return; if(m?.disponibile) pgMisure=m; else pgMotivo=m?.motivo||'Misure non disponibili.'; aggiornaPioggia(); })
     .catch(e=>{ if(pgPianta!==pid) return; pgMotivo='Misure ARPAE non raggiungibili ('+e.message+'): riprova tra poco.'; aggiornaPioggia(); });
@@ -2811,8 +2873,9 @@ function chiudiMeteo(){ $('#wxSheet').hidden=true; $('#wxBg').hidden=true; }
 function chiudiPioggia(){ $('#pioggiaSheet').hidden=true; $('#pioggiaBg').hidden=true; pgPianta=null; }
 function salvaPioggia(){
   const c=calcolaPioggia(); if(!c||!(c.litri>0)) return;
-  addEvent(c.p.id,'pioggia',{litri:c.litri, mm:c.r.mm, dalle:$('#pgDa').value, alle:$('#pgA').value, fonte_misura:'ARPAE '+pgMisure.stazione});
-  chiudiPioggia(); renderAll(); toast('Registrato: '+c.p.nome+' ha preso ~'+fmtL(c.litri)+' di pioggia (misurata)');
+  // un evento per giorno, con i litri di quel giorno: il bilancio dell'acqua li mette nel giorno giusto
+  for(const x of c.perGiorno) addEvent(c.p.id,'pioggia',{data:x.d, litri:x.litri, mm:x.mm, dal:pgK(c.da), al:pgK(c.fine), fonte_misura:'ARPAE '+pgMisure.stazione});
+  chiudiPioggia(); renderAll(); toast('Registrato: '+c.p.nome+' ha preso ~'+fmtL(c.litri)+' di pioggia'+(c.perGiorno.length>1?' in '+c.perGiorno.length+' giorni':'')+' (misurata)');
 }
 function renderConcime(){
   const t=today(), c=ctx();
@@ -3404,7 +3467,11 @@ function wire(){
     if(e.target.closest('#evTutti')){ diarioTutto=true; renderDiario(); }
   });
   $('#saveNote').addEventListener('click',()=>$('#saveNote').hidden=true);
-  $('#pgDa').addEventListener('input',aggiornaPioggia); $('#pgA').addEventListener('input',aggiornaPioggia);
+  // ore: se «dalle» viene dopo «alle» nello stesso giorno, «dal» passa a ieri (es. dalle 17:28 di ieri alle 07:15 di oggi)
+  const pgOre=()=>{ if($('#pgDaG').value&&$('#pgDaG').value===$('#pgAG').value&&$('#pgDa').value>$('#pgA').value) $('#pgDaG').value=addDays($('#pgAG').value,-1); aggiornaPioggia(); };
+  $('#pgDa').addEventListener('input',pgOre); $('#pgA').addEventListener('input',pgOre);
+  $('#pgDaG').addEventListener('input',aggiornaPioggia); $('#pgAG').addEventListener('input',aggiornaPioggia);
+  $('#pgVeloci').addEventListener('click',e=>{ const b=e.target.closest('[data-pgv]'); if(b) pgVeloce(b.dataset.pgv); });
   $('#wxChiudi').addEventListener('click',chiudiMeteo); $('#wxBg').addEventListener('click',chiudiMeteo);
   $('#wxStrip').addEventListener('keydown',e=>{ const wd=e.target.closest('[data-wxd]'); if(wd&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); apriMeteo(wd.dataset.wxd); } });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#wxSheet').hidden) chiudiMeteo(); });

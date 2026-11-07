@@ -375,3 +375,24 @@ test("sotto la pioggia di notte: dalle 17:28 di ieri alle 07:15 di oggi", () => 
   assert.equal(M.pioggiaMisurataNelleOre({ ore }, "2026-11-08", "07:00", "07:00", "Europe/Rome").mm, 0, "stessa ora: niente");
   assert.equal(M.pioggiaMisurataNelleOre({ ore }, "2026-11-08", "02:00", "05:00", "Europe/Rome").mm, 1.2, "di giorno come prima");
 });
+
+test("pianta di casa fuori per più giorni: pioggia misurata giorno per giorno, totali per i giorni più vecchi", () => {
+  // novembre: Italia = UTC+1. Ore misurate dal 5 all'8; per i giorni prima solo i totali del giorno
+  const ore = { "2026-11-05T10:00:00Z": 3, "2026-11-06T22:00:00Z": 1, "2026-11-06T23:00:00Z": 2, "2026-11-07T08:00:00Z": 4, "2026-11-08T06:00:00Z": 0 };
+  const giorni = { "2026-11-02": 6, "2026-11-03": 0, "2026-11-04": 1.5 };
+  const r = M.pioggiaMisurataTra({ ore, giorni }, { d: "2026-11-02", t: "00:00" }, { d: "2026-11-08", t: "07:00" }, "Europe/Rome");
+  // 23:00 UTC del 6 = mezzanotte del 7: quell'ora (23–24 locali del 6) resta al 6
+  assert.deepEqual(r.giorni, { "2026-11-02": 6, "2026-11-04": 1.5, "2026-11-05": 3, "2026-11-06": 3, "2026-11-07": 4 });
+  assert.equal(r.mm, 17.5); assert.equal(r.conTotali, true); assert.deepEqual(r.senzaDati, []); assert.equal(r.completo, true);
+  // il primo giorno a metà senza misure ora per ora non si conta (non si sa a che ora pioveva): lo dice
+  const meta = M.pioggiaMisurataTra({ ore, giorni }, { d: "2026-11-02", t: "12:00" }, { d: "2026-11-05", t: "23:00" }, "Europe/Rome");
+  assert.deepEqual(meta.senzaDati, ["2026-11-02"]); assert.equal(meta.mm, 4.5); assert.equal(meta.completo, false);
+  // fino a dove arrivano le misure, e un intervallo al contrario non conta niente
+  const oltre = M.pioggiaMisurataTra({ ore }, { d: "2026-11-07", t: "08:00" }, { d: "2026-11-08", t: "12:00" }, "Europe/Rome");
+  assert.equal(oltre.mm, 4); assert.equal(oltre.completo, false); assert.deepEqual(oltre.ultima, { d: "2026-11-08", t: "07:00" });
+  assert.equal(M.pioggiaMisurataTra({ ore }, { d: "2026-11-08", t: "07:00" }, { d: "2026-11-07", t: "07:00" }, "Europe/Rome").mm, 0);
+  // nel bilancio: un evento per giorno, ognuno nel suo giorno
+  const p = { id: "n", nome: "Nepenthes", specie: "nepenthes", fase: "auto", colt: "vaso", vaso: 12, diametro: 30, luce: 2, dove: "interno" };
+  const presa = M.pioggiaPresa(p, Object.entries(r.giorni).map(([data, mm], i) => ({ id: "p" + i, plantId: "n", tipo: "pioggia", data, litri: +(mm * 0.05).toFixed(2) })));
+  assert.deepEqual(Object.keys(presa).sort(), ["2026-11-02", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07"]);
+});

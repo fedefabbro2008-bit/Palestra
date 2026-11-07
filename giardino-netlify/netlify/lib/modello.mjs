@@ -486,19 +486,49 @@ export function pioggiaPresa(p, eventi){
 // Se «alle» è prima di «dalle» l'intervallo passa la mezzanotte: dalle = ieri (es. dalle 17:28 di ieri alle 07:15 di oggi).
 export function pioggiaMisurataNelleOre(misure, giorno, dalle, alle, tz){
   const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; };
-  let a=min(dalle); const b=min(alle);
+  const a=min(dalle), b=min(alle);
   if(a==null||b==null||b===a) return {mm:0, fino:null, completo:false, notte:false};
-  const notte=b<a; if(notte) a-=1440;   // minuti contati dall'inizio di «giorno»: ieri sera è negativo
-  const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
-  const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return {d:p.year+'-'+p.month+'-'+p.day, m:+p.hour*60+(+p.minute)}; };
-  const ieri=addDays(giorno,-1), domani=addDays(giorno,1);
-  const usa=(serie,durata)=>{ let mm=0, ultimo=null, n=0;
-    for(const [t,v] of Object.entries(serie||{})){ const e=loc(t), fine=e.d===giorno?e.m:e.d===ieri?e.m-1440:(e.d===domani&&e.m===0?1440:null); if(fine==null) continue;
-      if(fine>a) ultimo=Math.max(ultimo??-Infinity,fine); const sov=Math.max(0,Math.min(b,fine)-Math.max(a,fine-durata)); if(sov>0){ mm+=(+v||0)*sov/durata; n++; } }
-    return {mm:+mm.toFixed(1), ultimo, n}; };
-  let r=usa(misure?.quarti,15); if(!r.n && r.ultimo==null) r=usa(misure?.ore,60);
-  const u=r.ultimo, fino=u!=null?String(Math.floor(((u%1440)+1440)%1440/60)).padStart(2,'0')+':'+String(((u%60)+60)%60).padStart(2,'0'):null;
-  return {mm:r.mm, fino, completo:u!=null&&u>=b, notte};
+  const notte=b<a, r=pioggiaMisurataTra(misure, {d:notte?addDays(giorno,-1):giorno, t:dalle}, {d:giorno, t:alle}, tz);
+  return {mm:r.mm, fino:r.ultima?r.ultima.t:null, completo:r.completo, notte};
+}
+// Pioggia MISURATA tra due momenti anche di giorni diversi ({d:'YYYY-MM-DD', t:'HH:MM'}, ora locale): la pianta di casa
+// messa fuori per qualche giorno. Quarti d'ora o ore della stazione (ultimi 6 giorni); per i giorni interi più vecchi
+// i totali del giorno (misure.giorni, 60 giorni). Restituisce i mm in tutto e per giorno (per il bilancio di ogni giorno),
+// fin dove arrivano le misure («ultima») e i giorni senza misure.
+const FMT_TZ=new Map();
+export function pioggiaMisurataTra(misure, da, a, tz){
+  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; };
+  const ass=(x)=>x?.d&&min(x.t)!=null&&isFinite(numGiorno(x.d))?numGiorno(x.d)*1440+min(x.t):NaN;
+  const A=ass(da), B=ass(a), vuoto={mm:0, giorni:{}, ultima:null, completo:false, senzaDati:[], conTotali:false};
+  if(!(B>A)) return vuoto;
+  const z=tz||'Europe/Rome';
+  let fmt=FMT_TZ.get(z); if(!fmt){ fmt=new Intl.DateTimeFormat('en-CA',{timeZone:z,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}); FMT_TZ.set(z,fmt); }
+  const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return numGiorno(p.year+'-'+p.month+'-'+p.day)*1440+(+p.hour%24)*60+(+p.minute); };
+  const giorni={}, coperti=new Set(); let ultimo=null;
+  const usa=(serie,durata,salta)=>{ const fatti=new Set();
+    for(const [t,v] of Object.entries(serie||{})){
+      const fine=loc(t); if(!isFinite(fine)) continue;
+      const g=Math.floor((fine-1)/1440); if(salta&&salta.has(g)) continue;
+      fatti.add(g); ultimo=Math.max(ultimo??-Infinity,fine);
+      const sov=Math.max(0,Math.min(B,fine)-Math.max(A,fine-durata));
+      if(sov>0){ const d=isoDaNum(Math.floor((Math.min(B,fine)-1)/1440)); giorni[d]=(giorni[d]||0)+(+v||0)*sov/durata; }
+    }
+    return fatti; };
+  const q=usa(misure?.quarti,15); q.forEach(g=>coperti.add(g));
+  usa(misure?.ore,60,q).forEach(g=>coperti.add(g));   // le ore solo nei giorni senza quarti d'ora
+  // giorni interi senza misure ora per ora: il totale del giorno
+  let finoTotali=-Infinity, conTotali=false; const senzaDati=[];
+  for(let D=Math.floor(A/1440); D*1440<B; D++){
+    if(coperti.has(D)) continue;
+    const g=isoDaNum(D), tot=misure?.giorni?.[g];
+    if(tot!=null&&D*1440>=A&&(D+1)*1440<=B){ giorni[g]=(giorni[g]||0)+(+tot||0); conTotali=true; finoTotali=Math.max(finoTotali,(D+1)*1440); }
+    else senzaDati.push(g);
+  }
+  const fino=Math.max(ultimo??-Infinity, finoTotali), tondi={};
+  for(const [d,v] of Object.entries(giorni)) if(v>=0.05) tondi[d]=+v.toFixed(1);
+  const mm=+Object.values(giorni).reduce((x,y)=>x+y,0).toFixed(1);
+  const ultima=isFinite(ultimo)?{d:isoDaNum(Math.floor(ultimo/1440)), t:String(Math.floor((ultimo%1440)/60)).padStart(2,'0')+':'+String(ultimo%60).padStart(2,'0')}:null;
+  return {mm, giorni:tondi, ultima, completo:fino>=B && !senzaDati.some(g=>numGiorno(g)*1440<Math.min(B,fino)), senzaDati, conTotali};
 }
 export const litriDaPioggia = (k, mm) => +Math.max(0,(mm||0)*k.pioggiaArea).toFixed(2);
 export function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
