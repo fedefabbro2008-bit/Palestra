@@ -258,9 +258,16 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 #plantList .plant[open]>summary{flex-direction:row;text-align:left}
 #plantList .plant>summary .chev{position:absolute;top:10px;right:10px}
 #plantList .plant[open]>summary .chev{position:static}
-.ring{flex:none;width:68px;height:68px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--water) calc(var(--p)*1%),var(--line) 0)}
-.ring.basso{background:conic-gradient(var(--warn) calc(var(--p)*1%),var(--line) 0)}
-.ring>span{width:56px;height:56px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font-size:1.7rem;line-height:1}
+/* anello dell'acqua: arco con le estremità arrotondate, come quello della batteria dell'iPhone. Raggio 31, spessore 6:
+   circonferenza 194,8; le due estremità tonde aggiungono 6 px, tolti dalla lunghezza così l'arco visibile è proprio --p % */
+.ring{position:relative;flex:none;width:68px;height:68px;display:grid;place-items:center}
+.ring>svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+.ring circle{fill:none;stroke-width:6}
+.ring .rt{stroke:var(--line)}
+.ring .rf{stroke:var(--water);stroke-linecap:round;stroke-dasharray:max(0px,calc(var(--p)*1.948px - 6px)) 400px}
+.ring.basso .rf{stroke:var(--warn)}
+.ring.vuoto .rf{display:none}
+.ring>span{position:relative;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:1.7rem;line-height:1}
 #plantList .pinfo{align-items:center}
 #plantList .plant[open] .pinfo{align-items:flex-start}
 #plantList .pmeta{display:none}
@@ -930,6 +937,7 @@ const TESTI_T = {interno:['Temperatura in casa (°C)','Uguale per tutte le piant
   serra:['Temperatura in veranda / serra (°C)','Uguale per tutte le piante in veranda / serra','Temperature medie di giorno. Non riscaldata: d\'inverno 8–12 °C, d\'estate anche 30–35 °C. Sotto vetro la pioggia non arriva e il sole fa bere di più: arieggia nelle giornate calde.']};
 const COLT = {vaso:'Vaso', terra:'Piena terra', rialzata:'Aiuola rialzata'};
 const IMP_DEF = {bicchiere:0.25, annaffiatoio:5, ora_mattina:7, ora_sera:19};
+const ANELLO='<svg viewBox="0 0 68 68" aria-hidden="true"><circle class="rt" cx="34" cy="34" r="31"/><circle class="rf" cx="34" cy="34" r="31"/></svg>';
 const CHEV = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 
 /* ================= Utility ================= */
@@ -1499,7 +1507,7 @@ function renderPiante(AP){
     if(Math.abs(k.calib-1)>0.01) notes.push(['','Imparato '+(pp?.controlli?'da '+pp.controlli+(pp.controlli===1?' controllo':' controlli'):'dalle tue risposte')+': beve il '+Math.round(Math.abs(k.calib-1)*100)+'% '+(k.calib<1?'in meno':'in più')+' del previsto.']);
     (pp?.consigli||[]).forEach(x=>notes.push(['','💬 '+x]));
     if(pp?.valutazione) notes.unshift(['','💬 '+pp.valutazione]);
-    return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ring${pp&&pp.acqua!=null&&pp.acqua<=pp.soglia?' basso':''}" style="--p:${pp?.acqua!=null?Math.round(Math.max(0,Math.min(1,pp.acqua))*100):0}" aria-hidden="true"><span>${esc(icoDi(p))}</span></span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
+    return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ring${pp&&pp.acqua!=null&&pp.acqua<=pp.soglia?' basso':''}${!(pp?.acqua>0.004)?' vuoto':''}" style="--p:${pp?.acqua!=null?Math.round(Math.max(0,Math.min(1,pp.acqua))*100):0}" aria-hidden="true">${ANELLO}<span>${esc(icoDi(p))}</span></span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
       <div class="pbody">${livello(pp)}<div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
       ${notes.length?'<ul class="notes">'+notes.map(([cls,x])=>`<li class="${cls}">${esc(x)}</li>`).join('')+'</ul>':''}
       <div class="pbtn"><button class="btn" type="button" data-ev="fatto" data-pid="${esc(p.id)}">💧 Annaffiata</button>${p.dove!=='aperto'?`<button class="btn" type="button" data-pioggia="${esc(p.id)}">🌧 Sotto la pioggia</button>`:''}</div>
