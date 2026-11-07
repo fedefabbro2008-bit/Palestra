@@ -30,3 +30,9 @@ for (const [nome, ev] of [["con un'innaffiatura 12 giorni fa", eventi], ["senza 
 }
 for (const p of piante.slice(0, 2)) { const f = M.faseEffettiva(p, oggi, lat), e = M.etaPianta(p, oggi, lat); console.log("fase", p.nome, f.fase, "· età tipica", e.eta, "· ritmo", e.ritmo, f.nota || ""); }
 console.log("calendario aglio:", M.calendarioAuto(piante[0], lat).mesi.map((m) => m.mese.slice(2) + " " + m.fase.slice(0, 4)).join(", "));
+// ARPAE: il file arriva compresso? (9 MB in chiaro; compresso sarebbe ~1 MB e «Sotto la pioggia» si aprirebbe prima)
+for (const h of [{}, { "accept-encoding": "gzip, br" }]) {
+  try { const t0 = Date.now(), r = await fetch("https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl", { headers: { "user-agent": "giardino-fede.netlify.app/1.0 https://giardino-fede.netlify.app", ...h } });
+    const testo = await r.text(); console.log("ARPAE", JSON.stringify(h), "→", r.status, "codifica", r.headers.get("content-encoding"), "· lunghezza dichiarata", r.headers.get("content-length"), "· testo", testo.length, "· ms", Date.now() - t0); }
+  catch (e) { console.log("ARPAE → errore", e.message); }
+}

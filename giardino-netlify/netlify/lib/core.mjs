@@ -102,9 +102,13 @@ async function meteoRiserva(st, key, lat, lon, ultimo, errore) {
 export const ARPAE_URL = "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl";
 export const inEmiliaRomagna = (lat, lon) => lat > 43.7 && lat < 45.15 && lon > 9.15 && lon < 12.85;
 export function leggiArpae(testo, lat, lon, preferita) {
-  const staz = new Map(), cosl = Math.cos(lat * Math.PI / 180);
+  const staz = new Map(), cosl = Math.cos(lat * Math.PI / 180), COORD = /"lon":\s*(-?\d+),\s*"lat":\s*(-?\d+)/;
   for (const l of testo.split("\n")) {
     if (!l.includes('"B13011"')) continue;
+    // le coordinate sono all'inizio della riga: le stazioni lontane si scartano senza leggere tutta la riga
+    // (prima si leggevano tutte le ~12.000 righe del file; ne servono poche decine)
+    const c = COORD.exec(l.slice(0, 240));
+    if (c && !(Math.hypot((c[2] / 1e5 - lat) * 111, (c[1] / 1e5 - lon) * 111 * cosl) <= 15)) continue;
     let o; try { o = JSON.parse(l); } catch { continue; }
     const la = o.lat / 1e5, lo = o.lon / 1e5, km = Math.hypot((la - lat) * 111, (lo - lon) * 111 * cosl);
     if (!(km <= 15)) continue;

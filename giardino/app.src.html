@@ -83,6 +83,9 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .wx-day .d{font-size:.74rem;font-weight:700;color:var(--muted);white-space:nowrap}
 .wx-day.today .d{color:var(--water)}
 .wx-day svg{width:28px;height:28px;margin:2px 0}
+.wx-ico{position:relative;display:block;flex:none;width:28px;height:28px;margin:2px 0}
+.wx-ico>svg{position:absolute;inset:0;width:100%;height:100%;margin:0;overflow:visible}
+.wx-raggi{transform-origin:50% 50%} .wx-raggi.wx-dietro{transform-origin:27.5% 27.5%}
 .wx-day .t{font-size:.95rem;font-weight:700;line-height:1.15}
 .wx-day .tm{font-size:.8rem;color:var(--muted);line-height:1.15}
 .wx-day .r{font-size:.72rem;font-weight:700;color:var(--water);white-space:nowrap;min-height:1.1em}
@@ -429,7 +432,7 @@ nav.tabs .tab:active{transform:scale(.94)}
 .wx-day[data-wxd]{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .wx-day[data-wxd]:focus-visible{outline:2px solid var(--water);outline-offset:2px}
 .wxd-head{display:flex;gap:12px;align-items:center}
-.wxd-head #wxIco svg{width:46px;height:46px;display:block}
+.wxd-head #wxIco .wx-ico{width:46px;height:46px;margin:0}
 .wxd-head h2{margin:0}
 .wxd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media (min-width:430px){.wxd-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -468,13 +471,14 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   .brand .goccia{transform-origin:50% 100%;animation:cade .9s cubic-bezier(.3,1.4,.5,1) both}
   .brand .goccia.aggiorna{animation:oscilla 1s ease-in-out infinite}
   /* meteo: il sole gira piano, le nuvole si spostano, pioggia e neve cadono, il lampo lampeggia */
-  .wx-raggi{transform-box:fill-box;transform-origin:center;animation:gira 18s linear infinite}
+  .wx-raggi{animation:gira 18s linear infinite}
   .wx-nuvola{animation:deriva 6s ease-in-out infinite alternate}
   .wx-goccia{animation:piove 1.2s linear infinite}
   .wx-fiocco{animation:nevica 2.4s ease-in-out infinite}
   .wx-lampo{animation:lampo 3s steps(1) infinite}
   .wx-nebbia{animation:deriva 4s ease-in-out infinite alternate-reverse}
-  .wx-day.today{animation:respira 4s ease-in-out infinite}
+  .wx-day.today{position:relative}
+  .wx-day.today::after{content:'';position:absolute;inset:-3px;border-radius:17px;border:3px solid color-mix(in srgb,var(--water) 16%,transparent);opacity:0;pointer-events:none;animation:respira 4s ease-in-out infinite}
   /* piante: ondeggiano piano, ognuna con il suo ritmo */
   .ri{display:inline-block}
   .ic,.ring>span,.ri{transform-origin:50% 85%;animation:ondeggia 5s ease-in-out infinite}
@@ -515,7 +519,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 @keyframes piove{0%{opacity:0;transform:translateY(-2px)}25%{opacity:1}100%{opacity:0;transform:translate(-1px,3px)}}
 @keyframes nevica{0%{opacity:0;transform:translateY(-2px)}30%{opacity:1}100%{opacity:0;transform:translate(1px,3px)}}
 @keyframes lampo{0%,86%,92%{opacity:1}88%,95%{opacity:.15}}
-@keyframes respira{0%,100%{box-shadow:inset 0 1px 0 var(--glass-hi-soft),0 0 0 0 color-mix(in srgb,var(--water) 0%,transparent)}50%{box-shadow:inset 0 1px 0 var(--glass-hi-soft),0 0 0 4px color-mix(in srgb,var(--water) 14%,transparent)}}
+@keyframes respira{0%,100%{opacity:0}50%{opacity:1}}
 @keyframes ondeggia{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
 @keyframes scuoti{0%,100%{transform:rotate(0)}25%{transform:rotate(-12deg)}50%{transform:rotate(10deg)}75%{transform:rotate(-5deg)}}
 @keyframes luccica{0%,55%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
@@ -940,21 +944,27 @@ const ICON = {
   warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
   info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>'
 };
+// Icona del meteo a strati: ogni parte che si muove (raggi, nuvola, gocce, fiocchi, lampo, nebbia) è un disegno a sé,
+// sovrapposto agli altri, e si anima tutto intero. Così il telefono la muove senza ridisegnare la pagina a ogni fotogramma
+// (prima si animavano le parti dentro un disegno solo: con l'app ferma il browser lavorava di continuo).
 function wxIcon(cond){
-  const sun='<circle cx="12" cy="12" r="4.2" fill="var(--warn)"/><g class="wx-raggi" stroke="var(--warn)" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g>';
-  const cloud='<path class="wx-nuvola" d="M7 18h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
-  const up='<path class="wx-nuvola" d="M7 15h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 15z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
-  let i;
+  const L=(cls,dentro,ritardo)=>`<svg class="${cls}" viewBox="0 0 24 24"${ritardo?` style="animation-delay:-${ritardo}s"`:''}>${dentro}</svg>`;
+  const core='<circle cx="12" cy="12" r="4.2" fill="var(--warn)"/>';
+  const raggi='<g stroke="var(--warn)" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g>';
+  const cloud='<path d="M7 18h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
+  const up='<path d="M7 15h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 15z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
+  const piccolo=x=>'<g transform="translate(-3 -3) scale(.8)">'+x+'</g>';
+  let l;
   switch(cond){
-    case 'sereno': i=sun; break;
-    case 'poco nuvoloso': i='<g transform="translate(-3 -3) scale(.8)">'+sun+'</g><g transform="translate(3 3) scale(.8)">'+cloud+'</g>'; break;
-    case 'nebbia': i=up+'<path class="wx-nebbia" d="M5 19h14M7 22h10" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>'; break;
-    case 'neve': i=up+'<g fill="var(--water)"><circle class="wx-fiocco" cx="8" cy="19.5" r="1.2"/><circle class="wx-fiocco" cx="12" cy="21" r="1.2" style="animation-delay:-.8s"/><circle class="wx-fiocco" cx="16" cy="19.5" r="1.2" style="animation-delay:-1.6s"/></g>'; break;
-    case 'temporale': i=up+'<path class="wx-lampo" d="M12 15l-2 4h3l-2 4" stroke="var(--warn)" stroke-width="1.8" fill="none"/>'; break;
-    case 'pioggia': i=up+'<g stroke="var(--water)" stroke-width="1.8" stroke-linecap="round"><path class="wx-goccia" d="M8 17.5l-1 3"/><path class="wx-goccia" d="M12 17.5l-1 3" style="animation-delay:-.4s"/><path class="wx-goccia" d="M16 17.5l-1 3" style="animation-delay:-.8s"/></g>'; break;
-    default: i=cloud;
+    case 'sereno': l=[L('wx-raggi',raggi), L('',core)]; break;
+    case 'poco nuvoloso': l=[L('wx-raggi wx-dietro',piccolo(raggi)), L('',piccolo(core)), L('wx-nuvola','<g transform="translate(3 3) scale(.8)">'+cloud+'</g>')]; break;
+    case 'nebbia': l=[L('wx-nuvola',up), L('wx-nebbia','<path d="M5 19h14M7 22h10" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>')]; break;
+    case 'neve': l=[L('wx-nuvola',up), ...[[8,19.5],[12,21],[16,19.5]].map(([x,y],i)=>L('wx-fiocco',`<circle cx="${x}" cy="${y}" r="1.2" fill="var(--water)"/>`,i*0.8))]; break;
+    case 'temporale': l=[L('wx-nuvola',up), L('wx-lampo','<path d="M12 15l-2 4h3l-2 4" stroke="var(--warn)" stroke-width="1.8" fill="none"/>')]; break;
+    case 'pioggia': l=[L('wx-nuvola',up), ...[8,12,16].map((x,i)=>L('wx-goccia',`<path d="M${x} 17.5l-1 3" stroke="var(--water)" stroke-width="1.8" stroke-linecap="round"/>`,i*0.4))]; break;
+    default: l=[L('wx-nuvola',cloud)];
   }
-  return '<svg viewBox="0 0 24 24" aria-hidden="true">'+i+'</svg>';
+  return '<span class="wx-ico" aria-hidden="true">'+l.join('')+'</span>';
 }
 
 /* ================= Stato e salvataggio =================

@@ -99,6 +99,9 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .wx-day .d{font-size:.74rem;font-weight:700;color:var(--muted);white-space:nowrap}
 .wx-day.today .d{color:var(--water)}
 .wx-day svg{width:28px;height:28px;margin:2px 0}
+.wx-ico{position:relative;display:block;flex:none;width:28px;height:28px;margin:2px 0}
+.wx-ico>svg{position:absolute;inset:0;width:100%;height:100%;margin:0;overflow:visible}
+.wx-raggi{transform-origin:50% 50%} .wx-raggi.wx-dietro{transform-origin:27.5% 27.5%}
 .wx-day .t{font-size:.95rem;font-weight:700;line-height:1.15}
 .wx-day .tm{font-size:.8rem;color:var(--muted);line-height:1.15}
 .wx-day .r{font-size:.72rem;font-weight:700;color:var(--water);white-space:nowrap;min-height:1.1em}
@@ -445,7 +448,7 @@ nav.tabs .tab:active{transform:scale(.94)}
 .wx-day[data-wxd]{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .wx-day[data-wxd]:focus-visible{outline:2px solid var(--water);outline-offset:2px}
 .wxd-head{display:flex;gap:12px;align-items:center}
-.wxd-head #wxIco svg{width:46px;height:46px;display:block}
+.wxd-head #wxIco .wx-ico{width:46px;height:46px;margin:0}
 .wxd-head h2{margin:0}
 .wxd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media (min-width:430px){.wxd-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -484,13 +487,14 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   .brand .goccia{transform-origin:50% 100%;animation:cade .9s cubic-bezier(.3,1.4,.5,1) both}
   .brand .goccia.aggiorna{animation:oscilla 1s ease-in-out infinite}
   /* meteo: il sole gira piano, le nuvole si spostano, pioggia e neve cadono, il lampo lampeggia */
-  .wx-raggi{transform-box:fill-box;transform-origin:center;animation:gira 18s linear infinite}
+  .wx-raggi{animation:gira 18s linear infinite}
   .wx-nuvola{animation:deriva 6s ease-in-out infinite alternate}
   .wx-goccia{animation:piove 1.2s linear infinite}
   .wx-fiocco{animation:nevica 2.4s ease-in-out infinite}
   .wx-lampo{animation:lampo 3s steps(1) infinite}
   .wx-nebbia{animation:deriva 4s ease-in-out infinite alternate-reverse}
-  .wx-day.today{animation:respira 4s ease-in-out infinite}
+  .wx-day.today{position:relative}
+  .wx-day.today::after{content:'';position:absolute;inset:-3px;border-radius:17px;border:3px solid color-mix(in srgb,var(--water) 16%,transparent);opacity:0;pointer-events:none;animation:respira 4s ease-in-out infinite}
   /* piante: ondeggiano piano, ognuna con il suo ritmo */
   .ri{display:inline-block}
   .ic,.ring>span,.ri{transform-origin:50% 85%;animation:ondeggia 5s ease-in-out infinite}
@@ -531,7 +535,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 @keyframes piove{0%{opacity:0;transform:translateY(-2px)}25%{opacity:1}100%{opacity:0;transform:translate(-1px,3px)}}
 @keyframes nevica{0%{opacity:0;transform:translateY(-2px)}30%{opacity:1}100%{opacity:0;transform:translate(1px,3px)}}
 @keyframes lampo{0%,86%,92%{opacity:1}88%,95%{opacity:.15}}
-@keyframes respira{0%,100%{box-shadow:inset 0 1px 0 var(--glass-hi-soft),0 0 0 0 color-mix(in srgb,var(--water) 0%,transparent)}50%{box-shadow:inset 0 1px 0 var(--glass-hi-soft),0 0 0 4px color-mix(in srgb,var(--water) 14%,transparent)}}
+@keyframes respira{0%,100%{opacity:0}50%{opacity:1}}
 @keyframes ondeggia{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
 @keyframes scuoti{0%,100%{transform:rotate(0)}25%{transform:rotate(-12deg)}50%{transform:rotate(10deg)}75%{transform:rotate(-5deg)}}
 @keyframes luccica{0%,55%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
@@ -1009,23 +1013,34 @@ async function meteo(lat,lon){
 // storico dei 400 giorni passati (temperature per le fasi; pioggia, evaporazione e sole per il bilancio dell'acqua):
 // scaricato una volta al giorno. {temp, arch}
 async function storico(lat,lon,oggi){
-  const c=LSjson('storico'), qui=c&&c.lat===lat&&c.lon===lon&&c.temp&&c.arch;
+  const c=storicoMem&&storicoMem.lat===lat&&storicoMem.lon===lon ? storicoMem : (storicoMem=LSjson('storico')), qui=c&&c.lat===lat&&c.lon===lon&&c.temp&&c.arch;
   if(qui&&c.giorno===oggi) return c;
   const scarica=fetch(urlStorico(lat,lon,oggi)).then(r=>r.ok?r.json():null).then(j=>{ const temp=j?storicoDa(j):{}, arch=j?archivioDa(j):{};
-    if(Object.keys(temp).length){ const x={giorno:oggi,lat,lon,temp,arch}; LSset('storico',JSON.stringify(x)); return x; } return null; }).catch(()=>null);
+    if(Object.keys(temp).length){ const x={giorno:oggi,lat,lon,temp,arch}; storicoMem=x; LSset('storico',JSON.stringify(x)); return x; } return null; }).catch(()=>null);
   // c'è già quello di ieri: si usa subito e il nuovo arriva per la prossima volta (l'avvio non aspetta)
   if(qui) return c;
   return (await scarica)||null;
 }
+// storico e archivio (~25 KB) stanno una volta sola nella memoria del telefono, in 'storico': il meteo salvato non li ripete
+let storicoMem=null;
+const senzaStorico = m => { if(!m) return m; const {storico, archivio, ...r}=m; return r; };
+function conStorico(m){
+  if(!m) return m;
+  const s=storicoMem&&storicoMem.lat===m.lat&&storicoMem.lon===m.lon ? storicoMem : (storicoMem=LSjson('storico'));
+  return s&&s.lat===m.lat&&s.lon===m.lon&&s.temp ? {...m, storico:s.temp, archivio:s.arch||null} : m;
+}
 async function caricaMeteo(forza){
   const loc=docs.giardino?.location; if(!loc) return;
-  const c=LSjson('meteo');
+  const c=conStorico(LSjson('meteo'));
   // previsioni valide un'ora e solo nello stesso giorno: il polling ogni 2 minuti non le riscarica
   if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=conMisurata(c); return nuovo; }
-  try{ const m=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(m)); docs.meteo_bot=conMisurata(m); return true; }catch(e){}
+  try{ const m=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(senzaStorico(m))); docs.meteo_bot=conMisurata(m); return true; }catch(e){}
   // Open-Meteo non risponde dal telefono: il meteo dal server (Open-Meteo dal server, o la riserva MET Norway)
   try{ const m=await api('GET',null,'meteo');
-    if(m&&Array.isArray(m.days)&&m.days.length){ const x={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString()}; LSset('meteo',JSON.stringify(x)); docs.meteo_bot=conMisurata(x); return true; } }catch(e){}
+    if(m&&Array.isArray(m.days)&&m.days.length){ const x={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString(),lat:loc.lat,lon:loc.lon};
+      // storico dal server (Open-Meteo non risponde dal telefono): lo si tiene per il bilancio dell'acqua e le fasi
+      if(x.storico&&x.archivio&&!(storicoMem&&storicoMem.lat===loc.lat&&storicoMem.lon===loc.lon&&storicoMem.arch)){ storicoMem={giorno:isoDate(new Date()),lat:loc.lat,lon:loc.lon,temp:x.storico,arch:x.archivio}; LSset('storico',JSON.stringify(storicoMem)); }
+      LSset('meteo',JSON.stringify(senzaStorico(x))); docs.meteo_bot=conMisurata(x); return true; } }catch(e){}
   const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=conMisurata(c); stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo;
 }
 
@@ -1055,7 +1070,7 @@ async function aggiorna(forza){
   if(inAttesa) await svuota(); else await coda;
   const dati=await scarica(), met=await caricaMeteo(!!forza);
   // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
-  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata(LSjson('meteo')||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
+  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata(conStorico(LSjson('meteo'))||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
   if(met||forza) emit('meteo_bot');
   if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();
@@ -1099,9 +1114,25 @@ window.claude={ use:async n=>caps[n]??null };
 
 /* ---------------- Date ---------------- */
 function isoDate(d){ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
-function addDays(iso,n){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return isoDate(d); }
-function giorniTra(a,b){ return Math.round((Date.parse(b+'T12:00:00Z')-Date.parse(a+'T12:00:00Z'))/864e5); }
-const meseDi = iso => new Date(iso+'T12:00:00').getMonth();
+// Le date si contano come numero del giorno (giorni dal 1970), con una memoria: i calcoli ripetono le stesse date migliaia
+// di volte (bilancio di 120 giorni, gradi-giorno dalla semina) e creare ogni volta un oggetto Date era la parte più lenta.
+const NUM=new Map(), ISO=new Map();
+function numGiorno(iso){
+  let v=NUM.get(iso); if(v!==undefined) return v;
+  const m=/^(\d{4})-(\d{2})(?:-(\d{2}))?/.exec(typeof iso==='string'?iso:'');
+  v=m ? Math.round(Date.UTC(+m[1], +m[2]-1, m[3]?+m[3]:1)/864e5) : NaN;
+  if(NUM.size>20000) NUM.clear(); NUM.set(iso,v); return v;
+}
+function isoDaNum(n){
+  let v=ISO.get(n); if(v!==undefined) return v;
+  v=Number.isFinite(n) ? new Date(n*864e5).toISOString().slice(0,10) : 'NaN-NaN-NaN';
+  if(ISO.size>20000) ISO.clear(); ISO.set(n,v); return v;
+}
+const addDays = (iso,n) => isoDaNum(numGiorno(iso)+n);
+const giorniTra = (a,b) => numGiorno(b)-numGiorno(a);
+// giorno dell'anno (1 = 1° gennaio)
+const giornoAnno = iso => numGiorno(iso)-numGiorno(String(iso).slice(0,4)+'-01-01')+1;
+const meseDi = iso => +String(iso).slice(5,7)-1;
 
 /* ---------------- Specie ----------------
    kc: [iniziale, sviluppo, piena stagione, fine stagione, riposo] (FAO-56 semplificato)
@@ -1358,7 +1389,7 @@ function ritmoGiorno(x, g){
 }
 // ore di luce (dall'alba al tramonto) in un giorno a una latitudine
 function durataGiorno(iso, lat){
-  const r=Math.PI/180, n=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  const r=Math.PI/180, n=(giornoAnno(iso)+1);
   const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), phi=(lat??44)*r;
   const c=(Math.sin(-0.833*r)-Math.sin(phi)*Math.sin(dec))/(Math.cos(phi)*Math.cos(dec));
   return c<=-1 ? 24 : c>=1 ? 0 : +(2*Math.acos(c)/r/15).toFixed(2);
@@ -1383,7 +1414,7 @@ function tempGiorno(c, iso, lat){
     for(let k=-7;k<=7;k++){ const d=addDays(iso,k-365), x=c.storico?.[d]; if(x==null) continue; st+=x; n++; const m=c.mm?.[d]; if(m){ sn+=m[0]; sx+=m[1]; nm++; } }
     if(n>=5) return nm>=5 ? {t:st/n, tmin:sn/nm, tmax:sx/nm} : {t:st/n};
   }
-  const L=Math.abs(lat??44), doy=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  const L=Math.abs(lat??44), doy=(giornoAnno(iso)+1);
   return {t:27.5-0.31*L - (4+0.15*L)*Math.cos(2*Math.PI*(doy-15-(lat<0?182:0))/365)};
 }
 const tempMedia = (c, iso, lat) => tempGiorno(c, iso, lat).t;
@@ -1473,7 +1504,7 @@ const SOLE_CACHE = new Map();
 function oreSoleGeom(iso, orient, lat){
   const k=iso+'|'+orient+'|'+Math.round((lat??44)*10);
   if(SOLE_CACHE.has(k)) return SOLE_CACHE.get(k);
-  const r=Math.PI/180, phi=(lat??44)*r, n=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  const r=Math.PI/180, phi=(lat??44)*r, n=(giornoAnno(iso)+1);
   const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), A=ORIENTAMENTI[orient];
   let min=0;
   for(let m=0;m<1440;m+=5){
@@ -1521,7 +1552,7 @@ function tempCasa(p){ const t=p?.tcasa||{}, def=p?.dove==='serra'?TSERRA_DEF:TCA
 // temperatura di un giorno: passa gradualmente da una stagione all'altra (metà gennaio, aprile, luglio, ottobre);
 // nell'emisfero sud le stagioni sono spostate di sei mesi
 function tempCasaGiorno(tc, iso, lat){
-  const d=new Date(iso+'T12:00:00'); let g=Math.floor((d-new Date(d.getFullYear(),0,0))/864e5);
+  let g=giornoAnno(iso);
   if(lat!=null && lat<0) g=(g+183)%365||365;
   if(g<15) g+=365;
   const P=[[15,tc.inverno],[105,tc.primavera],[196,tc.estate],[288,tc.autunno],[380,tc.inverno]];
@@ -1745,14 +1776,18 @@ function stimaConsumo(g, k, eventi, pid, oggi){
   for(const e of eventiValidi(eventi,pid)){ const a=giorniTra(e.data,oggi); if(a<0||a>90) continue; if(e.tipo==='meno') mu+=Math.log(0.85); else if(e.tipo==='piu') mu+=Math.log(1.18); }
   // errore misurato in rapporto (logaritmo): «asciutta» col calcolo al 10% invece del 24% pesa come «umida» al 72% invece del 30%
   const q=k.rawL/k.tawL, S=0.25, SIG=0.3, DZ=logSig(1.5), L=x=>Math.log(Math.max(0.01,x));
-  let best=1, bestLL=-Infinity, n=0;
-  for(const f of GRIGLIA_F){
-    const {pred}=simula(g,k,f); n=pred.length;
-    let ll=-((Math.log(f)-mu)**2)/(2*SIG*SIG);
-    for(const o of pred){ const w=Math.exp(-Math.max(0,giorniTra(o.data,oggi))/60), z=o.tipo==='umido'?(L(q)-L(o.x))/S:(L(o.x)-L(0.8*q))/S; ll+=w*Math.min(0,logSig(z)-DZ); }
-    if(ll>bestLL+1e-9){ bestLL=ll; best=f; }
-  }
-  return {f:+Math.max(0.4,Math.min(2.5,best)).toFixed(3), n};
+  const vicino=x=>GRIGLIA_F.reduce((a,f)=>Math.abs(Math.log(f)-x)<Math.abs(Math.log(a)-x)?f:a, 1);
+  // senza controlli dopo un'innaffiatura conta solo il punto di partenza: niente ricerca (la maggior parte delle piante)
+  const n=simula(g,k,1).pred.length;
+  if(!n) return {f:+Math.max(0.4,Math.min(2.5,vicino(mu))).toFixed(3), n:0};
+  const ll=i=>{ const f=GRIGLIA_F[i], {pred}=simula(g,k,f); let v=-((Math.log(f)-mu)**2)/(2*SIG*SIG);
+    for(const o of pred){ const w=Math.exp(-Math.max(0,giorniTra(o.data,oggi))/60), z=o.tipo==='umido'?(L(q)-L(o.x))/S:(L(o.x)-L(0.8*q))/S; v+=w*Math.min(0,logSig(z)-DZ); }
+    return v; };
+  // prima un fattore ogni tre (13 bilanci invece di 37), poi i due vicini per parte del migliore
+  let bi=18, bv=-Infinity; const fatti=new Map(), prova=i=>{ if(i<0||i>=GRIGLIA_F.length) return; const v=fatti.has(i)?fatti.get(i):ll(i); fatti.set(i,v); if(v>bv+1e-9||(Math.abs(v-bv)<=1e-9&&Math.abs(i-18)<Math.abs(bi-18))){ bv=v; bi=i; } };
+  for(let i=0;i<GRIGLIA_F.length;i+=3) prova(i);
+  const c=bi; for(const d of [-2,-1,1,2]) prova(c+d);
+  return {f:+Math.max(0.4,Math.min(2.5,GRIGLIA_F[bi])).toFixed(3), n};
 }
 // stato di una pianta all'inizio di oggi, con il fattore di consumo stimato (k = parametri già corretti)
 function bilancioPassato(p, k0, past, eventi, oggi){
@@ -1774,8 +1809,9 @@ function deficitDaSuolo(theta){ return Math.max(0,Math.min(1,(CAMPO-theta)/(CAMP
 function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
   const out={avvisi:[], piante:[]}, chiusiBagnati=new Set();
   if(!fut.length) return out;
+  const perPianta=new Map(); for(const e of eventi||[]) if(e&&e.plantId){ const a=perPianta.get(e.plantId); if(a) a.push(e); else perPianta.set(e.plantId,[e]); }
   for(const p of piante){
-    const b=bilancioPassato(p, params(p,{oggi,lat}), past, eventi, oggi), k=b.k, {fatte, presa, oss}=b;
+    const b=bilancioPassato(p, params(p,{oggi,lat}), past, perPianta.get(p.id)||[], oggi), k=b.k, {fatte, presa, oss}=b;
     let dep=b.dep;
     const usaSuolo = suolo!=null && isFinite(suolo) && !k.vaso && p.dove==='aperto' && ![...fatte].some(d=>d>=addDays(oggi,-3));
     if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
@@ -1827,7 +1863,8 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
   out.sintesi=sintesiSettimana(out, fut, piante);
   return out;
 }
-const giornoBreve = iso => new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'});
+const BREVE=new Map();   // «sab 7»: la formattazione in italiano è lenta, si ricorda
+const giornoBreve = iso => { let v=BREVE.get(iso); if(!v){ v=new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'}); if(BREVE.size>500) BREVE.clear(); BREVE.set(iso,v); } return v; };
 // Due righe sulla settimana, come le scriverebbe un giardiniere: meteo, chi va bagnato e quando, chi no.
 function sintesiSettimana(piano, fut, piante){
   if(!fut.length) return '';
@@ -2200,21 +2237,27 @@ const ICON = {
   warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
   info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>'
 };
+// Icona del meteo a strati: ogni parte che si muove (raggi, nuvola, gocce, fiocchi, lampo, nebbia) è un disegno a sé,
+// sovrapposto agli altri, e si anima tutto intero. Così il telefono la muove senza ridisegnare la pagina a ogni fotogramma
+// (prima si animavano le parti dentro un disegno solo: con l'app ferma il browser lavorava di continuo).
 function wxIcon(cond){
-  const sun='<circle cx="12" cy="12" r="4.2" fill="var(--warn)"/><g class="wx-raggi" stroke="var(--warn)" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g>';
-  const cloud='<path class="wx-nuvola" d="M7 18h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
-  const up='<path class="wx-nuvola" d="M7 15h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 15z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
-  let i;
+  const L=(cls,dentro,ritardo)=>`<svg class="${cls}" viewBox="0 0 24 24"${ritardo?` style="animation-delay:-${ritardo}s"`:''}>${dentro}</svg>`;
+  const core='<circle cx="12" cy="12" r="4.2" fill="var(--warn)"/>';
+  const raggi='<g stroke="var(--warn)" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g>';
+  const cloud='<path d="M7 18h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
+  const up='<path d="M7 15h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 15z" fill="var(--surface)" stroke="var(--muted)" stroke-width="1.6"/>';
+  const piccolo=x=>'<g transform="translate(-3 -3) scale(.8)">'+x+'</g>';
+  let l;
   switch(cond){
-    case 'sereno': i=sun; break;
-    case 'poco nuvoloso': i='<g transform="translate(-3 -3) scale(.8)">'+sun+'</g><g transform="translate(3 3) scale(.8)">'+cloud+'</g>'; break;
-    case 'nebbia': i=up+'<path class="wx-nebbia" d="M5 19h14M7 22h10" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>'; break;
-    case 'neve': i=up+'<g fill="var(--water)"><circle class="wx-fiocco" cx="8" cy="19.5" r="1.2"/><circle class="wx-fiocco" cx="12" cy="21" r="1.2" style="animation-delay:-.8s"/><circle class="wx-fiocco" cx="16" cy="19.5" r="1.2" style="animation-delay:-1.6s"/></g>'; break;
-    case 'temporale': i=up+'<path class="wx-lampo" d="M12 15l-2 4h3l-2 4" stroke="var(--warn)" stroke-width="1.8" fill="none"/>'; break;
-    case 'pioggia': i=up+'<g stroke="var(--water)" stroke-width="1.8" stroke-linecap="round"><path class="wx-goccia" d="M8 17.5l-1 3"/><path class="wx-goccia" d="M12 17.5l-1 3" style="animation-delay:-.4s"/><path class="wx-goccia" d="M16 17.5l-1 3" style="animation-delay:-.8s"/></g>'; break;
-    default: i=cloud;
+    case 'sereno': l=[L('wx-raggi',raggi), L('',core)]; break;
+    case 'poco nuvoloso': l=[L('wx-raggi wx-dietro',piccolo(raggi)), L('',piccolo(core)), L('wx-nuvola','<g transform="translate(3 3) scale(.8)">'+cloud+'</g>')]; break;
+    case 'nebbia': l=[L('wx-nuvola',up), L('wx-nebbia','<path d="M5 19h14M7 22h10" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>')]; break;
+    case 'neve': l=[L('wx-nuvola',up), ...[[8,19.5],[12,21],[16,19.5]].map(([x,y],i)=>L('wx-fiocco',`<circle cx="${x}" cy="${y}" r="1.2" fill="var(--water)"/>`,i*0.8))]; break;
+    case 'temporale': l=[L('wx-nuvola',up), L('wx-lampo','<path d="M12 15l-2 4h3l-2 4" stroke="var(--warn)" stroke-width="1.8" fill="none"/>')]; break;
+    case 'pioggia': l=[L('wx-nuvola',up), ...[8,12,16].map((x,i)=>L('wx-goccia',`<path d="M${x} 17.5l-1 3" stroke="var(--water)" stroke-width="1.8" stroke-linecap="round"/>`,i*0.4))]; break;
+    default: l=[L('wx-nuvola',cloud)];
   }
-  return '<svg viewBox="0 0 24 24" aria-hidden="true">'+i+'</svg>';
+  return '<span class="wx-ico" aria-hidden="true">'+l.join('')+'</span>';
 }
 
 /* ================= Stato e salvataggio =================

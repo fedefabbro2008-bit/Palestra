@@ -339,3 +339,26 @@ test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura torn
   assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "alla chiusura torna dov'era");
   assert.deepEqual(errori, []);
 });
+
+test("storico salvato una volta sola sul telefono e usato per il bilancio dell'acqua", async (t) => {
+  const { addDays } = await import("../netlify/lib/modello.mjs");
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-STORICO-UNA-VOLTA-ABCDEF";
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": CODE, "content-type": "application/json" },
+    body: JSON.stringify({ changes: { location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 },
+      plants: [{ id: "su", nome: "Aloe", specie: "succulenta", fase: "auto", colt: "vaso", vaso: 2, luce: 4, dove: "interno" }] } }) }));
+  const ctx = await contesto(browser);
+  const time = [...Array(400)].map((_, i) => addDays(OGGI, i - 400)), n = (v) => time.map(() => v);
+  await ctx.route("https://historical-forecast-api.open-meteo.com/**", (r) => r.fulfill(json({ daily: { time, temperature_2m_mean: n(11), temperature_2m_max: n(16), temperature_2m_min: n(6),
+    precipitation_sum: n(0), et0_fao_evapotranspiration: n(1.2), sunshine_duration: n(18000), daylight_duration: n(36000), wind_speed_10m_max: n(8) } })));
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await quando(page, () => (localStorage.getItem("giardino:net:storico") || "").includes('"arch"') && localStorage.getItem("giardino:net:meteo"));
+  const r = await page.evaluate(() => { const m = JSON.parse(localStorage.getItem("giardino:net:meteo")), s = JSON.parse(localStorage.getItem("giardino:net:storico"));
+    return { meteoHaStorico: "storico" in m || "archivio" in m, arch: Object.keys(s.arch).length, passati: pastDays().length }; });
+  assert.equal(r.meteoHaStorico, false, "il meteo salvato non ripete lo storico");
+  assert.equal(r.arch, 400);
+  assert.ok(r.passati >= 100, "bilancio con " + r.passati + " giorni passati");
+  assert.deepEqual(errori, []);
+});

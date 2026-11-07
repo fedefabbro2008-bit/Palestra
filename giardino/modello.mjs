@@ -4,9 +4,25 @@
 
 /* ---------------- Date ---------------- */
 export function isoDate(d){ const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
-export function addDays(iso,n){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return isoDate(d); }
-export function giorniTra(a,b){ return Math.round((Date.parse(b+'T12:00:00Z')-Date.parse(a+'T12:00:00Z'))/864e5); }
-const meseDi = iso => new Date(iso+'T12:00:00').getMonth();
+// Le date si contano come numero del giorno (giorni dal 1970), con una memoria: i calcoli ripetono le stesse date migliaia
+// di volte (bilancio di 120 giorni, gradi-giorno dalla semina) e creare ogni volta un oggetto Date era la parte più lenta.
+const NUM=new Map(), ISO=new Map();
+export function numGiorno(iso){
+  let v=NUM.get(iso); if(v!==undefined) return v;
+  const m=/^(\d{4})-(\d{2})(?:-(\d{2}))?/.exec(typeof iso==='string'?iso:'');
+  v=m ? Math.round(Date.UTC(+m[1], +m[2]-1, m[3]?+m[3]:1)/864e5) : NaN;
+  if(NUM.size>20000) NUM.clear(); NUM.set(iso,v); return v;
+}
+export function isoDaNum(n){
+  let v=ISO.get(n); if(v!==undefined) return v;
+  v=Number.isFinite(n) ? new Date(n*864e5).toISOString().slice(0,10) : 'NaN-NaN-NaN';
+  if(ISO.size>20000) ISO.clear(); ISO.set(n,v); return v;
+}
+export const addDays = (iso,n) => isoDaNum(numGiorno(iso)+n);
+export const giorniTra = (a,b) => numGiorno(b)-numGiorno(a);
+// giorno dell'anno (1 = 1° gennaio)
+const giornoAnno = iso => numGiorno(iso)-numGiorno(String(iso).slice(0,4)+'-01-01')+1;
+const meseDi = iso => +String(iso).slice(5,7)-1;
 
 /* ---------------- Specie ----------------
    kc: [iniziale, sviluppo, piena stagione, fine stagione, riposo] (FAO-56 semplificato)
@@ -263,7 +279,7 @@ export function ritmoGiorno(x, g){
 }
 // ore di luce (dall'alba al tramonto) in un giorno a una latitudine
 export function durataGiorno(iso, lat){
-  const r=Math.PI/180, n=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  const r=Math.PI/180, n=(giornoAnno(iso)+1);
   const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), phi=(lat??44)*r;
   const c=(Math.sin(-0.833*r)-Math.sin(phi)*Math.sin(dec))/(Math.cos(phi)*Math.cos(dec));
   return c<=-1 ? 24 : c>=1 ? 0 : +(2*Math.acos(c)/r/15).toFixed(2);
@@ -288,7 +304,7 @@ export function tempGiorno(c, iso, lat){
     for(let k=-7;k<=7;k++){ const d=addDays(iso,k-365), x=c.storico?.[d]; if(x==null) continue; st+=x; n++; const m=c.mm?.[d]; if(m){ sn+=m[0]; sx+=m[1]; nm++; } }
     if(n>=5) return nm>=5 ? {t:st/n, tmin:sn/nm, tmax:sx/nm} : {t:st/n};
   }
-  const L=Math.abs(lat??44), doy=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  const L=Math.abs(lat??44), doy=(giornoAnno(iso)+1);
   return {t:27.5-0.31*L - (4+0.15*L)*Math.cos(2*Math.PI*(doy-15-(lat<0?182:0))/365)};
 }
 export const tempMedia = (c, iso, lat) => tempGiorno(c, iso, lat).t;
@@ -378,7 +394,7 @@ const SOLE_CACHE = new Map();
 export function oreSoleGeom(iso, orient, lat){
   const k=iso+'|'+orient+'|'+Math.round((lat??44)*10);
   if(SOLE_CACHE.has(k)) return SOLE_CACHE.get(k);
-  const r=Math.PI/180, phi=(lat??44)*r, n=Math.round((Date.parse(iso+'T12:00:00Z')-Date.UTC(+iso.slice(0,4),0,0))/864e5);
+  const r=Math.PI/180, phi=(lat??44)*r, n=(giornoAnno(iso)+1);
   const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), A=ORIENTAMENTI[orient];
   let min=0;
   for(let m=0;m<1440;m+=5){
@@ -426,7 +442,7 @@ export function tempCasa(p){ const t=p?.tcasa||{}, def=p?.dove==='serra'?TSERRA_
 // temperatura di un giorno: passa gradualmente da una stagione all'altra (metà gennaio, aprile, luglio, ottobre);
 // nell'emisfero sud le stagioni sono spostate di sei mesi
 export function tempCasaGiorno(tc, iso, lat){
-  const d=new Date(iso+'T12:00:00'); let g=Math.floor((d-new Date(d.getFullYear(),0,0))/864e5);
+  let g=giornoAnno(iso);
   if(lat!=null && lat<0) g=(g+183)%365||365;
   if(g<15) g+=365;
   const P=[[15,tc.inverno],[105,tc.primavera],[196,tc.estate],[288,tc.autunno],[380,tc.inverno]];
@@ -650,14 +666,18 @@ export function stimaConsumo(g, k, eventi, pid, oggi){
   for(const e of eventiValidi(eventi,pid)){ const a=giorniTra(e.data,oggi); if(a<0||a>90) continue; if(e.tipo==='meno') mu+=Math.log(0.85); else if(e.tipo==='piu') mu+=Math.log(1.18); }
   // errore misurato in rapporto (logaritmo): «asciutta» col calcolo al 10% invece del 24% pesa come «umida» al 72% invece del 30%
   const q=k.rawL/k.tawL, S=0.25, SIG=0.3, DZ=logSig(1.5), L=x=>Math.log(Math.max(0.01,x));
-  let best=1, bestLL=-Infinity, n=0;
-  for(const f of GRIGLIA_F){
-    const {pred}=simula(g,k,f); n=pred.length;
-    let ll=-((Math.log(f)-mu)**2)/(2*SIG*SIG);
-    for(const o of pred){ const w=Math.exp(-Math.max(0,giorniTra(o.data,oggi))/60), z=o.tipo==='umido'?(L(q)-L(o.x))/S:(L(o.x)-L(0.8*q))/S; ll+=w*Math.min(0,logSig(z)-DZ); }
-    if(ll>bestLL+1e-9){ bestLL=ll; best=f; }
-  }
-  return {f:+Math.max(0.4,Math.min(2.5,best)).toFixed(3), n};
+  const vicino=x=>GRIGLIA_F.reduce((a,f)=>Math.abs(Math.log(f)-x)<Math.abs(Math.log(a)-x)?f:a, 1);
+  // senza controlli dopo un'innaffiatura conta solo il punto di partenza: niente ricerca (la maggior parte delle piante)
+  const n=simula(g,k,1).pred.length;
+  if(!n) return {f:+Math.max(0.4,Math.min(2.5,vicino(mu))).toFixed(3), n:0};
+  const ll=i=>{ const f=GRIGLIA_F[i], {pred}=simula(g,k,f); let v=-((Math.log(f)-mu)**2)/(2*SIG*SIG);
+    for(const o of pred){ const w=Math.exp(-Math.max(0,giorniTra(o.data,oggi))/60), z=o.tipo==='umido'?(L(q)-L(o.x))/S:(L(o.x)-L(0.8*q))/S; v+=w*Math.min(0,logSig(z)-DZ); }
+    return v; };
+  // prima un fattore ogni tre (13 bilanci invece di 37), poi i due vicini per parte del migliore
+  let bi=18, bv=-Infinity; const fatti=new Map(), prova=i=>{ if(i<0||i>=GRIGLIA_F.length) return; const v=fatti.has(i)?fatti.get(i):ll(i); fatti.set(i,v); if(v>bv+1e-9||(Math.abs(v-bv)<=1e-9&&Math.abs(i-18)<Math.abs(bi-18))){ bv=v; bi=i; } };
+  for(let i=0;i<GRIGLIA_F.length;i+=3) prova(i);
+  const c=bi; for(const d of [-2,-1,1,2]) prova(c+d);
+  return {f:+Math.max(0.4,Math.min(2.5,GRIGLIA_F[bi])).toFixed(3), n};
 }
 // stato di una pianta all'inizio di oggi, con il fattore di consumo stimato (k = parametri già corretti)
 export function bilancioPassato(p, k0, past, eventi, oggi){
@@ -679,8 +699,9 @@ export function deficitDaSuolo(theta){ return Math.max(0,Math.min(1,(CAMPO-theta
 export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
   const out={avvisi:[], piante:[]}, chiusiBagnati=new Set();
   if(!fut.length) return out;
+  const perPianta=new Map(); for(const e of eventi||[]) if(e&&e.plantId){ const a=perPianta.get(e.plantId); if(a) a.push(e); else perPianta.set(e.plantId,[e]); }
   for(const p of piante){
-    const b=bilancioPassato(p, params(p,{oggi,lat}), past, eventi, oggi), k=b.k, {fatte, presa, oss}=b;
+    const b=bilancioPassato(p, params(p,{oggi,lat}), past, perPianta.get(p.id)||[], oggi), k=b.k, {fatte, presa, oss}=b;
     let dep=b.dep;
     const usaSuolo = suolo!=null && isFinite(suolo) && !k.vaso && p.dove==='aperto' && ![...fatte].some(d=>d>=addDays(oggi,-3));
     if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
@@ -732,7 +753,8 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
   out.sintesi=sintesiSettimana(out, fut, piante);
   return out;
 }
-const giornoBreve = iso => new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'});
+const BREVE=new Map();   // «sab 7»: la formattazione in italiano è lenta, si ricorda
+const giornoBreve = iso => { let v=BREVE.get(iso); if(!v){ v=new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'}); if(BREVE.size>500) BREVE.clear(); BREVE.set(iso,v); } return v; };
 // Due righe sulla settimana, come le scriverebbe un giardiniere: meteo, chi va bagnato e quando, chi no.
 export function sintesiSettimana(piano, fut, piante){
   if(!fut.length) return '';
