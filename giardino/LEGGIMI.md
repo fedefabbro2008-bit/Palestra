@@ -128,6 +128,7 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
   (Open-Meteo, 0–27 cm; capacità di campo 0,32, appassimento 0,12 m³/m³).
 - Pioggia utile nel vaso = (pioggia − 1,5 mm) × superficie del vaso × 0,8; zero se riparato o in casa.
 - Dose = acqua consumata + 10%, cioè finché esce un po' dal foro.
+- Semi in germinazione (annuali seminate, non aglio, patate, fagioli, piselli): stanno nel primo centimetro, che si asciuga prima del vaso. Si conta l'ET₀ dall'ultima volta che la superficie si è bagnata (pioggia da 2 mm, innaffiatura, «era umida» o controllo umido); oltre 4 mm l'app chiede una bagnatura leggera (~3 mm sulla superficie del vaso: 0,6 L su un vaso da 50 cm), anche se il vaso è ancora pieno.
 
 ## Crediti Netlify (piano Free: 300 al mese)
 

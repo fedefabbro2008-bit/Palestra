@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="cd79fa55dcb4">
+<meta name="giardino-build" content="6db31dbb561c">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1990,6 +1990,19 @@ function inVacanza(v, data){ return !!(v&&v.dal&&v.al&&data>=v.dal&&data<v.al); 
 // la stima dei giorni passati, se nessuno le ha innaffiate negli ultimi 3 giorni. Terreno medio: capacità di campo 0,32, appassimento 0,12.
 const CAMPO=0.32, APPASS=0.12;
 function deficitDaSuolo(theta){ return Math.max(0,Math.min(1,(CAMPO-theta)/(CAMPO-APPASS))); }
+// Semi appena seminati: stanno nel primo centimetro, che si asciuga molto prima del resto del vaso. Finché germinano
+// si segue anche la superficie: quanta acqua ha tirato su l'aria (ET₀) dall'ultima volta che si è bagnata (pioggia,
+// innaffiatura, «era umida»); oltre ~4 mm la superficie è asciutta e basta una bagnatura leggera (~3 mm sul vaso).
+// Non per spicchi, tuberi e semi grossi piantati a fondo (aglio, patata, fagioli, piselli).
+const SEMI_PROFONDI = new Set(['aglio','patata','fagiolo','pisello']);
+const SUPERFICIE_MM = 4, BAGNATURA_MM = 3;
+function germinazione(p, k, oggi, lat){
+  if(k.fase!=='germinazione' || p.tipo_data==='trapianto' || SEMI_PROFONDI.has(p.specie) || !k.sp?.ann) return 0;
+  const fe=faseEffettiva(p, oggi, lat), fine=k.sp.ciclo?.[0];
+  if(!(fine>0) || fe.eta==null) return 0;
+  return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,fe.eta))/Math.max(0.2, fe.ritmo||1)));   // giorni che restano
+}
+const evapSuperficie = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra) : (d?.et0||0)*fattoreVaso(k,d);
 function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
   const out={avvisi:[], piante:[]}, chiusiBagnati=new Set();
   if(!fut.length) return out;
@@ -2006,6 +2019,13 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
     let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
+    // germinazione: ET₀ dall'ultima volta che la superficie si è bagnata (giorni passati fino a ieri)
+    const gg=germinazione(p,k,oggi,lat), bagnaSup=Math.max(0.05,(k.vaso?k.Apot:Math.min(k.area,1))*BAGNATURA_MM);
+    let sup=0;
+    if(gg){ for(const d of past){ if(d.date>=oggi) continue; const wet=fatte.has(d.date)||(presa[d.date]||0)>0||oss[d.date]==='umido'||(p.dove==='aperto'&&(d.rain||0)>=2);
+      sup=wet?0:sup+evapSuperficie(k,d); }
+      if(fatte.has(oggi)||(presa[oggi]||0)>0||oss[oggi]==='umido') sup=-1;   // bagnata oggi: si riparte da domani
+    }
     fut.forEach((d,i)=>{
       const pl=pioggiaL(p,k,d.date>=oggi?pioggiaAttesa(d):d);
       if(k.chiuso && pl>0 && dep+consumoL(k,d)-pl < -0.1*k.tawL) chiusiBagnati.add(p.nome);
@@ -2028,6 +2048,18 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
       }
       else if(end>=k.rawL*0.8) g={data:d.date,azione:'controlla',litri:0,momento:'indifferente',motivo:'Tocca il terriccio: se asciutto a 2–3 cm, innaffia'};
       else g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Terriccio ancora umido'};
+      // semi in germinazione: la superficie si asciuga prima del vaso, una bagnatura leggera quando serve
+      if(gg && i<gg){
+        if(sup<0) sup=0;
+        else if(g.azione==='innaffia' || (p.dove==='aperto' && pioggiaAttesa(d).rain>=2)) sup=0;
+        else if(g.azione!=='salta' || !inVacanza(vacanza,d.date)){
+          sup+=evapSuperficie(k,d);
+          if(sup>=SUPERFICIE_MM && !fatte.has(d.date)){
+            g={data:d.date,azione:'innaffia',litri:+bagnaSup.toFixed(2),momento,motivo:'Semi in germinazione: la superficie è asciutta. Bagna leggermente (spruzzino o annaffiatoio con la cipolla), non serve inzuppare il vaso'};
+            end=Math.max(0,end-bagnaSup); sup=0;
+          }
+        }
+      }
       giorni.push(g); dep=end;
     });
     const prima=giorni.find(g=>g.azione==='innaffia'), ctrl=giorni.find(g=>g.azione==='controlla');

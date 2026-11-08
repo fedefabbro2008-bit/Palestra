@@ -409,3 +409,21 @@ test("verso dove guarda: anche più direzioni (balcone d'angolo)", () => {
   const p = { luce: 5, orient: "S,O", luce_data: "2026-12-21" };
   assert.ok(M.luceOre(p, "2027-06-21", 44) > 5);
 });
+
+test("semi in germinazione: bagnatura leggera quando la superficie si asciuga, anche se il vaso è pieno", () => {
+  const oggi = "2026-11-08", carote = { id: "c", nome: "Carote", specie: "carota", fase: "auto", data_semina: "2026-11-06", tipo_data: "semina", colt: "vaso", vaso: 50, diametro: 50, num: 14, luce: 4, dove: "aperto", materiale: "terracotta" };
+  const aglio = { ...carote, id: "a", nome: "Aglio", specie: "aglio", data_semina: "2026-11-03", num: 4 };
+  const giorno = (date, rain, et0) => ({ date, tmax: 14, tmin: 6, et0, rain, prob: rain ? 90 : 5, wind: 8, sole: 0.5 });
+  const past = Array.from({ length: 10 }, (_, i) => giorno(M.addDays(oggi, i - 10), i === 9 ? 8 : 0, 1.1));
+  const fut = (et0, pioggia) => Array.from({ length: 7 }, (_, i) => giorno(M.addDays(oggi, i), pioggia && (i === 2 || i === 5) ? 10 : 0, et0));
+  const eventi = [{ id: "v", plantId: "c", tipo: "verifica", esito: "umido", data: oggi }];
+  const piano = (f) => M.pianoLocale({ piante: [carote, aglio], past, fut: f, eventi, oggi, lat: 44 });
+  const sec = piano(fut(1.1, false)), c = sec.piante.find((x) => x.id === "c"), a = sec.piante.find((x) => x.id === "a");
+  const bagnate = c.giorni.filter((g) => g.azione === "innaffia");
+  assert.equal(bagnate.length, 1, "una settimana asciutta di novembre: una bagnatura leggera");
+  assert.ok(bagnate[0].litri < 1 && /germinazione/.test(bagnate[0].motivo), "poca acqua, solo la superficie (" + bagnate[0].litri + " L)");
+  assert.ok(c.acqua > 0.9, "il vaso intero è ancora quasi pieno");
+  assert.ok(!a.giorni.some((g) => g.azione === "innaffia"), "aglio: lo spicchio è sotto, niente bagnature di superficie");
+  assert.ok(piano(fut(3, false)).piante.find((x) => x.id === "c").giorni.filter((g) => g.azione === "innaffia").length >= 3, "col caldo più spesso");
+  assert.equal(piano(fut(1.1, true)).piante.find((x) => x.id === "c").giorni.filter((g) => g.azione === "innaffia").length, 0, "la pioggia bagna la superficie");
+});
