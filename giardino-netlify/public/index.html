@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="0d6c512aa976">
+<meta name="giardino-build" content="695ea0e774b4">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -203,7 +203,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--water);outline-o
 .seg label.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
 .quick{display:flex;flex-wrap:wrap;gap:6px}
 .emo-row{display:flex;flex-direction:column;gap:8px}
-input.emo-in{width:72px;text-align:center;font-size:1.6rem;padding:6px}
+input.emo-in{width:72px;flex:none;text-align:center;font-size:1.6rem;padding:6px}
+.emo-scrivi{display:flex;align-items:center;gap:12px;cursor:text}
+.emo-scrivi span{font-size:.86rem;color:var(--muted);line-height:1.3}
 #pf-emoji-q button{font-size:1.25rem;min-width:44px;padding:4px 8px;line-height:1.2}
 .quick button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;min-height:36px;font-size:.84rem;font-weight:600;cursor:pointer}
 .quick button.on{background:var(--water-soft);border-color:transparent;color:var(--water)}
@@ -709,8 +711,8 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
         <div class="row between"><h2 id="plantFormTitle">Nuova pianta</h2><button class="btn small ghost" type="button" id="cancelPlantBtn">Annulla</button></div>
         <div class="field"><label for="pf-nome">Nome</label><input type="text" id="pf-nome" maxlength="60" placeholder="Es. Pomodori del balcone" enterkeyhint="next"></div>
         <div class="field"><span class="flabel" id="pf-emoji-l">Emoji <span class="opt">(facoltativa)</span></span>
-          <div class="emo-row"><input type="text" id="pf-emoji" class="emo-in" maxlength="16" autocomplete="off" aria-labelledby="pf-emoji-l" enterkeyhint="done"><div class="quick" id="pf-emoji-q"></div></div>
-          <span class="hint">Tocca una emoji o scrivila con la tastiera delle emoji. Vuota: quella della specie.</span></div>
+          <div class="emo-row"><label class="emo-scrivi"><input type="text" id="pf-emoji" class="emo-in" maxlength="16" autocomplete="off" autocorrect="off" spellcheck="false" aria-labelledby="pf-emoji-l" enterkeyhint="done"><span>✏️ Tocca qui e scrivila con la tastiera delle emoji 😀</span></label><div class="quick" id="pf-emoji-q"></div></div>
+          <span class="hint">Oppure toccane una qui sopra. La prima è quella della specie.</span></div>
         <div class="field"><span class="flabel" id="pf-specie-l">Che pianta è</span>
           <input type="hidden" id="pf-specie">
           <button type="button" class="pick" id="pf-specie-btn" aria-labelledby="pf-specie-l pf-specie-lab" aria-expanded="false"><span class="pick-ico" id="pf-specie-ico" aria-hidden="true"></span><span class="pick-t" id="pf-specie-lab"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
@@ -3486,7 +3488,9 @@ function wire(){
   $('#pf-specie-btn').addEventListener('click',()=>apriPicker($('#pf-picker').hidden));
   $('#pf-cerca').addEventListener('input',renderPicker);
   $('#pf-nome').addEventListener('input',suggerisciSpecie);
-  $('#pf-emoji').addEventListener('input',renderEmoji);
+  $('#pf-emoji').addEventListener('focus',e=>e.target.select());
+  $('#pf-emoji').addEventListener('input',e=>{ const t=e.target.value, g=typeof Intl!=='undefined'&&Intl.Segmenter?[...new Intl.Segmenter('it',{granularity:'grapheme'}).segment(t)].map(x=>x.segment):[...t];
+    const ultima=[...g].reverse().find(x=>emojiValida(x)); if(ultima!==undefined&&ultima!==t) e.target.value=ultima; renderEmoji(); });
   $('#pf-emoji').addEventListener('change',()=>{ const v=emojiValida($('#pf-emoji').value); $('#pf-emoji').value=v; if(!v&&$('#pf-emoji').value) toast('Scrivi una emoji'); renderEmoji(); });
   $('#pf-emoji-q').addEventListener('click',e=>{ const b=e.target.closest('[data-emo]'); if(!b) return; $('#pf-emoji').value=b.dataset.emo; renderEmoji(); });
   $('#pf-sugg').addEventListener('click',e=>{ const b=e.target.closest('[data-usa]'); if(b) scegliSpecie(b.dataset.usa); });
