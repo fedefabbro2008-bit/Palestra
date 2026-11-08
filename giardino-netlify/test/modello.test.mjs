@@ -427,3 +427,8 @@ test("semi in germinazione: bagnatura leggera quando la superficie si asciuga, a
   assert.ok(piano(fut(3, false)).piante.find((x) => x.id === "c").giorni.filter((g) => g.azione === "innaffia").length >= 3, "col caldo più spesso");
   assert.equal(piano(fut(1.1, true)).piante.find((x) => x.id === "c").giorni.filter((g) => g.azione === "innaffia").length, 0, "la pioggia bagna la superficie");
 });
+
+test("emoji scelta per la pianta: solo emoji, la prima", () => {
+  assert.equal(M.emojiValida("🌵"), "🌵"); assert.equal(M.emojiValida(" 🌶️ x"), "🌶️"); assert.equal(M.emojiValida("🧑‍🌾🌵"), "🧑‍🌾");
+  assert.equal(M.emojiValida("ab"), ""); assert.equal(M.emojiValida(""), ""); assert.equal(M.emojiValida(null), ""); assert.equal(M.emojiValida("🇮🇹"), "🇮🇹");
+});

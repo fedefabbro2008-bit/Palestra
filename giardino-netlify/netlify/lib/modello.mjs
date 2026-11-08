@@ -398,6 +398,12 @@ export function orientamento(o){
   return v.has('aperto') ? 'aperto' : ORDINE_ORIENT.filter(x=>v.has(x)).join(',');
 }
 const NOMI_ORIENT = {N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SO:'sud-ovest',O:'ovest',NO:'nord-ovest'};
+// emoji scelta come «foto» della pianta: la prima emoji del testo (anche composte, bandiere, tasti), altrimenti niente
+export function emojiValida(s){
+  const t=String(s||'').trim(); if(!t) return '';
+  const g=typeof Intl!=='undefined'&&Intl.Segmenter?[...new Intl.Segmenter('it',{granularity:'grapheme'}).segment(t)][0]?.segment:[...t][0];
+  return g&&/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(g)?g:'';
+}
 export function nomeOrientamento(o){
   const v=orientamento(o); if(!v) return ''; if(v==='aperto') return 'aperto';
   const n=v.split(',').map(x=>NOMI_ORIENT[x]); return 'verso '+(n.length>1?n.slice(0,-1).join(', ')+' e '+n[n.length-1]:n[0]);

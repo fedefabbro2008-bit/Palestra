@@ -185,6 +185,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--water);outline-o
 .seg input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 .seg label.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
 .quick{display:flex;flex-wrap:wrap;gap:6px}
+.emo-row{display:flex;flex-direction:column;gap:8px}
+input.emo-in{width:72px;text-align:center;font-size:1.6rem;padding:6px}
+#pf-emoji-q button{font-size:1.25rem;min-width:44px;padding:4px 8px;line-height:1.2}
 .quick button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;min-height:36px;font-size:.84rem;font-weight:600;cursor:pointer}
 .quick button.on{background:var(--water-soft);border-color:transparent;color:var(--water)}
 details.more>summary{list-style:none;cursor:pointer;font-weight:700;font-size:.95rem;color:var(--water);padding:4px 0;display:flex;align-items:center;gap:6px}
@@ -686,6 +689,9 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
       <form id="plantForm" class="form" autocomplete="off" novalidate>
         <div class="row between"><h2 id="plantFormTitle">Nuova pianta</h2><button class="btn small ghost" type="button" id="cancelPlantBtn">Annulla</button></div>
         <div class="field"><label for="pf-nome">Nome</label><input type="text" id="pf-nome" maxlength="60" placeholder="Es. Pomodori del balcone" enterkeyhint="next"></div>
+        <div class="field"><span class="flabel" id="pf-emoji-l">Emoji <span class="opt">(facoltativa)</span></span>
+          <div class="emo-row"><input type="text" id="pf-emoji" class="emo-in" maxlength="16" autocomplete="off" aria-labelledby="pf-emoji-l" enterkeyhint="done"><div class="quick" id="pf-emoji-q"></div></div>
+          <span class="hint">Tocca una emoji o scrivila con la tastiera delle emoji. Vuota: quella della specie.</span></div>
         <div class="field"><span class="flabel" id="pf-specie-l">Che pianta è</span>
           <input type="hidden" id="pf-specie">
           <button type="button" class="pick" id="pf-specie-btn" aria-labelledby="pf-specie-l pf-specie-lab" aria-expanded="false"><span class="pick-ico" id="pf-specie-ico" aria-hidden="true"></span><span class="pick-t" id="pf-specie-lab"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
@@ -1007,7 +1013,8 @@ const dataBreve = iso => { let v=BREVI.get(iso); if(v===undefined){ v=new Date(i
 const next7 = () => Array.from({length:7},(_,i)=>addDays(today(),i));
 const numOrNull = v => { if(v===''||v==null) return null; const n=parseFloat(String(v).trim().replace(',','.')); return isFinite(n)?n:null; };
 const numIn = v => v==null||v==='' ? '' : String(v).replace('.',',');
-const icoDi = p => (SPECIE[p.specie]||SPECIE.altro).ico||'🌱';
+const icoDi = p => emojiValida(p.emoji)||(SPECIE[p.specie]||SPECIE.altro).ico||'🌱';   // quella scelta, altrimenti la specie
+const EMOJI_PIANTE=["🌱", "🌿", "🪴", "🌵", "🌸", "🌼", "🌻", "🌷", "🌹", "🪻", "💐", "🍀", "🌳", "🌴", "🍅", "🥕", "🧄", "🧅", "🥬", "🥦", "🌶️", "🫑", "🍆", "🥒", "🍓", "🍋", "🫐", "🍇", "🌾", "🪷"];
 const piante = () => pianteOrdinate(S.plants);   // sempre in ordine alfabetico, raggruppate per zona
 const chiaveZona = p => zonaDi(p).toLowerCase() || '·';
 const conZone = () => S.plants.some(p=>zonaDi(p));
@@ -1812,7 +1819,15 @@ function consRow(c){
     <button type="button" class="btn ghost rm" data-cons-rm aria-label="Rimuovi">×</button></div>`;
 }
 function markQuick(sel,attr,v){ const n=numOrNull(v); document.querySelectorAll(sel+' button').forEach(b=>b.classList.toggle('on',n!=null&&+b.getAttribute(attr)===n)); }
+// scelte rapide dell'emoji: per prima quella della specie scelta (= nessuna emoji personale), poi le più comuni
+function renderEmoji(){
+  const sp=(SPECIE[$('#pf-specie').value]||SPECIE.altro).ico||'🌱', cur=emojiValida($('#pf-emoji').value);
+  const lista=[sp,...EMOJI_PIANTE.filter(e=>e!==sp)];
+  setHTML($('#pf-emoji-q'),lista.map((e,i)=>`<button type="button" data-emo="${i?e:''}" class="${(i?cur===e:!cur)?'on':''}" aria-label="${i?'Emoji '+e:'Quella della specie'}">${e}</button>`).join(''));
+  $('#pf-emoji').placeholder=sp;
+}
 function syncForm(){
+  renderEmoji();
   const vaso=radioVal('colt')==='vaso';
   document.querySelectorAll('.pf-vaso-only').forEach(el=>el.hidden=!vaso);
   $('#pf-mat-hint').textContent={terracotta:'La terracotta perde acqua anche dalle pareti: circa il 25% in più.',chiuso:'Senza fori l\'acqua in più resta sul fondo: l\'app ti dà la dose esatta (niente “finché esce dal foro”) e ti avvisa dopo la pioggia.'}[radioVal('materiale')]||'';
@@ -1844,7 +1859,7 @@ function openForm(id){
   if(!p) return;
   editingId=id||null;
   $('#plantFormTitle').textContent=id?'Modifica pianta':'Nuova pianta';
-  $('#pf-nome').value=p.nome; setSpecie(p.specie); apriPicker(false); specieScelta=false; suggerisciSpecie(); $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'},p.specie);
+  $('#pf-nome').value=p.nome; $('#pf-emoji').value=emojiValida(p.emoji); setSpecie(p.specie); apriPicker(false); specieScelta=false; suggerisciSpecie(); $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'},p.specie);
   $('#pf-zona').value=zonaDi(p); renderZoneQuick();
   $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina'; $('#pf-raccolta').value=p.raccolta||'';
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
@@ -1875,7 +1890,7 @@ function submitForm(e){
   const consociate = colt==='vaso' ? [...document.querySelectorAll('#pf-cons [data-cons]')].map(r=>{ const f=r.querySelector('[data-c=fase]').value; return {specie:r.querySelector('[data-c=specie]').value, ...(f?{fase:f}:{}), num:Math.max(1,Math.round(pos(r.querySelector('[data-c=num]').value)||1))}; }) : [];
   // zona: se esiste già con maiuscole diverse, si usa quella
   let zona=$('#pf-zona').value.trim().replace(/\s+/g,' ').slice(0,30); const zz=zoneEsistenti().find(z=>z.toLowerCase()===zona.toLowerCase()); if(zz) zona=zz;
-  const data={nome:nome.slice(0,60),zona,specie:$('#pf-specie').value,fase:$('#pf-fase').value,data_semina:$('#pf-semina').value||'',tipo_data:$('#pf-tipo-data').value,colt,
+  const data={nome:nome.slice(0,60),emoji:emojiValida($('#pf-emoji').value),zona,specie:$('#pf-specie').value,fase:$('#pf-fase').value,data_semina:$('#pf-semina').value||'',tipo_data:$('#pf-tipo-data').value,colt,
     vaso:colt==='vaso'?(pos($('#pf-vaso').value)||10):null, diametro:colt==='vaso'?pos($('#pf-diam').value):null, consociate,
     materiale:colt==='vaso'?(radioVal('materiale')||'plastica'):'plastica', riserva:colt==='vaso'?(pos($('#pf-riserva').value)||0):0,
     area:pos($('#pf-area').value), num:Math.max(1,Math.round(pos($('#pf-num').value)||1)),
@@ -2051,6 +2066,9 @@ function wire(){
   $('#pf-specie-btn').addEventListener('click',()=>apriPicker($('#pf-picker').hidden));
   $('#pf-cerca').addEventListener('input',renderPicker);
   $('#pf-nome').addEventListener('input',suggerisciSpecie);
+  $('#pf-emoji').addEventListener('input',renderEmoji);
+  $('#pf-emoji').addEventListener('change',()=>{ const v=emojiValida($('#pf-emoji').value); $('#pf-emoji').value=v; if(!v&&$('#pf-emoji').value) toast('Scrivi una emoji'); renderEmoji(); });
+  $('#pf-emoji-q').addEventListener('click',e=>{ const b=e.target.closest('[data-emo]'); if(!b) return; $('#pf-emoji').value=b.dataset.emo; renderEmoji(); });
   $('#pf-sugg').addEventListener('click',e=>{ const b=e.target.closest('[data-usa]'); if(b) scegliSpecie(b.dataset.usa); });
   $('#pf-cerca').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); const b=$('#pf-plist [data-sp]'); if(b) scegliSpecie(b.dataset.sp); } });
   $('#pf-plist').addEventListener('click',e=>{ const b=e.target.closest('[data-sp]'); if(b) scegliSpecie(b.dataset.sp); });
