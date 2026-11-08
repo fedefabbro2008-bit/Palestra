@@ -2969,6 +2969,7 @@ function loadAll(){
   if(reconcileLogIds()) persist('logs');
   // storico trovato illeggibile (ora o a un avvio precedente, finché non ripristini): la copia automatica resta quella buona
   try{ logsUnreadable = localStorage.getItem(LS_PREFIX+'hold-autobackup')==='1'; }catch(e){}
+  try{ fixDefaultPetto(); }catch(e){ console.error('fixDefaultPetto', e); }
   currentDay = dayAfterLast();   // ogni volta che apri l'app: la giornata dopo l'ultima che hai fatto
   state.settings.lastDay = currentDay;
   persist('settings');
@@ -5842,6 +5843,39 @@ const NAME_MUSCLE = [
   [/chest ?press|panca|pec ?deck|croci|push-?up|piegament/i, 'Petto'],
   [/glute|hip ?thrust|abduzion|slanci/i, 'Glutei'],
 ];
+/* Il vecchio «+ Aggiungi esercizio» creava «Nuovo esercizio» già segnato come Petto: rinominato e mai cambiato il
+   muscolo, "Kickback con manubri" o uno stretching finivano nelle serie del petto. Correzione, una volta sola per
+   dispositivo: solo esercizi aggiunti al volo (id casuale, non della scheda né dell'elenco), segnati Petto, il cui nome
+   dice chiaramente altro. Avviso con Annulla. */
+const FIX_PETTO_LS = 'palestra:fix-petto-1';
+/* quiet: dentro un import (salva e avvisa l'import stesso); risponde quanti ne ha corretti */
+function fixDefaultPetto(quiet){
+  if(logsLocked || (logsUnreadable && !quiet)) return 0;
+  let done; try{ done = localStorage.getItem(FIX_PETTO_LS); }catch(e){ return 0; }
+  if(done && !quiet) return 0;
+  const planIds = new Set(); Object.values(state.days).forEach(d=> d.exercises.forEach(e=> planIds.add(e.id)));
+  const changes = [];
+  Object.keys(state.logs).forEach(iso=> state.logs[iso].forEach(s=> s.entries.forEach(en=>{
+    if(en.muscle!=='Petto' || !/^x[0-9a-z]{9,12}$/.test(String(en.exId||'')) || planIds.has(en.exId)) return;
+    const n = String(en.name||'');
+    const to = /stre?t?c?h?ing|allungament|mobilit/i.test(n) ? 'Altro' : muscleFromName(n);
+    if(!to || to==='Petto') return;
+    changes.push({ en, iso, from:{ muscle:en.muscle, secondary:en.secondary||null }, to });
+  })));
+  try{ localStorage.setItem(FIX_PETTO_LS, String(Date.now())); }catch(e){}
+  if(!changes.length) return 0;
+  changes.forEach(c=>{ c.en.muscle = c.to; if(c.en.secondary===c.to) c.en.secondary = null; });
+  if(quiet) return changes.length;
+  if(!persist('logs')){ changes.forEach(c=>{ c.en.muscle = c.from.muscle; c.en.secondary = c.from.secondary; }); try{ localStorage.removeItem(FIX_PETTO_LS); }catch(e){} return; }
+  invalidateStats();
+  const list = changes.map(c=> '«'+c.en.name+'» → '+c.to).join(', ');
+  setTimeout(()=> showToast('Corretti '+changes.length+' esercizi segnati come Petto per errore: '+list, 'Annulla', ()=>{
+    changes.forEach(c=>{ c.en.muscle = c.from.muscle; c.en.secondary = c.from.secondary; });
+    persist('logs'); invalidateStats(); try{ renderAll(); }catch(e){}
+    showToast('Lasciati com\'erano');
+  }, 12000), 1200);
+  return changes.length;
+}
 function muscleFromName(name){ const r = NAME_MUSCLE.find(([rx])=> rx.test(name)); return r ? r[1] : null; }
 function saveWarnings(sess){
   const out = [];
@@ -7256,17 +7290,24 @@ const inRange = (iso, range)=> !range || (iso>=range.from && iso<=range.to);
 function dayTonData(dayKey, metric, range){
   const useful = e=> e.muscle!=='Altro' && e.sets>0 && (metric==='kg' || e.type==='reps');
   // sedute senza esercizi confrontabili (solo nota, solo cardio, solo riscaldamento) non azzerano il confronto
-  const sess = allSessions().filter(({iso,s})=>inRange(iso,range) && String(s.dayKey)===String(dayKey) && s.entries.some(useful)).slice(-DAYTON_MAX);
+  const all = allSessions().filter(({iso,s})=>inRange(iso,range) && String(s.dayKey)===String(dayKey) && s.entries.some(useful)).slice(-DAYTON_MAX);
   const keysOf = s=> new Set(s.entries.filter(useful).map(exKey));
-  let common = null;
-  sess.forEach(({s})=>{ const k=keysOf(s); common = common ? new Set([...common].filter(x=>k.has(x))) : k; });
+  // dalle più recenti indietro: una seduta vecchia senza esercizi in comune (fatta con tutt'altro) resta fuori,
+  // invece di azzerare il confronto di tutta la giornata
+  let common = null; const sess = [];
+  for(let i=all.length-1; i>=0; i--){
+    const k = keysOf(all[i].s), next = common ? new Set([...common].filter(x=>k.has(x))) : k;
+    if(common && !next.size) break;
+    common = next; sess.unshift(all[i]);
+  }
   common = common || new Set();
+  const dropped = all.length - sess.length;
   const names = {}, allKeys = new Set();
   sess.forEach(({s})=> s.entries.filter(useful).forEach(e=>{ names[exKey(e)] = e.name; allKeys.add(exKey(e)); }));
   const valOf = e=> metric==='kg' ? num(e.tonnage) : (e.detail||[]).reduce((a,d)=>a+num(d.val),0) * (sideOf(e) ? 2 : 1);
   const pts = sess.map(({iso,s})=>({ iso, id:String(s.id), v: s.entries.filter(e=>useful(e) && common.has(exKey(e))).reduce((a,e)=>a+valOf(e),0) }));
   const excluded = [...allKeys].filter(k=>!common.has(k)).map(k=>names[k]);
-  return { pts, common:[...common].map(k=>names[k]), excluded };
+  return { pts, common:[...common].map(k=>names[k]), excluded, dropped };
 }
 /* kg, salvo le giornate a corpo libero (esercizi in comune tutti a 0 kg): lì le ripetizioni */
 function dayTonAutoMetric(dayKey, range){
@@ -7292,13 +7333,16 @@ function renderDayTon(cfg){
     const last = inR.slice(-1)[0];
     cfg.key = last ? String(last.s.dayKey) : (opts[0]&&opts[0].k);
   }
-  picker.innerHTML = opts.map(o=>{ const p=splitDayName(o.name,o.k); return `<option value="${escapeHtml(o.k)}"${o.k===cfg.key?' selected':''}>${escapeHtml(p.key)}${withData(o.k)?'':' (nessuna seduta)'}</option>`; }).join('');
+  // due giornate con lo stesso inizio (le due «Riserva»): si aggiunge il pezzo dopo, «Riserva · Casa»
+  const lbls = opts.map(o=>{ const p=splitDayName(o.name,o.k); return { p, first:p.key }; });
+  const dupe = k=> lbls.filter(x=>x.first===k).length>1;
+  picker.innerHTML = opts.map((o,i)=>{ const {p} = lbls[i], lbl = dupe(p.key) && p.focus ? p.key+' · '+String(p.focus).split(' · ')[0] : p.key; return `<option value="${escapeHtml(o.k)}"${o.k===cfg.key?' selected':''}>${escapeHtml(lbl)}${withData(o.k)?'':' (nessuna seduta)'}</option>`; }).join('');
   picker.onchange = ()=>{ cfg.key = picker.value; cfg.userKey = true; cfg.sel=null; cfg.metricTouched=false; renderDayTon(cfg); playChart(box); };
   metricSel.onchange = ()=>{ cfg.metricTouched=true; cfg.sel=null; renderDayTon(cfg); playChart(box); };
   // corpo libero: i kg sono tutti 0, quindi di default si confrontano le ripetizioni
   if(!cfg.metricTouched) metricSel.value = dayTonAutoMetric(cfg.key, range);
   const metric = metricSel.value;
-  const {pts, common, excluded} = dayTonData(cfg.key, metric, range);
+  const {pts, common, excluded, dropped} = dayTonData(cfg.key, metric, range);
   if(!pts.length){ box.innerHTML = `<div class="chart-empty"><b>Nessuna seduta di questa giornata ${range ? 'in questa scheda' : 'ancora'}.</b><span>La barra compare dopo la prima seduta di questa giornata; dalla seconda vedi se hai fatto più o meno della volta prima.</span></div>`; return; }
   if(!common.length){ box.innerHTML = '<div class="chart-empty">Nessun esercizio in comune tra queste sedute: non c\'è un confronto sensato.</div>'; return; }
   let sel = cfg.sel ? pts.findIndex(p=>p.id===cfg.sel) : -1;   // selezione per seduta: resta sulla stessa anche se cambiano i dati
@@ -7324,7 +7368,8 @@ function renderDayTon(cfg){
 `;
   setInfo((pts.length<2 ? '<p>Serve almeno un\'altra seduta di questa giornata per il confronto.</p>' : '')
     + `<p>Calcolato su <b>${common.length} ${common.length===1?'esercizio':'esercizi'}</b>: ${escapeHtml(common.join(', '))}.</p>`
-    + (excluded.length ? `<p>Esclusi perché non presenti ogni volta: ${escapeHtml(excluded.join(', '))}.</p>` : ''));
+    + (excluded.length ? `<p>Esclusi perché non presenti ogni volta: ${escapeHtml(excluded.join(', '))}.</p>` : '')
+    + (dropped ? `<p>${dropped===1 ? 'La seduta più vecchia è esclusa' : 'Le '+dropped+' sedute più vecchie sono escluse'}: non ha${dropped===1?'':'nno'} esercizi in comune con le più recenti.</p>` : ''));
   box.querySelectorAll('.dt-bar').forEach(b=> b.addEventListener('click', ()=>{
     cfg.sel = pts[+b.dataset.i].id;
     stopChartAnim(box);   // scegliere una barra non rifà l'animazione
@@ -7901,6 +7946,9 @@ function applyImportData(data, okMsg, askLost){
         state.settings.planStarts = Array.isArray(fileSet.planStarts) ? [...new Set(fileSet.planStarts.filter(validIso))].sort() : [];
       state.settings.schemaVersion = SCHEMA_VERSION;
       const relinked = reconcileLogIds();
+      // un backup vecchio può avere esercizi segnati Petto dal vecchio «Aggiungi esercizio»: si correggono anche qui
+      const nFix = newLogs ? fixDefaultPetto(true) : 0;
+      if(nFix) msg.push(nFix===1 ? '1 muscolo corretto' : nFix+' muscoli corretti');
       // la giornata di turno come all'apertura dell'app: quella dopo l'ultima fatta (non quella scelta a mano quando è stato fatto il backup)
       currentDay = dayAfterLast();
       state.settings.lastDay = currentDay;
