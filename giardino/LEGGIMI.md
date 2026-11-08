@@ -15,9 +15,8 @@ App: **https://giardino-fede.netlify.app/**
 | Dati | `netlify/functions/dati.mjs` → Netlify Blobs | salvataggio con codice di sincronizzazione (nell'intestazione `x-giardino-code`, mai nell'indirizzo); chiave per Claude; collegamento del bot |
 | Claude | `netlify/functions/mcp.mjs` → `/mcp/<chiave>` | connettore MCP 2.0 (12 strumenti): lettura `giardino`, `pianta`, `diario`; `diagnosi` (come nell'app, con `registra: true` salva la correzione); scrittura `salva_piano` (litri limitati a quanto trattiene il vaso), `piano_automatico`, `registra`, `annulla` (per id evento), `salva_scheda`, `modifica_pianta` (specie dal nome se manca), `impostazioni`, `vacanza` |
 | Telegram | `netlify/functions/telegram.mjs` (webhook) + `bot.mjs` (ogni ora) | pulsanti **Annaffiato** / **Terreno ancora umido** (al mattino anche Salto), dopo la conferma **↩️ Annulla** per un tocco sbagliato; comandi /oggi /fatto [zona o pianta] /settimana /vacanza /aiuto; piano del mattino; la sera promemoria di ciò che manca e avvisi (gelo ora per ora, caldo, vento e raffiche, temporale, grandine); riepilogo la domenica; backup come file ogni mese |
-| Siri | `netlify/functions/siri.mjs` → `/api/siri/oggi` e `/api/siri/fatto[?zona=…]` | Comandi Rapidi “Ho innaffiato” e “Cosa innaffio oggi”: risposta in testo da far leggere a Siri; codice nell'intestazione `x-giardino-code` |
 | Prove | `giardino-netlify/test/`, `.github/workflows/giardino-test.yml` | a ogni modifica su GitHub: pagina ricostruita dai sorgenti, modello, funzioni del sito, interfaccia nel browser da 320 a 430 px |
-| Sito online | `giardino-netlify/test/sito-online.mjs`, `.github/workflows/giardino-sito.yml` | dopo ogni modifica su main (aspetta fino a 12 min la pubblicazione) e ogni mattina: versione online = commit, pagina, manifest, dati, connettore, Siri, webhook Telegram. Se fallisce GitHub manda l'email. Facoltativi nei segreti del repository (Settings → Secrets and variables → Actions): `GIARDINO_CODE` e `GIARDINO_MCP` per provare anche i dati veri, solo in lettura |
+| Sito online | `giardino-netlify/test/sito-online.mjs`, `.github/workflows/giardino-sito.yml` | dopo ogni modifica su main (aspetta fino a 12 min la pubblicazione) e ogni mattina: versione online = commit, pagina, manifest, dati, connettore, webhook Telegram. Se fallisce GitHub manda l'email. Facoltativi nei segreti del repository (Settings → Secrets and variables → Actions): `GIARDINO_CODE` e `GIARDINO_MCP` per provare anche i dati veri, solo in lettura |
 
 Il promemoria del mattino usa il piano salvato da Claude se copre il giorno, altrimenti il calcolo automatico.
 Meteo: dati giornalieri e, in una richiesta a parte, umidità del suolo (piante in piena terra) e temperature ora per ora della notte (gelo).
@@ -36,7 +35,6 @@ GitHub `fedefabbro2008-bit/Palestra`, branch `main`, **Base directory `giardino-
    claude.ai → Impostazioni → Connettori → Aggiungi connettore personalizzato (nome Giardino, URL copiato).
 3. Impostazioni → **Telegram**: crea il bot con @BotFather, incolla il token, premi Collega, poi Avvia sul bot.
 4. Impostazioni → **Backup** per salvare un file da reimportare dopo un cambio di versione o di telefono.
-5. Facoltativo: Impostazioni → **Siri e Comandi Rapidi** per dire “Ehi Siri, ho innaffiato”.
 
 Ogni pianta ha una **Scheda** (Piante → pianta → Scheda): finché Claude non la scrive, l'app mostra il calendario dei mesi
 stimato dal modello (dalla semina al raccolto per ortaggi e annuali, l'anno tipico per le perenni). Claude la compila con il
@@ -92,7 +90,7 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 ## Rete e velocità
 - **Sincronizzazione a costo quasi zero**: l'app manda la versione che ha (`x-giardino-versione: rev-updatedAt`); se sul server non è cambiato niente risponde `{invariato: true}` (~50 byte invece di tutti i dati) e lo schermo non si ridisegna.
 - **Avvio con una richiesta sola**: lo stato di Claude, Telegram e crediti (`/api/dati?op=stato`, una richiesta) si chiede solo quando apri Impostazioni.
-- **Meteo con 3 richieste in parallelo** (giornaliero e orario insieme; più modelli; storico del giorno prima, una volta al giorno), lette dalla stessa funzione del modello (`urlMeteo`, `componiMeteo`, `archivioDa`) in app e server; sul server il risultato resta 15 minuti nell'archivio (`c-meteo-<lat>,<lon>`) e lo condividono bot, Claude, Telegram e Siri. Il piano dell'app si ricalcola solo se cambia qualcosa che conta.
+- **Meteo con 3 richieste in parallelo** (giornaliero e orario insieme; più modelli; storico del giorno prima, una volta al giorno), lette dalla stessa funzione del modello (`urlMeteo`, `componiMeteo`, `archivioDa`) in app e server; sul server il risultato resta 15 minuti nell'archivio (`c-meteo-<lat>,<lon>`) e lo condividono bot, Claude e Telegram. Il piano dell'app si ricalcola solo se cambia qualcosa che conta.
 - **Animazioni che non pesano**: le icone del meteo sono a strati (raggi, nuvola, gocce, fiocchi, lampo, nebbia: ogni parte che si muove è un disegno a sé) e la casella di oggi «respira» con un anello che cambia solo opacità: tutto si muove senza ridisegnare la pagina (con l'app ferma il lavoro del telefono è sceso del 99%).
 - **Calcoli più rapidi**: le date si contano come numeri di giorno con una memoria (`numGiorno`, `isoDaNum`: niente oggetti Date nei cicli), i nomi brevi dei giorni si ricordano, la calibrazione non cerca niente per le piante senza controlli e altrimenti prova un fattore ogni tre e poi i vicini; il diario si divide per pianta una volta sola. Piano −40%, calendari −60%.
 - **Diario veloce anche lungo**: gli eventi si uniscono (app + Telegram/Claude) una volta sola e si dividono per pianta (`eventiIndice`); l'elenco mostra i 150 più recenti con «Mostra tutti»; cambio di scheda senza ricalcoli forzati della pagina. Con 2400 eventi il Diario si apre in ~40 ms invece di ~300 (telefono simulato).
@@ -135,4 +133,4 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 Ogni pubblicazione costa 15 crediti: si pubblica solo se cambia la cartella `giardino-netlify` (regola `ignore` in `netlify.toml`).
 `build-app.mjs` scrive un'impronta della versione (`netlify/lib/versione.mjs`); il bot conta le impronte nuove del mese, l'app
 mostra la stima in Impostazioni → Crediti Netlify e Telegram avvisa all'80%. Il conto esatto è su app.netlify.com → Usage.
-Uso normale (app, bot ogni ora, Claude, Siri): 10-20 crediti al mese misurati, nella stima 15.
+Uso normale (app, bot ogni ora, Claude): 10-20 crediti al mese misurati, nella stima 15.

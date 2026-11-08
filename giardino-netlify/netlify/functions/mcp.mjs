@@ -286,11 +286,11 @@ async function toolAnnulla(ctx, a) {
   ctx.saved(out);
   return `Tolto dal diario: ${tolto.nome} — ${tolto.tipo} del ${tolto.data} (${tolto.fonte}). Il calcolo ne tiene conto subito.`;
 }
-// Cancella il piano di Claude: l'app, Telegram e Siri tornano al calcolo automatico.
+// Cancella il piano di Claude: l'app e Telegram tornano al calcolo automatico.
 async function toolPianoAutomatico(ctx) {
   const out = await aggiorna(ctx.store, ctx.code, (d) => { if (!d.piano_claude) return false; d.piano_claude = null; });
   if (out?.data) ctx.saved(out);
-  return "Piano di Claude tolto: da ora app, promemoria Telegram e Siri usano il calcolo automatico.";
+  return "Piano di Claude tolto: da ora app e promemoria Telegram usano il calcolo automatico.";
 }
 // Misure e orari: bicchiere e annaffiatoio per le dosi, ore dei messaggi Telegram.
 async function toolImpostazioni(ctx, a) {
@@ -332,7 +332,7 @@ const TOOLS = [
       sintomi: { type: "array", items: { type: "string", enum: M.SINTOMI.map((x) => x.id) } }, registra: { type: "boolean", description: "salva la correzione nel diario (solo se l'utente è d'accordo)" } } },
     annotations: { ...RW, title: "Diagnosi" }, run: toolDiagnosi },
   { name: "salva_piano", title: "Salva il piano della settimana", write: true,
-    description: "Salva il tuo piano di innaffiatura per i prossimi 7 giorni: l'app lo mostra, il promemoria Telegram e Siri lo usano. Prima leggi «giardino», parti dal calcolo automatico (che usa già meteo reale, media con ICON-2I, calibrazione dalle risposte dell'utente) e correggilo solo dove la tua conoscenza aggiunge qualcosa (specie, fase, stagione, ristagni, gelo, caldo). I litri oltre quelli che il vaso trattiene (+20% se ha il foro) vengono ridotti; giorni prima di ieri o oltre 9 giorni scartati. Una voce per giorno per ogni pianta.",
+    description: "Salva il tuo piano di innaffiatura per i prossimi 7 giorni: l'app lo mostra, il promemoria Telegram lo usa. Prima leggi «giardino», parti dal calcolo automatico (che usa già meteo reale, media con ICON-2I, calibrazione dalle risposte dell'utente) e correggilo solo dove la tua conoscenza aggiunge qualcosa (specie, fase, stagione, ristagni, gelo, caldo). I litri oltre quelli che il vaso trattiene (+20% se ha il foro) vengono ridotti; giorni prima di ieri o oltre 9 giorni scartati. Una voce per giorno per ogni pianta.",
     inputSchema: { type: "object", required: ["piante"], properties: {
       sintesi: { type: "string", description: "2-3 frasi sulla settimana" }, avvisi: { type: "array", items: { type: "string" }, description: "solo eventi meteo rilevanti" },
       piante: { type: "array", items: { type: "object", required: ["id", "giorni"], properties: { id: { type: "string", description: "id della pianta da «giardino»" }, valutazione: { type: "string" }, consigli: { type: "array", items: { type: "string" }, description: "da 1 a 3" }, giorni: { type: "array", items: GIORNO } } } } } },
@@ -363,7 +363,7 @@ const TOOLS = [
     description: "Toglie dal diario un evento registrato per sbaglio (innaffiatura, «era umida», concime, correzione…). L'id è tra [ ] in «diario», «pianta» o «giardino». Prima chiedi conferma all'utente.",
     inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } }, annotations: { ...RW, destructiveHint: true, title: "Annulla evento" }, run: toolAnnulla },
   { name: "piano_automatico", title: "Torna al calcolo automatico", write: true,
-    description: "Toglie il tuo piano salvato: app, promemoria Telegram e Siri tornano al calcolo automatico dell'app (meteo reale, aggiornato ogni giorno). Usalo se il piano è superato o l'utente lo chiede.",
+    description: "Toglie il tuo piano salvato: app e promemoria Telegram tornano al calcolo automatico dell'app (meteo reale, aggiornato ogni giorno). Usalo se il piano è superato o l'utente lo chiede.",
     inputSchema: { type: "object", properties: {} }, annotations: { ...RW, destructiveHint: true, title: "Calcolo automatico" }, run: toolPianoAutomatico },
   { name: "impostazioni", title: "Misure e orari", write: true,
     description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri), l'ora del messaggio Telegram del mattino (4-12) e della sera (15-22) e accende (true) o spegne (false) le notifiche Telegram: mattina (piano del mattino), sera (promemoria delle piante ancora da innaffiare), avvisi (gelo, caldo, vento per domani), verifica (controllo del sabato col dito), riepilogo (domenica), backup (mensile), piano (fine del piano di Claude), crediti (crediti Netlify).",

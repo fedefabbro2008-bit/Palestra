@@ -175,7 +175,7 @@ test("flusso completo a 390 px", async (t) => {
   assert.match(await page.textContent("#calGiorno"), /annaffiata|innaffiata/);
   await page.click("#calPrima"); assert.ok(!(await page.isDisabled("#calDopo")));
 
-  // Impostazioni: crediti e Siri con l'indirizzo per zona
+  // Impostazioni: crediti
   RICHIESTE.length = 0;
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
   assert.deepEqual(RICHIESTE, ["GET dati (versione)"], "controllo periodico: chiede solo se è cambiato qualcosa");
@@ -185,11 +185,7 @@ test("flusso completo a 390 px", async (t) => {
   await page.click("#set-crediti summary");
   await quando(page, () => /pubblicazion/.test(document.querySelector("#credTesto").textContent));
 
-  // Impostazioni: Siri con l'indirizzo per zona
-  await page.click("#tab-impostazioni"); await page.click("#set-siri summary");
-  assert.match(await page.textContent("#siriUrl"), /\/api\/siri\/fatto$/);
-  await page.selectOption("#siriZona", "orto");
-  assert.match(await page.textContent("#siriUrl"), /\/api\/siri\/fatto\?zona=orto$/);
+  await page.click("#tab-impostazioni");
   await page.click("#set-mis summary"); await page.fill("#impA", "12"); await page.fill("#impB", "0,3"); await page.click("#impSave");
   assert.deepEqual(await page.evaluate(() => [S.impostazioni.annaffiatoio, S.impostazioni.bicchiere]), [12, 0.3]);
   // Notifiche: un interruttore per tipo, salvato subito sul server; salvare le misure non le cancella

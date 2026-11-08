@@ -1,4 +1,4 @@
-// Funzioni del sito: dati, connettore per Claude, Telegram (webhook e bot orario), Siri.
+// Funzioni del sito: dati, connettore per Claude, Telegram (webhook e bot orario).
 // Si lancia con:  node --import ./test/registra-finto.mjs --test test/server.test.mjs   (dalla cartella giardino-netlify)
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,6 @@ const dati = (await import("../netlify/functions/dati.mjs")).default;
 const mcp = (await import("../netlify/functions/mcp.mjs")).default;
 const telegram = (await import("../netlify/functions/telegram.mjs")).default;
 const bot = (await import("../netlify/functions/bot.mjs")).default;
-const siri = (await import("../netlify/functions/siri.mjs")).default;
 
 const B = "https://giardino.test", CODE = "GRD-ABCDEF-GHJKLM-NPQRST-UVWXYZ", H = { "x-giardino-code": CODE };
 async function call(fn, path, { method = "GET", body, headers = {} } = {}) {
@@ -342,22 +341,6 @@ test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della
   assert.ok((await strumento("impostazioni", { notifiche: { boh: false } })).isError, "tipo sconosciuto");
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
   await st.setJSON("t-" + CODE, { ...t0 });
-});
-
-test("Siri: codice in intestazione, piano di oggi a voce, «ho innaffiato» per zona", async () => {
-  assert.equal((await call(siri, "/api/siri/oggi", { method: "POST" })).status, 401);
-  assert.equal((await call(siri, "/api/siri/boh", { method: "POST", headers: H })).status, 404);
-  assert.equal((await call(siri, "/api/siri/fatto", { headers: H })).status, 405);
-  const oggi = (await call(siri, "/api/siri/oggi", { method: "POST", headers: H })).body;
-  assert.match(oggi, /Zucchine, [\d,]+ litri, circa/);
-  assert.doesNotMatch(oggi, /[≈½¼¾]/);
-  assert.match((await call(siri, "/api/siri/oggi?zona=cantina", { headers: H })).body, /Non trovo la zona cantina/);
-  const r = await call(siri, "/api/siri/fatto?zona=orto", { method: "POST", headers: H });
-  assert.match(r.body, /Ho segnato come annaffiate: Zucchine\./);
-  assert.ok((await leggiDati()).eventi.some((e) => e.plantId === "zuc" && e.fonte === "siri"));
-  assert.match((await call(siri, "/api/siri/fatto?zona=Orto", { method: "POST", headers: H })).body, /niente da innaffiare in Orto/);
-  assert.match((await call(siri, "/api/siri/fatto?pianta=pomo", { method: "POST", headers: H })).body, /già segnato|Pomodoro/);
-  assert.match((await call(siri, "/api/siri/fatto?pianta=cactus", { method: "POST", headers: H })).body, /Non trovo la pianta cactus/);
 });
 
 test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calcolo automatico", async () => {

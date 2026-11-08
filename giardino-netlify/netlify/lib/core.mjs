@@ -69,7 +69,7 @@ export function pota(ev) {
 
 /* ---------------- Meteo (Open-Meteo) ----------------
    Due richieste in parallelo (vedi M.urlMeteo); il risultato resta nell'archivio 15 minuti, nella stessa ora:
-   bot, Claude, Telegram e Siri lo condividono invece di richiederlo ogni volta (risposte più rapide, meno tempo di calcolo). */
+   bot, Claude e Telegram lo condividono invece di richiederlo ogni volta (risposte più rapide, meno tempo di calcolo). */
 const METEO_VALIDO = 15 * 60e3;
 export async function meteo(lat, lon) {
   const key = `c-meteo-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`, st = store(), ora = new Date();
@@ -355,7 +355,7 @@ export function messaggioFinePiano(fine, oggi) {
   return { testo, tastiera: { inline_keyboard: [[{ text: "✨ Apri Claude", url }]] } };
 }
 /* ---------------- Crediti Netlify (stima) ----------------
-   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot (ogni ora), Claude e Siri
+   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot (ogni ora), Claude
    ne consumano 10-20 al mese, misurati su Netlify (stima: 15). Le pubblicazioni si contano dalle impronte di versione viste. */
 export const CREDITI = { limite: 300, pubblicazione: 15, uso: 15, avviso: 240 };
 export async function crediti(st) {
@@ -383,7 +383,7 @@ export const COMANDI = [
   { command: "aiuto", description: "Cosa sa fare il bot" }
 ];
 
-/* ---------------- “Fatto” per tutte le piante di oggi (comando /fatto e Siri) ---------------- */
+/* ---------------- “Fatto” per tutte le piante di oggi (comando /fatto) ---------------- */
 // Segna come annaffiate le piante che oggi il piano dice di innaffiare (tutte o di una zona) e che non hanno già una risposta.
 // Con «pianta» (id) segna quella pianta anche se oggi il piano non la prevedeva (l'hai annaffiata di tua iniziativa).
 export async function segnaFatte(st, code, ap, oggi, { zona = "", pianta = "", fonte = "telegram" } = {}) {
@@ -409,22 +409,4 @@ export function trovaZonaOPianta(plants, testo) {
   if (zona) return { zona };
   const p = plants.find((x) => x.nome.toLowerCase() === q) || plants.find((x) => x.nome.toLowerCase().startsWith(q)) || plants.find((x) => x.nome.toLowerCase().includes(q));
   return p ? { pianta: p.id, nome: p.nome } : { nessuno: true };
-}
-// Testo da far leggere a Siri: cosa innaffiare oggi (tutte le piante o una zona).
-const parlato = (s) => String(s).replace(/≈\s*/g, "circa ").replace(/(\d)½/g, "$1 e mezzo").replace(/½/g, "mezzo").replace(/¼/g, "un quarto").replace(/¾/g, "tre quarti");
-export function testoOggi(data, ap, oggi, { zona = "" } = {}) {
-  const imp = { ...IMP_DEF, ...(data.impostazioni || {}) }, z = String(zona || "").trim().toLowerCase();
-  const inn = [], ctrl = []; let fatte = 0;
-  for (const p of M.pianteOrdinate(data.plants)) {
-    if (z && M.zonaDi(p).toLowerCase() !== z) continue;
-    const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
-    const segnata = data.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo));
-    if (g?.azione === "innaffia") { if (segnata) fatte++; else inn.push(`${p.nome}, ${fmt(g.litri, g.litri < 2 ? 2 : 1)} litri, ${parlato(M.dose(g.litri, imp))}`); }
-    else if (g?.azione === "controlla" && !segnata) ctrl.push(p.nome);
-  }
-  const out = [];
-  if (inn.length) out.push("Da innaffiare oggi: " + inn.join("; ") + ".");
-  if (ctrl.length) out.push("Da controllare con un dito: " + ctrl.join(", ") + ".");
-  if (!out.length) out.push(fatte ? "Hai già innaffiato tutto quello che serviva oggi." : "Oggi non c'è niente da innaffiare" + (zona ? " in " + zona : "") + ".");
-  return out.join(" ");
 }

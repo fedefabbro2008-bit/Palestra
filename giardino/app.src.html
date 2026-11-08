@@ -858,22 +858,6 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
       </div>
     </details>
 
-    <details class="set" id="set-siri"><summary><span class="si">🎙️</span><span class="st">Siri e Comandi Rapidi</span><span class="sv"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
-      <div class="body">
-        <p class="sub">Dì <b>“Ehi Siri, ho innaffiato”</b> per segnare le piante di oggi, oppure <b>“Ehi Siri, cosa innaffio oggi”</b> per sentire il piano. Il comando si crea una volta sola nell'app Comandi Rapidi.</p>
-        <div class="field"><label for="siriZona">Piante da segnare</label><select id="siriZona"></select></div>
-        <div class="field"><span class="flabel">Indirizzo per “Ho innaffiato”</span><div class="code" id="siriUrl"></div></div>
-        <div class="row"><button class="btn primary" id="siriCopyUrl" type="button">Copia l'indirizzo</button><button class="btn" id="siriCopyCode" type="button">Copia il codice</button></div>
-        <ol class="steps">
-          <li>Apri <b>Comandi Rapidi</b>, tocca <b>+</b> e poi <b>Aggiungi azione</b>: cerca <b>URL</b> e scegli <b>Ottieni contenuti dell'URL</b>.</li>
-          <li>Incolla l'indirizzo copiato qui sopra.</li>
-          <li>Apri le opzioni dell'azione: <b>Metodo</b> POST; in <b>Intestazioni</b> aggiungi la chiave <span class="mono">x-giardino-code</span> e come valore incolla il codice copiato.</li>
-          <li>Aggiungi l'azione <b>Pronuncia testo</b>: Siri leggerà la risposta.</li>
-          <li>Rinomina il comando <b>Ho innaffiato</b>. Per sentire il piano duplicalo, sostituisci <span class="mono">/fatto</span> con <span class="mono">/oggi</span> nell'indirizzo e chiamalo <b>Cosa innaffio oggi</b>.</li>
-        </ol>
-        <p class="hint">Il codice apre il tuo giardino: non condividere il comando con altri.</p>
-      </div>
-    </details>
 
     <details class="set" id="set-vac"><summary><span class="si">🏖️</span><span class="st">Vacanza</span><span class="sv" id="vacChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
       <div class="body">
@@ -927,7 +911,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 
     <details class="set" id="set-crediti"><summary><span class="si">📊</span><span class="st">Crediti Netlify</span><span class="sv" id="credChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
       <div class="body">
-        <p class="sub">Piano Free di Netlify: 300 crediti al mese. Ogni pubblicazione di una nuova versione dell'app ne costa 15; l'uso normale (app, Telegram, Claude, Siri) pochi. Se finiscono, il sito va in pausa fino al mese dopo. Telegram ti avvisa all'80%.</p>
+        <p class="sub">Piano Free di Netlify: 300 crediti al mese. Ogni pubblicazione di una nuova versione dell'app ne costa 15; l'uso normale (app, Telegram, Claude) pochi. Se finiscono, il sito va in pausa fino al mese dopo. Telegram ti avvisa all'80%.</p>
         <div id="credBarra"></div>
         <div class="sub" id="credTesto">Calcolo…</div>
         <div class="field"><label for="credVeri">Crediti rimasti, letti su Netlify</label>
@@ -1629,7 +1613,7 @@ function renderImpostazioni(){
   setVal($('#impB'),numIn(i.bicchiere)); setVal($('#impA'),numIn(i.annaffiatoio)); setVal($('#impM'),i.ora_mattina); setVal($('#impS'),i.ora_sera);
   $('#misVal').textContent='annaffiatoio '+fmt(i.annaffiatoio)+' L';
   $('#impEx').textContent='Esempio: 1,2 L = '+dose(1.2,i)+'; 3 L = '+dose(3,i)+'.';
-  renderVacanza(); renderMeteoSet(); renderSync(); renderSiri(); renderNotifiche();
+  renderVacanza(); renderMeteoSet(); renderSync(); renderNotifiche();
 }
 // notifiche Telegram: impostazioni.notifiche = {tipo:false} per quelle spente (le altre accese, anche quelle che arriveranno)
 const NOTIF=[
@@ -1653,12 +1637,6 @@ function renderNotifiche(){
   const i=S.impostazioni;
   setHTML($('#notList'),NOTIF.map(([k,t,d])=>`<label class="sw-row"><span class="sw-t"><b>${t}</b><span>${esc(d(i))}</span></span><input type="checkbox" role="switch" class="sw" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></label>`).join(''));
   chipNotifiche();
-}
-function renderSiri(){
-  const sel=$('#siriZona'), prima=sel.value, zone=zoneEsistenti();
-  const h='<option value="">Tutte le piante di oggi</option>'+zone.map(z=>`<option value="${esc(z)}">Solo la zona ${esc(z)}</option>`).join('');
-  if(sel._h!==h){ sel.innerHTML=h; sel._h=h; sel.value=zone.includes(prima)?prima:''; }
-  $('#siriUrl').textContent=location.origin+'/api/siri/fatto'+(sel.value?'?zona='+encodeURIComponent(sel.value):'');
 }
 const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito'],pioggia:['🌧','presa la pioggia']};
 const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
@@ -2277,7 +2255,6 @@ function wireNetlify(){
   const N=window.GiardinoNet;
   $('#netCode').textContent=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
-  $('#siriZona').addEventListener('change',renderSiri);
   const mostraCrediti=c=>{ if(!c){ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; return; } const pct=Math.min(100,Math.round(c.stima/c.limite*100)), alto=c.stima>=240;
       $('#credChip').textContent='~'+c.stima+' / '+c.limite; $('#credChip').className='sv'+(alto?'':' ok');
       $('#credBarra').innerHTML=`<div class="lev${alto?' basso':''}" role="img" aria-label="Crediti usati circa ${pct}%"><i style="width:${pct}%"></i><b style="left:80%"></b></div>`;
@@ -2292,8 +2269,6 @@ function wireNetlify(){
     N.stato().then(x=>{ renderMcp(x.mcp); renderTg(x.telegram); mostraCrediti(x.crediti); })
       .catch(()=>{ statoAt=0; $('#mcpChip').textContent='non raggiungibile'; $('#tgChip').textContent='non raggiungibile'; mostraCrediti(null); }); };
   $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) N.crediti().then(mostraCrediti).catch(()=>mostraCrediti(null)); });
-  $('#siriCopyUrl').addEventListener('click',async()=>toast(await copyText($('#siriUrl').textContent,$('#siriUrl'))?'Indirizzo copiato':'Seleziona e copia a mano'));
-  $('#siriCopyCode').addEventListener('click',async()=>toast(await copyText(N.codice())?'Codice copiato: incollalo come valore di x-giardino-code':'Copia non riuscita'));
   $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });
   $('#prompts').innerHTML=PROMPTS.map((t,i)=>`<button class="prompt" type="button" data-prompt="${i}"><span>“${esc(t)}”</span><span class="pc">Copia</span></button>`).join('');
   $('#prompts').addEventListener('click',async e=>{ const b=e.target.closest('[data-prompt]'); if(b) toast(await copyText(PROMPTS[+b.dataset.prompt])?'Copiato: incollalo nella chat di Claude':'Copia non riuscita'); });
