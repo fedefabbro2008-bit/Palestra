@@ -432,3 +432,13 @@ test("emoji scelta per la pianta: solo emoji, la prima", () => {
   assert.equal(M.emojiValida("🌵"), "🌵"); assert.equal(M.emojiValida(" 🌶️ x"), "🌶️"); assert.equal(M.emojiValida("🧑‍🌾🌵"), "🧑‍🌾");
   assert.equal(M.emojiValida("ab"), ""); assert.equal(M.emojiValida(""), ""); assert.equal(M.emojiValida(null), ""); assert.equal(M.emojiValida("🇮🇹"), "🇮🇹");
 });
+
+test("controllo col dito: a che profondità, secondo il vaso", () => {
+  const oggi = "2026-11-09", base = { fase: "auto", colt: "vaso", num: 1, luce: 4, dove: "aperto" };
+  assert.equal(M.profonditaDito({ ...base, specie: "appartamento", vaso: 0.25 }, oggi, 44), 2);
+  assert.equal(M.profonditaDito({ ...base, specie: "nepenthes", vaso: 12 }, oggi, 44), 4);
+  assert.equal(M.profonditaDito({ ...base, specie: "aglio", vaso: 30, data_semina: "2026-11-03", tipo_data: "semina" }, oggi, 44), 5, "aglio: lo spicchio è sotto");
+  assert.equal(M.profonditaDito({ ...base, specie: "carota", vaso: 50, data_semina: "2026-11-06", tipo_data: "semina" }, oggi, 44), 1, "semi: la superficie");
+  assert.equal(M.profonditaDito({ ...base, specie: "pomodoro", colt: "terra" }, oggi, 44), 5);
+  assert.match(M.testoDito(3), /3\u00a0cm \(fino alla prima falange\)/); assert.match(M.testoDito(1), /superficie/);
+});

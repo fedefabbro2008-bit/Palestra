@@ -73,7 +73,7 @@ async function uno(st, tkey, cr) {
     if (pv) {
       const pb = (await pianoOra()).base.piante.find((x) => x.id === pv.id), a = Math.round((pb?.acqua ?? -1) * 100), sg = Math.round((pb?.soglia ?? -1) * 100);
       const cb = (r) => `v|${oggi}|${pv.id}|${r}|${a}|${sg}`;
-      await invia(`🔍 <b>Controllo della settimana</b>\nInfila un dito nel terriccio di <b>${esc(pv.nome)}</b> per 2–3 cm: com'è?\n<i>Così l'app impara quanto beve davvero.</i>`,
+      await invia(`🔍 <b>Controllo della settimana</b>\n<b>${esc(pv.nome)}</b>: ${esc(M.testoDito(M.profonditaDito(data.plants.find((x) => x.id === pv.id) || pv, oggi, cur.data.location?.lat)))}: com'è?\n<i>Così l'app impara quanto beve davvero.</i>`,
         { reply_markup: { inline_keyboard: [[{ text: "💦 Umido", callback_data: cb("u") }, { text: "🏜 Asciutto", callback_data: cb("s") }]] } });
       next.ultima_verifica = oggi;
     }

@@ -668,7 +668,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
     <div class="stack" id="todayBox">
       <div class="hero" id="heroBox"><div class="hnum" id="heroNum" aria-hidden="true">·</div><div class="htxt"><div class="eyebrow" id="todayDate"></div><h2 class="headline" id="todayHead">Oggi</h2><div class="sub" id="todaySub"></div></div></div>
       <div id="todayList" class="stack"></div>
-      <div class="card" id="restBox" hidden><div class="eyebrow" style="margin-bottom:4px">Oggi non serve acqua</div><div id="restList"></div></div>
+      <div class="card" id="restBox" hidden><div class="eyebrow" style="margin-bottom:2px">Le tue piante</div><div class="hint" style="margin-bottom:4px">💧 annaffiata · 🌧 sotto la pioggia · 🖐 com'è la terra (corregge il calcolo)</div><div id="restList"></div></div>
       <div class="card" id="concBox" hidden><div class="eyebrow" style="margin-bottom:4px">Da concimare</div><div id="concList"></div></div>
       <div class="card stack" id="verBox" hidden></div>
     </div>
@@ -971,6 +971,14 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   <div class="quick" id="pgVeloci"><button type="button" data-pgv="notte">Stanotte</button><button type="button" data-pgv="ieri">Da ieri mattina</button><button type="button" data-pgv="3">Ultimi 3 giorni</button><button type="button" data-pgv="7">Ultima settimana</button></div>
   <div class="alert info" id="pgCalc"></div>
   <div class="row"><button class="btn primary" type="button" id="pgSalva">Registra</button><button class="btn ghost" type="button" id="pgAnnulla">Annulla</button></div>
+</div>
+<div class="sheet-bg" id="terraBg" hidden></div>
+<div class="sheet card stack" id="terraSheet" role="dialog" aria-modal="true" aria-labelledby="trTit" hidden>
+  <h2 id="trTit">🖐 Com'è la terra?</h2>
+  <p id="trSub"></p>
+  <div class="acts"><button class="btn" type="button" data-terra-r="umido">💦 Umida</button><button class="btn" type="button" data-terra-r="secco">🏜 Asciutta</button></div>
+  <p class="hint" id="trHint"></p>
+  <div class="row"><button class="btn ghost" type="button" id="trAnnulla">Annulla</button></div>
 </div>
 <div class="sheet-bg" id="wxBg" hidden></div>
 <div class="sheet card stack" id="wxSheet" role="dialog" aria-modal="true" aria-labelledby="wxTit" hidden>
@@ -1375,11 +1383,14 @@ function renderOggi(AP){
     }
   }
   setHTML(list, html);
-  if(rest.length){
+  // tutte le piante, sempre: annaffiata, sotto la pioggia (solo al riparo) e com'è la terra (controllo col dito quando vuoi)
+  if(items.length){
     $('#restBox').hidden=false;
-    setHTML($('#restList'),rest.map(x=>{ const ev=eventsOf(x.p.id,t), f=ev.find(e=>e.tipo==='fatto'), pi=ev.filter(e=>e.tipo==='pioggia').reduce((a,e)=>a+(+e.litri||0),0);
-      return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(x.p))}</span><span class="li"><b>${esc(x.p.nome)}</b><span>${esc(f?'Annaffiata oggi'+(f.litri?' · '+fmtL(+f.litri):''):pi>0?'Ha preso la pioggia · '+fmtL(pi):x.g?x.g.motivo:'Non nel piano di Claude: chiedigli di rifarlo')}</span></span>
-        <span class="mini"><button class="btn small ghost" type="button" data-ev="fatto" data-pid="${esc(x.p.id)}" aria-label="Annaffiata">💧</button>${x.p.dove!=='aperto'?`<button class="btn small ghost" type="button" data-pioggia="${esc(x.p.id)}" aria-label="Messa sotto la pioggia">🌧</button>`:''}</span></div>`; }).join(''));
+    setHTML($('#restList'),items.map(x=>{ const ev=eventsOf(x.p.id,t), f=ev.find(e=>e.tipo==='fatto'), pi=ev.filter(e=>e.tipo==='pioggia').reduce((a,e)=>a+(+e.litri||0),0), v=[...ev].reverse().find(e=>e.tipo==='verifica');
+      const stato=f?'Annaffiata oggi'+(f.litri?' · '+fmtL(+f.litri):''):pi>0?'Ha preso la pioggia · '+fmtL(pi):v?'Terra '+(v.esito==='secco'?'asciutta':'umida')+' al controllo di oggi'
+        :x.g?.azione==='innaffia'?'Da annaffiare oggi · '+fmtL(x.g.litri):x.g?.azione==='controlla'?'Da controllare oggi':x.g?x.g.motivo:'Non nel piano di Claude: chiedigli di rifarlo';
+      return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(x.p))}</span><span class="li"><b>${esc(x.p.nome)}</b><span>${esc(stato)}</span></span>
+        <span class="mini"><button class="btn small ghost${f?' on':''}" type="button" data-ev="fatto" data-pid="${esc(x.p.id)}" aria-label="Annaffiata">💧</button>${x.p.dove!=='aperto'?`<button class="btn small ghost" type="button" data-pioggia="${esc(x.p.id)}" aria-label="Messa sotto la pioggia">🌧</button>`:''}<button class="btn small ghost${v?' on':''}" type="button" data-terra="${esc(x.p.id)}" aria-label="Com'è la terra">🖐</button></span></div>`; }).join(''));
   }
   renderConcime(); renderVerifica(AP); renderWeek(AP);
 }
@@ -1390,10 +1401,21 @@ function renderVerifica(AP){
   try{ if(p && localStorage.getItem('giardino:verifica:dopo')===t) p=null; }catch(e){}
   box.hidden=!p; if(!p) return;
   const pp=AP?.data?.piante.find(x=>x.id===p.id);
-  setHTML(box,`<div class="eyebrow">🔍 Controllo della settimana</div><div><b>${esc(p.nome)}</b>: infila un dito nel terriccio per 2–3 cm. Com'è?</div>
+  setHTML(box,`<div class="eyebrow">🔍 Controllo della settimana</div><div><b>${esc(p.nome)}</b>: ${esc(testoDito(profonditaDito(p,t,S.location?.lat)))}. Com'è?</div>
     <p class="hint">Serve all'app per imparare quanto beve davvero${pp?.acqua!=null?' (il calcolo dice ~'+Math.round(pp.acqua*100)+'% d\'acqua)':''}.</p>
     <div class="acts"><button class="btn" type="button" data-ver="umido" data-pid="${esc(p.id)}">💦 Umido</button><button class="btn" type="button" data-ver="secco" data-pid="${esc(p.id)}">🏜 Asciutto</button><button class="btn ghost" type="button" data-ver="dopo">Non ora</button></div>`);
 }
+// «Com'è la terra?» per una pianta qualsiasi, quando vuoi: a quanti centimetri toccare e cosa dice il calcolo adesso
+let trPianta=null;
+function apriTerra(pid){
+  const p=S.plants.find(x=>x.id===pid); if(!p) return;
+  trPianta=pid;
+  const pp=activePlan()?.data?.piante.find(x=>x.id===pid), cm=profonditaDito(p,today(),S.location?.lat);
+  setHTML($('#trSub'),'<b>'+esc(p.nome)+'</b>: '+esc(testoDito(cm))+', lontano dal bordo del vaso. Com\'è?');
+  $('#trHint').textContent=(pp?.acqua!=null?'Il calcolo dice ~'+Math.round(pp.acqua*100)+'% d\'acqua nel terriccio. ':'')+'La tua risposta corregge quanto beve questa pianta; se è asciutta l\'app te lo fa annaffiare.';
+  $('#terraSheet').hidden=false; $('#terraBg').hidden=false;
+}
+function chiudiTerra(){ $('#terraSheet').hidden=true; $('#terraBg').hidden=true; trPianta=null; }
 function rispondiVerifica(pid, risposta){
   if(risposta==='dopo'){ try{ localStorage.setItem('giardino:verifica:dopo',today()); }catch(e){} renderAll(); return; }
   const AP=activePlan(), pp=AP?.data?.piante.find(x=>x.id===pid), k=S.plants.find(x=>x.id===pid);
@@ -2139,6 +2161,7 @@ function wire(){
     const u=e.target.closest('[data-undo]'); if(u){ undoOggi(u.dataset.undo); return; }
     const tt=e.target.closest('[data-tutte]'); if(tt){ spruzzo(tt,e,18); fattoTutte(tt.dataset.tutte); return; }
     const vr=e.target.closest('[data-ver]'); if(vr){ rispondiVerifica(vr.dataset.pid, vr.dataset.ver); return; }
+    const tr=e.target.closest('[data-terra]'); if(tr){ apriTerra(tr.dataset.terra); return; }
     const pg=e.target.closest('[data-pioggia]'); if(pg){ apriPioggia(pg.dataset.pioggia); return; }
     const wd=e.target.closest('[data-wxd]'); if(wd){ apriMeteo(wd.dataset.wxd); return; }
     const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); return; }
@@ -2150,6 +2173,8 @@ function wire(){
   $('#pgDa').addEventListener('input',pgOre); $('#pgA').addEventListener('input',pgOre);
   $('#pgDaG').addEventListener('input',aggiornaPioggia); $('#pgAG').addEventListener('input',aggiornaPioggia);
   $('#pgVeloci').addEventListener('click',e=>{ const b=e.target.closest('[data-pgv]'); if(b) pgVeloce(b.dataset.pgv); });
+  document.querySelectorAll('[data-terra-r]').forEach(b=>b.addEventListener('click',()=>{ const pid=trPianta; chiudiTerra(); if(pid) rispondiVerifica(pid,b.dataset.terraR); }));
+  $('#trAnnulla').addEventListener('click',chiudiTerra); $('#terraBg').addEventListener('click',chiudiTerra);
   $('#wxChiudi').addEventListener('click',chiudiMeteo); $('#wxBg').addEventListener('click',chiudiMeteo);
   $('#wxStrip').addEventListener('keydown',e=>{ const wd=e.target.closest('[data-wxd]'); if(wd&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); apriMeteo(wd.dataset.wxd); } });
   document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#wxSheet').hidden) chiudiMeteo(); });

@@ -763,6 +763,15 @@ export function deficitDaSuolo(theta){ return Math.max(0,Math.min(1,(CAMPO-theta
 // Non per spicchi, tuberi e semi grossi piantati a fondo (aglio, patata, fagioli, piselli).
 const SEMI_PROFONDI = new Set(['aglio','patata','fagiolo','pisello']);
 const SUPERFICIE_MM = 4, BAGNATURA_MM = 3;
+// A che profondità infilare il dito per il controllo: dove sono le radici che bevono, secondo il vaso.
+// Semi appena seminati: la superficie (1 cm). Vasetti fino a 1 L: 2 cm; fino a 5 L: 3 cm; fino a 20 L: 4 cm; più grandi e piena terra: 5 cm.
+export function profonditaDito(p, oggi, lat){
+  const fe=faseEffettiva(p, oggi, lat), sp=SPECIE[p.specie]||SPECIE.altro;
+  if(fe.fase==='germinazione' && sp.ann && p.tipo_data!=='trapianto' && !SEMI_PROFONDI.has(p.specie)) return 1;
+  if(p.colt!=='vaso') return 5;
+  const V=+p.vaso||10; return V<=1?2:V<=5?3:V<=20?4:5;
+}
+export const testoDito = cm => cm<=1 ? 'tocca la superficie del terriccio (il primo centimetro)' : 'infila un dito nel terriccio per '+cm+'\u00a0cm'+(cm<=3?' (fino alla prima falange)':' (fino alla seconda falange)');
 function germinazione(p, k, oggi, lat){
   if(k.fase!=='germinazione' || p.tipo_data==='trapianto' || SEMI_PROFONDI.has(p.specie) || !k.sp?.ann) return 0;
   const fe=faseEffettiva(p, oggi, lat), fine=k.sp.ciclo?.[0];
