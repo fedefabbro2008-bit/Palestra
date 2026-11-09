@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="d0d7cf9b1b03">
+<meta name="giardino-build" content="88abe6187c8f">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -28,12 +28,12 @@
   --sel:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%237d8a82' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --bg:#0f1512; --surface:#18221c; --surface-2:#1e2a23; --ink:#e6ede8; --muted:#97a69d; --line:#2a3830;
+  --bg:#0f1512; --surface:#18221c; --surface-2:#1e2a23; --ink:#e6ede8; --muted:#aebbb2; --line:#2a3830;
   --water:#62b2e6; --water-soft:#163447; --on-water:#06131c; --leaf:#7cc28f; --leaf-soft:#193322;
   --warn:#e8b25a; --warn-soft:#3a2c14; --danger:#f08a7a; --danger-soft:#3c1d19; --bar:#4b9ad2; color-scheme:dark;
 }}
 :root[data-theme="dark"]{
-  --bg:#0f1512; --surface:#18221c; --surface-2:#1e2a23; --ink:#e6ede8; --muted:#97a69d; --line:#2a3830;
+  --bg:#0f1512; --surface:#18221c; --surface-2:#1e2a23; --ink:#e6ede8; --muted:#aebbb2; --line:#2a3830;
   --water:#62b2e6; --water-soft:#163447; --on-water:#06131c; --leaf:#7cc28f; --leaf-soft:#193322;
   --warn:#e8b25a; --warn-soft:#3a2c14; --danger:#f08a7a; --danger-soft:#3c1d19; --bar:#4b9ad2; color-scheme:dark;
 }
@@ -337,6 +337,8 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .sv{flex:0 1 auto;min-width:0;max-width:48%;font-size:.86rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sv.ok{color:var(--leaf);font-weight:600}
 .set .body{padding:2px 14px 16px;display:flex;flex-direction:column;gap:12px}
+.set-gruppo{font-size:.76rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:10px 4px -4px}
+.set-gruppo:first-of-type{margin-top:0}
 /* notifiche: interruttori come su iPhone */
 .notif{display:flex;flex-direction:column}
 .sw-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);cursor:pointer}
@@ -387,6 +389,8 @@ html.con-badge{--badge:30px}
   right:calc(max(16px,env(safe-area-inset-right,0px)) - 9px) !important;transform-origin:100% 0 !important;transform:scale(.7) !important}
 @media (min-width:672px){ #nl-badge-frame{right:calc(50% - 320px + 16px - 9px) !important} }
 .lrow .mini{flex:none;display:flex;gap:4px} .lrow .mini .btn{min-width:40px;padding:6px 8px}
+.lrow.prow{align-items:flex-start} .lrow.prow .ri{margin-top:2px}
+.pazioni{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px;margin-top:8px} .pazioni .btn{min-height:36px;padding:5px 4px;font-size:.82rem;white-space:nowrap}
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:30;touch-action:none}
 .sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + env(safe-area-inset-bottom,0px) + 10px);width:min(560px,calc(100% - 24px));z-index:31;max-height:calc(100vh - 140px);max-height:calc(100dvh - var(--tabh) - env(safe-area-inset-bottom,0px) - env(safe-area-inset-top,0px) - 30px);overflow:auto;overscroll-behavior:contain}
 .sheet .inrow .field{flex:1;min-width:0}
@@ -687,7 +691,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
     <div class="stack" id="todayBox">
       <div class="hero" id="heroBox"><div class="hnum" id="heroNum" aria-hidden="true">·</div><div class="htxt"><div class="eyebrow" id="todayDate"></div><h2 class="headline" id="todayHead">Oggi</h2><div class="sub" id="todaySub"></div></div></div>
       <div id="todayList" class="stack"></div>
-      <div class="card" id="restBox" hidden><div class="eyebrow" style="margin-bottom:2px">Le tue piante</div><div class="hint" style="margin-bottom:4px">💧 annaffiata · 🌧 sotto la pioggia · 🖐 com'è la terra (corregge il calcolo)</div><div id="restList"></div></div>
+      <div class="card" id="restBox" hidden><div class="eyebrow" style="margin-bottom:2px">Le tue piante</div><div class="hint" style="margin-bottom:4px">🖐 Terra: com'è il terriccio, corregge il calcolo</div><div id="restList"></div></div>
       <div class="card" id="concBox" hidden><div class="eyebrow" style="margin-bottom:4px">Da concimare</div><div id="concList"></div></div>
       <div class="card stack" id="verBox" hidden></div>
     </div>
@@ -845,6 +849,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   <section class="view" id="view-impostazioni" hidden>
     <h2 class="headline">Impostazioni</h2>
 
+    <div class="set-gruppo">Calcolo</div>
     <details class="set" id="set-loc"><summary><span class="si">📍</span><span class="st">Posizione</span><span class="sv" id="locVal"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
       <div class="body">
         <div id="locInfo" class="sub" aria-live="polite"></div>
@@ -852,6 +857,44 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
       </div>
     </details>
 
+    <details class="set" id="set-mis"><summary><span class="si">💧</span><span class="st">Misure e orari</span><span class="sv" id="misVal"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="body">
+        <p class="sub">Servono per tradurre i litri in bicchieri e annaffiatoi, e per l'ora dei messaggi su Telegram.</p>
+        <div class="grid2">
+          <div class="field"><label for="impB">Bicchiere (litri)</label><input type="text" id="impB" inputmode="decimal"></div>
+          <div class="field"><label for="impA">Annaffiatoio (litri)</label><input type="text" id="impA" inputmode="decimal"></div>
+          <div class="field"><label for="impM">Messaggio del mattino (ora)</label><input type="text" id="impM" inputmode="numeric"></div>
+          <div class="field"><label for="impS">Avviso della sera (ora)</label><input type="text" id="impS" inputmode="numeric"></div>
+        </div>
+        <div class="sub" id="impEx"></div>
+        <div><button class="btn primary" id="impSave" type="button">Salva</button></div>
+      </div>
+    </details>
+
+    <details class="set" id="set-meteo"><summary><span class="si">☁️</span><span class="st">Meteo</span><span class="sv" id="wxVal"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="body">
+        <p class="sub" id="wxInfo"></p>
+        <details class="more"><summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>Correggi a mano</summary>
+          <div class="wxe" id="wxEdit"></div>
+          <p class="hint" style="margin-top:8px">Le correzioni valgono finché non arrivano previsioni più recenti.</p>
+        </details>
+      </div>
+    </details>
+
+    <details class="set" id="set-vac"><summary><span class="si">🏖️</span><span class="st">Vacanza</span><span class="sv" id="vacChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="body">
+        <p class="sub">Il giorno prima di partire il piano ti fa bagnare a fondo e calcola quanti giorni resiste ogni pianta.</p>
+        <div class="grid2">
+          <div class="field"><label for="vacDal">Parto il</label><input type="date" id="vacDal"></div>
+          <div class="field"><label for="vacAl">Torno il</label><input type="date" id="vacAl"></div>
+        </div>
+        <div class="row"><button class="btn primary" id="vacSave" type="button">Salva le date</button><button class="btn ghost" id="vacClear" type="button" hidden>Annulla la vacanza</button></div>
+        <div id="vacTable"></div>
+        <button class="btn ghost" id="vacCopy" type="button" hidden>Copia le istruzioni per chi bagna</button>
+      </div>
+    </details>
+
+    <div class="set-gruppo">Collegamenti</div>
     <details class="set" id="set-tg"><summary><span class="si">✈️</span><span class="st">Telegram</span><span class="sv" id="tgChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
       <div class="body">
         <p class="sub">Ogni mattina ti scrive solo se c'è da fare, con i pulsanti Fatto, Era umida, Salto. La sera ti avvisa di gelo, caldo o vento. Scegli cosa ricevere in Notifiche. Gratis.</p>
@@ -896,44 +939,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
       </div>
     </details>
 
-
-    <details class="set" id="set-vac"><summary><span class="si">🏖️</span><span class="st">Vacanza</span><span class="sv" id="vacChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
-      <div class="body">
-        <p class="sub">Il giorno prima di partire il piano ti fa bagnare a fondo e calcola quanti giorni resiste ogni pianta.</p>
-        <div class="grid2">
-          <div class="field"><label for="vacDal">Parto il</label><input type="date" id="vacDal"></div>
-          <div class="field"><label for="vacAl">Torno il</label><input type="date" id="vacAl"></div>
-        </div>
-        <div class="row"><button class="btn primary" id="vacSave" type="button">Salva le date</button><button class="btn ghost" id="vacClear" type="button" hidden>Annulla la vacanza</button></div>
-        <div id="vacTable"></div>
-        <button class="btn ghost" id="vacCopy" type="button" hidden>Copia le istruzioni per chi bagna</button>
-      </div>
-    </details>
-
-    <details class="set" id="set-mis"><summary><span class="si">💧</span><span class="st">Misure e orari</span><span class="sv" id="misVal"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
-      <div class="body">
-        <p class="sub">Servono per tradurre i litri in bicchieri e annaffiatoi, e per l'ora dei messaggi su Telegram.</p>
-        <div class="grid2">
-          <div class="field"><label for="impB">Bicchiere (litri)</label><input type="text" id="impB" inputmode="decimal"></div>
-          <div class="field"><label for="impA">Annaffiatoio (litri)</label><input type="text" id="impA" inputmode="decimal"></div>
-          <div class="field"><label for="impM">Messaggio del mattino (ora)</label><input type="text" id="impM" inputmode="numeric"></div>
-          <div class="field"><label for="impS">Avviso della sera (ora)</label><input type="text" id="impS" inputmode="numeric"></div>
-        </div>
-        <div class="sub" id="impEx"></div>
-        <div><button class="btn primary" id="impSave" type="button">Salva</button></div>
-      </div>
-    </details>
-
-    <details class="set" id="set-meteo"><summary><span class="si">☁️</span><span class="st">Meteo</span><span class="sv" id="wxVal"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
-      <div class="body">
-        <p class="sub" id="wxInfo"></p>
-        <details class="more"><summary><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>Correggi a mano</summary>
-          <div class="wxe" id="wxEdit"></div>
-          <p class="hint" style="margin-top:8px">Le correzioni valgono finché non arrivano previsioni più recenti.</p>
-        </details>
-      </div>
-    </details>
-
+    <div class="set-gruppo">Sistema</div>
     <details class="set" id="set-sync"><summary><span class="si">🔄</span><span class="st">Sincronizzazione</span><span class="sv" id="syncChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
       <div class="body">
         <p class="sub">Le piante si salvano sul server con questo codice e arrivano subito a Claude e al bot. Per usare l'app su un altro telefono inserisci lì lo stesso codice. Tienilo per te.</p>
@@ -967,6 +973,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
         <div id="bkStatus" class="sub" aria-live="polite"></div>
       </div>
     </details>
+
     <p class="sub center" style="margin-top:6px">Meteo da Open-Meteo · calcolo FAO-56 semplificato</p>
   </section>
 </div>
@@ -2845,8 +2852,8 @@ function renderOggi(AP){
     setHTML($('#restList'),items.map(x=>{ const ev=eventsOf(x.p.id,t), f=ev.find(e=>e.tipo==='fatto'), pi=ev.filter(e=>e.tipo==='pioggia').reduce((a,e)=>a+(+e.litri||0),0), v=[...ev].reverse().find(e=>e.tipo==='verifica');
       const stato=f?'Annaffiata oggi'+(f.litri?' · '+fmtL(+f.litri):''):pi>0?'Ha preso la pioggia · '+fmtL(pi):v?'Terra '+(v.esito==='secco'?'asciutta':'umida')+' al controllo di oggi'
         :x.g?.azione==='innaffia'?'Da annaffiare oggi · '+fmtL(x.g.litri):x.g?.azione==='controlla'?'Da controllare oggi':x.g?x.g.motivo:'Non nel piano di Claude: chiedigli di rifarlo';
-      return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(x.p))}</span><span class="li"><b>${esc(x.p.nome)}</b><span>${esc(stato)}</span></span>
-        <span class="mini"><button class="btn small ghost${f?' on':''}" type="button" data-ev="fatto" data-pid="${esc(x.p.id)}" aria-label="Annaffiata">💧</button>${x.p.dove!=='aperto'?`<button class="btn small ghost" type="button" data-pioggia="${esc(x.p.id)}" aria-label="Messa sotto la pioggia">🌧</button>`:''}<button class="btn small ghost${v?' on':''}" type="button" data-terra="${esc(x.p.id)}" aria-label="Com'è la terra">🖐</button></span></div>`; }).join(''));
+      return `<div class="lrow prow"><span class="ri" aria-hidden="true">${esc(icoDi(x.p))}</span><span class="li"><b>${esc(x.p.nome)}</b><span>${esc(stato)}</span>
+        <span class="pazioni"><button class="btn small ghost${f?' on':''}" type="button" data-ev="fatto" data-pid="${esc(x.p.id)}" aria-label="Annaffiata">💧 Acqua</button>${x.p.dove!=='aperto'?`<button class="btn small ghost" type="button" data-pioggia="${esc(x.p.id)}">🌧 Pioggia</button>`:''}<button class="btn small ghost${v?' on':''}" type="button" data-terra="${esc(x.p.id)}">🖐 Terra</button></span></span></div>`; }).join(''));
   }
   renderConcime(); renderVerifica(AP); renderWeek(AP);
 }
