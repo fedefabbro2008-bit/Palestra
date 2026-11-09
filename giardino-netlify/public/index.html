@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="695ea0e774b4">
+<meta name="giardino-build" content="e2432f52a35c">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -203,6 +203,11 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--water);outline-o
 .seg label.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
 .quick{display:flex;flex-wrap:wrap;gap:6px}
 .emo-row{display:flex;flex-direction:column;gap:8px}
+.foto-ric{display:flex;flex-direction:column;gap:10px}
+.foto-anteprima{display:flex;gap:10px;align-items:center} .foto-anteprima img{width:64px;height:64px;object-fit:cover;border-radius:12px;flex:none}
+.ric{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);cursor:pointer}
+.ric .ri-t{flex:1;min-width:0;display:flex;flex-direction:column} .ric .ri-t b{font-weight:700} .ric .ri-t span{font-size:.82rem;color:var(--muted)}
+.ric .ri-p{flex:none;font-weight:800;color:var(--water)} .ric.on{border-color:var(--water);background:var(--water-soft)}
 input.emo-in{width:72px;flex:none;text-align:center;font-size:1.6rem;padding:6px}
 .emo-scrivi{display:flex;align-items:center;gap:12px;cursor:text}
 .emo-scrivi span{font-size:.86rem;color:var(--muted);line-height:1.3}
@@ -709,6 +714,10 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
     <div class="card" id="plantFormPanel" hidden>
       <form id="plantForm" class="form" autocomplete="off" novalidate>
         <div class="row between"><h2 id="plantFormTitle">Nuova pianta</h2><button class="btn small ghost" type="button" id="cancelPlantBtn">Annulla</button></div>
+        <div class="foto-ric">
+          <label class="btn ghost wide" for="pf-foto">📷 Riconosci da una foto</label><input type="file" id="pf-foto" accept="image/*" capture="environment" class="vh">
+          <div id="pf-foto-ris" class="stack" hidden></div>
+        </div>
         <div class="field"><label for="pf-nome">Nome</label><input type="text" id="pf-nome" maxlength="60" placeholder="Es. Pomodori del balcone" enterkeyhint="next"></div>
         <div class="field"><span class="flabel" id="pf-emoji-l">Emoji <span class="opt">(facoltativa)</span></span>
           <div class="emo-row"><label class="emo-scrivi"><input type="text" id="pf-emoji" class="emo-in" maxlength="16" autocomplete="off" autocorrect="off" spellcheck="false" aria-labelledby="pf-emoji-l" enterkeyhint="done"><span>✏️ Tocca qui e scrivila con la tastiera delle emoji 😀</span></label><div class="quick" id="pf-emoji-q"></div></div>
@@ -1188,6 +1197,7 @@ window.GiardinoNet={
   crediti:(rimasti)=>rimasti==null?api('GET',null,'crediti'):api('POST',{rimasti},'crediti'),
   stato:()=>api('GET',null,'stato'),
   pioggia:()=>api('GET',null,'pioggia'),
+  riconosci:immagine=>api('POST',{immagine},'riconosci'),
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
   async geocodifica(q){
@@ -3248,6 +3258,38 @@ function renderEmoji(){
   setHTML($('#pf-emoji-q'),lista.map((e,i)=>`<button type="button" data-emo="${i?e:''}" class="${(i?cur===e:!cur)?'on':''}" aria-label="${i?'Emoji '+e:'Quella della specie'}">${e}</button>`).join(''));
   $('#pf-emoji').placeholder=sp;
 }
+// Riconoscimento da foto (Pl@ntNet, attraverso il sito): la foto si rimpicciolisce sul telefono (lato lungo 1280 px, JPEG)
+// così parte in fretta anche con la rete lenta; poi si sceglie una delle specie proposte e il modulo si compila.
+let pfFotoRis=[];
+function rimpicciolisci(file, lato=1280){
+  return new Promise((ok,no)=>{ const img=new Image(), url=URL.createObjectURL(file);
+    img.onload=()=>{ const k=Math.min(1,lato/Math.max(img.naturalWidth,img.naturalHeight)), c=document.createElement('canvas');
+      c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg',0.82)); };
+    img.onerror=()=>{ URL.revokeObjectURL(url); no(new Error('Non riesco a leggere la foto')); }; img.src=url; });
+}
+async function riconosciFoto(file){
+  const box=$('#pf-foto-ris'); box.hidden=false; pfFotoRis=[];
+  if(!window.GiardinoNet?.riconosci){ box.innerHTML='<div class="sub">Il riconoscimento da foto funziona nell\'app, non qui.</div>'; return; }
+  let img; try{ img=await rimpicciolisci(file); }catch(e){ box.innerHTML='<div class="sub">'+esc(e.message)+'</div>'; return; }
+  const testa='<div class="foto-anteprima"><img alt="" src="'+img+'"><div class="sub" id="pf-foto-st"><span class="spinner"></span> Riconosco la pianta…</div></div>';
+  box.innerHTML=testa;
+  try{
+    const r=await window.GiardinoNet.riconosci(img); pfFotoRis=r.risultati||[];
+    if(!pfFotoRis.length){ $('#pf-foto-st').textContent='Non l\'ho riconosciuta: prova con una foto più vicina a foglie o fiori, con la pianta intera al centro.'; return; }
+    $('#pf-foto-st').textContent=pfFotoRis[0].probabilita>=50?'Tocca quella giusta: compilo nome e specie.':'Non sono sicuro: tocca quella giusta, o fai un\'altra foto (foglie o fiori da vicino).';
+    box.insertAdjacentHTML('beforeend',pfFotoRis.map((x,i)=>`<button type="button" class="ric" data-ric="${i}"><span class="ri-t"><b>${esc(x.nome[0].toUpperCase()+x.nome.slice(1))}</b><span>${esc(x.scientifico)}${x.specie?' · nell\'app: '+esc(SPECIE[x.specie].nome):' · non è nell\'elenco: «Altra pianta»'}</span></span><span class="ri-p">${x.probabilita}%</span></button>`).join(''));
+  }catch(e){ $('#pf-foto-st').textContent=e.message; }
+}
+function scegliRiconosciuta(i){
+  const x=pfFotoRis[i]; if(!x) return;
+  const nome=$('#pf-nome'), prima=nome.value.trim();
+  if(!prima||pfFotoRis.some(r=>r.nome.toLowerCase()===prima.toLowerCase()||r.scientifico===prima)) nome.value=x.nome[0].toUpperCase()+x.nome.slice(1);
+  setSpecie(x.specie||'altro'); specieScelta=true;
+  $('#pf-fase').innerHTML=optFasi('auto',{value:'auto',label:'Automatica'},x.specie||'altro');
+  document.querySelectorAll('#pf-foto-ris .ric').forEach(b=>b.classList.toggle('on',+b.dataset.ric===i));
+  syncForm(); suggerisciSpecie(); toast((x.specie?SPECIE[x.specie].nome:'Altra pianta')+': controlla vaso, luce e posizione');
+}
 function syncForm(){
   renderEmoji();
   const vaso=radioVal('colt')==='vaso';
@@ -3279,7 +3321,7 @@ function syncForm(){
 function openForm(id){
   const p=id?S.plants.find(x=>x.id===id):{nome:'',zona:'',specie:'pomodoro',fase:'auto',data_semina:'',tipo_data:'trapianto',colt:'vaso',vaso:12,diametro:null,area:'',num:1,luce:6,dove:'aperto',ultima:'',ultima_concime:'',data_rinvaso:'',note:'',consociate:[]};
   if(!p) return;
-  editingId=id||null;
+  editingId=id||null; pfFotoRis=[]; $('#pf-foto-ris').hidden=true; $('#pf-foto-ris').innerHTML='';
   $('#plantFormTitle').textContent=id?'Modifica pianta':'Nuova pianta';
   $('#pf-nome').value=p.nome; $('#pf-emoji').value=emojiValida(p.emoji); setSpecie(p.specie); apriPicker(false); specieScelta=false; suggerisciSpecie(); $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'},p.specie);
   $('#pf-zona').value=zonaDi(p); renderZoneQuick();
@@ -3488,6 +3530,8 @@ function wire(){
   $('#pf-specie-btn').addEventListener('click',()=>apriPicker($('#pf-picker').hidden));
   $('#pf-cerca').addEventListener('input',renderPicker);
   $('#pf-nome').addEventListener('input',suggerisciSpecie);
+  $('#pf-foto').addEventListener('change',e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) riconosciFoto(f); });
+  $('#pf-foto-ris').addEventListener('click',e=>{ const b=e.target.closest('[data-ric]'); if(b) scegliRiconosciuta(+b.dataset.ric); });
   $('#pf-emoji').addEventListener('focus',e=>e.target.select());
   $('#pf-emoji').addEventListener('input',e=>{ const t=e.target.value, g=typeof Intl!=='undefined'&&Intl.Segmenter?[...new Intl.Segmenter('it',{granularity:'grapheme'}).segment(t)].map(x=>x.segment):[...t];
     const ultima=[...g].reverse().find(x=>emojiValida(x)); if(ultima!==undefined&&ultima!==t) e.target.value=ultima; renderEmoji(); });

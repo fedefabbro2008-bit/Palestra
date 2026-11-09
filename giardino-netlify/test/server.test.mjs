@@ -71,6 +71,22 @@ test("dati: risposte grandi compresse (gzip) se il telefono le accetta, in chiar
   assert.equal((await dati(new Request(B + "/api/dati", { headers: { "accept-encoding": "gzip" } }))).status, 400);
 });
 
+test("riconoscimento da foto (Pl@ntNet): chiave solo sul sito, specie dell'app dal nome", async () => {
+  const foto = "data:image/jpeg;base64," + Buffer.from("finta foto").toString("base64");
+  const chiedi = (b, h = H) => call(dati, "/api/dati?op=riconosci", { method: "POST", headers: h, body: b });
+  delete process.env.PLANTNET_KEY;
+  assert.equal((await chiedi({ immagine: foto })).status, 503, "senza chiave: non attivo");
+  process.env.PLANTNET_KEY = "prova";
+  assert.equal((await chiedi({ immagine: foto }, {})).status, 400, "serve il codice dell'app");
+  assert.equal((await chiedi({ immagine: "ciao" })).status, 400, "solo foto");
+  const r = (await chiedi({ immagine: foto })).body;
+  assert.equal(r.risultati.length, 3); assert.equal(r.rimasti, 499);
+  assert.deepEqual(r.risultati.map((x) => [x.specie, x.probabilita]), [["nepenthes", 82], ["appartamento", 7], [null, 3]]);
+  assert.equal(r.risultati[0].nome, "Pianta brocca"); assert.equal(r.risultati[2].nome, "Strelitzia reginae", "senza nome italiano: lo scientifico");
+  process.env.PLANTNET_KEY = "sbagliata"; assert.equal((await chiedi({ immagine: foto })).status, 502);
+  delete process.env.PLANTNET_KEY;
+});
+
 test("meteo: se Open-Meteo non risponde, MET Norway con i giorni passati dall'ultimo meteo buono", async () => {
   const { meteo } = await import("../netlify/lib/core.mjs");
   const st = getStore({ name: "giardino" }), key = "c-meteo-44.30,11.70";

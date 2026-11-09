@@ -354,6 +354,34 @@ export function messaggioFinePiano(fine, oggi) {
   const url = "https://claude.ai/new?q=" + encodeURIComponent("Fammi il piano di innaffiatura della settimana per il mio giardino e salvalo.");
   return { testo, tastiera: { inline_keyboard: [[{ text: "✨ Apri Claude", url }]] } };
 }
+/* ---------------- Riconoscimento della pianta da una foto (Pl@ntNet) ----------------
+   La foto (JPEG già rimpicciolita dall'app, in data URL) va a Pl@ntNet con la chiave del sito (variabile PLANTNET_KEY su
+   Netlify: non è mai nell'app). Tornano le 3 specie più probabili, con il nome italiano e la specie dell'app che ci
+   corrisponde (dal nome comune, scientifico o dal genere). Gratis fino a 500 riconoscimenti al giorno. */
+export const PLANTNET = "https://my-api.plantnet.org/v2/identify/all";
+export async function riconosciPianta(dataUrl, chiave = globalThis.process?.env?.PLANTNET_KEY) {
+  if (!chiave) return { errore: "Il riconoscimento non è ancora attivo: manca la chiave di Pl@ntNet sul sito.", codice: 503 };
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ""));
+  if (!m) return { errore: "Foto non valida.", codice: 400 };
+  const byte = Buffer.from(m[2], "base64");
+  if (byte.length > 1.5 * 1024 * 1024) return { errore: "Foto troppo grande.", codice: 413 };
+  const fd = new FormData(); fd.append("images", new Blob([byte], { type: m[1] }), "pianta." + m[1].split("/")[1]); fd.append("organs", "auto");
+  const u = PLANTNET + "?" + new URLSearchParams({ "api-key": chiave, lang: "it", "nb-results": "3", "include-related-images": "false" });
+  let r; try { r = await fetch(u, { method: "POST", body: fd }); } catch (e) { return { errore: "Pl@ntNet non risponde, riprova tra poco.", codice: 502 }; }
+  if (r.status === 404) return { risultati: [] };   // nessuna pianta riconosciuta
+  if (r.status === 401 || r.status === 403) return { errore: "La chiave di Pl@ntNet non è valida.", codice: 502 };
+  if (r.status === 429) return { errore: "Pl@ntNet: finiti i riconoscimenti di oggi, riprova domani.", codice: 429 };
+  if (!r.ok) return { errore: "Pl@ntNet non risponde (" + r.status + "), riprova tra poco.", codice: 502 };
+  const j = await r.json().catch(() => ({}));
+  const risultati = (j.results || []).slice(0, 3).map((x) => {
+    const sp = x.species || {}, sci = sp.scientificNameWithoutAuthor || "", gen = sp.genus?.scientificNameWithoutAuthor || sci.split(" ")[0] || "";
+    const comuni = (sp.commonNames || []).filter(Boolean);
+    const specie = [...comuni, sci, gen].map((n) => M.specieDaNome(n)).find(Boolean) || null;
+    return { scientifico: sci, nome: comuni[0] || sci, comuni: comuni.slice(0, 3), famiglia: sp.family?.scientificNameWithoutAuthor || "", probabilita: Math.round((+x.score || 0) * 100), specie };
+  });
+  return { risultati, rimasti: j.remainingIdentificationRequests ?? null };
+}
+
 /* ---------------- Crediti Netlify (stima) ----------------
    Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot (ogni ora), Claude
    ne consumano 10-20 al mese, misurati su Netlify (stima: 15). Le pubblicazioni si contano dalle impronte di versione viste. */

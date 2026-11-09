@@ -16,6 +16,14 @@ globalThis.fetch = async (url, opt = {}) => {
       daily: { time: giorni, weather_code: giorni.map(() => 1), temperature_2m_max: meteo.tmax, temperature_2m_min: meteo.tmin, precipitation_sum: meteo.pioggia, precipitation_probability_max: giorni.map(() => 5), et0_fao_evapotranspiration: meteo.et0, wind_speed_10m_max: giorni.map(() => 10) },
       hourly: { time: ore, temperature_2m: ore.map((_, i) => (i >= 24 && i < 32 ? 1 : 8)), soil_moisture_0_to_1cm: ore.map(() => 0.2), soil_moisture_1_to_3cm: ore.map(() => 0.2), soil_moisture_3_to_9cm: ore.map(() => 0.2), soil_moisture_9_to_27cm: ore.map(() => 0.2) } });
   }
+  if (url.includes("my-api.plantnet.org")) {   // Pl@ntNet finto: con la chiave «prova» riconosce una Nepenthes
+    if (!url.includes("api-key=prova")) return Response.json({ message: "Invalid API key" }, { status: 401 });
+    const corpo = opt.body; if (!(corpo instanceof FormData) || !corpo.get("images")) return Response.json({ message: "no image" }, { status: 400 });
+    return Response.json({ results: [
+      { score: 0.82, species: { scientificNameWithoutAuthor: "Nepenthes mirabilis", genus: { scientificNameWithoutAuthor: "Nepenthes" }, family: { scientificNameWithoutAuthor: "Nepenthaceae" }, commonNames: ["Pianta brocca"] } },
+      { score: 0.07, species: { scientificNameWithoutAuthor: "Chlorophytum comosum", genus: { scientificNameWithoutAuthor: "Chlorophytum" }, family: { scientificNameWithoutAuthor: "Asparagaceae" }, commonNames: ["Falangio"] } },
+      { score: 0.03, species: { scientificNameWithoutAuthor: "Strelitzia reginae", genus: { scientificNameWithoutAuthor: "Strelitzia" }, family: { scientificNameWithoutAuthor: "Strelitziaceae" }, commonNames: [] } }], remainingIdentificationRequests: 499 });
+  }
   if (url.includes("api.telegram.org")) {
     const m = url.split("/").pop(); const body = opt.body && typeof opt.body === "string" ? JSON.parse(opt.body) : {};
     inviati.push([m, body]);
