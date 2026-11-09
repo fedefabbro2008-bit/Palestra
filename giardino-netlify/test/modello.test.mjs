@@ -442,3 +442,20 @@ test("controllo col dito: a che profondità, secondo il vaso", () => {
   assert.equal(M.profonditaDito({ ...base, specie: "pomodoro", colt: "terra" }, oggi, 44), 5);
   assert.match(M.testoDito(3), /3\u00a0cm \(fino alla prima falange\)/); assert.match(M.testoDito(1), /superficie/);
 });
+
+test("raccolto: totali dell'anno, grammi e chili insieme, pezzi e mazzi a parte", () => {
+  const ev = [
+    { id: "1", plantId: "c", tipo: "raccolto", data: "2027-04-02", quantita: 350, unita: "g" },
+    { id: "2", plantId: "c", tipo: "raccolto", data: "2027-04-20", quantita: 1.2, unita: "kg" },
+    { id: "3", plantId: "c", tipo: "raccolto", data: "2027-05-01", quantita: 6, unita: "pezzi" },
+    { id: "4", plantId: "c", tipo: "raccolto", data: "2026-12-30", quantita: 1, unita: "kg" },
+    { id: "5", plantId: "b", tipo: "raccolto", data: "2027-06-01", quantita: 2, unita: "mazzi" }];
+  const t = M.totaleRaccolto(ev, "c", "2027-01-01");
+  assert.deepEqual([t.kg, t.pezzi, t.volte, t.ultimo], [1.55, 6, 3, "2027-05-01"]);
+  assert.equal(M.testoRaccolto(t), "1,55 kg + 6 pezzi");
+  assert.equal(M.testoRaccolto(M.totaleRaccolto(ev, "b")), "2 mazzi");
+  assert.equal(M.testoRaccolto(M.totaleRaccolto([{ id: "x", plantId: "z", tipo: "raccolto", data: "2027-01-01", quantita: 300, unita: "g" }], "z")), "300 g");
+  assert.ok(M.daRaccogliere({ specie: "carota" }) && M.daRaccogliere({ specie: "basilico" }) && !M.daRaccogliere({ specie: "nepenthes" }));
+  // non conta come acqua
+  assert.equal(M.ultimaInnaffiatura({ id: "c" }, ev), "");
+});

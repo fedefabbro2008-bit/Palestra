@@ -164,16 +164,17 @@ async function toolSalvaScheda(ctx, a) {
   ctx.saved(out);
   return `Scheda di «${nome}» salvata: l'app la mostra in Piante → ${nome} → Scheda, con la tabella dei mesi.` + (allineata ? ` Ho allineato anche le fasi automatiche dell'app: raccolta da ${allineata}.` : "");
 }
-const TIPO_OK = ["fatto", "saltato", "umido", "secco", "concime", "meno", "piu", "diagnosi", "pioggia"];
+const TIPO_OK = ["fatto", "saltato", "umido", "secco", "concime", "meno", "piu", "diagnosi", "pioggia", "raccolto"];
 async function toolRegistra(ctx, a) {
   if (!TIPO_OK.includes(a.tipo)) throw new Error("tipo non valido");
+  if (a.tipo === "raccolto" && (!(+a.quantita > 0) || !M.UNITA_RACCOLTO.includes(a.unita))) throw new Error("raccolto: quantita (numero) e unita (" + M.UNITA_RACCOLTO.join(", ") + ")");
   const data = ISO.test(a.data || "") ? a.data : M.isoDate(new Date());
   let nome = "";
   const out = await aggiorna(ctx.store, ctx.code, (d) => {
     const p = trovaPianta(d, a.pianta); if (!p) throw new Error("Pianta non trovata: usa l'id o il nome dello strumento «giardino».");
     nome = p.nome;
     d.eventi.push({ id: "cl-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), plantId: p.id, tipo: a.tipo, data, fonte: "claude", ts: new Date().toISOString(),
-      ...(a.litri != null ? { litri: Math.max(0, +a.litri || 0) } : {}), ...(a.nota ? { nota: String(a.nota).slice(0, 200) } : {}) });
+      ...(a.litri != null && a.tipo !== "raccolto" ? { litri: Math.max(0, +a.litri || 0) } : {}), ...(a.tipo === "raccolto" ? { quantita: +a.quantita, unita: a.unita } : {}), ...(a.nota ? { nota: String(a.nota).slice(0, 200) } : {}) });
   });
   ctx.saved(out);
   const pid = out.data.plants.find((p) => p.nome === nome)?.id, loc = out.data.location;
@@ -339,9 +340,9 @@ const TOOLS = [
       piante: { type: "array", items: { type: "object", required: ["id", "giorni"], properties: { id: { type: "string", description: "id della pianta da «giardino»" }, valutazione: { type: "string" }, consigli: { type: "array", items: { type: "string" }, description: "da 1 a 3" }, giorni: { type: "array", items: GIORNO } } } } } },
     annotations: { ...RW, title: "Salva piano" }, run: toolSalvaPiano },
   { name: "registra", title: "Registra nel diario", write: true,
-    description: "Registra un evento per una pianta: fatto (innaffiata), saltato, umido (era ancora umida: il calcolo beve meno), secco (era secca, innaffiata: beve di più), concime, meno / piu (correzione dopo una foto o la «diagnosi»), diagnosi (solo nota), pioggia (l'utente ha messo la pianta sotto la pioggia: litri = mm caduti × apertura del vaso; riempie solo quei litri). Le correzioni crescono se si ripetono di fila (−10/−15/−20%, +12/+18/+24%). Usalo quando l'utente ti racconta cosa ha fatto.",
+    description: "Registra un evento per una pianta: fatto (innaffiata), saltato, umido (era ancora umida: il calcolo beve meno), secco (era secca, innaffiata: beve di più), concime, meno / piu (correzione dopo una foto o la «diagnosi»), diagnosi (solo nota), raccolto (quanto ha raccolto: quantita e unita g, kg, pezzi o mazzi), pioggia (l'utente ha messo la pianta sotto la pioggia: litri = mm caduti × apertura del vaso; riempie solo quei litri). Le correzioni crescono se si ripetono di fila (−10/−15/−20%, +12/+18/+24%). Usalo quando l'utente ti racconta cosa ha fatto.",
     inputSchema: { type: "object", required: ["pianta", "tipo"], properties: { pianta: { type: "string", description: "id o nome" }, tipo: { type: "string", enum: TIPO_OK },
-      data: { type: "string", description: "AAAA-MM-GG, predefinito oggi" }, litri: { type: "number" }, nota: { type: "string" } } },
+      data: { type: "string", description: "AAAA-MM-GG, predefinito oggi" }, litri: { type: "number" }, quantita: { type: "number", description: "solo raccolto" }, unita: { type: "string", enum: ["g", "kg", "pezzi", "mazzi"], description: "solo raccolto" }, nota: { type: "string" } } },
     annotations: { ...RW, title: "Registra" }, run: toolRegistra },
   { name: "modifica_pianta", title: "Aggiungi o modifica una pianta", write: true,
     description: "Aggiunge una pianta o ne cambia i dati (vaso, luce, fase, consociate, note…). Prima di salvare riassumi all'utente cosa cambi. Se aggiungi senza specie, l'app la riconosce dal nome. Specie (chiave = nome): " + M.specieOrdinate().map(([k, x]) => k + " = " + x.nome).join("; ") + ". Fasi: auto (calcolata dalla data di semina/trapianto o dal mese), " + Object.keys(M.FASI).join(", ") + ". Per eliminare una pianta l'utente usa l'app.",

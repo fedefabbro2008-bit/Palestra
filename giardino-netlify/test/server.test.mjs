@@ -163,6 +163,10 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(m.isError, false);
   assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").zona, "Orto");
   assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { colore: "rosso" } })).isError, true);
+  // raccolto dal connettore: quantità e unità obbligatorie
+  assert.equal((await strumento("registra", { pianta: "agl", tipo: "raccolto", quantita: 3 })).isError, true);
+  assert.equal((await strumento("registra", { pianta: "agl", tipo: "raccolto", quantita: 3, unita: "pezzi" })).isError, false);
+  { const e = (await leggiDati()).eventi.filter((x) => x.tipo === "raccolto").pop(); assert.deepEqual([e.quantita, e.unita, e.fonte], [3, "pezzi", "claude"]); }
   // verso dove guarda: anche due direzioni (angolo), scritte in qualunque ordine; sigle sbagliate rifiutate
   assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { orient: "O, S", luce_data: OGGI } })).isError, false);
   assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").orient, "S,O");

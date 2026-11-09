@@ -771,6 +771,22 @@ export function profonditaDito(p, oggi, lat){
   if(p.colt!=='vaso') return 5;
   const V=+p.vaso||10; return V<=1?2:V<=5?3:V<=20?4:5;
 }
+// Raccolto: eventi «raccolto» con quantità e unità (g, kg, pezzi, mazzi). Totale dal giorno «dal» (es. inizio anno):
+// grammi e chili insieme in kg, pezzi e mazzi a parte.
+export const UNITA_RACCOLTO = ['g','kg','pezzi','mazzi'];
+export const daRaccogliere = p => ['orto','aromatiche','frutti'].includes((SPECIE[p.specie]||SPECIE.altro).cat);
+export function totaleRaccolto(eventi, pid, dal=''){
+  const t={kg:0, pezzi:0, mazzi:0, volte:0, ultimo:''};
+  for(const e of eventiValidi(eventi,pid)){ if(e.tipo!=='raccolto'||e.data<dal) continue; const q=+e.quantita;
+    if(!(q>0)) continue; t.volte++; if(e.data>t.ultimo) t.ultimo=e.data;
+    if(e.unita==='g') t.kg+=q/1000; else if(e.unita==='kg') t.kg+=q; else if(e.unita==='mazzi') t.mazzi+=q; else t.pezzi+=q; }
+  t.kg=+t.kg.toFixed(3); return t;
+}
+export function testoRaccolto(t){
+  const p=[]; if(t.kg>0) p.push(t.kg<1?Math.round(t.kg*1000)+' g':(Math.round(t.kg*100)/100).toLocaleString('it-IT')+' kg');
+  if(t.pezzi>0) p.push(t.pezzi+(t.pezzi===1?' pezzo':' pezzi')); if(t.mazzi>0) p.push(t.mazzi+(t.mazzi===1?' mazzo':' mazzi'));
+  return p.join(' + ');
+}
 export const testoDito = cm => cm<=1 ? 'tocca la superficie del terriccio (il primo centimetro)' : 'infila un dito nel terriccio per '+cm+'\u00a0cm'+(cm<=3?' (fino alla prima falange)':' (fino alla seconda falange)');
 function germinazione(p, k, oggi, lat){
   if(k.fase!=='germinazione' || p.tipo_data==='trapianto' || SEMI_PROFONDI.has(p.specie) || !k.sp?.ann) return 0;

@@ -811,6 +811,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
       <div class="tile"><span class="tv" id="dTot">0 L</span><span class="tl">di acqua negli ultimi 30 giorni</span></div>
       <div class="tile"><span class="tv" id="dNum">0</span><span class="tl">innaffiature negli ultimi 30 giorni</span></div>
     </div>
+    <div class="card" id="raccBox" hidden><div class="eyebrow" style="margin-bottom:4px" id="raccTit">🧺 Raccolto</div><div id="raccList"></div></div>
     <div class="card stack">
       <div class="row between"><button class="btn small ghost" id="calPrima" type="button" aria-label="Mese prima">‹</button><h2 id="calTitolo"></h2><button class="btn small ghost" id="calDopo" type="button" aria-label="Mese dopo">›</button></div>
       <div class="cal" id="cal" role="grid"></div>
@@ -971,6 +972,15 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   <div class="quick" id="pgVeloci"><button type="button" data-pgv="notte">Stanotte</button><button type="button" data-pgv="ieri">Da ieri mattina</button><button type="button" data-pgv="3">Ultimi 3 giorni</button><button type="button" data-pgv="7">Ultima settimana</button></div>
   <div class="alert info" id="pgCalc"></div>
   <div class="row"><button class="btn primary" type="button" id="pgSalva">Registra</button><button class="btn ghost" type="button" id="pgAnnulla">Annulla</button></div>
+</div>
+<div class="sheet-bg" id="raccBg" hidden></div>
+<div class="sheet card stack" id="raccSheet" role="dialog" aria-modal="true" aria-labelledby="rcTit" hidden>
+  <h2 id="rcTit">🧺 Raccolto</h2>
+  <p class="sub" id="rcSub"></p>
+  <div class="inrow"><div class="field"><label for="rcQ">Quanto</label><input type="text" id="rcQ" inputmode="decimal" placeholder="Es. 250"></div><div class="field"><label for="rcData">Quando</label><input type="date" id="rcData"></div></div>
+  <div class="seg" id="rcU" role="radiogroup" aria-label="Unità"><label><input type="radio" name="rcu" value="g" checked>grammi</label><label><input type="radio" name="rcu" value="kg">kg</label><label><input type="radio" name="rcu" value="pezzi">pezzi</label><label><input type="radio" name="rcu" value="mazzi">mazzi</label></div>
+  <p class="hint" id="rcTot"></p>
+  <div class="row"><button class="btn primary" type="button" id="rcSalva">Registra</button><button class="btn ghost" type="button" id="rcAnnulla">Annulla</button></div>
 </div>
 <div class="sheet-bg" id="terraBg" hidden></div>
 <div class="sheet card stack" id="terraSheet" role="dialog" aria-modal="true" aria-labelledby="trTit" hidden>
@@ -1405,6 +1415,25 @@ function renderVerifica(AP){
     <p class="hint">Serve all'app per imparare quanto beve davvero${pp?.acqua!=null?' (il calcolo dice ~'+Math.round(pp.acqua*100)+'% d\'acqua)':''}.</p>
     <div class="acts"><button class="btn" type="button" data-ver="umido" data-pid="${esc(p.id)}">💦 Umido</button><button class="btn" type="button" data-ver="secco" data-pid="${esc(p.id)}">🏜 Asciutto</button><button class="btn ghost" type="button" data-ver="dopo">Non ora</button></div>`);
 }
+// Raccolto: quanto e quando, con l'unità che usi per quella pianta (si ricorda l'ultima)
+let rcPianta=null;
+const segRc=()=>document.querySelectorAll('#rcU label').forEach(l=>l.classList.toggle('on',!!l.querySelector('input:checked')));
+function apriRaccolto(pid){
+  const p=S.plants.find(x=>x.id===pid); if(!p) return; rcPianta=pid;
+  const ev=allEvents(), ult=[...eventiValidi(ev,pid)].reverse().find(e=>e.tipo==='raccolto'), r=totaleRaccolto(ev,pid,today().slice(0,4)+'-01-01');
+  $('#rcSub').textContent=p.nome+': quanto hai raccolto?'; $('#rcQ').value=''; $('#rcData').value=today(); $('#rcData').max=today();
+  setRadio('rcu',ult?.unita||(['aromatiche'].includes((SPECIE[p.specie]||SPECIE.altro).cat)?'mazzi':'g')); segRc();
+  $('#rcTot').textContent=r.volte?'Finora nel '+today().slice(0,4)+': '+testoRaccolto(r)+'.':'Il primo raccolto di quest\'anno.';
+  $('#raccSheet').hidden=false; $('#raccBg').hidden=false;
+}
+function chiudiRaccolto(){ $('#raccSheet').hidden=true; $('#raccBg').hidden=true; rcPianta=null; }
+function salvaRaccolto(){
+  const q=numOrNull($('#rcQ').value), u=radioVal('rcu')||'pezzi', d=$('#rcData').value||today();
+  if(!(q>0)){ $('#rcQ').focus(); toast('Scrivi quanto hai raccolto'); return; }
+  const p=S.plants.find(x=>x.id===rcPianta); if(!p) return;
+  addEvent(p.id,'raccolto',{data:d>today()?today():d, quantita:q, unita:u}); chiudiRaccolto(); renderAll();
+  toast('🧺 '+p.nome+': '+fmt(q,2)+' '+u+' registrati');
+}
 // «Com'è la terra?» per una pianta qualsiasi, quando vuoi: a quanti centimetri toccare e cosa dice il calcolo adesso
 let trPianta=null;
 function apriTerra(pid){
@@ -1618,6 +1647,8 @@ function renderPiante(AP){
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     if(pp && 'dal' in pp) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
+    const rc=daRaccogliere(p)?totaleRaccolto(allEvents(),p.id,today().slice(0,4)+'-01-01'):null;
+    if(rc?.volte) facts.push(['Raccolto nel '+today().slice(0,4),testoRaccolto(rc)+' ('+rc.volte+(rc.volte===1?' volta':' volte')+', l\'ultima '+dataBreve(rc.ultimo)+')']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
     if(k.faseNota) notes.push([/bulbo/.test(k.faseNota)?'':'warn',(/bulbo/.test(k.faseNota)?'☀️ ':'Fase: ')+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
     if(raccoltaDi(p)&&k.sp.ann&&p.fase==='auto') notes.push(['','🧺 Fasi adattate alla raccolta prevista'+(p.raccolta?'':' (dalla scheda di Claude)')+': '+new Date(raccoltaDi(p)+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})+'.']);
@@ -1631,6 +1662,7 @@ function renderPiante(AP){
       <div class="pbody">${livello(pp)}<div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
       ${notes.length?'<ul class="notes">'+notes.map(([cls,x])=>`<li class="${cls}">${esc(x)}</li>`).join('')+'</ul>':''}
       <div class="pbtn"><button class="btn" type="button" data-ev="fatto" data-pid="${esc(p.id)}">💧 Annaffiata</button>${p.dove!=='aperto'?`<button class="btn" type="button" data-pioggia="${esc(p.id)}">🌧 Sotto la pioggia</button>`:''}</div>
+      ${daRaccogliere(p)?`<div class="pbtn"><button class="btn" type="button" data-raccolto="${esc(p.id)}">🧺 Raccolto</button></div>`:''}
       <div class="pbtn"><button class="btn" type="button" data-scheda="${esc(p.id)}">📖 Scheda</button><button class="btn" type="button" data-edit="${esc(p.id)}">Modifica</button></div></div></details>`;
   }).join(''));
 }
@@ -1680,7 +1712,7 @@ function renderNotifiche(){
   setHTML($('#notList'),NOTIF.map(([k,t,d])=>`<label class="sw-row"><span class="sw-t"><b>${t}</b><span>${esc(d(i))}</span></span><input type="checkbox" role="switch" class="sw" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></label>`).join(''));
   chipNotifiche();
 }
-const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito'],pioggia:['🌧','presa la pioggia']};
+const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],raccolto:['🧺','raccolta'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito'],pioggia:['🌧','presa la pioggia']};
 const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
 function renderDiario(){
   localPlan();   // la stima del consumo («stima −X%») è quella del bilancio: il piano la calcola (dalla memoria, se non è cambiato niente)
@@ -1690,6 +1722,10 @@ function renderDiario(){
   const val=giorni.map(d=>{ let s=0; for(const p of S.plants) for(const e of eventsOf(p.id,d)) if(e.tipo==='fatto'||e.tipo==='secco'){ s+=+e.litri||0; n++; } return s; });
   const tot=val.reduce((a,b)=>a+b,0);
   $('#dTot').textContent=fmt(tot)+' L'; $('#dNum').textContent=n;
+  // raccolto dell'anno, pianta per pianta (solo se c'è qualcosa)
+  const anno=t.slice(0,4), racc=piante().map(p=>({p,r:totaleRaccolto(ev,p.id,anno+'-01-01')})).filter(x=>x.r.volte);
+  $('#raccBox').hidden=!racc.length; $('#raccTit').textContent='🧺 Raccolto nel '+anno;
+  setHTML($('#raccList'),racc.map(({p,r})=>`<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(testoRaccolto(r)+' · '+r.volte+(r.volte===1?' volta':' volte'))}</span></span></div>`).join(''));
   renderCalendario();
   setHTML($('#statList'),S.plants.length?piante().map(p=>{
     const e=eventiValidi(ev,p.id).filter(x=>x.data>=lim), f=e.filter(x=>x.tipo==='fatto'||x.tipo==='secco'), cal=calibrazione(ev,p.id,t), um=e.filter(x=>x.tipo==='umido').length;
@@ -1704,7 +1740,7 @@ function renderDiario(){
   for(const e of tutti?recent:recent.slice(0,MAX)){
     if(e.data!==last){ h+='<div class="evday">'+esc(dayLabel(e.data))+' · '+esc(dataBreve(e.data))+'</div>'; last=e.data; }
     const [ic,lab]=EV_LABEL[e.tipo]||['•',e.tipo];
-    h+=`<div class="ev"><span class="e" aria-hidden="true">${ic}</span><span><b>${esc(nomi[e.plantId])}</b> ${esc(lab)}${e.litri?' · '+fmt(+e.litri,2)+' L':''}${e.nota?' · '+esc(e.nota):''}${e.fonte&&e.fonte!=='app'?' <span class="chip">'+esc(FONTE_LABEL[e.fonte]||e.fonte)+'</span>':''}</span>${e.fonte==='app'?`<button class="btn small ghost" type="button" data-unev="${esc(e.id)}" aria-label="Elimina">×</button>`:'<span></span>'}</div>`;
+    h+=`<div class="ev"><span class="e" aria-hidden="true">${ic}</span><span><b>${esc(nomi[e.plantId])}</b> ${esc(lab)}${e.litri?' · '+fmt(+e.litri,2)+' L':''}${e.tipo==='raccolto'&&+e.quantita>0?' · '+fmt(+e.quantita,2)+' '+esc(e.unita||'pezzi'):''}${e.nota?' · '+esc(e.nota):''}${e.fonte&&e.fonte!=='app'?' <span class="chip">'+esc(FONTE_LABEL[e.fonte]||e.fonte)+'</span>':''}</span>${e.fonte==='app'?`<button class="btn small ghost" type="button" data-unev="${esc(e.id)}" aria-label="Elimina">×</button>`:'<span></span>'}</div>`;
   }
   if(!tutti) h+=`<button class="btn ghost wide" type="button" id="evTutti">Mostra tutti gli ultimi 60 giorni (${recent.length})</button>`;
   setHTML($('#evList'),h);
@@ -2162,6 +2198,7 @@ function wire(){
     const tt=e.target.closest('[data-tutte]'); if(tt){ spruzzo(tt,e,18); fattoTutte(tt.dataset.tutte); return; }
     const vr=e.target.closest('[data-ver]'); if(vr){ rispondiVerifica(vr.dataset.pid, vr.dataset.ver); return; }
     const tr=e.target.closest('[data-terra]'); if(tr){ apriTerra(tr.dataset.terra); return; }
+    const rc=e.target.closest('[data-raccolto]'); if(rc){ apriRaccolto(rc.dataset.raccolto); return; }
     const pg=e.target.closest('[data-pioggia]'); if(pg){ apriPioggia(pg.dataset.pioggia); return; }
     const wd=e.target.closest('[data-wxd]'); if(wd){ apriMeteo(wd.dataset.wxd); return; }
     const x=e.target.closest('[data-unev]'); if(x){ removeEvent(x.dataset.unev); renderAll(); toast('Eliminato'); return; }
@@ -2174,6 +2211,8 @@ function wire(){
   $('#pgDaG').addEventListener('input',aggiornaPioggia); $('#pgAG').addEventListener('input',aggiornaPioggia);
   $('#pgVeloci').addEventListener('click',e=>{ const b=e.target.closest('[data-pgv]'); if(b) pgVeloce(b.dataset.pgv); });
   document.querySelectorAll('[data-terra-r]').forEach(b=>b.addEventListener('click',()=>{ const pid=trPianta; chiudiTerra(); if(pid) rispondiVerifica(pid,b.dataset.terraR); }));
+  $('#rcSalva').addEventListener('click',salvaRaccolto); $('#rcAnnulla').addEventListener('click',chiudiRaccolto); $('#raccBg').addEventListener('click',chiudiRaccolto);
+  $('#rcU').addEventListener('change',segRc);
   $('#trAnnulla').addEventListener('click',chiudiTerra); $('#terraBg').addEventListener('click',chiudiTerra);
   $('#wxChiudi').addEventListener('click',chiudiMeteo); $('#wxBg').addEventListener('click',chiudiMeteo);
   $('#wxStrip').addEventListener('keydown',e=>{ const wd=e.target.closest('[data-wxd]'); if(wd&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); apriMeteo(wd.dataset.wxd); } });
