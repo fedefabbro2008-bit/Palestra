@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="88abe6187c8f">
+<meta name="giardino-build" content="0f43feb22e71">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -421,14 +421,17 @@ html.con-badge{--badge:30px}
 /* sfondo: due luci tenui fisse dietro la pagina. In alto quella della stagione (azzurro d'inverno, rosa in primavera,
    giallo d'estate, marrone d'autunno, sfumata giorno per giorno), in basso quella dell'ora (alba, giorno, tramonto, notte).
    I colori li sceglie luce() nello script; senza script restano acqua e foglia. */
-@property --luce-a{syntax:'<color>';inherits:true;initial-value:#1b6a9e}
-@property --luce-b{syntax:'<color>';inherits:true;initial-value:#2f7a45}
-:root{--luce-a:var(--water);--luce-b:var(--leaf);--luce-fa:28%;--luce-fb:14%}
+/* i due colori stanno sul livello dello sfondo e non si ereditano: quando sfumano si ridisegna solo lo sfondo, non tutta la pagina */
+@property --luce-a{syntax:'<color>';inherits:false;initial-value:#1b6a9e}
+@property --luce-b{syntax:'<color>';inherits:false;initial-value:#2f7a45}
+:root{--luce-fa:28%;--luce-fb:14%} #sfondo{--luce-a:var(--water);--luce-b:var(--leaf)}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--luce-fa:24%;--luce-fb:15%} }
 :root[data-theme="dark"]{--luce-fa:24%;--luce-fb:15%}
-html.luce-pronta{transition:--luce-a 4s ease,--luce-b 4s ease}
-body{background:radial-gradient(170% 85% at 0% 0%, color-mix(in srgb,var(--luce-a) var(--luce-fa),transparent), transparent 68%),
-  radial-gradient(130% 65% at 100% 100%, color-mix(in srgb,var(--luce-b) var(--luce-fb),transparent), transparent 62%), var(--bg);background-attachment:fixed}
+html.luce-pronta #sfondo{transition:--luce-a 4s ease,--luce-b 4s ease}
+/* lo sfondo è un livello fisso a sé: sfumando o scorrendo non si ridisegna né si ricalcola il resto della pagina */
+body{background:var(--bg)}
+#sfondo{position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(170% 85% at 0% 0%, color-mix(in srgb,var(--luce-a) var(--luce-fa),transparent), transparent 68%),
+  radial-gradient(130% 65% at 100% 100%, color-mix(in srgb,var(--luce-b) var(--luce-fb),transparent), transparent 62%), var(--bg)}
 /* barra delle schede: capsula di vetro sospesa, il contenuto le scorre sotto */
 nav.tabs{left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) * .45 + 4px);max-width:616px;margin:0 auto;border:1px solid var(--glass-line);border-radius:30px;padding:5px;
   background:var(--glass);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
@@ -1023,6 +1026,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   <div id="wxExtra" class="stack"></div>
   <div class="row"><button class="btn ghost" type="button" id="wxChiudi">Chiudi</button></div>
 </div>
+<div id="sfondo" aria-hidden="true"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script>
@@ -1660,16 +1664,26 @@ const LUCE_DA_ESPO = {sole:8, mezzombra:4, ombra:2};
 const ORIENTAMENTI = {N:0, NE:45, E:90, SE:135, S:180, SO:225, O:270, NO:315, aperto:null};
 const ORDINE_ORIENT = ['N','NE','E','SE','S','SO','O','NO'];
 // "O, S" → "S,O" (ordine della bussola, senza doppioni né sigle sconosciute); con «aperto» resta solo «aperto»
+const ORIENT_MEMO = new Map();   // poche scritture diverse, chieste a ogni calcolo
 function orientamento(o){
-  const v=new Set(String(o||'').split(/[\s,;]+/).map(x=>x.trim()).filter(x=>x in ORIENTAMENTI));
-  return v.has('aperto') ? 'aperto' : ORDINE_ORIENT.filter(x=>v.has(x)).join(',');
+  if(!o) return '';
+  let r=ORIENT_MEMO.get(o);
+  if(r===undefined){ const v=new Set(String(o).split(/[\s,;]+/).map(x=>x.trim()).filter(x=>x in ORIENTAMENTI));
+    r=v.has('aperto') ? 'aperto' : ORDINE_ORIENT.filter(x=>v.has(x)).join(','); if(ORIENT_MEMO.size>200) ORIENT_MEMO.clear(); ORIENT_MEMO.set(o,r); }
+  return r;
 }
 const NOMI_ORIENT = {N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SO:'sud-ovest',O:'ovest',NO:'nord-ovest'};
 // emoji scelta come «foto» della pianta: la prima emoji del testo (anche composte, bandiere, tasti), altrimenti niente
+let SEGMENTA, EMOJI_MEMO = new Map();   // l'icona si chiede a ogni riga disegnata: il risultato si ricorda
 function emojiValida(s){
-  const t=String(s||'').trim(); if(!t) return '';
-  const g=typeof Intl!=='undefined'&&Intl.Segmenter?[...new Intl.Segmenter('it',{granularity:'grapheme'}).segment(t)][0]?.segment:[...t][0];
-  return g&&/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(g)?g:'';
+  if(!s) return '';
+  let r=EMOJI_MEMO.get(s); if(r!==undefined) return r;
+  const t=String(s).trim();
+  if(!t) r='';
+  else { SEGMENTA ??= typeof Intl!=='undefined'&&Intl.Segmenter ? new Intl.Segmenter('it',{granularity:'grapheme'}) : null;
+    const g=SEGMENTA ? SEGMENTA.segment(t)[Symbol.iterator]().next().value?.segment : [...t][0];
+    r=g&&/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(g)?g:''; }
+  if(EMOJI_MEMO.size>300) EMOJI_MEMO.clear(); EMOJI_MEMO.set(s,r); return r;
 }
 function nomeOrientamento(o){
   const v=orientamento(o); if(!v) return ''; if(v==='aperto') return 'aperto';
@@ -1682,11 +1696,12 @@ function oreSoleGeom(iso, orient, lat){
   const r=Math.PI/180, phi=(lat??44)*r, n=(giornoAnno(iso)+1);
   const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), dir=o&&o!=='aperto'?o.split(',').map(x=>ORIENTAMENTI[x]):null;
   let min=0;
+  const sp=Math.sin(phi), cp=Math.cos(phi), sd=Math.sin(dec), ss=sp*sd, cc=cp*Math.cos(dec), soglia=Math.sin(8*r);
   for(let m=0;m<1440;m+=5){
-    const w=(m/60-12)*15*r, se=Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(w);
-    if(se<Math.sin(8*r)) continue;
+    const w=(m/60-12)*15*r, se=ss+cc*Math.cos(w);
+    if(se<soglia) continue;
     if(dir){
-      const el=Math.asin(se), ca=(Math.sin(dec)-Math.sin(el)*Math.sin(phi))/(Math.cos(el)*Math.cos(phi));
+      const el=Math.asin(se), ca=(sd-se*sp)/(Math.cos(el)*cp);
       let az=Math.acos(Math.max(-1,Math.min(1,ca)))/r; if(w>0) az=360-az;          // azimut da nord, in senso orario
       if(!dir.some(A=>Math.abs(((az-A+540)%360)-180)<=85)) continue;               // davanti ad almeno una parete
     }
@@ -1899,7 +1914,7 @@ function params(p, ctx={}){
   });
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',faseRitmo:fe.ritmo??null,membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',faseRitmo:fe.ritmo??null,faseEta:fe.eta??null,membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
     oggi, lat:ctx.lat, tcasa:interno?tempCasa(p):null};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
@@ -2050,16 +2065,16 @@ function totaleRaccolto(eventi, pid, dal=''){
   t.kg=+t.kg.toFixed(3); return t;
 }
 function testoRaccolto(t){
-  const p=[]; if(t.kg>0) p.push(t.kg<1?Math.round(t.kg*1000)+' g':(Math.round(t.kg*100)/100).toLocaleString('it-IT')+' kg');
+  const p=[]; if(t.kg>0) p.push(t.kg<1?Math.round(t.kg*1000)+' g':nf(2).format(Math.round(t.kg*100)/100)+' kg');
   if(t.pezzi>0) p.push(t.pezzi+(t.pezzi===1?' pezzo':' pezzi')); if(t.mazzi>0) p.push(t.mazzi+(t.mazzi===1?' mazzo':' mazzi'));
   return p.join(' + ');
 }
 const testoDito = cm => cm<=1 ? 'tocca la superficie del terriccio (il primo centimetro)' : 'infila un dito nel terriccio per '+cm+'\u00a0cm'+(cm<=3?' (fino alla prima falange)':' (fino alla seconda falange)');
 function germinazione(p, k, oggi, lat){
   if(k.fase!=='germinazione' || p.tipo_data==='trapianto' || SEMI_PROFONDI.has(p.specie) || !k.sp?.ann) return 0;
-  const fe=faseEffettiva(p, oggi, lat), fine=k.sp.ciclo?.[0];
-  if(!(fine>0) || fe.eta==null) return 0;
-  return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,fe.eta))/Math.max(0.2, fe.ritmo||1)));   // giorni che restano
+  const fine=k.sp.ciclo?.[0];   // età e ritmo li ha già calcolati params()
+  if(!(fine>0) || k.faseEta==null) return 0;
+  return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,k.faseEta))/Math.max(0.2, k.faseRitmo||1)));   // giorni che restano
 }
 const evapSuperficie = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra) : (d?.et0||0)*fattoreVaso(k,d);
 function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
@@ -2155,7 +2170,8 @@ function sintesiSettimana(piano, fut, piante){
   if(no.length) t+=' '+(no.length===1?no[0]+': niente acqua':no.slice(0,-1).join(', ')+' e '+no.at(-1)+': niente acqua')+(rain>=10&&piante.some(p=>!alCoperto(p)&&no.includes(p.nome))?', basta la pioggia o la riserva.':', basta la riserva.');
   return t;
 }
-const fmtN=(n,d=1)=>(Math.round(n*10**d)/10**d).toLocaleString('it-IT');
+const NF=[]; const nf=d=>NF[d]||(NF[d]=new Intl.NumberFormat('it-IT',{maximumFractionDigits:Math.max(d,3)}));   // un formattatore per tipo, creato una volta
+const fmtN=(n,d=1)=>nf(d).format(Math.round(n*10**d)/10**d);
 
 /* ---------------- Dosi pratiche ---------------- */
 const FRAZ={0.25:'¼',0.5:'½',0.75:'¾'};
@@ -2483,7 +2499,7 @@ const CHEV = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentC
 /* ================= Utility ================= */
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt = (n,d=1) => (Math.round(n*10**d)/10**d).toLocaleString('it-IT',{maximumFractionDigits:d});
+const FMT_N=[]; const fmt = (n,d=1) => (FMT_N[d]||(FMT_N[d]=new Intl.NumberFormat('it-IT',{maximumFractionDigits:d}))).format(Math.round(n*10**d)/10**d);   // formattatore creato una volta per tipo
 const fmtL = l => fmt(l, l<2?2:1)+' L';
 const today = () => isoDate(new Date());
 const uid = () => Math.random().toString(36).slice(2,9);
@@ -3100,7 +3116,7 @@ function renderPiante(AP){
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     if(pp && 'dal' in pp) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
-    const rc=daRaccogliere(p)?totaleRaccolto(allEvents(),p.id,today().slice(0,4)+'-01-01'):null;
+    const rc=daRaccogliere(p)?totaleRaccolto(eventsOf(p.id),p.id,today().slice(0,4)+'-01-01'):null;
     if(rc?.volte) facts.push(['Raccolto nel '+today().slice(0,4),testoRaccolto(rc)+' ('+rc.volte+(rc.volte===1?' volta':' volte')+', l\'ultima '+dataBreve(rc.ultimo)+')']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
     if(k.faseNota) notes.push([/bulbo/.test(k.faseNota)?'':'warn',(/bulbo/.test(k.faseNota)?'☀️ ':'Fase: ')+k.faseNota+(p.fase==='auto'&&!p.data_semina&&k.sp.ann?' (aggiungila in Modifica)':'')]);
@@ -3176,7 +3192,7 @@ function renderDiario(){
   const tot=val.reduce((a,b)=>a+b,0);
   $('#dTot').textContent=fmt(tot)+' L'; $('#dNum').textContent=n;
   // raccolto dell'anno, pianta per pianta (solo se c'è qualcosa)
-  const anno=t.slice(0,4), racc=piante().map(p=>({p,r:totaleRaccolto(ev,p.id,anno+'-01-01')})).filter(x=>x.r.volte);
+  const anno=t.slice(0,4), racc=piante().filter(daRaccogliere).map(p=>({p,r:totaleRaccolto(eventsOf(p.id),p.id,anno+'-01-01')})).filter(x=>x.r.volte);
   $('#raccBox').hidden=!racc.length; $('#raccTit').textContent='🧺 Raccolto nel '+anno;
   setHTML($('#raccList'),racc.map(({p,r})=>`<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(testoRaccolto(r)+' · '+r.volte+(r.volte===1?' volta':' volte'))}</span></span></div>`).join(''));
   renderCalendario();
@@ -3348,14 +3364,14 @@ function renderEmoji(){
   setHTML($('#pf-emoji-q'),lista.map((e,i)=>`<button type="button" data-emo="${i?e:''}" class="${(i?cur===e:!cur)?'on':''}" aria-label="${i?'Emoji '+e:'Quella della specie'}">${e}</button>`).join(''));
   $('#pf-emoji').placeholder=sp;
 }
-// Riconoscimento da foto (Pl@ntNet, attraverso il sito): la foto si rimpicciolisce sul telefono (lato lungo 1280 px, JPEG)
+// Riconoscimento da foto (Pl@ntNet, attraverso il sito): la foto si rimpicciolisce sul telefono (lato lungo 1024 px, JPEG)
 // così parte in fretta anche con la rete lenta; poi si sceglie una delle specie proposte e il modulo si compila.
 let pfFotoRis=[];
-function rimpicciolisci(file, lato=1280){
+function rimpicciolisci(file, lato=1024){
   return new Promise((ok,no)=>{ const img=new Image(), url=URL.createObjectURL(file);
     img.onload=()=>{ const k=Math.min(1,lato/Math.max(img.naturalWidth,img.naturalHeight)), c=document.createElement('canvas');
       c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-      URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg',0.82)); };
+      URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg',0.8)); };
     img.onerror=()=>{ URL.revokeObjectURL(url); no(new Error('Non riesco a leggere la foto')); }; img.src=url; });
 }
 async function riconosciFoto(file){
@@ -3551,14 +3567,14 @@ function luceCiclo(p,x,L){
 }
 function luce(){
   const n=new Date(), g=(Date.UTC(n.getFullYear(),n.getMonth(),n.getDate())-Date.UTC(n.getFullYear(),0,0))/864e5;
-  const sud=(typeof S!=='undefined'&&S.location?.lat<0), r=document.documentElement.style;
+  const sud=(typeof S!=='undefined'&&S.location?.lat<0), r=document.getElementById('sfondo').style;
   r.setProperty('--luce-a','rgb('+luceCiclo(LUCE_STAGIONI,(g+(sud?182:0))%365,365).join(',')+')');
   r.setProperty('--luce-b','rgb('+luceCiclo(LUCE_ORE,n.getHours()+n.getMinutes()/60,24).join(',')+')');
 }
-luce();   // subito, prima del primo disegno; poi ogni 10 minuti e quando torni sull'app (con un passaggio lento di 4 secondi)
+luce();   // subito, prima del primo disegno; poi ogni 10 minuti e quando torni sull'app. Il cambio è di pochissimo: senza sfumatura
+          // animata (4 secondi di ridisegni a tutto schermo ogni volta); la classe luce-pronta la accende solo chi vuole vederla
 setInterval(luce,600000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') luce(); });
-setTimeout(()=>document.documentElement.classList.add('luce-pronta'),1500);
 function batti(el){ if(!muovi()) return; el.classList.remove('batti'); void el.offsetWidth; el.classList.add('batti'); }
 // animazione d'entrata. Una vista che era nascosta riparte da sola quando si mostra: basta la classe. Solo se l'elemento
 // era già visibile con l'animazione in corso serve farla ripartire (e quel «void offsetWidth» ricalcola tutta la pagina:

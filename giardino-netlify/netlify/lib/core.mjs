@@ -223,7 +223,8 @@ export async function tg(token, method, payload, { ignora = false } = {}) {
   if (!j.ok) { if (ignora) { console.warn(`Telegram ${method}: ${j.description || r.status}`); return null; } throw new Error(`Telegram ${method}: ${j.description || r.status}`); }
   return j.result;
 }
-const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toLocaleString("it-IT");
+const NF = new Intl.NumberFormat("it-IT");   // creato una volta: toLocaleString ne creava uno a ogni numero
+const fmt = (n, d = 1) => NF.format(Math.round(n * 10 ** d) / 10 ** d);
 export const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const corto = (s) => { s = String(s || ""); return s.length > 18 ? s.slice(0, 17) + "…" : s; };
 export const TIPI = { f: "fatto", s: "saltato", u: "umido", a: "secco", c: "concime" };

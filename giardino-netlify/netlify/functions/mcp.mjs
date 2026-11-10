@@ -15,7 +15,8 @@ const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...CORS, ...extra } });
 const rpcOk = (id, result) => ({ jsonrpc: "2.0", id, result });
 const rpcErr = (id, code, message) => ({ jsonrpc: "2.0", id: id === undefined ? null : id, error: { code, message } });
-const fmt = (n, d = 1) => n == null || !isFinite(n) ? "–" : (Math.round(n * 10 ** d) / 10 ** d).toLocaleString("it-IT");
+const NF = new Intl.NumberFormat("it-IT");
+const fmt = (n, d = 1) => n == null || !isFinite(n) ? "–" : NF.format(Math.round(n * 10 ** d) / 10 ** d);
 const DOVE = { aperto: "all'aperto", riparato: "all'aperto riparato dalla pioggia", serra: "in veranda o serra (vetri, niente pioggia)", interno: "in casa" };
 const COLT = { vaso: "vaso", terra: "piena terra", rialzata: "aiuola rialzata" };
 const NO_WRITE = "Modifiche non permesse: l'utente può attivarle nell'app Giardino (Impostazioni → Claude → «Claude può modificare»).";

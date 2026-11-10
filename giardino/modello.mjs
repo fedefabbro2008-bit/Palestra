@@ -393,16 +393,26 @@ const LUCE_DA_ESPO = {sole:8, mezzombra:4, ombra:2};
 export const ORIENTAMENTI = {N:0, NE:45, E:90, SE:135, S:180, SO:225, O:270, NO:315, aperto:null};
 const ORDINE_ORIENT = ['N','NE','E','SE','S','SO','O','NO'];
 // "O, S" → "S,O" (ordine della bussola, senza doppioni né sigle sconosciute); con «aperto» resta solo «aperto»
+const ORIENT_MEMO = new Map();   // poche scritture diverse, chieste a ogni calcolo
 export function orientamento(o){
-  const v=new Set(String(o||'').split(/[\s,;]+/).map(x=>x.trim()).filter(x=>x in ORIENTAMENTI));
-  return v.has('aperto') ? 'aperto' : ORDINE_ORIENT.filter(x=>v.has(x)).join(',');
+  if(!o) return '';
+  let r=ORIENT_MEMO.get(o);
+  if(r===undefined){ const v=new Set(String(o).split(/[\s,;]+/).map(x=>x.trim()).filter(x=>x in ORIENTAMENTI));
+    r=v.has('aperto') ? 'aperto' : ORDINE_ORIENT.filter(x=>v.has(x)).join(','); if(ORIENT_MEMO.size>200) ORIENT_MEMO.clear(); ORIENT_MEMO.set(o,r); }
+  return r;
 }
 const NOMI_ORIENT = {N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SO:'sud-ovest',O:'ovest',NO:'nord-ovest'};
 // emoji scelta come «foto» della pianta: la prima emoji del testo (anche composte, bandiere, tasti), altrimenti niente
+let SEGMENTA, EMOJI_MEMO = new Map();   // l'icona si chiede a ogni riga disegnata: il risultato si ricorda
 export function emojiValida(s){
-  const t=String(s||'').trim(); if(!t) return '';
-  const g=typeof Intl!=='undefined'&&Intl.Segmenter?[...new Intl.Segmenter('it',{granularity:'grapheme'}).segment(t)][0]?.segment:[...t][0];
-  return g&&/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(g)?g:'';
+  if(!s) return '';
+  let r=EMOJI_MEMO.get(s); if(r!==undefined) return r;
+  const t=String(s).trim();
+  if(!t) r='';
+  else { SEGMENTA ??= typeof Intl!=='undefined'&&Intl.Segmenter ? new Intl.Segmenter('it',{granularity:'grapheme'}) : null;
+    const g=SEGMENTA ? SEGMENTA.segment(t)[Symbol.iterator]().next().value?.segment : [...t][0];
+    r=g&&/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(g)?g:''; }
+  if(EMOJI_MEMO.size>300) EMOJI_MEMO.clear(); EMOJI_MEMO.set(s,r); return r;
 }
 export function nomeOrientamento(o){
   const v=orientamento(o); if(!v) return ''; if(v==='aperto') return 'aperto';
@@ -415,11 +425,12 @@ export function oreSoleGeom(iso, orient, lat){
   const r=Math.PI/180, phi=(lat??44)*r, n=(giornoAnno(iso)+1);
   const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), dir=o&&o!=='aperto'?o.split(',').map(x=>ORIENTAMENTI[x]):null;
   let min=0;
+  const sp=Math.sin(phi), cp=Math.cos(phi), sd=Math.sin(dec), ss=sp*sd, cc=cp*Math.cos(dec), soglia=Math.sin(8*r);
   for(let m=0;m<1440;m+=5){
-    const w=(m/60-12)*15*r, se=Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(w);
-    if(se<Math.sin(8*r)) continue;
+    const w=(m/60-12)*15*r, se=ss+cc*Math.cos(w);
+    if(se<soglia) continue;
     if(dir){
-      const el=Math.asin(se), ca=(Math.sin(dec)-Math.sin(el)*Math.sin(phi))/(Math.cos(el)*Math.cos(phi));
+      const el=Math.asin(se), ca=(sd-se*sp)/(Math.cos(el)*cp);
       let az=Math.acos(Math.max(-1,Math.min(1,ca)))/r; if(w>0) az=360-az;          // azimut da nord, in senso orario
       if(!dir.some(A=>Math.abs(((az-A+540)%360)-180)<=85)) continue;               // davanti ad almeno una parete
     }
@@ -632,7 +643,7 @@ export function params(p, ctx={}){
   });
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',faseRitmo:fe.ritmo??null,membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',faseRitmo:fe.ritmo??null,faseEta:fe.eta??null,membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
     oggi, lat:ctx.lat, tcasa:interno?tempCasa(p):null};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
@@ -783,16 +794,16 @@ export function totaleRaccolto(eventi, pid, dal=''){
   t.kg=+t.kg.toFixed(3); return t;
 }
 export function testoRaccolto(t){
-  const p=[]; if(t.kg>0) p.push(t.kg<1?Math.round(t.kg*1000)+' g':(Math.round(t.kg*100)/100).toLocaleString('it-IT')+' kg');
+  const p=[]; if(t.kg>0) p.push(t.kg<1?Math.round(t.kg*1000)+' g':nf(2).format(Math.round(t.kg*100)/100)+' kg');
   if(t.pezzi>0) p.push(t.pezzi+(t.pezzi===1?' pezzo':' pezzi')); if(t.mazzi>0) p.push(t.mazzi+(t.mazzi===1?' mazzo':' mazzi'));
   return p.join(' + ');
 }
 export const testoDito = cm => cm<=1 ? 'tocca la superficie del terriccio (il primo centimetro)' : 'infila un dito nel terriccio per '+cm+'\u00a0cm'+(cm<=3?' (fino alla prima falange)':' (fino alla seconda falange)');
 function germinazione(p, k, oggi, lat){
   if(k.fase!=='germinazione' || p.tipo_data==='trapianto' || SEMI_PROFONDI.has(p.specie) || !k.sp?.ann) return 0;
-  const fe=faseEffettiva(p, oggi, lat), fine=k.sp.ciclo?.[0];
-  if(!(fine>0) || fe.eta==null) return 0;
-  return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,fe.eta))/Math.max(0.2, fe.ritmo||1)));   // giorni che restano
+  const fine=k.sp.ciclo?.[0];   // età e ritmo li ha già calcolati params()
+  if(!(fine>0) || k.faseEta==null) return 0;
+  return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,k.faseEta))/Math.max(0.2, k.faseRitmo||1)));   // giorni che restano
 }
 const evapSuperficie = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra) : (d?.et0||0)*fattoreVaso(k,d);
 export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
@@ -888,7 +899,8 @@ export function sintesiSettimana(piano, fut, piante){
   if(no.length) t+=' '+(no.length===1?no[0]+': niente acqua':no.slice(0,-1).join(', ')+' e '+no.at(-1)+': niente acqua')+(rain>=10&&piante.some(p=>!alCoperto(p)&&no.includes(p.nome))?', basta la pioggia o la riserva.':', basta la riserva.');
   return t;
 }
-const fmtN=(n,d=1)=>(Math.round(n*10**d)/10**d).toLocaleString('it-IT');
+const NF=[]; const nf=d=>NF[d]||(NF[d]=new Intl.NumberFormat('it-IT',{maximumFractionDigits:Math.max(d,3)}));   // un formattatore per tipo, creato una volta
+const fmtN=(n,d=1)=>nf(d).format(Math.round(n*10**d)/10**d);
 
 /* ---------------- Dosi pratiche ---------------- */
 const FRAZ={0.25:'¼',0.5:'½',0.75:'¾'};
