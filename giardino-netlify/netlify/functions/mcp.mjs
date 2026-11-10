@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, meteo, oraLocale, pianoAttivo, finePiano, calibrazioneVera, IMP_DEF, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, meteo, oraLocale, pianoAttivo, finePiano, calibrazioneVera, IMP_DEF, NOTIFICHE, M } from "../lib/core.mjs";
 
 /* Giardino · server MCP per Claude (connettore personalizzato su claude.ai, gratis con il tuo account).
    Claude legge piante, meteo reale e piano calcolato; se lo permetti nell'app salva il suo piano della settimana,
@@ -15,7 +15,8 @@ const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods
 const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...CORS, ...extra } });
 const rpcOk = (id, result) => ({ jsonrpc: "2.0", id, result });
 const rpcErr = (id, code, message) => ({ jsonrpc: "2.0", id: id === undefined ? null : id, error: { code, message } });
-const fmt = (n, d = 1) => n == null || !isFinite(n) ? "–" : (Math.round(n * 10 ** d) / 10 ** d).toLocaleString("it-IT");
+const NF = new Intl.NumberFormat("it-IT");
+const fmt = (n, d = 1) => n == null || !isFinite(n) ? "–" : NF.format(Math.round(n * 10 ** d) / 10 ** d);
 const DOVE = { aperto: "all'aperto", riparato: "all'aperto riparato dalla pioggia", serra: "in veranda o serra (vetri, niente pioggia)", interno: "in casa" };
 const COLT = { vaso: "vaso", terra: "piena terra", rialzata: "aiuola rialzata" };
 const NO_WRITE = "Modifiche non permesse: l'utente può attivarle nell'app Giardino (Impostazioni → Claude → «Claude può modificare»).";
@@ -36,7 +37,7 @@ function descrivi(p, data, oggi, met, ap) {
   const altri = k.membri.slice(1).map((m) => (M.SPECIE[m.specie] || M.SPECIE.altro).nome + (m.num > 1 ? " ×" + m.num : "") + " (" + M.nomeFase(m.specie, m.fase).toLowerCase() + ")");
   const c = M.concime(p, { oggi, lat, eventi: data.eventi }), rv = M.rinvaso(p, { oggi, lat });
   const L = [`- **${p.nome}** [id ${p.id}]${M.zonaDi(p) ? " · zona " + M.zonaDi(p) : ""} — ${k.sp.nome}${k.num > 1 ? " ×" + k.num : ""}, ${k.faseNome.toLowerCase()}${k.faseAuto ? " (calcolata" + (p.data_semina ? " da " + (p.tipo_data === "trapianto" ? "trapianto" : "semina") + " del " + p.data_semina : " dal mese") + ")" : ""}`,
-    `  ${k.vaso ? `vaso ${fmt(k.V)} L, Ø ${Math.round(k.D * 100)} cm${+p.diametro > 0 ? "" : " (stimato)"}, ${k.materiale === "chiuso" ? "SENZA FORI (dose esatta, niente acqua in più)" : k.materiale}${k.riserva ? `, sottovaso con riserva da ${fmt(k.riserva)} L` : ""}` : COLT[p.colt]}${altri.length ? "; nello stesso vaso: " + altri.join(", ") : ""}; ${fmt(k.h)} h di luce diretta${p.orient ? ` oggi (orientamento ${p.orient}: ${fmt(+p.luce)} h scritte il ${p.luce_data}, scalate con le stagioni)` : ""}; ${DOVE[p.dove] || p.dove}`,
+    `  ${k.vaso ? `vaso ${fmt(k.V)} L, Ø ${Math.round(k.D * 100)} cm${+p.diametro > 0 ? "" : " (stimato)"}, ${k.materiale === "chiuso" ? "SENZA FORI (dose esatta, niente acqua in più)" : k.materiale}${k.riserva ? `, sottovaso con riserva da ${fmt(k.riserva)} L` : ""}` : COLT[p.colt]}${altri.length ? "; nello stesso vaso: " + altri.join(", ") : ""}; ${fmt(k.h)} h di luce diretta${M.orientamento(p.orient) ? ` oggi (${M.nomeOrientamento(p.orient)}: ${fmt(+p.luce)} h scritte il ${p.luce_data}, scalate con le stagioni)` : ""}; ${DOVE[p.dove] || p.dove}`,
     `  calcolo: trattiene ${fmt(k.tawL, 2)} L, innaffiare dopo ${fmt(k.rawL, 2)} L consumati, consumo oggi ${fmt(M.consumoL(k, d0), 2)} L/giorno${Math.abs(k.calib - 1) > 0.01 ? `, correzione appresa ×${fmt(k.calib, 2)}` : ""}`,
     `  ultima innaffiatura: ${M.ultimaInnaffiatura(p, data.eventi) || "non indicata"}; ${c.inStagione ? c.testo.toLowerCase() : c.testo.toLowerCase()}${rv.length ? "; " + rv.join(" ") : ""}${k.faseNota ? "; fase: " + k.faseNota : ""}`];
   const pb = ap?.base?.piante.find((x) => x.id === p.id);
@@ -164,24 +165,25 @@ async function toolSalvaScheda(ctx, a) {
   ctx.saved(out);
   return `Scheda di «${nome}» salvata: l'app la mostra in Piante → ${nome} → Scheda, con la tabella dei mesi.` + (allineata ? ` Ho allineato anche le fasi automatiche dell'app: raccolta da ${allineata}.` : "");
 }
-const TIPO_OK = ["fatto", "saltato", "umido", "secco", "concime", "meno", "piu", "diagnosi", "pioggia"];
+const TIPO_OK = ["fatto", "saltato", "umido", "secco", "concime", "meno", "piu", "diagnosi", "pioggia", "raccolto"];
 async function toolRegistra(ctx, a) {
   if (!TIPO_OK.includes(a.tipo)) throw new Error("tipo non valido");
+  if (a.tipo === "raccolto" && (!(+a.quantita > 0) || !M.UNITA_RACCOLTO.includes(a.unita))) throw new Error("raccolto: quantita (numero) e unita (" + M.UNITA_RACCOLTO.join(", ") + ")");
   const data = ISO.test(a.data || "") ? a.data : M.isoDate(new Date());
   let nome = "";
   const out = await aggiorna(ctx.store, ctx.code, (d) => {
     const p = trovaPianta(d, a.pianta); if (!p) throw new Error("Pianta non trovata: usa l'id o il nome dello strumento «giardino».");
     nome = p.nome;
     d.eventi.push({ id: "cl-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), plantId: p.id, tipo: a.tipo, data, fonte: "claude", ts: new Date().toISOString(),
-      ...(a.litri != null ? { litri: Math.max(0, +a.litri || 0) } : {}), ...(a.nota ? { nota: String(a.nota).slice(0, 200) } : {}) });
+      ...(a.litri != null && a.tipo !== "raccolto" ? { litri: Math.max(0, +a.litri || 0) } : {}), ...(a.tipo === "raccolto" ? { quantita: +a.quantita, unita: a.unita } : {}), ...(a.nota ? { nota: String(a.nota).slice(0, 200) } : {}) });
   });
   ctx.saved(out);
   const pid = out.data.plants.find((p) => p.nome === nome)?.id, loc = out.data.location;
   const cal = pid ? calibrazioneVera(out.data, loc ? await meteo(loc.lat, loc.lon).catch(() => null) : null, pid, M.isoDate(new Date())) : 1;
   return `Registrato nel diario: ${nome} — ${a.tipo} (${data}).` + (["meno", "piu", "umido", "secco"].includes(a.tipo) ? ` Correzione appresa per questa pianta: ×${fmt(cal, 2)} (${cal < 1 ? "beve meno" : cal > 1 ? "beve di più" : "nessuna"} del calcolo di base).` : "");
 }
-const CAMPI_P = { nome: "s", specie: "specie", fase: "fase", data_semina: "data", tipo_data: ["semina", "trapianto"], colt: ["vaso", "terra", "rialzata"], vaso: "n", diametro: "n", num: "n", area: "n", luce: "n",
-  dove: ["aperto", "riparato", "serra", "interno"], ultima: "data", ultima_concime: "data", data_rinvaso: "data", note: "s", consociate: "cons", zona: "s", tcasa: "tcasa", scheda: "scheda", materiale: ["plastica", "terracotta", "chiuso"], riserva: "n", orient: ["", ...Object.keys(M.ORIENTAMENTI)], luce_data: "data", raccolta: "mese" };
+const CAMPI_P = { nome: "s", emoji: "emoji", specie: "specie", fase: "fase", data_semina: "data", tipo_data: ["semina", "trapianto"], colt: ["vaso", "terra", "rialzata"], vaso: "n", diametro: "n", num: "n", area: "n", luce: "n",
+  dove: ["aperto", "riparato", "serra", "interno"], ultima: "data", ultima_concime: "data", data_rinvaso: "data", note: "s", consociate: "cons", zona: "s", tcasa: "tcasa", scheda: "scheda", materiale: ["plastica", "terracotta", "chiuso"], riserva: "n", orient: "orient", luce_data: "data", raccolta: "mese" };
 function valida(campi) {
   const out = {};
   for (const [k, v] of Object.entries(campi || {})) {
@@ -201,6 +203,8 @@ function valida(campi) {
       for (const [s, n] of Object.entries(v)) { if (!M.STAGIONI.includes(s)) throw new Error("stagione sconosciuta: " + s); const x = M.tcasaValida(n); if (x == null) throw new Error("temperatura di " + s + " tra 5 e 35 °C"); tc[s] = x; }
       out[k] = tc;
     }
+    else if (t === "emoji") { const e = M.emojiValida(v); if (!e) throw new Error("emoji: scrivi una emoji (es. 🌵)"); out[k] = e; }
+    else if (t === "orient") { const o = M.orientamento(v); if (!o) throw new Error("orient: una o più tra N, NE, E, SE, S, SO, O, NO (es. \"S,O\"), oppure aperto"); out[k] = o; }
     else if (Array.isArray(t)) { if (!t.includes(v)) throw new Error(k + " deve essere uno di: " + t.join(", ")); out[k] = v; }
   }
   return out;
@@ -285,20 +289,30 @@ async function toolAnnulla(ctx, a) {
   ctx.saved(out);
   return `Tolto dal diario: ${tolto.nome} — ${tolto.tipo} del ${tolto.data} (${tolto.fonte}). Il calcolo ne tiene conto subito.`;
 }
-// Cancella il piano di Claude: l'app, Telegram e Siri tornano al calcolo automatico.
+// Cancella il piano di Claude: l'app e Telegram tornano al calcolo automatico.
 async function toolPianoAutomatico(ctx) {
   const out = await aggiorna(ctx.store, ctx.code, (d) => { if (!d.piano_claude) return false; d.piano_claude = null; });
   if (out?.data) ctx.saved(out);
-  return "Piano di Claude tolto: da ora app, promemoria Telegram e Siri usano il calcolo automatico.";
+  return "Piano di Claude tolto: da ora app e promemoria Telegram usano il calcolo automatico.";
 }
 // Misure e orari: bicchiere e annaffiatoio per le dosi, ore dei messaggi Telegram.
 async function toolImpostazioni(ctx, a) {
   const LIM = { bicchiere: [0.05, 2], annaffiatoio: [0.5, 30], ora_mattina: [4, 12], ora_sera: [15, 22] }, nuove = {};
   for (const [k, [lo, hi]] of Object.entries(LIM)) if (a[k] != null) { const v = +a[k]; if (!isFinite(v) || v < lo || v > hi) throw new Error(`${k} tra ${lo} e ${hi}`); nuove[k] = k.startsWith("ora") ? Math.round(v) : v; }
-  if (!Object.keys(nuove).length) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), ora_mattina, ora_sera.");
-  const out = await aggiorna(ctx.store, ctx.code, (d) => { d.impostazioni = { ...IMP_DEF, ...(d.impostazioni || {}), ...nuove }; });
+  // notifiche Telegram da accendere (true) o spegnere (false); le altre restano come sono
+  const notif = {};
+  for (const [k, v] of Object.entries(a.notifiche && typeof a.notifiche === "object" ? a.notifiche : {})) {
+    if (!NOTIFICHE.includes(k)) throw new Error("notifiche: " + k + " non esiste (" + NOTIFICHE.join(", ") + ")");
+    if (typeof v === "boolean") notif[k] = v;
+  }
+  if (!Object.keys(nuove).length && !Object.keys(notif).length) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), ora_mattina, ora_sera, notifiche.");
+  const out = await aggiorna(ctx.store, ctx.code, (d) => {
+    const prima = { ...IMP_DEF, ...(d.impostazioni || {}) }, n = { ...(prima.notifiche || {}) };
+    for (const [k, v] of Object.entries(notif)) { if (v) delete n[k]; else n[k] = false; }
+    d.impostazioni = { ...prima, ...nuove, notifiche: n };
+  });
   ctx.saved(out);
-  return "Impostazioni aggiornate: " + Object.entries(nuove).map(([k, v]) => k + " " + v).join(", ") + ".";
+  return "Impostazioni aggiornate: " + [...Object.entries(nuove).map(([k, v]) => k + " " + v), ...Object.entries(notif).map(([k, v]) => "notifica " + k + (v ? " accesa" : " spenta"))].join(", ") + ".";
 }
 
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -321,20 +335,20 @@ const TOOLS = [
       sintomi: { type: "array", items: { type: "string", enum: M.SINTOMI.map((x) => x.id) } }, registra: { type: "boolean", description: "salva la correzione nel diario (solo se l'utente è d'accordo)" } } },
     annotations: { ...RW, title: "Diagnosi" }, run: toolDiagnosi },
   { name: "salva_piano", title: "Salva il piano della settimana", write: true,
-    description: "Salva il tuo piano di innaffiatura per i prossimi 7 giorni: l'app lo mostra, il promemoria Telegram e Siri lo usano. Prima leggi «giardino», parti dal calcolo automatico (che usa già meteo reale, media con ICON-2I, calibrazione dalle risposte dell'utente) e correggilo solo dove la tua conoscenza aggiunge qualcosa (specie, fase, stagione, ristagni, gelo, caldo). I litri oltre quelli che il vaso trattiene (+20% se ha il foro) vengono ridotti; giorni prima di ieri o oltre 9 giorni scartati. Una voce per giorno per ogni pianta.",
+    description: "Salva il tuo piano di innaffiatura per i prossimi 7 giorni: l'app lo mostra, il promemoria Telegram lo usa. Prima leggi «giardino», parti dal calcolo automatico (che usa già meteo reale, media con ICON-2I, calibrazione dalle risposte dell'utente) e correggilo solo dove la tua conoscenza aggiunge qualcosa (specie, fase, stagione, ristagni, gelo, caldo). I litri oltre quelli che il vaso trattiene (+20% se ha il foro) vengono ridotti; giorni prima di ieri o oltre 9 giorni scartati. Una voce per giorno per ogni pianta.",
     inputSchema: { type: "object", required: ["piante"], properties: {
       sintesi: { type: "string", description: "2-3 frasi sulla settimana" }, avvisi: { type: "array", items: { type: "string" }, description: "solo eventi meteo rilevanti" },
       piante: { type: "array", items: { type: "object", required: ["id", "giorni"], properties: { id: { type: "string", description: "id della pianta da «giardino»" }, valutazione: { type: "string" }, consigli: { type: "array", items: { type: "string" }, description: "da 1 a 3" }, giorni: { type: "array", items: GIORNO } } } } } },
     annotations: { ...RW, title: "Salva piano" }, run: toolSalvaPiano },
   { name: "registra", title: "Registra nel diario", write: true,
-    description: "Registra un evento per una pianta: fatto (innaffiata), saltato, umido (era ancora umida: il calcolo beve meno), secco (era secca, innaffiata: beve di più), concime, meno / piu (correzione dopo una foto o la «diagnosi»), diagnosi (solo nota), pioggia (l'utente ha messo la pianta sotto la pioggia: litri = mm caduti × apertura del vaso; riempie solo quei litri). Le correzioni crescono se si ripetono di fila (−10/−15/−20%, +12/+18/+24%). Usalo quando l'utente ti racconta cosa ha fatto.",
+    description: "Registra un evento per una pianta: fatto (innaffiata), saltato, umido (era ancora umida: il calcolo beve meno), secco (era secca, innaffiata: beve di più), concime, meno / piu (correzione dopo una foto o la «diagnosi»), diagnosi (solo nota), raccolto (quanto ha raccolto: quantita e unita g, kg, pezzi o mazzi), pioggia (l'utente ha messo la pianta sotto la pioggia: litri = mm caduti × apertura del vaso; riempie solo quei litri). Le correzioni crescono se si ripetono di fila (−10/−15/−20%, +12/+18/+24%). Usalo quando l'utente ti racconta cosa ha fatto.",
     inputSchema: { type: "object", required: ["pianta", "tipo"], properties: { pianta: { type: "string", description: "id o nome" }, tipo: { type: "string", enum: TIPO_OK },
-      data: { type: "string", description: "AAAA-MM-GG, predefinito oggi" }, litri: { type: "number" }, nota: { type: "string" } } },
+      data: { type: "string", description: "AAAA-MM-GG, predefinito oggi" }, litri: { type: "number" }, quantita: { type: "number", description: "solo raccolto" }, unita: { type: "string", enum: ["g", "kg", "pezzi", "mazzi"], description: "solo raccolto" }, nota: { type: "string" } } },
     annotations: { ...RW, title: "Registra" }, run: toolRegistra },
   { name: "modifica_pianta", title: "Aggiungi o modifica una pianta", write: true,
     description: "Aggiunge una pianta o ne cambia i dati (vaso, luce, fase, consociate, note…). Prima di salvare riassumi all'utente cosa cambi. Se aggiungi senza specie, l'app la riconosce dal nome. Specie (chiave = nome): " + M.specieOrdinate().map(([k, x]) => k + " = " + x.nome).join("; ") + ". Fasi: auto (calcolata dalla data di semina/trapianto o dal mese), " + Object.keys(M.FASI).join(", ") + ". Per eliminare una pianta l'utente usa l'app.",
     inputSchema: { type: "object", required: ["azione", "campi"], properties: { azione: { type: "string", enum: ["aggiungi", "modifica"] }, pianta: { type: "string", description: "id o nome (per modifica)" },
-      campi: { type: "object", description: "nome, specie, fase, data_semina, tipo_data (semina|trapianto), colt (vaso|terra|rialzata), vaso (litri), diametro (cm), num, area (m²), luce (ore di sole diretto 0-14), dove (aperto|riparato|serra = veranda o serra|interno = in casa), consociate ([{specie, fase, num}]), ultima, ultima_concime, data_rinvaso, note, zona (gruppo libero, es. Balcone, Orto, Salotto), tcasa (piante in casa o in veranda/serra: temperatura in °C per stagione, {inverno, primavera, estate, autunno}), scheda (la scheda della pianta, come in «salva_scheda»), materiale (plastica|terracotta|chiuso = vaso senza fori), riserva (litri del sottovaso con riserva d'acqua, 0 se non c'è), raccolta (AAAA-MM, solo annuali seminate: mese in cui comincia la raccolta; le fasi automatiche dell'app si adattano), orient (verso dove guarda: N, NE, E, SE, S, SO, O, NO, aperto = senza pareti; con orient le ore di luce valgono per luce_data e l'app le scala con le stagioni: se cambi luce o orient metti luce_data = oggi)" } } },
+      campi: { type: "object", description: "nome, emoji (la «foto» della pianta nell'app, una emoji; vuota = quella della specie), specie, fase, data_semina, tipo_data (semina|trapianto), colt (vaso|terra|rialzata), vaso (litri), diametro (cm), num, area (m²), luce (ore di sole diretto 0-14), dove (aperto|riparato|serra = veranda o serra|interno = in casa), consociate ([{specie, fase, num}]), ultima, ultima_concime, data_rinvaso, note, zona (gruppo libero, es. Balcone, Orto, Salotto), tcasa (piante in casa o in veranda/serra: temperatura in °C per stagione, {inverno, primavera, estate, autunno}), scheda (la scheda della pianta, come in «salva_scheda»), materiale (plastica|terracotta|chiuso = vaso senza fori), riserva (litri del sottovaso con riserva d'acqua, 0 se non c'è), raccolta (AAAA-MM, solo annuali seminate: mese in cui comincia la raccolta; le fasi automatiche dell'app si adattano), orient (verso dove guarda: N, NE, E, SE, S, SO, O, NO, anche più di una separate da virgola per un angolo, es. S,O; aperto = senza pareti; con orient le ore di luce valgono per luce_data e l'app le scala con le stagioni: se cambi luce o orient metti luce_data = oggi)" } } },
     annotations: { ...RW, title: "Modifica pianta" }, run: toolModificaPianta },
   { name: "salva_scheda", title: "Scrivi la scheda di una pianta", write: true,
     description: "Scrive la scheda di una pianta, che l'app mostra in Piante → Scheda: descrizione, condizioni ideali, come sta nelle quattro stagioni, fasi di crescita e calendario dei mesi, periodo dei frutti o del raccolto. Compilala quando «giardino» segna «scheda: DA COMPILARE» o «DA AGGIORNARE». Se la pianta è stata seminata o piantata (data_semina), il calendario va dal mese della semina alla raccolta con mesi AAAA-MM, coerente con le «fasi stimate dall'app»; altrimenti un anno tipico (mesi 1-12) per la zona dell'utente. Frasi brevi e pratiche.",
@@ -352,11 +366,12 @@ const TOOLS = [
     description: "Toglie dal diario un evento registrato per sbaglio (innaffiatura, «era umida», concime, correzione…). L'id è tra [ ] in «diario», «pianta» o «giardino». Prima chiedi conferma all'utente.",
     inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" } } }, annotations: { ...RW, destructiveHint: true, title: "Annulla evento" }, run: toolAnnulla },
   { name: "piano_automatico", title: "Torna al calcolo automatico", write: true,
-    description: "Toglie il tuo piano salvato: app, promemoria Telegram e Siri tornano al calcolo automatico dell'app (meteo reale, aggiornato ogni giorno). Usalo se il piano è superato o l'utente lo chiede.",
+    description: "Toglie il tuo piano salvato: app e promemoria Telegram tornano al calcolo automatico dell'app (meteo reale, aggiornato ogni giorno). Usalo se il piano è superato o l'utente lo chiede.",
     inputSchema: { type: "object", properties: {} }, annotations: { ...RW, destructiveHint: true, title: "Calcolo automatico" }, run: toolPianoAutomatico },
   { name: "impostazioni", title: "Misure e orari", write: true,
-    description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri) e l'ora del messaggio Telegram del mattino (4-12) e della sera (15-22).",
-    inputSchema: { type: "object", properties: { bicchiere: { type: "number" }, annaffiatoio: { type: "number" }, ora_mattina: { type: "integer" }, ora_sera: { type: "integer" } } }, annotations: { ...RW, title: "Impostazioni" }, run: toolImpostazioni },
+    description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri), l'ora del messaggio Telegram del mattino (4-12) e della sera (15-22) e accende (true) o spegne (false) le notifiche Telegram: mattina (piano del mattino), sera (promemoria delle piante ancora da innaffiare), avvisi (gelo, caldo, vento per domani), verifica (controllo del sabato col dito), riepilogo (domenica), backup (mensile), piano (fine del piano di Claude), crediti (crediti Netlify).",
+    inputSchema: { type: "object", properties: { bicchiere: { type: "number" }, annaffiatoio: { type: "number" }, ora_mattina: { type: "integer" }, ora_sera: { type: "integer" },
+      notifiche: { type: "object", properties: Object.fromEntries(NOTIFICHE.map((k) => [k, { type: "boolean" }])), additionalProperties: false } } }, annotations: { ...RW, title: "Impostazioni" }, run: toolImpostazioni },
   { name: "vacanza", title: "Imposta la vacanza", write: true,
     description: "Imposta (dal, al = giorno del rientro) o annulla il periodo in cui l'utente è via.",
     inputSchema: { type: "object", properties: { dal: { type: "string" }, al: { type: "string" }, annulla: { type: "boolean" } } }, annotations: { ...RW, title: "Vacanza" }, run: toolVacanza }

@@ -375,3 +375,87 @@ test("sotto la pioggia di notte: dalle 17:28 di ieri alle 07:15 di oggi", () => 
   assert.equal(M.pioggiaMisurataNelleOre({ ore }, "2026-11-08", "07:00", "07:00", "Europe/Rome").mm, 0, "stessa ora: niente");
   assert.equal(M.pioggiaMisurataNelleOre({ ore }, "2026-11-08", "02:00", "05:00", "Europe/Rome").mm, 1.2, "di giorno come prima");
 });
+
+test("pianta di casa fuori per più giorni: pioggia misurata giorno per giorno, totali per i giorni più vecchi", () => {
+  // novembre: Italia = UTC+1. Ore misurate dal 5 all'8; per i giorni prima solo i totali del giorno
+  const ore = { "2026-11-05T10:00:00Z": 3, "2026-11-06T22:00:00Z": 1, "2026-11-06T23:00:00Z": 2, "2026-11-07T08:00:00Z": 4, "2026-11-08T06:00:00Z": 0 };
+  const giorni = { "2026-11-02": 6, "2026-11-03": 0, "2026-11-04": 1.5 };
+  const r = M.pioggiaMisurataTra({ ore, giorni }, { d: "2026-11-02", t: "00:00" }, { d: "2026-11-08", t: "07:00" }, "Europe/Rome");
+  // 23:00 UTC del 6 = mezzanotte del 7: quell'ora (23–24 locali del 6) resta al 6
+  assert.deepEqual(r.giorni, { "2026-11-02": 6, "2026-11-04": 1.5, "2026-11-05": 3, "2026-11-06": 3, "2026-11-07": 4 });
+  assert.equal(r.mm, 17.5); assert.equal(r.conTotali, true); assert.deepEqual(r.senzaDati, []); assert.equal(r.completo, true);
+  // il primo giorno a metà senza misure ora per ora non si conta (non si sa a che ora pioveva): lo dice
+  const meta = M.pioggiaMisurataTra({ ore, giorni }, { d: "2026-11-02", t: "12:00" }, { d: "2026-11-05", t: "23:00" }, "Europe/Rome");
+  assert.deepEqual(meta.senzaDati, ["2026-11-02"]); assert.equal(meta.mm, 4.5); assert.equal(meta.completo, false);
+  // fino a dove arrivano le misure, e un intervallo al contrario non conta niente
+  const oltre = M.pioggiaMisurataTra({ ore }, { d: "2026-11-07", t: "08:00" }, { d: "2026-11-08", t: "12:00" }, "Europe/Rome");
+  assert.equal(oltre.mm, 4); assert.equal(oltre.completo, false); assert.deepEqual(oltre.ultima, { d: "2026-11-08", t: "07:00" });
+  assert.equal(M.pioggiaMisurataTra({ ore }, { d: "2026-11-08", t: "07:00" }, { d: "2026-11-07", t: "07:00" }, "Europe/Rome").mm, 0);
+  // nel bilancio: un evento per giorno, ognuno nel suo giorno
+  const p = { id: "n", nome: "Nepenthes", specie: "nepenthes", fase: "auto", colt: "vaso", vaso: 12, diametro: 30, luce: 2, dove: "interno" };
+  const presa = M.pioggiaPresa(p, Object.entries(r.giorni).map(([data, mm], i) => ({ id: "p" + i, plantId: "n", tipo: "pioggia", data, litri: +(mm * 0.05).toFixed(2) })));
+  assert.deepEqual(Object.keys(presa).sort(), ["2026-11-02", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07"]);
+});
+
+test("verso dove guarda: anche più direzioni (balcone d'angolo)", () => {
+  assert.equal(M.orientamento("O, S"), "S,O"); assert.equal(M.orientamento("S,aperto"), "aperto"); assert.equal(M.orientamento("boh"), ""); assert.equal(M.orientamento("S"), "S");
+  assert.equal(M.nomeOrientamento("S,O"), "verso sud e ovest"); assert.equal(M.nomeOrientamento("E,S,O"), "verso est, sud e ovest");
+  for (const d of ["2026-12-21", "2026-06-21"]) {
+    const s = M.oreSoleGeom(d, "S", 44), o = M.oreSoleGeom(d, "O", 44), so = M.oreSoleGeom(d, "S,O", 44), ap = M.oreSoleGeom(d, "aperto", 44);
+    assert.ok(so >= Math.max(s, o) && so <= ap, `${d}: sud ${s}, ovest ${o}, angolo ${so}, aperto ${ap}`);
+    assert.equal(M.oreSoleGeom(d, "O,S", 44), so, "l'ordine non conta");
+  }
+  // le ore scritte d'inverno su un angolo sud-ovest crescono d'estate come la geometria dell'angolo
+  const p = { luce: 5, orient: "S,O", luce_data: "2026-12-21" };
+  assert.ok(M.luceOre(p, "2027-06-21", 44) > 5);
+});
+
+test("semi in germinazione: bagnatura leggera quando la superficie si asciuga, anche se il vaso è pieno", () => {
+  const oggi = "2026-11-08", carote = { id: "c", nome: "Carote", specie: "carota", fase: "auto", data_semina: "2026-11-06", tipo_data: "semina", colt: "vaso", vaso: 50, diametro: 50, num: 14, luce: 4, dove: "aperto", materiale: "terracotta" };
+  const aglio = { ...carote, id: "a", nome: "Aglio", specie: "aglio", data_semina: "2026-11-03", num: 4 };
+  const giorno = (date, rain, et0) => ({ date, tmax: 14, tmin: 6, et0, rain, prob: rain ? 90 : 5, wind: 8, sole: 0.5 });
+  const past = Array.from({ length: 10 }, (_, i) => giorno(M.addDays(oggi, i - 10), i === 9 ? 8 : 0, 1.1));
+  const fut = (et0, pioggia) => Array.from({ length: 7 }, (_, i) => giorno(M.addDays(oggi, i), pioggia && (i === 2 || i === 5) ? 10 : 0, et0));
+  const eventi = [{ id: "v", plantId: "c", tipo: "verifica", esito: "umido", data: oggi }];
+  const piano = (f) => M.pianoLocale({ piante: [carote, aglio], past, fut: f, eventi, oggi, lat: 44 });
+  const sec = piano(fut(1.1, false)), c = sec.piante.find((x) => x.id === "c"), a = sec.piante.find((x) => x.id === "a");
+  const bagnate = c.giorni.filter((g) => g.azione === "innaffia");
+  assert.equal(bagnate.length, 1, "una settimana asciutta di novembre: una bagnatura leggera");
+  assert.ok(bagnate[0].litri < 1 && /germinazione/.test(bagnate[0].motivo), "poca acqua, solo la superficie (" + bagnate[0].litri + " L)");
+  assert.ok(c.acqua > 0.9, "il vaso intero è ancora quasi pieno");
+  assert.ok(!a.giorni.some((g) => g.azione === "innaffia"), "aglio: lo spicchio è sotto, niente bagnature di superficie");
+  assert.ok(piano(fut(3, false)).piante.find((x) => x.id === "c").giorni.filter((g) => g.azione === "innaffia").length >= 3, "col caldo più spesso");
+  assert.equal(piano(fut(1.1, true)).piante.find((x) => x.id === "c").giorni.filter((g) => g.azione === "innaffia").length, 0, "la pioggia bagna la superficie");
+});
+
+test("emoji scelta per la pianta: solo emoji, la prima", () => {
+  assert.equal(M.emojiValida("🌵"), "🌵"); assert.equal(M.emojiValida(" 🌶️ x"), "🌶️"); assert.equal(M.emojiValida("🧑‍🌾🌵"), "🧑‍🌾");
+  assert.equal(M.emojiValida("ab"), ""); assert.equal(M.emojiValida(""), ""); assert.equal(M.emojiValida(null), ""); assert.equal(M.emojiValida("🇮🇹"), "🇮🇹");
+});
+
+test("controllo col dito: a che profondità, secondo il vaso", () => {
+  const oggi = "2026-11-09", base = { fase: "auto", colt: "vaso", num: 1, luce: 4, dove: "aperto" };
+  assert.equal(M.profonditaDito({ ...base, specie: "appartamento", vaso: 0.25 }, oggi, 44), 2);
+  assert.equal(M.profonditaDito({ ...base, specie: "nepenthes", vaso: 12 }, oggi, 44), 4);
+  assert.equal(M.profonditaDito({ ...base, specie: "aglio", vaso: 30, data_semina: "2026-11-03", tipo_data: "semina" }, oggi, 44), 5, "aglio: lo spicchio è sotto");
+  assert.equal(M.profonditaDito({ ...base, specie: "carota", vaso: 50, data_semina: "2026-11-06", tipo_data: "semina" }, oggi, 44), 1, "semi: la superficie");
+  assert.equal(M.profonditaDito({ ...base, specie: "pomodoro", colt: "terra" }, oggi, 44), 5);
+  assert.match(M.testoDito(3), /3\u00a0cm \(fino alla prima falange\)/); assert.match(M.testoDito(1), /superficie/);
+});
+
+test("raccolto: totali dell'anno, grammi e chili insieme, pezzi e mazzi a parte", () => {
+  const ev = [
+    { id: "1", plantId: "c", tipo: "raccolto", data: "2027-04-02", quantita: 350, unita: "g" },
+    { id: "2", plantId: "c", tipo: "raccolto", data: "2027-04-20", quantita: 1.2, unita: "kg" },
+    { id: "3", plantId: "c", tipo: "raccolto", data: "2027-05-01", quantita: 6, unita: "pezzi" },
+    { id: "4", plantId: "c", tipo: "raccolto", data: "2026-12-30", quantita: 1, unita: "kg" },
+    { id: "5", plantId: "b", tipo: "raccolto", data: "2027-06-01", quantita: 2, unita: "mazzi" }];
+  const t = M.totaleRaccolto(ev, "c", "2027-01-01");
+  assert.deepEqual([t.kg, t.pezzi, t.volte, t.ultimo], [1.55, 6, 3, "2027-05-01"]);
+  assert.equal(M.testoRaccolto(t), "1,55 kg + 6 pezzi");
+  assert.equal(M.testoRaccolto(M.totaleRaccolto(ev, "b")), "2 mazzi");
+  assert.equal(M.testoRaccolto(M.totaleRaccolto([{ id: "x", plantId: "z", tipo: "raccolto", data: "2027-01-01", quantita: 300, unita: "g" }], "z")), "300 g");
+  assert.ok(M.daRaccogliere({ specie: "carota" }) && M.daRaccogliere({ specie: "basilico" }) && !M.daRaccogliere({ specie: "nepenthes" }));
+  // non conta come acqua
+  assert.equal(M.ultimaInnaffiatura({ id: "c" }, ev), "");
+});

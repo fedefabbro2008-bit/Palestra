@@ -1,4 +1,4 @@
-// Funzioni del sito: dati, connettore per Claude, Telegram (webhook e bot orario), Siri.
+// Funzioni del sito: dati, connettore per Claude, Telegram (webhook e bot orario).
 // Si lancia con:  node --import ./test/registra-finto.mjs --test test/server.test.mjs   (dalla cartella giardino-netlify)
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,6 @@ const dati = (await import("../netlify/functions/dati.mjs")).default;
 const mcp = (await import("../netlify/functions/mcp.mjs")).default;
 const telegram = (await import("../netlify/functions/telegram.mjs")).default;
 const bot = (await import("../netlify/functions/bot.mjs")).default;
-const siri = (await import("../netlify/functions/siri.mjs")).default;
 
 const B = "https://giardino.test", CODE = "GRD-ABCDEF-GHJKLM-NPQRST-UVWXYZ", H = { "x-giardino-code": CODE };
 async function call(fn, path, { method = "GET", body, headers = {} } = {}) {
@@ -70,6 +69,22 @@ test("dati: risposte grandi compresse (gzip) se il telefono le accetta, in chiar
   const piccola = await chiedi({ "accept-encoding": "gzip" }, "/api/dati?op=versione");
   assert.equal(piccola.headers.get("content-encoding"), null); assert.ok((await piccola.json()).versione);
   assert.equal((await dati(new Request(B + "/api/dati", { headers: { "accept-encoding": "gzip" } }))).status, 400);
+});
+
+test("riconoscimento da foto (Pl@ntNet): chiave solo sul sito, specie dell'app dal nome", async () => {
+  const foto = "data:image/jpeg;base64," + Buffer.from("finta foto").toString("base64");
+  const chiedi = (b, h = H) => call(dati, "/api/dati?op=riconosci", { method: "POST", headers: h, body: b });
+  delete process.env.PLANTNET_KEY;
+  assert.equal((await chiedi({ immagine: foto })).status, 503, "senza chiave: non attivo");
+  process.env.PLANTNET_KEY = "prova";
+  assert.equal((await chiedi({ immagine: foto }, {})).status, 400, "serve il codice dell'app");
+  assert.equal((await chiedi({ immagine: "ciao" })).status, 400, "solo foto");
+  const r = (await chiedi({ immagine: foto })).body;
+  assert.equal(r.risultati.length, 3); assert.equal(r.rimasti, 499);
+  assert.deepEqual(r.risultati.map((x) => [x.specie, x.probabilita]), [["nepenthes", 82], ["appartamento", 7], [null, 3]]);
+  assert.equal(r.risultati[0].nome, "Pianta brocca"); assert.equal(r.risultati[2].nome, "Strelitzia reginae", "senza nome italiano: lo scientifico");
+  process.env.PLANTNET_KEY = "sbagliata"; assert.equal((await chiedi({ immagine: foto })).status, 502);
+  delete process.env.PLANTNET_KEY;
 });
 
 test("meteo: se Open-Meteo non risponde, MET Norway con i giorni passati dall'ultimo meteo buono", async () => {
@@ -148,6 +163,15 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   assert.equal(m.isError, false);
   assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").zona, "Orto");
   assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { colore: "rosso" } })).isError, true);
+  // raccolto dal connettore: quantità e unità obbligatorie
+  assert.equal((await strumento("registra", { pianta: "agl", tipo: "raccolto", quantita: 3 })).isError, true);
+  assert.equal((await strumento("registra", { pianta: "agl", tipo: "raccolto", quantita: 3, unita: "pezzi" })).isError, false);
+  { const e = (await leggiDati()).eventi.filter((x) => x.tipo === "raccolto").pop(); assert.deepEqual([e.quantita, e.unita, e.fonte], [3, "pezzi", "claude"]); }
+  // verso dove guarda: anche due direzioni (angolo), scritte in qualunque ordine; sigle sbagliate rifiutate
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { orient: "O, S", luce_data: OGGI } })).isError, false);
+  assert.equal((await leggiDati()).plants.find((p) => p.id === "agl").orient, "S,O");
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { orient: "sopra" } })).isError, true);
+  await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { orient: "", luce_data: "" } });
   // temperatura in casa
   assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "agl", campi: { tcasa: { inverno: 18 } } })).isError, false);
   assert.deepEqual((await leggiDati()).plants.find((p) => p.id === "agl").tcasa, { inverno: 18 });
@@ -309,20 +333,34 @@ test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora um
   assert.equal(inviati.filter((x) => x[0] === "sendMessage").length, 0, "una volta al giorno");
 });
 
-test("Siri: codice in intestazione, piano di oggi a voce, «ho innaffiato» per zona", async () => {
-  assert.equal((await call(siri, "/api/siri/oggi", { method: "POST" })).status, 401);
-  assert.equal((await call(siri, "/api/siri/boh", { method: "POST", headers: H })).status, 404);
-  assert.equal((await call(siri, "/api/siri/fatto", { headers: H })).status, 405);
-  const oggi = (await call(siri, "/api/siri/oggi", { method: "POST", headers: H })).body;
-  assert.match(oggi, /Zucchine, [\d,]+ litri, circa/);
-  assert.doesNotMatch(oggi, /[≈½¼¾]/);
-  assert.match((await call(siri, "/api/siri/oggi?zona=cantina", { headers: H })).body, /Non trovo la zona cantina/);
-  const r = await call(siri, "/api/siri/fatto?zona=orto", { method: "POST", headers: H });
-  assert.match(r.body, /Ho segnato come annaffiate: Zucchine\./);
-  assert.ok((await leggiDati()).eventi.some((e) => e.plantId === "zuc" && e.fonte === "siri"));
-  assert.match((await call(siri, "/api/siri/fatto?zona=Orto", { method: "POST", headers: H })).body, /niente da innaffiare in Orto/);
-  assert.match((await call(siri, "/api/siri/fatto?pianta=pomo", { method: "POST", headers: H })).body, /già segnato|Pomodoro/);
-  assert.match((await call(siri, "/api/siri/fatto?pianta=cactus", { method: "POST", headers: H })).body, /Non trovo la pianta cactus/);
+test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della sera sì, anche senza mattino)", async () => {
+  const st = getStore({ name: "giardino" }), t0 = await st.get("t-" + CODE, { type: "json" });
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
+  const giro = async (notifiche) => {
+    const t = await st.get("t-" + CODE, { type: "json" });
+    await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: null, notificati: {} });
+    await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12, notifiche } } } });
+    inviati.length = 0; await bot();
+    const testi = inviati.filter((x) => x[0] === "sendMessage").map((x) => x[1].text);
+    return { mattino: testi.some((x) => x.includes("Giardino —")), sera: testi.some((x) => x.includes("Ancora da innaffiare")), backup: inviati.some((x) => x[0] === "sendDocument"), n: testi.length };
+  };
+  const tutte = await giro({});
+  assert.ok(tutte.mattino && tutte.sera, "con tutto acceso: mattino e sera");
+  const senzaMattino = await giro({ mattina: false, backup: false });
+  assert.ok(!senzaMattino.mattino, "mattino spento"); assert.ok(senzaMattino.sera, "la sera arriva lo stesso, con le piante di oggi"); assert.ok(!senzaMattino.backup, "backup spento");
+  const nessuna = await giro(Object.fromEntries(["mattina", "sera", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"].map((k) => [k, false])));
+  assert.equal(nessuna.n, 0, "tutto spento: nessun messaggio"); assert.ok(!nessuna.backup);
+  const t = await st.get("t-" + CODE, { type: "json" }), oggi = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+  assert.equal(t.ultimo_invio, oggi); assert.equal(t.ultimo_avviso_sera, oggi); assert.deepEqual(t.notificati, {}, "nessuna pianta segnata: domani niente innaffiature presunte");
+  // dal connettore: Claude riaccende il mattino e spegne il riepilogo; le altre restano come sono
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  const r = await strumento("impostazioni", { notifiche: { mattina: true, riepilogo: false } });
+  assert.match(r.content[0].text, /notifica mattina accesa.*notifica riepilogo spenta/);
+  const n = (await leggiDati()).impostazioni.notifiche;
+  assert.ok(!("mattina" in n) && n.riepilogo === false && n.sera === false && n.crediti === false);
+  assert.ok((await strumento("impostazioni", { notifiche: { boh: false } })).isError, "tipo sconosciuto");
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
+  await st.setJSON("t-" + CODE, { ...t0 });
 });
 
 test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calcolo automatico", async () => {

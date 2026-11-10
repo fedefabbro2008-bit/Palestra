@@ -1,5 +1,5 @@
 import { VERSIONE } from "../lib/versione.mjs";
-import { store, reply, comprimi, codiceDa, newToken, crediti, correggiCrediti, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
+import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, crediti, correggiCrediti, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
@@ -16,6 +16,7 @@ import { store, reply, comprimi, codiceDa, newToken, crediti, correggiCrediti, m
         Così le modifiche fatte nel frattempo da Claude o da Telegram non si perdono.
    GET/POST /api/dati?op=mcp          { action: on | new | off | write, on }   chiave per Claude
    GET/POST /api/dati?op=telegram     { action: token, token } | { action: test } | { action: off }
+   POST /api/dati?op=riconosci       { immagine: data URL JPEG } → { risultati:[{nome, scientifico, specie, probabilita}] } (Pl@ntNet)
    GET  /api/dati?op=versione         → { versione }  impronta della versione online, senza codice (per il controllo dopo la pubblicazione) */
 
 export const config = { path: "/api/dati", rateLimit: { windowSize: 60, windowLimit: 120, aggregateBy: ["ip", "domain"] } };
@@ -39,6 +40,11 @@ async function gestisci(request) {
         const { key, ...c } = await correggiCrediti(st, n); return reply(c);
       }
       const { key, ...c } = await crediti(st); return reply(c);
+    }
+    if (op === "riconosci") {   // foto della pianta → specie più probabili (Pl@ntNet)
+      if (request.method !== "POST") return reply({ error: "metodo non consentito" }, 405);
+      const b = await request.json().catch(() => null), r = await riconosciPianta(b?.immagine);
+      return r.errore ? reply({ error: r.errore }, r.codice || 502) : reply(r);
     }
     if (op === "meteo") {   // l'app non raggiunge Open-Meteo: il meteo del server (Open-Meteo o la riserva MET Norway)
       const cur = await leggi(st, code), l = cur?.data?.location;

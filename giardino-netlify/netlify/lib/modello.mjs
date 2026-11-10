@@ -388,22 +388,51 @@ const LUCE_DA_ESPO = {sole:8, mezzombra:4, ombra:2};
 /* Sole diretto secondo la stagione. Con l'orientamento (verso dove guarda il balcone o la finestra) le ore di sole
    scritte dall'utente valgono per il giorno in cui le ha scritte (luce_data); negli altri giorni si scalano con la
    geometria del sole: ore in cui il sole è alto almeno 8° e davanti alla parete (entro 85° dalla sua direzione).
-   «aperto» = nessuna parete (orto, giardino): conta tutto il giorno. Senza orientamento resta il numero fisso. */
+   «aperto» = nessuna parete (orto, giardino): conta tutto il giorno. Senza orientamento resta il numero fisso.
+   Anche più direzioni insieme ("S,O": balcone d'angolo): il sole conta quando è davanti ad almeno una. */
 export const ORIENTAMENTI = {N:0, NE:45, E:90, SE:135, S:180, SO:225, O:270, NO:315, aperto:null};
+const ORDINE_ORIENT = ['N','NE','E','SE','S','SO','O','NO'];
+// "O, S" → "S,O" (ordine della bussola, senza doppioni né sigle sconosciute); con «aperto» resta solo «aperto»
+const ORIENT_MEMO = new Map();   // poche scritture diverse, chieste a ogni calcolo
+export function orientamento(o){
+  if(!o) return '';
+  let r=ORIENT_MEMO.get(o);
+  if(r===undefined){ const v=new Set(String(o).split(/[\s,;]+/).map(x=>x.trim()).filter(x=>x in ORIENTAMENTI));
+    r=v.has('aperto') ? 'aperto' : ORDINE_ORIENT.filter(x=>v.has(x)).join(','); if(ORIENT_MEMO.size>200) ORIENT_MEMO.clear(); ORIENT_MEMO.set(o,r); }
+  return r;
+}
+const NOMI_ORIENT = {N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SO:'sud-ovest',O:'ovest',NO:'nord-ovest'};
+// emoji scelta come «foto» della pianta: la prima emoji del testo (anche composte, bandiere, tasti), altrimenti niente
+let SEGMENTA, EMOJI_MEMO = new Map();   // l'icona si chiede a ogni riga disegnata: il risultato si ricorda
+export function emojiValida(s){
+  if(!s) return '';
+  let r=EMOJI_MEMO.get(s); if(r!==undefined) return r;
+  const t=String(s).trim();
+  if(!t) r='';
+  else { SEGMENTA ??= typeof Intl!=='undefined'&&Intl.Segmenter ? new Intl.Segmenter('it',{granularity:'grapheme'}) : null;
+    const g=SEGMENTA ? SEGMENTA.segment(t)[Symbol.iterator]().next().value?.segment : [...t][0];
+    r=g&&/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(g)?g:''; }
+  if(EMOJI_MEMO.size>300) EMOJI_MEMO.clear(); EMOJI_MEMO.set(s,r); return r;
+}
+export function nomeOrientamento(o){
+  const v=orientamento(o); if(!v) return ''; if(v==='aperto') return 'aperto';
+  const n=v.split(',').map(x=>NOMI_ORIENT[x]); return 'verso '+(n.length>1?n.slice(0,-1).join(', ')+' e '+n[n.length-1]:n[0]);
+}
 const SOLE_CACHE = new Map();
 export function oreSoleGeom(iso, orient, lat){
-  const k=iso+'|'+orient+'|'+Math.round((lat??44)*10);
+  const o=orientamento(orient), k=iso+'|'+o+'|'+Math.round((lat??44)*10);
   if(SOLE_CACHE.has(k)) return SOLE_CACHE.get(k);
   const r=Math.PI/180, phi=(lat??44)*r, n=(giornoAnno(iso)+1);
-  const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), A=ORIENTAMENTI[orient];
+  const dec=23.44*r*Math.sin(2*Math.PI*(284+n)/365), dir=o&&o!=='aperto'?o.split(',').map(x=>ORIENTAMENTI[x]):null;
   let min=0;
+  const sp=Math.sin(phi), cp=Math.cos(phi), sd=Math.sin(dec), ss=sp*sd, cc=cp*Math.cos(dec), soglia=Math.sin(8*r);
   for(let m=0;m<1440;m+=5){
-    const w=(m/60-12)*15*r, se=Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(w);
-    if(se<Math.sin(8*r)) continue;
-    if(A!=null && A!==undefined){
-      const el=Math.asin(se), ca=(Math.sin(dec)-Math.sin(el)*Math.sin(phi))/(Math.cos(el)*Math.cos(phi));
+    const w=(m/60-12)*15*r, se=ss+cc*Math.cos(w);
+    if(se<soglia) continue;
+    if(dir){
+      const el=Math.asin(se), ca=(sd-se*sp)/(Math.cos(el)*cp);
       let az=Math.acos(Math.max(-1,Math.min(1,ca)))/r; if(w>0) az=360-az;          // azimut da nord, in senso orario
-      const diff=Math.abs(((az-A+540)%360)-180); if(diff>85) continue;
+      if(!dir.some(A=>Math.abs(((az-A+540)%360)-180)<=85)) continue;               // davanti ad almeno una parete
     }
     min+=5;
   }
@@ -411,7 +440,7 @@ export function oreSoleGeom(iso, orient, lat){
 }
 export function luceOre(p, oggi, lat){
   const v=Number(p.luce), h=p.luce!=null && p.luce!=='' && isFinite(v) ? Math.max(0,Math.min(14,v)) : (LUCE_DA_ESPO[p.espo] ?? 6);
-  if(!oggi || !p.orient || !(p.orient in ORIENTAMENTI) || !/^\d{4}-\d{2}-\d{2}$/.test(p.luce_data||'') || p.luce_data===oggi) return h;
+  if(!oggi || !orientamento(p.orient) || !/^\d{4}-\d{2}-\d{2}$/.test(p.luce_data||'') || p.luce_data===oggi) return h;
   const g0=oreSoleGeom(p.luce_data,p.orient,lat), g=oreSoleGeom(oggi,p.orient,lat), max=oreSoleGeom(oggi,'aperto',lat);
   // in proporzione; se quel giorno il sole geometrico era quasi nullo (parete a nord d'inverno), si aggiunge la differenza
   const x = g0>=1.5 ? h*g/g0 : h+0.7*(g-g0);
@@ -486,19 +515,49 @@ export function pioggiaPresa(p, eventi){
 // Se «alle» è prima di «dalle» l'intervallo passa la mezzanotte: dalle = ieri (es. dalle 17:28 di ieri alle 07:15 di oggi).
 export function pioggiaMisurataNelleOre(misure, giorno, dalle, alle, tz){
   const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; };
-  let a=min(dalle); const b=min(alle);
+  const a=min(dalle), b=min(alle);
   if(a==null||b==null||b===a) return {mm:0, fino:null, completo:false, notte:false};
-  const notte=b<a; if(notte) a-=1440;   // minuti contati dall'inizio di «giorno»: ieri sera è negativo
-  const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
-  const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return {d:p.year+'-'+p.month+'-'+p.day, m:+p.hour*60+(+p.minute)}; };
-  const ieri=addDays(giorno,-1), domani=addDays(giorno,1);
-  const usa=(serie,durata)=>{ let mm=0, ultimo=null, n=0;
-    for(const [t,v] of Object.entries(serie||{})){ const e=loc(t), fine=e.d===giorno?e.m:e.d===ieri?e.m-1440:(e.d===domani&&e.m===0?1440:null); if(fine==null) continue;
-      if(fine>a) ultimo=Math.max(ultimo??-Infinity,fine); const sov=Math.max(0,Math.min(b,fine)-Math.max(a,fine-durata)); if(sov>0){ mm+=(+v||0)*sov/durata; n++; } }
-    return {mm:+mm.toFixed(1), ultimo, n}; };
-  let r=usa(misure?.quarti,15); if(!r.n && r.ultimo==null) r=usa(misure?.ore,60);
-  const u=r.ultimo, fino=u!=null?String(Math.floor(((u%1440)+1440)%1440/60)).padStart(2,'0')+':'+String(((u%60)+60)%60).padStart(2,'0'):null;
-  return {mm:r.mm, fino, completo:u!=null&&u>=b, notte};
+  const notte=b<a, r=pioggiaMisurataTra(misure, {d:notte?addDays(giorno,-1):giorno, t:dalle}, {d:giorno, t:alle}, tz);
+  return {mm:r.mm, fino:r.ultima?r.ultima.t:null, completo:r.completo, notte};
+}
+// Pioggia MISURATA tra due momenti anche di giorni diversi ({d:'YYYY-MM-DD', t:'HH:MM'}, ora locale): la pianta di casa
+// messa fuori per qualche giorno. Quarti d'ora o ore della stazione (ultimi 6 giorni); per i giorni interi più vecchi
+// i totali del giorno (misure.giorni, 60 giorni). Restituisce i mm in tutto e per giorno (per il bilancio di ogni giorno),
+// fin dove arrivano le misure («ultima») e i giorni senza misure.
+const FMT_TZ=new Map();
+export function pioggiaMisurataTra(misure, da, a, tz){
+  const min=t=>{ const [h,m]=String(t||'').split(':').map(Number); return isFinite(h)?h*60+(m||0):null; };
+  const ass=(x)=>x?.d&&min(x.t)!=null&&isFinite(numGiorno(x.d))?numGiorno(x.d)*1440+min(x.t):NaN;
+  const A=ass(da), B=ass(a), vuoto={mm:0, giorni:{}, ultima:null, completo:false, senzaDati:[], conTotali:false};
+  if(!(B>A)) return vuoto;
+  const z=tz||'Europe/Rome';
+  let fmt=FMT_TZ.get(z); if(!fmt){ fmt=new Intl.DateTimeFormat('en-CA',{timeZone:z,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}); FMT_TZ.set(z,fmt); }
+  const loc=iso=>{ const p=Object.fromEntries(fmt.formatToParts(new Date(iso)).map(x=>[x.type,x.value])); return numGiorno(p.year+'-'+p.month+'-'+p.day)*1440+(+p.hour%24)*60+(+p.minute); };
+  const giorni={}, coperti=new Set(); let ultimo=null;
+  const usa=(serie,durata,salta)=>{ const fatti=new Set();
+    for(const [t,v] of Object.entries(serie||{})){
+      const fine=loc(t); if(!isFinite(fine)) continue;
+      const g=Math.floor((fine-1)/1440); if(salta&&salta.has(g)) continue;
+      fatti.add(g); ultimo=Math.max(ultimo??-Infinity,fine);
+      const sov=Math.max(0,Math.min(B,fine)-Math.max(A,fine-durata));
+      if(sov>0){ const d=isoDaNum(Math.floor((Math.min(B,fine)-1)/1440)); giorni[d]=(giorni[d]||0)+(+v||0)*sov/durata; }
+    }
+    return fatti; };
+  const q=usa(misure?.quarti,15); q.forEach(g=>coperti.add(g));
+  usa(misure?.ore,60,q).forEach(g=>coperti.add(g));   // le ore solo nei giorni senza quarti d'ora
+  // giorni interi senza misure ora per ora: il totale del giorno
+  let finoTotali=-Infinity, conTotali=false; const senzaDati=[];
+  for(let D=Math.floor(A/1440); D*1440<B; D++){
+    if(coperti.has(D)) continue;
+    const g=isoDaNum(D), tot=misure?.giorni?.[g];
+    if(tot!=null&&D*1440>=A&&(D+1)*1440<=B){ giorni[g]=(giorni[g]||0)+(+tot||0); conTotali=true; finoTotali=Math.max(finoTotali,(D+1)*1440); }
+    else senzaDati.push(g);
+  }
+  const fino=Math.max(ultimo??-Infinity, finoTotali), tondi={};
+  for(const [d,v] of Object.entries(giorni)) if(v>=0.05) tondi[d]=+v.toFixed(1);
+  const mm=+Object.values(giorni).reduce((x,y)=>x+y,0).toFixed(1);
+  const ultima=isFinite(ultimo)?{d:isoDaNum(Math.floor(ultimo/1440)), t:String(Math.floor((ultimo%1440)/60)).padStart(2,'0')+':'+String(ultimo%60).padStart(2,'0')}:null;
+  return {mm, giorni:tondi, ultima, completo:fino>=B && !senzaDati.some(g=>numGiorno(g)*1440<Math.min(B,fino)), senzaDati, conTotali};
 }
 export const litriDaPioggia = (k, mm) => +Math.max(0,(mm||0)*k.pioggiaArea).toFixed(2);
 export function ultimaInnaffiatura(p, eventi){ return [...dateInnaffiate(p,eventi)].sort().pop()||''; }
@@ -584,7 +643,7 @@ export function params(p, ctx={}){
   });
   if(+p.area>0){ kcA*=(+p.area)/chioma; chioma=+p.area; }
   const calib = ctx.eventi ? calibrazione(ctx.eventi, p.id, oggi) : 1;
-  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',faseRitmo:fe.ritmo??null,membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
+  const base={sp,fa,fase:fe.fase,faseNome:nomeFase(p.specie,fe.fase),faseAuto:fe.auto,faseNota:fe.nota||'',faseRitmo:fe.ritmo??null,faseEta:fe.eta??null,membri,nTot,num:membri[0].num,h,fl,interno,serra,calib,
     oggi, lat:ctx.lat, tcasa:interno?tempCasa(p):null};
   if(p.colt==='vaso'){
     const V=Math.max(0.3,+p.vaso||10);
@@ -709,6 +768,44 @@ export function inVacanza(v, data){ return !!(v&&v.dal&&v.al&&data>=v.dal&&data<
 // la stima dei giorni passati, se nessuno le ha innaffiate negli ultimi 3 giorni. Terreno medio: capacità di campo 0,32, appassimento 0,12.
 const CAMPO=0.32, APPASS=0.12;
 export function deficitDaSuolo(theta){ return Math.max(0,Math.min(1,(CAMPO-theta)/(CAMPO-APPASS))); }
+// Semi appena seminati: stanno nel primo centimetro, che si asciuga molto prima del resto del vaso. Finché germinano
+// si segue anche la superficie: quanta acqua ha tirato su l'aria (ET₀) dall'ultima volta che si è bagnata (pioggia,
+// innaffiatura, «era umida»); oltre ~4 mm la superficie è asciutta e basta una bagnatura leggera (~3 mm sul vaso).
+// Non per spicchi, tuberi e semi grossi piantati a fondo (aglio, patata, fagioli, piselli).
+const SEMI_PROFONDI = new Set(['aglio','patata','fagiolo','pisello']);
+const SUPERFICIE_MM = 4, BAGNATURA_MM = 3;
+// A che profondità infilare il dito per il controllo: dove sono le radici che bevono, secondo il vaso.
+// Semi appena seminati: la superficie (1 cm). Vasetti fino a 1 L: 2 cm; fino a 5 L: 3 cm; fino a 20 L: 4 cm; più grandi e piena terra: 5 cm.
+export function profonditaDito(p, oggi, lat){
+  const fe=faseEffettiva(p, oggi, lat), sp=SPECIE[p.specie]||SPECIE.altro;
+  if(fe.fase==='germinazione' && sp.ann && p.tipo_data!=='trapianto' && !SEMI_PROFONDI.has(p.specie)) return 1;
+  if(p.colt!=='vaso') return 5;
+  const V=+p.vaso||10; return V<=1?2:V<=5?3:V<=20?4:5;
+}
+// Raccolto: eventi «raccolto» con quantità e unità (g, kg, pezzi, mazzi). Totale dal giorno «dal» (es. inizio anno):
+// grammi e chili insieme in kg, pezzi e mazzi a parte.
+export const UNITA_RACCOLTO = ['g','kg','pezzi','mazzi'];
+export const daRaccogliere = p => ['orto','aromatiche','frutti'].includes((SPECIE[p.specie]||SPECIE.altro).cat);
+export function totaleRaccolto(eventi, pid, dal=''){
+  const t={kg:0, pezzi:0, mazzi:0, volte:0, ultimo:''};
+  for(const e of eventiValidi(eventi,pid)){ if(e.tipo!=='raccolto'||e.data<dal) continue; const q=+e.quantita;
+    if(!(q>0)) continue; t.volte++; if(e.data>t.ultimo) t.ultimo=e.data;
+    if(e.unita==='g') t.kg+=q/1000; else if(e.unita==='kg') t.kg+=q; else if(e.unita==='mazzi') t.mazzi+=q; else t.pezzi+=q; }
+  t.kg=+t.kg.toFixed(3); return t;
+}
+export function testoRaccolto(t){
+  const p=[]; if(t.kg>0) p.push(t.kg<1?Math.round(t.kg*1000)+' g':nf(2).format(Math.round(t.kg*100)/100)+' kg');
+  if(t.pezzi>0) p.push(t.pezzi+(t.pezzi===1?' pezzo':' pezzi')); if(t.mazzi>0) p.push(t.mazzi+(t.mazzi===1?' mazzo':' mazzi'));
+  return p.join(' + ');
+}
+export const testoDito = cm => cm<=1 ? 'tocca la superficie del terriccio (il primo centimetro)' : 'infila un dito nel terriccio per '+cm+'\u00a0cm'+(cm<=3?' (fino alla prima falange)':' (fino alla seconda falange)');
+function germinazione(p, k, oggi, lat){
+  if(k.fase!=='germinazione' || p.tipo_data==='trapianto' || SEMI_PROFONDI.has(p.specie) || !k.sp?.ann) return 0;
+  const fine=k.sp.ciclo?.[0];   // età e ritmo li ha già calcolati params()
+  if(!(fine>0) || k.faseEta==null) return 0;
+  return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,k.faseEta))/Math.max(0.2, k.faseRitmo||1)));   // giorni che restano
+}
+const evapSuperficie = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra) : (d?.et0||0)*fattoreVaso(k,d);
 export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
   const out={avvisi:[], piante:[]}, chiusiBagnati=new Set();
   if(!fut.length) return out;
@@ -725,6 +822,13 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
     let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
+    // germinazione: ET₀ dall'ultima volta che la superficie si è bagnata (giorni passati fino a ieri)
+    const gg=germinazione(p,k,oggi,lat), bagnaSup=Math.max(0.05,(k.vaso?k.Apot:Math.min(k.area,1))*BAGNATURA_MM);
+    let sup=0;
+    if(gg){ for(const d of past){ if(d.date>=oggi) continue; const wet=fatte.has(d.date)||(presa[d.date]||0)>0||oss[d.date]==='umido'||(p.dove==='aperto'&&(d.rain||0)>=2);
+      sup=wet?0:sup+evapSuperficie(k,d); }
+      if(fatte.has(oggi)||(presa[oggi]||0)>0||oss[oggi]==='umido') sup=-1;   // bagnata oggi: si riparte da domani
+    }
     fut.forEach((d,i)=>{
       const pl=pioggiaL(p,k,d.date>=oggi?pioggiaAttesa(d):d);
       if(k.chiuso && pl>0 && dep+consumoL(k,d)-pl < -0.1*k.tawL) chiusiBagnati.add(p.nome);
@@ -747,6 +851,18 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
       }
       else if(end>=k.rawL*0.8) g={data:d.date,azione:'controlla',litri:0,momento:'indifferente',motivo:'Tocca il terriccio: se asciutto a 2–3 cm, innaffia'};
       else g={data:d.date,azione:'salta',litri:0,momento:'indifferente',motivo:'Terriccio ancora umido'};
+      // semi in germinazione: la superficie si asciuga prima del vaso, una bagnatura leggera quando serve
+      if(gg && i<gg){
+        if(sup<0) sup=0;
+        else if(g.azione==='innaffia' || (p.dove==='aperto' && pioggiaAttesa(d).rain>=2)) sup=0;
+        else if(g.azione!=='salta' || !inVacanza(vacanza,d.date)){
+          sup+=evapSuperficie(k,d);
+          if(sup>=SUPERFICIE_MM && !fatte.has(d.date)){
+            g={data:d.date,azione:'innaffia',litri:+bagnaSup.toFixed(2),momento,motivo:'Semi in germinazione: la superficie è asciutta. Bagna leggermente (spruzzino o annaffiatoio con la cipolla), non serve inzuppare il vaso'};
+            end=Math.max(0,end-bagnaSup); sup=0;
+          }
+        }
+      }
       giorni.push(g); dep=end;
     });
     const prima=giorni.find(g=>g.azione==='innaffia'), ctrl=giorni.find(g=>g.azione==='controlla');
@@ -783,7 +899,8 @@ export function sintesiSettimana(piano, fut, piante){
   if(no.length) t+=' '+(no.length===1?no[0]+': niente acqua':no.slice(0,-1).join(', ')+' e '+no.at(-1)+': niente acqua')+(rain>=10&&piante.some(p=>!alCoperto(p)&&no.includes(p.nome))?', basta la pioggia o la riserva.':', basta la riserva.');
   return t;
 }
-const fmtN=(n,d=1)=>(Math.round(n*10**d)/10**d).toLocaleString('it-IT');
+const NF=[]; const nf=d=>NF[d]||(NF[d]=new Intl.NumberFormat('it-IT',{maximumFractionDigits:Math.max(d,3)}));   // un formattatore per tipo, creato una volta
+const fmtN=(n,d=1)=>nf(d).format(Math.round(n*10**d)/10**d);
 
 /* ---------------- Dosi pratiche ---------------- */
 const FRAZ={0.25:'¼',0.5:'½',0.75:'¾'};

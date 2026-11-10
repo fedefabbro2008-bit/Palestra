@@ -1,6 +1,6 @@
 // Giardino · controllo del sito online (GitHub Actions, dopo ogni pubblicazione e una volta al giorno).
 // 1. aspetta che Netlify serva la versione di questo commit (impronta in netlify/lib/versione.mjs);
-// 2. prova pagina, app installabile, dati, connettore di Claude, Siri e webhook di Telegram senza credenziali
+// 2. prova pagina, app installabile, dati, connettore di Claude e webhook di Telegram senza credenziali
 //    (devono rispondere e rifiutare: così si vede che le funzioni sono vive senza toccare i dati);
 // 3. se nei segreti del repository ci sono GIARDINO_CODE e/o GIARDINO_MCP, prova anche in sola lettura i dati veri.
 // Nessuna scrittura. Poche richieste: costo per Netlify trascurabile. Uscita ≠ 0 = qualcosa non va (GitHub manda l'email).
@@ -36,7 +36,6 @@ await prova("connettore di Claude: chiave sbagliata rifiutata", async () => {
   const r = await chiedi("/mcp/AAAAAAAAAAAAAAAAAAAAAAAAAA", { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) });
   deve(r.status === 401, "stato " + r.status);
 });
-await prova("Siri: senza codice rifiuta", async () => { const r = await chiedi("/api/siri/oggi", { method: "POST" }); deve(r.status === 401 && /codice/.test(await r.text()), "stato " + r.status); });
 await prova("Telegram: webhook sconosciuto rifiutato", async () => { const r = await chiedi("/api/telegram/" + "A".repeat(32), { method: "POST", body: "{}" }); deve(r.status === 403, "stato " + r.status); });
 
 // 3. con i segreti (facoltativi), sola lettura
@@ -44,7 +43,6 @@ const CODE = process.env.GIARDINO_CODE, MCP = process.env.GIARDINO_MCP;
 if (CODE) {
   const H = { "x-giardino-code": CODE };
   await prova("dati veri leggibili", async () => { const r = await chiedi("/api/dati", { headers: H }); const j = await r.json(); deve(r.status === 200 && j.data?.plants?.length, "stato " + r.status); });
-  await prova("Siri: piano di oggi", async () => { const r = await chiedi("/api/siri/oggi", { headers: H }); deve(r.status === 200 && (await r.text()).length > 10, "stato " + r.status); });
 } else console.log("– GIARDINO_CODE non impostato: salto le prove sui dati veri");
 if (MCP) {
   await prova("connettore di Claude: strumento giardino", async () => {

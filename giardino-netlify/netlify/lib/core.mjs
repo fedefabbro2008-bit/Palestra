@@ -35,6 +35,10 @@ export const siteUrl = (req) => (globalThis.Netlify?.env?.get("URL")) || new URL
 
 /* ---------------- Dati ---------------- */
 export const IMP_DEF = { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 19 };
+// Notifiche Telegram che si spengono dall'app (Impostazioni → Notifiche): impostazioni.notifiche = { tipo: false }, accese se
+// mancano. Le risposte ai comandi (/oggi, pulsanti) arrivano sempre, e così il messaggio di riserva da GitHub (sito fermo).
+export const NOTIFICHE = ["mattina", "sera", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"];
+export const notifica = (imp, tipo) => imp?.notifiche?.[tipo] !== false;
 export const vuoto = () => ({ location: null, plants: [], impostazioni: { ...IMP_DEF }, vacanza: null, eventi: [], piano_claude: null, meteo_manual: null });
 export const CAMPI = ["location", "plants", "impostazioni", "vacanza", "meteo_manual", "piano_claude"];
 
@@ -65,7 +69,7 @@ export function pota(ev) {
 
 /* ---------------- Meteo (Open-Meteo) ----------------
    Due richieste in parallelo (vedi M.urlMeteo); il risultato resta nell'archivio 15 minuti, nella stessa ora:
-   bot, Claude, Telegram e Siri lo condividono invece di richiederlo ogni volta (risposte più rapide, meno tempo di calcolo). */
+   bot, Claude e Telegram lo condividono invece di richiederlo ogni volta (risposte più rapide, meno tempo di calcolo). */
 const METEO_VALIDO = 15 * 60e3;
 export async function meteo(lat, lon) {
   const key = `c-meteo-${(+lat).toFixed(2)},${(+lon).toFixed(2)}`, st = store(), ora = new Date();
@@ -219,7 +223,8 @@ export async function tg(token, method, payload, { ignora = false } = {}) {
   if (!j.ok) { if (ignora) { console.warn(`Telegram ${method}: ${j.description || r.status}`); return null; } throw new Error(`Telegram ${method}: ${j.description || r.status}`); }
   return j.result;
 }
-const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toLocaleString("it-IT");
+const NF = new Intl.NumberFormat("it-IT");   // creato una volta: toLocaleString ne creava uno a ogni numero
+const fmt = (n, d = 1) => NF.format(Math.round(n * 10 ** d) / 10 ** d);
 export const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const corto = (s) => { s = String(s || ""); return s.length > 18 ? s.slice(0, 17) + "…" : s; };
 export const TIPI = { f: "fatto", s: "saltato", u: "umido", a: "secco", c: "concime" };
@@ -350,8 +355,36 @@ export function messaggioFinePiano(fine, oggi) {
   const url = "https://claude.ai/new?q=" + encodeURIComponent("Fammi il piano di innaffiatura della settimana per il mio giardino e salvalo.");
   return { testo, tastiera: { inline_keyboard: [[{ text: "✨ Apri Claude", url }]] } };
 }
+/* ---------------- Riconoscimento della pianta da una foto (Pl@ntNet) ----------------
+   La foto (JPEG già rimpicciolita dall'app, in data URL) va a Pl@ntNet con la chiave del sito (variabile PLANTNET_KEY su
+   Netlify: non è mai nell'app). Tornano le 3 specie più probabili, con il nome italiano e la specie dell'app che ci
+   corrisponde (dal nome comune, scientifico o dal genere). Gratis fino a 500 riconoscimenti al giorno. */
+export const PLANTNET = "https://my-api.plantnet.org/v2/identify/all";
+export async function riconosciPianta(dataUrl, chiave = globalThis.process?.env?.PLANTNET_KEY) {
+  if (!chiave) return { errore: "Il riconoscimento non è ancora attivo: manca la chiave di Pl@ntNet sul sito.", codice: 503 };
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ""));
+  if (!m) return { errore: "Foto non valida.", codice: 400 };
+  const byte = Buffer.from(m[2], "base64");
+  if (byte.length > 1.5 * 1024 * 1024) return { errore: "Foto troppo grande.", codice: 413 };
+  const fd = new FormData(); fd.append("images", new Blob([byte], { type: m[1] }), "pianta." + m[1].split("/")[1]); fd.append("organs", "auto");
+  const u = PLANTNET + "?" + new URLSearchParams({ "api-key": chiave, lang: "it", "nb-results": "3", "include-related-images": "false" });
+  let r; try { r = await fetch(u, { method: "POST", body: fd }); } catch (e) { return { errore: "Pl@ntNet non risponde, riprova tra poco.", codice: 502 }; }
+  if (r.status === 404) return { risultati: [] };   // nessuna pianta riconosciuta
+  if (r.status === 401 || r.status === 403) return { errore: "La chiave di Pl@ntNet non è valida.", codice: 502 };
+  if (r.status === 429) return { errore: "Pl@ntNet: finiti i riconoscimenti di oggi, riprova domani.", codice: 429 };
+  if (!r.ok) return { errore: "Pl@ntNet non risponde (" + r.status + "), riprova tra poco.", codice: 502 };
+  const j = await r.json().catch(() => ({}));
+  const risultati = (j.results || []).slice(0, 3).map((x) => {
+    const sp = x.species || {}, sci = sp.scientificNameWithoutAuthor || "", gen = sp.genus?.scientificNameWithoutAuthor || sci.split(" ")[0] || "";
+    const comuni = (sp.commonNames || []).filter(Boolean);
+    const specie = [...comuni, sci, gen].map((n) => M.specieDaNome(n)).find(Boolean) || null;
+    return { scientifico: sci, nome: comuni[0] || sci, comuni: comuni.slice(0, 3), famiglia: sp.family?.scientificNameWithoutAuthor || "", probabilita: Math.round((+x.score || 0) * 100), specie };
+  });
+  return { risultati, rimasti: j.remainingIdentificationRequests ?? null };
+}
+
 /* ---------------- Crediti Netlify (stima) ----------------
-   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot (ogni ora), Claude e Siri
+   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot (ogni ora), Claude
    ne consumano 10-20 al mese, misurati su Netlify (stima: 15). Le pubblicazioni si contano dalle impronte di versione viste. */
 export const CREDITI = { limite: 300, pubblicazione: 15, uso: 15, avviso: 240 };
 export async function crediti(st) {
@@ -379,7 +412,7 @@ export const COMANDI = [
   { command: "aiuto", description: "Cosa sa fare il bot" }
 ];
 
-/* ---------------- “Fatto” per tutte le piante di oggi (comando /fatto e Siri) ---------------- */
+/* ---------------- “Fatto” per tutte le piante di oggi (comando /fatto) ---------------- */
 // Segna come annaffiate le piante che oggi il piano dice di innaffiare (tutte o di una zona) e che non hanno già una risposta.
 // Con «pianta» (id) segna quella pianta anche se oggi il piano non la prevedeva (l'hai annaffiata di tua iniziativa).
 export async function segnaFatte(st, code, ap, oggi, { zona = "", pianta = "", fonte = "telegram" } = {}) {
@@ -405,22 +438,4 @@ export function trovaZonaOPianta(plants, testo) {
   if (zona) return { zona };
   const p = plants.find((x) => x.nome.toLowerCase() === q) || plants.find((x) => x.nome.toLowerCase().startsWith(q)) || plants.find((x) => x.nome.toLowerCase().includes(q));
   return p ? { pianta: p.id, nome: p.nome } : { nessuno: true };
-}
-// Testo da far leggere a Siri: cosa innaffiare oggi (tutte le piante o una zona).
-const parlato = (s) => String(s).replace(/≈\s*/g, "circa ").replace(/(\d)½/g, "$1 e mezzo").replace(/½/g, "mezzo").replace(/¼/g, "un quarto").replace(/¾/g, "tre quarti");
-export function testoOggi(data, ap, oggi, { zona = "" } = {}) {
-  const imp = { ...IMP_DEF, ...(data.impostazioni || {}) }, z = String(zona || "").trim().toLowerCase();
-  const inn = [], ctrl = []; let fatte = 0;
-  for (const p of M.pianteOrdinate(data.plants)) {
-    if (z && M.zonaDi(p).toLowerCase() !== z) continue;
-    const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
-    const segnata = data.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo));
-    if (g?.azione === "innaffia") { if (segnata) fatte++; else inn.push(`${p.nome}, ${fmt(g.litri, g.litri < 2 ? 2 : 1)} litri, ${parlato(M.dose(g.litri, imp))}`); }
-    else if (g?.azione === "controlla" && !segnata) ctrl.push(p.nome);
-  }
-  const out = [];
-  if (inn.length) out.push("Da innaffiare oggi: " + inn.join("; ") + ".");
-  if (ctrl.length) out.push("Da controllare con un dito: " + ctrl.join(", ") + ".");
-  if (!out.length) out.push(fatte ? "Hai già innaffiato tutto quello che serviva oggi." : "Oggi non c'è niente da innaffiare" + (zona ? " in " + zona : "") + ".");
-  return out.join(" ");
 }
