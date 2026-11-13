@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="86b733435a2c">
+<meta name="giardino-build" content="bf8884e02f5c">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -102,7 +102,7 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .wx-day svg{width:28px;height:28px;margin:2px 0}
 .wx-ico{position:relative;display:block;flex:none;width:28px;height:28px;margin:2px 0}
 .wx-ico>svg{position:absolute;inset:0;width:100%;height:100%;margin:0;overflow:visible}
-.wx-raggi{transform-origin:50% 50%} .wx-raggi.wx-dietro{transform-origin:27.5% 27.5%}
+.wx-raggi,.wx-nucleo{transform-origin:50% 50%} .wx-raggi.wx-dietro,.wx-nucleo.wx-dietro{transform-origin:27.5% 27.5%}
 .wx-day .t{font-size:.95rem;font-weight:700;line-height:1.15}
 .wx-day .tm{font-size:.8rem;color:var(--muted);line-height:1.15}
 .wx-day .r{font-size:.72rem;font-weight:700;color:var(--water);white-space:nowrap;min-height:1.1em}
@@ -452,7 +452,7 @@ nav.tabs .tab:active{transform:scale(.94)}
   border:1px solid var(--glass-line);border-radius:18px;box-shadow:inset 0 1px 0 var(--glass-hi), 0 12px 32px rgba(0,0,0,.25)}
 .sheet{background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);
   border-color:var(--glass-line);border-radius:28px;box-shadow:inset 0 1px 0 var(--glass-hi), 0 -10px 40px rgba(0,0,0,.28)}
-.sheet-bg{background:rgba(0,0,0,.32);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+.sheet-bg{background:rgba(0,0,0,.36)}   /* niente sfocatura a tutto schermo: su iPhone rallentava apertura e chiusura */
 
 /* ===================== ANIMAZIONI =====================
    Brevi e leggere (solo opacità e spostamento, che il telefono disegna senza fatica). Con «Riduci movimento»
@@ -491,6 +491,11 @@ nav.tabs .tab:active{transform:scale(.94)}
 @keyframes growX{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,14px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 @keyframes sheetIn{from{opacity:0;transform:translate(-50%,40px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes sheetOut{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,48px)}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+.sheet.esce{animation:sheetOut .22s cubic-bezier(.4,0,1,1) both !important;pointer-events:none}
+.sheet.esce>*{animation:none !important}
+.sheet-bg.esce{animation:fadeOut .22s ease both !important;pointer-events:none}
 @keyframes pop{0%{transform:scale(.6)}100%{transform:scale(1)}}
 
 /* dettaglio di un giorno del meteo */
@@ -535,13 +540,15 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   /* titolo: la goccia cade all'apertura e oscilla mentre aggiorna */
   .brand .goccia{transform-origin:50% 100%;animation:cade .9s cubic-bezier(.3,1.4,.5,1) both}
   .brand .goccia.aggiorna{animation:oscilla 1s ease-in-out infinite}
-  /* meteo: il sole gira piano, le nuvole si spostano, pioggia e neve cadono, il lampo lampeggia */
-  .wx-raggi{animation:gira 18s linear infinite}
-  .wx-nuvola{animation:deriva 6s ease-in-out infinite alternate}
+  /* meteo: il sole gira e pulsa, le nuvole si spostano, la nebbia scorre, pioggia e neve cadono, il lampo lampeggia */
+  .wx-raggi{animation:gira 10s linear infinite}
+  .wx-nucleo{animation:pulsaSole 3.2s ease-in-out infinite}
+  .wx-nuvola{animation:deriva 4.5s ease-in-out infinite alternate}
+  .wx-nuvola.wx-n2{animation-duration:6s;animation-direction:alternate-reverse}
   .wx-goccia{animation:piove 1.2s linear infinite}
   .wx-fiocco{animation:nevica 2.4s ease-in-out infinite}
   .wx-lampo{animation:lampo 3s steps(1) infinite}
-  .wx-nebbia{animation:deriva 4s ease-in-out infinite alternate-reverse}
+  .wx-nebbia{animation:scorre 3s ease-in-out infinite alternate}
   .wx-day.today{position:relative}
   .wx-day.today::after{content:'';position:absolute;inset:-3px;border-radius:17px;border:3px solid color-mix(in srgb,var(--water) 16%,transparent);opacity:0;pointer-events:none;animation:respira 4s ease-in-out infinite}
   /* piante: ondeggiano piano, ognuna con il suo ritmo */
@@ -580,7 +587,9 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 @keyframes cade{0%{opacity:0;transform:translateY(-14px) scaleY(1.15)}60%{opacity:1;transform:translateY(0) scale(1.08,.88)}100%{transform:none}}
 @keyframes oscilla{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(10deg)}}
 @keyframes gira{to{transform:rotate(360deg)}}
-@keyframes deriva{from{transform:translateX(-.8px)}to{transform:translateX(1.2px)}}
+@keyframes deriva{from{transform:translate(-1.8px,.3px)}to{transform:translate(2px,-.5px)}}
+@keyframes pulsaSole{0%,100%{transform:scale(1)}50%{transform:scale(1.13)}}
+@keyframes scorre{from{transform:translateX(-2.5px);opacity:.55}to{transform:translateX(2.5px);opacity:1}}
 @keyframes piove{0%{opacity:0;transform:translateY(-2px)}25%{opacity:1}100%{opacity:0;transform:translate(-1px,3px)}}
 @keyframes nevica{0%{opacity:0;transform:translateY(-2px)}30%{opacity:1}100%{opacity:0;transform:translate(1px,3px)}}
 @keyframes lampo{0%,86%,92%{opacity:1}88%,95%{opacity:.15}}
@@ -620,9 +629,6 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 .wx-day.sk span{display:block;width:62%;height:9px;border-radius:5px;background:var(--line)}
 .wx-day.sk .sk-c{width:26px;height:26px;border-radius:50%}
 .wx-day.sk .sk-s{width:40%}
-/* schede delle piante che si allargano (iOS 18: transizione tra le due disposizioni) */
-::view-transition-group(*){animation-duration:.38s;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
-::view-transition-old(*),::view-transition-new(*){animation-duration:.3s}
 @media (prefers-reduced-motion: no-preference){
   .hfx i{animation:goccia var(--d) linear infinite;animation-delay:var(--r)}
   .hfx.neve i{animation-name:fiocco;animation-duration:calc(var(--d) * 3.2);animation-timing-function:ease-in-out}
@@ -639,7 +645,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   .si .campana.zitto{animation:zitto .5s ease both}
   .wx-day.sk::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,color-mix(in srgb,var(--surface) 75%,transparent) 50%,transparent 70%);transform:translateX(-100%);animation:luccica 1.5s ease-in-out infinite}
 }
-@media (prefers-reduced-motion: reduce){ .hfx{display:none} ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none} }
+@media (prefers-reduced-motion: reduce){ .hfx{display:none} }
 @keyframes goccia{0%{opacity:0;transform:translate(0,0) rotate(14deg)}12%{opacity:1}100%{opacity:.7;transform:translate(-30px,150px) rotate(14deg)}}
 @keyframes fiocco{0%{opacity:0;transform:translate(0,0)}15%{opacity:1}50%{transform:translate(9px,62px)}100%{opacity:.8;transform:translate(-5px,135px)}}
 @keyframes alone{0%,100%{opacity:.7;transform:scale(.92)}50%{opacity:1;transform:scale(1.06)}}
@@ -2572,13 +2578,13 @@ function wxIcon(cond){
   const piccolo=x=>'<g transform="translate(-3 -3) scale(.8)">'+x+'</g>';
   let l;
   switch(cond){
-    case 'sereno': l=[L('wx-raggi',raggi), L('',core)]; break;
-    case 'poco nuvoloso': l=[L('wx-raggi wx-dietro',piccolo(raggi)), L('',piccolo(core)), L('wx-nuvola','<g transform="translate(3 3) scale(.8)">'+cloud+'</g>')]; break;
+    case 'sereno': l=[L('wx-raggi',raggi), L('wx-nucleo',core)]; break;
+    case 'poco nuvoloso': l=[L('wx-raggi wx-dietro',piccolo(raggi)), L('wx-nucleo wx-dietro',piccolo(core)), L('wx-nuvola','<g transform="translate(3 3) scale(.8)">'+cloud+'</g>')]; break;
     case 'nebbia': l=[L('wx-nuvola',up), L('wx-nebbia','<path d="M5 19h14M7 22h10" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>')]; break;
     case 'neve': l=[L('wx-nuvola',up), ...[[8,19.5],[12,21],[16,19.5]].map(([x,y],i)=>L('wx-fiocco',`<circle cx="${x}" cy="${y}" r="1.2" fill="var(--water)"/>`,i*0.8))]; break;
     case 'temporale': l=[L('wx-nuvola',up), L('wx-lampo','<path d="M12 15l-2 4h3l-2 4" stroke="var(--warn)" stroke-width="1.8" fill="none"/>')]; break;
     case 'pioggia': l=[L('wx-nuvola',up), ...[8,12,16].map((x,i)=>L('wx-goccia',`<path d="M${x} 17.5l-1 3" stroke="var(--water)" stroke-width="1.8" stroke-linecap="round"/>`,i*0.4))]; break;
-    default: l=[L('wx-nuvola',cloud)];
+    default: l=[L('wx-nuvola wx-n2','<g transform="translate(-4.5 -4) scale(.72)" opacity=".75">'+cloud+'</g>'), L('wx-nuvola',cloud)];
   }
   return '<span class="wx-ico" aria-hidden="true">'+l.join('')+'</span>';
 }
@@ -2922,9 +2928,9 @@ function apriRaccolto(pid){
   $('#rcSub').textContent=p.nome+': quanto hai raccolto?'; $('#rcQ').value=''; $('#rcData').value=today(); $('#rcData').max=today();
   setRadio('rcu',ult?.unita||(['aromatiche'].includes((SPECIE[p.specie]||SPECIE.altro).cat)?'mazzi':'g')); segRc();
   $('#rcTot').textContent=r.volte?'Finora nel '+today().slice(0,4)+': '+testoRaccolto(r)+'.':'Il primo raccolto di quest\'anno.';
-  $('#raccSheet').hidden=false; $('#raccBg').hidden=false;
+  apriFinestra($('#raccSheet'),$('#raccBg'));
 }
-function chiudiRaccolto(){ $('#raccSheet').hidden=true; $('#raccBg').hidden=true; rcPianta=null; }
+function chiudiRaccolto(){ chiudiFinestra($('#raccSheet'),$('#raccBg')); rcPianta=null; }
 function salvaRaccolto(){
   const q=numOrNull($('#rcQ').value), u=radioVal('rcu')||'pezzi', d=$('#rcData').value||today();
   if(!(q>0)){ $('#rcQ').focus(); toast('Scrivi quanto hai raccolto'); return; }
@@ -2940,9 +2946,9 @@ function apriTerra(pid){
   const pp=activePlan()?.data?.piante.find(x=>x.id===pid), cm=profonditaDito(p,today(),S.location?.lat);
   setHTML($('#trSub'),'<b>'+esc(p.nome)+'</b>: '+esc(testoDito(cm))+', lontano dal bordo del vaso. Com\'è?');
   $('#trHint').textContent=(pp?.acqua!=null?'Il calcolo dice ~'+Math.round(pp.acqua*100)+'% d\'acqua nel terriccio. ':'')+'Se è asciutta l\'app valuta se è normale per questa pianta e per i giorni passati: cambia il calcolo solo se asciuga prima del previsto.';
-  $('#terraSheet').hidden=false; $('#terraBg').hidden=false;
+  apriFinestra($('#terraSheet'),$('#terraBg'));
 }
-function chiudiTerra(){ $('#terraSheet').hidden=true; $('#terraBg').hidden=true; trPianta=null; }
+function chiudiTerra(){ chiudiFinestra($('#terraSheet'),$('#terraBg')); trPianta=null; }
 function rispondiVerifica(pid, risposta){
   if(risposta==='dopo'){ try{ localStorage.setItem('giardino:verifica:dopo',today()); }catch(e){} renderAll(); return; }
   const AP=activePlan(), pp=AP?.data?.piante.find(x=>x.id===pid), k=S.plants.find(x=>x.id===pid);
@@ -3004,7 +3010,7 @@ function apriPioggia(pid){
   const t=today(), lim=addDays(t,-60);
   for(const id of ['#pgDaG','#pgAG']){ $(id).min=lim; $(id).max=t; }
   pgImposta({d:t,t:prima.getDate()===ora.getDate()?oraHHMM(prima):'00:00'}, {d:t,t:oraHHMM(ora)});
-  $('#pioggiaSheet').hidden=false; $('#pioggiaBg').hidden=false; aggiornaPioggia();
+  apriFinestra($('#pioggiaSheet'),$('#pioggiaBg')); aggiornaPioggia();
   window.GiardinoNet?.pioggia?.().then(m=>{ if(pgPianta!==pid) return; if(m?.disponibile) pgMisure=m; else pgMotivo=m?.motivo||'Misure non disponibili.'; aggiornaPioggia(); })
     .catch(e=>{ if(pgPianta!==pid) return; pgMotivo='Misure ARPAE non raggiungibili ('+e.message+'): riprova tra poco.'; aggiornaPioggia(); });
 }
@@ -3037,9 +3043,19 @@ function apriMeteo(data){
   if(voci.length){ const az=voci.filter(v=>v.g.azione!=='salta');
     extra+=`<div class="wxd-pi"><span class="eyebrow">${az.length?'Quel giorno':'Quel giorno niente da fare'}</span><ul class="why-list">${(az.length?az:voci.slice(0,4)).map(({p,g})=>`<li><b>${esc(icoDi(p)+' '+p.nome)}</b>: ${g.azione==='innaffia'?'innaffia '+esc(fmtL(g.litri)):esc(g.motivo)}</li>`).join('')}</ul></div>`; }
   setHTML($('#wxExtra'),extra);
-  $('#wxSheet').hidden=false; $('#wxBg').hidden=false; $('#wxChiudi').focus({preventScroll:true});
+  apriFinestra($('#wxSheet'),$('#wxBg')); $('#wxChiudi').focus({preventScroll:true});
 }
-function chiudiMeteo(){ $('#wxSheet').hidden=true; $('#wxBg').hidden=true; }
+// Finestre: si aprono salendo e si chiudono scendendo (prima sparivano di colpo e su iPhone la chiusura scattava).
+// Durante la chiusura la pagina resta ferma; dopo una trascinata la finestra è già scesa e si nasconde subito.
+function apriFinestra(sh,bg){ clearTimeout(sh._esce); sh.classList.remove('esce'); bg?.classList.remove('esce'); sh.hidden=false; if(bg) bg.hidden=false; }
+function chiudiFinestra(sh,bg){
+  if(sh.hidden) return;
+  const fine=()=>{ sh.hidden=true; if(bg) bg.hidden=true; sh.classList.remove('esce'); bg?.classList.remove('esce'); };
+  if(!muovi()||sh.style.translate){ clearTimeout(sh._esce); fine(); return; }
+  if(sh.classList.contains('esce')) return;
+  sh.classList.add('esce'); bg?.classList.add('esce'); sh._esce=setTimeout(fine,230);
+}
+function chiudiMeteo(){ chiudiFinestra($('#wxSheet'),$('#wxBg')); }
 // Con una finestra aperta (meteo del giorno, sotto la pioggia) la pagina sotto non scorre: su iPhone overflow:hidden non
 // basta, quindi la pagina si ferma dov'è (corpo fisso, spostato in su di quanto era scorsa) e alla chiusura torna lì.
 (function(){
@@ -3053,7 +3069,7 @@ function chiudiMeteo(){ $('#wxSheet').hidden=true; $('#wxBg').hidden=true; }
   const mo=new MutationObserver(aggiorna);
   document.querySelectorAll('.sheet').forEach(x=>mo.observe(x,{attributes:true,attributeFilter:['hidden']}));
 })();
-function chiudiPioggia(){ $('#pioggiaSheet').hidden=true; $('#pioggiaBg').hidden=true; pgPianta=null; }
+function chiudiPioggia(){ chiudiFinestra($('#pioggiaSheet'),$('#pioggiaBg')); pgPianta=null; }
 function salvaPioggia(){
   const c=calcolaPioggia(); if(!c||!(c.litri>0)) return;
   // un evento per giorno, con i litri di quel giorno: il bilancio dell'acqua li mette nel giorno giusto
@@ -3743,13 +3759,24 @@ function wire(){
   $('#vacClear').addEventListener('click',()=>{ S.vacanza=null; $('#vacDal').value=''; $('#vacAl').value=''; saveMain(); renderAll(); toast('Vacanza annullata'); });
   $('#vacCopy').addEventListener('click',async()=>{ toast(await copyText(vacText())?'Istruzioni copiate: incollale in un messaggio':'Copia non riuscita'); });
   $('#addPlantBtn').addEventListener('click',()=>openForm(null));
-  // scheda della pianta che si allarga: le altre si spostano al loro posto invece di saltare (iOS 18, Chrome)
+  // scheda della pianta che si allarga: le altre scivolano al loro posto invece di saltare. Animazione «FLIP» sulle carte
+  // vere (prima con la transizione di pagina: le carte passavano sopra la barra in basso e il vetro della barra spariva)
   $('#plantList').addEventListener('click',e=>{
-    const sm=e.target.closest('details.plant>summary'); if(!sm||!document.startViewTransition||!muovi()) return;
-    e.preventDefault(); const d=sm.parentElement, carte=[...document.querySelectorAll('#plantList details.plant')];
-    carte.forEach((c,i)=>c.style.viewTransitionName='pianta-'+i);
-    const vt=document.startViewTransition(()=>{ d.open=!d.open; });
-    vt.finished.finally(()=>carte.forEach(c=>c.style.viewTransitionName=''));
+    const sm=e.target.closest('details.plant>summary'); if(!sm||!muovi()||!Element.prototype.animate) return;
+    e.preventDefault(); const d=sm.parentElement, el=[...$('#plantList').children];
+    const A=new Map(el.map(c=>[c,c.getBoundingClientRect()])), apre=!d.open;
+    el.forEach(c=>c.getAnimations().forEach(a=>a.cancel()));
+    d.open=apre;
+    const T={duration:360,easing:'cubic-bezier(.2,.8,.2,1)'};
+    for(const c of el){ const a=A.get(c), b=c.getBoundingClientRect(), dx=a.left-b.left, dy=a.top-b.top;
+      if(c===d){
+        const r=getComputedStyle(c).borderRadius||'0';
+        const k=[{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}];
+        if(apre){ k[0].clipPath=`inset(0 ${Math.max(0,b.width-a.width)}px ${Math.max(0,b.height-a.height)}px 0 round ${r})`; k[1].clipPath=`inset(0 0 0 0 round ${r})`; }
+        else { k[0].opacity=.6; k[1].opacity=1; }
+        c.animate(k,T);
+      } else if(Math.abs(dx)>.5||Math.abs(dy)>.5) c.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],T);
+    }
   });
   finestreDaTrascinare();
   $('#plantList').addEventListener('click',e=>{ const b=e.target.closest('[data-edit]'); if(b) openForm(b.dataset.edit); const sc=e.target.closest('[data-scheda]'); if(sc) openScheda(sc.dataset.scheda); });
