@@ -323,7 +323,7 @@ test("schede: cambiano al tocco anche subito dopo un'altra (animazione in corso)
   assert.deepEqual(errori, []);
 });
 
-test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura torna dov'era", async (t) => {
+test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura resta dov'era", async (t) => {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const CODE = "PROVA-FINESTRA-METEO-ABCDEF";
   await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": CODE, "content-type": "application/json" },
@@ -337,14 +337,20 @@ test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura torn
   await page.evaluate(() => window.scrollTo(0, 120)); await page.waitForTimeout(100);
   await page.evaluate(() => document.querySelector("[data-wxd]").click());
   await quando(page, () => !document.getElementById("wxSheet").hidden);
-  assert.equal(await page.evaluate(() => document.body.style.position), "fixed", "pagina ferma");
-  assert.equal(await page.evaluate(() => document.body.style.top), "-120px", "nello stesso punto");
+  // la pagina non si tocca (prima: corpo fisso e poi riportato dov'era, e alla chiusura tutta la pagina si ridisegnava)
+  assert.equal(await page.evaluate(() => document.body.style.position), "", "nessun cambio alla pagina");
   await page.mouse.move(195, 80); await page.mouse.wheel(0, 400); await page.waitForTimeout(200);
-  assert.equal(await page.evaluate(() => window.scrollY), 0, "la rotellina non fa scorrere la pagina sotto");
-  await page.click("#wxChiudi");
+  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "la rotellina non fa scorrere la pagina sotto");
+  // trascinando il dito sullo sfondo scuro la pagina sotto resta ferma
+  const cdp = await ctx.newCDPSession(page), tocca = (type, y) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x: 195, y }] });
+  await tocca("touchStart", 60); for (const y of [100, 160, 220, 300]) await tocca("touchMove", y); await tocca("touchEnd"); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "il dito sullo sfondo non fa scorrere la pagina");
+  await page.evaluate(() => chiudiMeteo());   // (il tocco sullo sfondo può averla già chiusa)
   await quando(page, () => document.getElementById("wxSheet").hidden);
-  assert.equal(await page.evaluate(() => document.body.style.position), "");
-  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "alla chiusura torna dov'era");
+  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "chiusa: la pagina è dov'era, senza salti");
+  // senza finestre aperte la pagina scorre di nuovo col dito
+  await tocca("touchStart", 400); for (const y of [360, 300, 240, 180]) await tocca("touchMove", y); await tocca("touchEnd"); await page.waitForTimeout(400);
+  assert.ok(await page.evaluate(() => window.scrollY) > 150, "la pagina scorre");
   assert.deepEqual(errori, []);
 });
 

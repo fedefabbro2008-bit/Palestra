@@ -488,7 +488,8 @@ nav.tabs .tab:active{transform:scale(.94)}
 @keyframes sheetIn{from{opacity:0;transform:translate(-50%,40px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes sheetOut{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,48px)}}
 @keyframes fadeOut{from{opacity:1}to{opacity:0}}
-.sheet.esce{animation:sheetOut .22s cubic-bezier(.4,0,1,1) both !important;pointer-events:none}
+.sheet.esce{animation:sheetOut .22s cubic-bezier(.4,0,1,1) both !important;pointer-events:none;
+  -webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}   /* mentre scende niente sfocatura: è il pezzo più pesante da ridisegnare */
 .sheet.esce>*{animation:none !important}
 .sheet-bg.esce{animation:fadeOut .22s ease both !important;pointer-events:none}
 @keyframes pop{0%{transform:scale(.6)}100%{transform:scale(1)}}
@@ -1662,15 +1663,28 @@ function eliminaOrto(id){
   ALTRI.orti=ALTRI.orti.filter(o=>o.id!==id); saveMain(); renderHeader(); renderOrti(); toast('Orto eliminato');
 }
 function chiudiMeteo(){ chiudiFinestra($('#wxSheet'),$('#wxBg')); }
-// Con una finestra aperta (meteo del giorno, sotto la pioggia) la pagina sotto non scorre: su iPhone overflow:hidden non
-// basta, quindi la pagina si ferma dov'è (corpo fisso, spostato in su di quanto era scorsa) e alla chiusura torna lì.
+// Con una finestra aperta la pagina sotto non scorre. Prima la pagina si «fermava» (corpo fisso e poi riportato dov'era):
+// alla chiusura il telefono doveva ridisporre e ridisegnare tutta la pagina, e l'ultimo istante dell'animazione scattava.
+// Ora la pagina non si tocca: si bloccano solo i trascinamenti che la farebbero scorrere (fuori dalla finestra, o dentro
+// una finestra che non ha niente da scorrere, o in cima/in fondo al suo contenuto).
+// Gli ascoltatori ci sono solo mentre una finestra è aperta: senza finestre lo scorrimento della pagina resta libero.
 (function(){
-  let y=0, ferma=false;
+  let y0=0, attivo=false;
+  const inizio=e=>{ if(e.touches.length===1) y0=e.touches[0].clientY; };
+  const muove=e=>{
+    const sh=e.target.closest?.('.sheet:not([hidden])');
+    if(!sh){ if(e.cancelable) e.preventDefault(); return; }
+    if(e.target.closest('input,select,textarea')) return;
+    const dy=e.touches[0].clientY-y0, max=sh.scrollHeight-sh.clientHeight;
+    if(max<=1 || (dy>0&&sh.scrollTop<=0) || (dy<0&&sh.scrollTop>=max-1)){ if(e.cancelable) e.preventDefault(); }
+  };
+  // rotellina (computer): scorre solo la finestra, se ha qualcosa da scorrere
+  const rotella=e=>{ const sh=e.target.closest?.('.sheet:not([hidden])'), max=sh?sh.scrollHeight-sh.clientHeight:0;
+    if(!sh || max<=1 || (e.deltaY<0&&sh.scrollTop<=0) || (e.deltaY>0&&sh.scrollTop>=max-1)) e.preventDefault(); };
   const aggiorna=()=>{
-    const aperta=[...document.querySelectorAll('.sheet')].some(x=>!x.hidden); if(aperta===ferma) return; ferma=aperta;
-    const b=document.body.style;
-    if(aperta){ y=window.scrollY; Object.assign(b,{position:'fixed',top:-y+'px',left:'0',right:'0',width:'100%'}); }
-    else { Object.assign(b,{position:'',top:'',left:'',right:'',width:''}); window.scrollTo(0,y); }
+    const ora=[...document.querySelectorAll('.sheet')].some(x=>!x.hidden); if(ora===attivo) return; attivo=ora;
+    const f=ora?'addEventListener':'removeEventListener';
+    document[f]('touchstart',inizio,{passive:true}); document[f]('touchmove',muove,{passive:false}); document[f]('wheel',rotella,{passive:false});
   };
   const mo=new MutationObserver(aggiorna);
   document.querySelectorAll('.sheet').forEach(x=>mo.observe(x,{attributes:true,attributeFilter:['hidden']}));
