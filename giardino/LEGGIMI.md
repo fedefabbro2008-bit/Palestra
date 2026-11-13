@@ -109,6 +109,16 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Risposte compresse**: le risposte grandi di `/api/dati` (tutti i dati, a ogni salvataggio e a ogni controllo con novità) arrivano in gzip, circa un decimo dei byte (Netlify non comprime da solo le risposte delle funzioni). Se una risposta non arriva o non si legge, l'app riprova subito in chiaro (`x-giardino-gzip: no`); se la colpa è della compressione (risposta illeggibile, o due errori di fila: un attimo senza rete non conta) per una settimana le chiede così. Una risposta «ok» senza dati non vale mai (non cancella quelli sul telefono).
 - **Prove della rete vera** (`test/sw.test.mjs`): server su localhost e Chromium: apertura dalla copia, versioni nuove, senza rete, compressione e ripiego in chiaro.
 
+## Più orti (città diverse)
+- `data.location` è l'orto principale (id `p`); gli altri in `data.orti = [{id, nome, location}]` (una voce `p` porta solo il nome del principale); ogni pianta ha `orto` (assente = principale). La pioggia ARPAE degli altri orti la scrive il bot in `data.pioggia_orti[id]` (l'app non può scriverla).
+- `vistaOrto(data, id)` (modello) dà un orto come se fosse l'unico: posizione, piante, eventi e pioggia misurata; piano, messaggi, riepilogo e connettore lavorano sulle viste. `vistePiene` = orti con posizione e piante.
+- App: `S` è l'orto scelto su quel telefono (`localStorage giardino:orto`), `ALTRI` il resto, `pieno()` rimette insieme per il salvataggio. Tocca il nome in alto per cambiare o aggiungere un orto; nel modulo della pianta «Orto» la sposta. Meteo e storico salvati sul telefono uno per posizione (`meteo@lat,lon`).
+- Bot: un messaggio del mattino, un promemoria, avvisi, controllo del sabato e riepilogo per orto (titolo con il nome dell'orto); backup e fine piano una volta. `/oggi` e `/settimana` un messaggio per orto. Connettore: «giardino» con una sezione per orto, `modifica_pianta` con `campi.orto`.
+
+## «Terra asciutta» e controlli col dito
+- Lo strato toccato asciuga prima del resto: `depSecco(k, cm)` = litri già usati quando a quei cm la terra è asciutta (cm / altezza del terriccio, 15–60%; prima la riserva del sottovaso).
+- «Asciutta» non cambia sempre il calcolo: se il calcolo è vicino alla tacca (≥ 80%) o la pianta vuole il terriccio sempre umido (strato del dito oltre la tacca) → innaffia oggi; se è normale per la pianta e per i giorni passati → niente correzione; se asciuga prima del normale → beve di più (`esitoVerifica`, `testoSecco`, `seccoOra` nel piano).
+
 ## Come si calcola (vasi)
 
 - Acqua disponibile = 25% del volume del vaso, ridotta del 6% per ogni pianta in più (radici), minimo 60%.

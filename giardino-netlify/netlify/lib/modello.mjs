@@ -244,6 +244,28 @@ export function nomeFase(specie, fase){ const sp=SPECIE[specie]||SPECIE.altro; r
 export function specieOrdinate(){ return Object.entries(SPECIE).sort(([a,x],[b,y])=>(a==='altro')-(b==='altro') || x.nome.localeCompare(y.nome,'it',{sensitivity:'base'})); }
 // piante in ordine alfabetico, raggruppate per zona (prima quelle con una zona, in ordine alfabetico)
 export const zonaDi = p => String(p?.zona||'').trim().replace(/\s+/g,' ');
+/* ---------------- Più orti (città diverse) ----------------
+   data.location è la posizione dell'orto principale (id 'p'); gli altri stanno in data.orti = [{id, nome, location}]
+   (una voce con id 'p' porta solo il nome dell'orto principale). Ogni pianta ha p.orto (assente = principale).
+   La pioggia misurata ARPAE degli altri orti la scrive il bot in data.pioggia_orti[id]. Impostazioni, vacanza,
+   Telegram e connettore sono in comune. vistaOrto() dà i dati di un orto come se fosse l'unico: posizione, piante,
+   eventi e pioggia misurata di quell'orto; tutti i calcoli lavorano su una vista. */
+export const ORTO_PRINCIPALE = 'p';
+export function orti(data){
+  const o=Array.isArray(data?.orti)?data.orti.filter(x=>x&&typeof x==='object'&&x.id):[], p=o.find(x=>x.id==='p');
+  return [{id:'p', nome:String(p?.nome||'').trim(), location:data?.location||null, pioggia_misurata:data?.pioggia_misurata||null},
+    ...o.filter(x=>x.id!=='p').map(x=>({id:String(x.id), nome:String(x.nome||'').trim(), location:x.location||null, pioggia_misurata:data?.pioggia_orti?.[x.id]||null}))];
+}
+export const nomeOrto = o => o?.nome || o?.location?.name || 'Giardino';
+// orto di una pianta: quello scritto, se esiste ancora; altrimenti il principale
+export function ortoDi(p, data){ const id=p?.orto; return id && id!=='p' && orti(data).some(o=>o.id===id) ? id : 'p'; }
+export function vistaOrto(data, id='p'){
+  const tutti=orti(data), o=tutti.find(x=>x.id===id)||tutti[0], ids=new Set(tutti.map(x=>x.id));
+  const plants=(data?.plants||[]).filter(p=>(p?.orto&&ids.has(p.orto)?p.orto:'p')===o.id), pid=new Set(plants.map(p=>p.id));
+  return {...data, location:o.location, pioggia_misurata:o.pioggia_misurata, plants, eventi:(data?.eventi||[]).filter(e=>!e?.plantId||pid.has(e.plantId)), orto:o, piuOrti:tutti.length>1};
+}
+// le viste degli orti con posizione e piante (quelle su cui bot e connettore lavorano)
+export const vistePiene = data => orti(data).map(o=>vistaOrto(data,o.id)).filter(v=>v.location&&v.plants.length);
 export function pianteOrdinate(piante){
   const cmp=(a,b)=>a.localeCompare(b,'it',{sensitivity:'base',numeric:true});
   return [...(piante||[])].sort((a,b)=>{ const za=zonaDi(a), zb=zonaDi(b); return (!za)-(!zb) || cmp(za,zb) || cmp(String(a.nome||''),String(b.nome||'')); });
@@ -902,9 +924,9 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     out.piante.push({id:p.id, acqua, soglia, valutazione, fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:consigliPianta(p),
       calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da, acquaSecco:+Math.max(0,1-Math.min(k.rawL,k.dSecco)/k.tawL).toFixed(2), seccoOra});
   }
-  const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
+  const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax)), gMin=fut.find(d=>d.tmin===minT)?.date;
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
-  if(freddo.length) out.avvisi.push('Minima di '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
+  if(freddo.length) out.avvisi.push('Minima di '+fmtN(minT)+' °C'+(gMin?(gMin===oggi?' oggi':' '+giornoBreve(gMin)):'')+': proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
   if(chiusiBagnati.size) out.avvisi.push('Pioggia sui vasi senza fori ('+[...chiusiBagnati].join(', ')+'): dopo la pioggia inclina il vaso e togli l\'acqua in più, altrimenti le radici marciscono.');
   if(maxT>=33) out.avvisi.push('Caldo intenso (fino a '+fmtN(maxT)+' °C): innaffia all\'alba e controlla i vasi piccoli anche la sera.');
   // grandine nei prossimi 3 giorni (domani lo dice anche l'avviso della sera): per preparare teli o un riparo

@@ -41,9 +41,9 @@ export async function riserva({ sito, codice, token, chat, file, tentativi = 3, 
   let copia; try { copia = decifra(await readFile(file, "utf8"), codice); } catch { log("Nessuna copia dei dati disponibile."); return { azione: "niente" }; }
   const C = await import("../giardino-netlify/netlify/lib/core.mjs");
   const data = { ...C.vuoto(), ...copia.data };
-  if (!data.location || !data.plants?.length) { log("Copia senza posizione o piante."); return { azione: "niente" }; }
-  const met = await C.meteo(data.location.lat, data.location.lon), { oggi } = C.oraLocale(met.tz), ap = C.pianoAttivo(data, met, oggi);
-  const { msg } = C.messaggioMattina(data, ap, oggi, { prova: true });
+  if (!C.M.vistePiene(data).length) { log("Copia senza posizione o piante."); return { azione: "niente" }; }
+  // un messaggio per orto (città), ognuno con il suo meteo
+  const msg = (await C.pianiOrti(data)).map((x) => C.messaggioMattina(x.v, x.ap, x.oggi, { prova: true }).msg).join("\n\n— — —\n\n");
   const testo = "⚠️ <b>Il sito Giardino non risponde</b> (forse è in pausa perché i crediti Netlify sono finiti). Questo messaggio arriva dalla copia di riserva su GitHub, con i dati del " +
     new Date(copia.at).toLocaleDateString("it-IT", { day: "numeric", month: "long" }) + ". I pulsanti non funzionano: quando il sito torna, segna nell'app quello che hai fatto.\n\n" + msg;
   const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chat, text: testo, parse_mode: "HTML", disable_web_page_preview: true }) });

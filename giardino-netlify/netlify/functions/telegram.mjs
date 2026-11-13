@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, pianiOrti, pianoUnito, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · webhook di Telegram (/api/telegram/<segreto>).
    - /start dalla chat dell'utente: collega il bot a quella chat (solo la prima volta).
@@ -41,12 +41,13 @@ async function messaggio(st, tkey, t, code, m) {
   const invia = (text, extra = {}) => tg(t.token, "sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
   if (["/oggi", "oggi", "/fatto", "fatto", "/settimana", "settimana"].includes(comando)) {
     const cur = await leggi(st, code);
-    if (!cur?.data?.location || !cur.data.plants.length) { await invia("Aggiungi la posizione e le piante nell'app Giardino."); return; }
-    const met = await meteo(cur.data.location.lat, cur.data.location.lon), { oggi } = oraLocale(met.tz), ap = pianoAttivo(cur.data, met, oggi);
+    if (!M.vistePiene(cur?.data || {}).length) { await invia("Aggiungi la posizione e le piante nell'app Giardino."); return; }
+    // ogni orto con il suo meteo: un messaggio per orto
+    const lista = await pianiOrti(cur.data), oggi = lista[0].oggi, ap = pianoUnito(lista);
     if (comando.endsWith("oggi")) {
-      const { msg, tastiera } = messaggioMattina(cur.data, ap, oggi, { prova: true });
-      await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {});
-    } else if (comando.endsWith("settimana")) await invia(messaggioSettimana(cur.data, ap));
+      for (const x of lista) { const { msg, tastiera } = messaggioMattina(x.v, x.ap, oggi, { prova: true });
+        await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {}); }
+    } else if (comando.endsWith("settimana")) { for (const x of lista) await invia(messaggioSettimana(x.v, x.ap)); }
     else {
       // /fatto balcone → solo la zona «Balcone»; /fatto aglio → solo l'aglio, anche se oggi non era in programma
       const arg = String(m.text || "").trim().split(/\s+/).slice(1).join(" ").slice(0, 40), chi = trovaZonaOPianta(cur.data.plants, arg);

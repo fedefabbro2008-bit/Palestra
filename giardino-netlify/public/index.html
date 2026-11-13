@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="bf8884e02f5c">
+<meta name="giardino-build" content="f70b682e872e">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -452,7 +452,18 @@ nav.tabs .tab:active{transform:scale(.94)}
   border:1px solid var(--glass-line);border-radius:18px;box-shadow:inset 0 1px 0 var(--glass-hi), 0 12px 32px rgba(0,0,0,.25)}
 .sheet{background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);
   border-color:var(--glass-line);border-radius:28px;box-shadow:inset 0 1px 0 var(--glass-hi), 0 -10px 40px rgba(0,0,0,.28)}
-.sheet-bg{background:rgba(0,0,0,.36)}   /* niente sfocatura a tutto schermo: su iPhone rallentava apertura e chiusura */
+.sheet-bg{background:rgba(0,0,0,.36)}
+.orti-lista{display:flex;flex-direction:column;gap:8px}
+.orto-r{display:flex;align-items:center;gap:8px}
+.orto-r>button[data-orto]{flex:1;min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border-radius:16px;border:1px solid var(--line);background:var(--surface);color:inherit;font:inherit;cursor:pointer}
+.orto-r.on>button[data-orto]{border-color:color-mix(in srgb,var(--water) 55%,var(--line));background:color-mix(in srgb,var(--water) 10%,var(--surface))}
+.orto-r .oi{flex:none;width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--surface-2);font-size:.9rem}
+.orto-r.on .oi{background:var(--water);color:#fff;font-weight:700}
+.orto-r .ot{min-width:0;display:flex;flex-direction:column}
+.orto-r .ot b,.orto-r .ot small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.orto-r .ot small{color:var(--muted);font-size:.8rem}
+.orto-nuovo>summary{cursor:pointer;font-weight:600;color:var(--water);padding:6px 2px;list-style:none}
+.orto-nuovo>summary::-webkit-details-marker{display:none}   /* niente sfocatura a tutto schermo: su iPhone rallentava apertura e chiusura */
 
 /* ===================== ANIMAZIONI =====================
    Brevi e leggere (solo opacità e spostamento, che il telefono disegna senza fatica). Con «Riduci movimento»
@@ -749,6 +760,8 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
           <div class="quick" id="pf-zona-q"></div>
           <span class="hint">Le piante della stessa zona stanno insieme e si segnano con un tocco solo.</span>
         </div>
+        <div class="field" id="pf-orto-f" hidden><label for="pf-orto">Orto</label><select id="pf-orto"></select>
+          <span class="hint">Cambialo per spostare la pianta in un altro orto (città).</span></div>
         <div class="field"><span class="flabel" id="pf-colt-l">Dove è piantata</span>
           <div class="seg tiles3" role="radiogroup" aria-labelledby="pf-colt-l">
             <label><input type="radio" name="colt" value="vaso"><span class="ti" aria-hidden="true">🪴</span>Vaso</label>
@@ -863,6 +876,9 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
       <div class="body">
         <div id="locInfo" class="sub" aria-live="polite"></div>
         <div class="inrow"><input type="text" id="locInput" placeholder="Comune, es. Bergamo" aria-label="Comune" autocomplete="off" enterkeyhint="search"><button class="btn primary" id="locSet" type="button">Imposta</button></div>
+        <div class="field"><label for="ortoNome">Nome dell'orto <span class="sub" style="font-weight:400">(facoltativo)</span></label>
+          <input type="text" id="ortoNome" maxlength="30" placeholder="Es. Casa, Orto del nonno" autocomplete="off" enterkeyhint="done"></div>
+        <p class="hint">Hai piante in un'altra città? Tocca il nome in alto a destra e aggiungi un orto: ognuno ha il suo meteo e le sue piante.</p>
       </div>
     </details>
 
@@ -1017,6 +1033,21 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   <p class="hint" id="rcTot"></p>
   <div class="row"><button class="btn primary" type="button" id="rcSalva">Registra</button><button class="btn ghost" type="button" id="rcAnnulla">Annulla</button></div>
 </div>
+<div class="sheet-bg" id="ortiBg" hidden></div>
+<div class="sheet card stack" id="ortiSheet" role="dialog" aria-modal="true" aria-labelledby="orTit" hidden>
+  <h2 id="orTit">📍 I tuoi orti</h2>
+  <p class="sub">Ognuno ha la sua città, il suo meteo e le sue piante. Telegram, Claude, impostazioni e vacanza valgono per tutti.</p>
+  <div class="orti-lista" id="ortiLista"></div>
+  <details class="orto-nuovo" id="ortoNuovo"><summary>＋ Aggiungi un orto</summary>
+    <div class="stack" style="margin-top:10px">
+      <div class="field"><label for="onNome">Nome</label><input type="text" id="onNome" maxlength="30" placeholder="Es. Casa al mare" autocomplete="off" enterkeyhint="next"></div>
+      <div class="field"><label for="onLoc">Comune</label><input type="text" id="onLoc" placeholder="Es. Rimini" autocomplete="off" enterkeyhint="go"></div>
+      <p class="hint" id="onInfo" aria-live="polite"></p>
+      <button class="btn primary" type="button" id="onCrea">Crea l'orto</button>
+    </div>
+  </details>
+  <div class="row"><button class="btn ghost" type="button" id="orModifica">Nome e posizione</button><button class="btn ghost" type="button" id="orChiudi">Chiudi</button></div>
+</div>
 <div class="sheet-bg" id="terraBg" hidden></div>
 <div class="sheet card stack" id="terraSheet" role="dialog" aria-modal="true" aria-labelledby="trTit" hidden>
   <h2 id="trTit">🖐 Com'è la terra?</h2>
@@ -1051,7 +1082,10 @@ const ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function nuovoCodice(){ const b=new Uint8Array(24); crypto.getRandomValues(b); const s=Array.from(b,x=>ALPHA[x&31]).join(''); return 'GRD-'+s.match(/.{6}/g).join('-'); }
 let code=LS('code'); if(!/^[A-Z0-9-]{16,64}$/.test(code||'')){ code=nuovoCodice(); LSset('code',code); }
 const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) el.textContent=msg; if(err&&typeof window.showNote==='function') window.showNote('err',msg); };
-const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null};
+const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null,orti:[]};
+// orto scelto nell'app (più orti in città diverse): il meteo e la pioggia misurata sono i suoi
+const ortoId=()=>{ try{ return window.ortoAttivo?.()||'p'; }catch(e){ return 'p'; } };
+function posizione(){ const g=docs.giardino; if(!g) return null; const id=ortoId(); return id==='p'?g.location||null:(g.orti||[]).find(o=>o&&o.id===id)?.location||null; }
 
 /* ---------------- server ---------------- */
 // Le risposte grandi arrivano compresse (gzip). Se una non arriva o non si legge riprova subito in chiaro; se la colpa è
@@ -1078,22 +1112,23 @@ async function api(method, body, op, keepalive, extra){
   return j;
 }
 let server=LSjson('cache'); // {rev, updatedAt, data}
+LSset('meteo',null); LSset('storico',null);   // copie vecchie (una sola posizione): ora una per posizione
 const docs={}, subs={};
 const snap=n=>({id:n,exists:docs[n]!=null,data:()=>docs[n]??undefined,metadata:{fromCache:false,hasPendingWrites:false}});
 const emit=n=>(subs[n]||[]).forEach(f=>{ try{ f(snap(n)); }catch(e){ console.error(e); } });
 function dalServer(){
   const d={...VUOTO,...(server?.data||{})};
   const ev=Array.isArray(d.eventi)?d.eventi:[];
-  docs.giardino={location:d.location,plants:d.plants||[],impostazioni:d.impostazioni||undefined,vacanza:d.vacanza,eventi_app:ev.filter(e=>e.fonte==='app'),updatedAt:server?.updatedAt?new Date(server.updatedAt).toISOString():null};
+  docs.giardino={location:d.location,plants:d.plants||[],impostazioni:d.impostazioni||undefined,vacanza:d.vacanza,eventi_app:ev.filter(e=>e.fonte==='app'),orti:Array.isArray(d.orti)?d.orti:[],updatedAt:server?.updatedAt?new Date(server.updatedAt).toISOString():null};
   docs.meteo=d.meteo_manual||null;
   docs.piano=d.piano_claude||null;
   docs.eventi_bot={aggiornato:server?.updatedAt?new Date(server.updatedAt).toISOString():null,eventi:ev.filter(e=>e.fonte!=='app')};
   docs.piano_bot=null;
-  misurata=d.pioggia_misurata||null;
 }
-// pioggia misurata dalla stazione ARPAE (la scrive il bot nei dati): nei giorni passati prende il posto di quella stimata
-let misurata=null;
+// pioggia misurata dalla stazione ARPAE (la scrive il bot nei dati, per ogni orto): nei giorni passati prende il posto di quella stimata
+function misurataOra(){ const d=server?.data||{}, id=ortoId(); return (id==='p'?d.pioggia_misurata:d.pioggia_orti?.[id])||null; }
 function conMisurata(m){
+  const misurata=misurataOra();
   if(!m||!Array.isArray(m.days)||!misurata) return m;
   const oggi=new Intl.DateTimeFormat('en-CA',{timeZone:m.tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km,giorni:misurata.giorni||{}}};
@@ -1144,7 +1179,7 @@ function svuota(keepalive){
 }
 function diffGiardino(nuovo){
   const prima=docs.giardino||{}, changes={};
-  for(const f of ['location','plants','impostazioni','vacanza']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
+  for(const f of ['location','plants','impostazioni','vacanza','orti']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
   const pr=new Map((prima.eventi_app||[]).map(e=>[e.id,e])), nu=new Map((nuovo.eventi_app||[]).map(e=>[e.id,e]));
   return {changes, add:[...nu.values()].filter(e=>!pr.has(e.id)), remove:[...pr.keys()].filter(id=>!nu.has(id))};
 }
@@ -1162,11 +1197,13 @@ async function meteo(lat,lon){
 }
 // storico dei 400 giorni passati (temperature per le fasi; pioggia, evaporazione e sole per il bilancio dell'acqua):
 // scaricato una volta al giorno. {temp, arch}
+// una copia per posizione (con più orti si passa dall'uno all'altro senza riscaricare)
+const kPos=(n,lat,lon)=>n+'@'+(+lat).toFixed(2)+','+(+lon).toFixed(2);
 async function storico(lat,lon,oggi){
-  const c=storicoMem&&storicoMem.lat===lat&&storicoMem.lon===lon ? storicoMem : (storicoMem=LSjson('storico')), qui=c&&c.lat===lat&&c.lon===lon&&c.temp&&c.arch;
+  const c=storicoMem&&storicoMem.lat===lat&&storicoMem.lon===lon ? storicoMem : (storicoMem=LSjson(kPos('storico',lat,lon))), qui=c&&c.lat===lat&&c.lon===lon&&c.temp&&c.arch;
   if(qui&&c.giorno===oggi) return c;
   const scarica=fetch(urlStorico(lat,lon,oggi)).then(r=>r.ok?r.json():null).then(j=>{ const temp=j?storicoDa(j):{}, arch=j?archivioDa(j):{};
-    if(Object.keys(temp).length){ const x={giorno:oggi,lat,lon,temp,arch}; storicoMem=x; LSset('storico',JSON.stringify(x)); return x; } return null; }).catch(()=>null);
+    if(Object.keys(temp).length){ const x={giorno:oggi,lat,lon,temp,arch}; storicoMem=x; LSset(kPos('storico',lat,lon),JSON.stringify(x)); return x; } return null; }).catch(()=>null);
   // c'è già quello di ieri: si usa subito e il nuovo arriva per la prossima volta (l'avvio non aspetta)
   if(qui) return c;
   return (await scarica)||null;
@@ -1176,21 +1213,21 @@ let storicoMem=null;
 const senzaStorico = m => { if(!m) return m; const {storico, archivio, ...r}=m; return r; };
 function conStorico(m){
   if(!m) return m;
-  const s=storicoMem&&storicoMem.lat===m.lat&&storicoMem.lon===m.lon ? storicoMem : (storicoMem=LSjson('storico'));
+  const s=storicoMem&&storicoMem.lat===m.lat&&storicoMem.lon===m.lon ? storicoMem : (storicoMem=LSjson(kPos('storico',m.lat,m.lon)));
   return s&&s.lat===m.lat&&s.lon===m.lon&&s.temp ? {...m, storico:s.temp, archivio:s.arch||null} : m;
 }
 async function caricaMeteo(forza){
-  const loc=docs.giardino?.location; if(!loc) return;
-  const c=conStorico(LSjson('meteo'));
+  const loc=posizione(); if(!loc) return;
+  const km=kPos('meteo',loc.lat,loc.lon), c=conStorico(LSjson(km));
   // previsioni valide un'ora e solo nello stesso giorno: il polling ogni 2 minuti non le riscarica
   if(!forza&&c&&c.lat===loc.lat&&c.lon===loc.lon&&Date.now()-Date.parse(c.updatedAt)<3600e3&&new Date(c.updatedAt).toDateString()===new Date().toDateString()){ const nuovo=docs.meteo_bot!==c&&docs.meteo_bot?.updatedAt!==c.updatedAt; docs.meteo_bot=conMisurata(c); return nuovo; }
-  try{ const m=await meteo(loc.lat,loc.lon); LSset('meteo',JSON.stringify(senzaStorico(m))); docs.meteo_bot=conMisurata(m); return true; }catch(e){}
+  try{ const m=await meteo(loc.lat,loc.lon); LSset(km,JSON.stringify(senzaStorico(m))); docs.meteo_bot=conMisurata(m); return true; }catch(e){}
   // Open-Meteo non risponde dal telefono: il meteo dal server (Open-Meteo dal server, o la riserva MET Norway)
-  try{ const m=await api('GET',null,'meteo');
+  try{ const m=await api('GET',null,'meteo&orto='+encodeURIComponent(ortoId()));
     if(m&&Array.isArray(m.days)&&m.days.length){ const x={...m,source:'open-meteo',fonte:m.fonte||'server',updatedAt:new Date().toISOString(),lat:loc.lat,lon:loc.lon};
       // storico dal server (Open-Meteo non risponde dal telefono): lo si tiene per il bilancio dell'acqua e le fasi
-      if(x.storico&&x.archivio&&!(storicoMem&&storicoMem.lat===loc.lat&&storicoMem.lon===loc.lon&&storicoMem.arch)){ storicoMem={giorno:isoDate(new Date()),lat:loc.lat,lon:loc.lon,temp:x.storico,arch:x.archivio}; LSset('storico',JSON.stringify(storicoMem)); }
-      LSset('meteo',JSON.stringify(senzaStorico(x))); docs.meteo_bot=conMisurata(x); return true; } }catch(e){}
+      if(x.storico&&x.archivio&&!(storicoMem&&storicoMem.lat===loc.lat&&storicoMem.lon===loc.lon&&storicoMem.arch)){ storicoMem={giorno:isoDate(new Date()),lat:loc.lat,lon:loc.lon,temp:x.storico,arch:x.archivio}; LSset(kPos('storico',loc.lat,loc.lon),JSON.stringify(storicoMem)); }
+      LSset(km,JSON.stringify(senzaStorico(x))); docs.meteo_bot=conMisurata(x); return true; } }catch(e){}
   const nuovo=docs.meteo_bot?.updatedAt!==c?.updatedAt; docs.meteo_bot=conMisurata(c); stato('Meteo non disponibile: uso gli ultimi dati salvati.'); return nuovo;
 }
 
@@ -1203,10 +1240,10 @@ function doc(path){
     get: async()=>{ await carica(); return snap(n); },
     set: async data=>{
       if(n==='giardino'){
-        const prima=docs.giardino?.location, d=diffGiardino(data);
+        const prima=posizione(), d=diffGiardino(data);
         docs.giardino={...data};
         if(Object.keys(d.changes).length||d.add.length||d.remove.length) invia(d);
-        const l=data.location; if(l&&(!prima||prima.lat!==l.lat||prima.lon!==l.lon)) caricaMeteo(true).then(()=>emit('meteo_bot'));
+        const l=posizione(); if(l&&(!prima||prima.lat!==l.lat||prima.lon!==l.lon)) caricaMeteo(true).then(()=>emit('meteo_bot'));
       } else if(n==='meteo'){ docs.meteo=data&&data.days?data:null; invia({changes:{meteo_manual:docs.meteo},add:[],remove:[]}); }
       else if(n==='piano'){ docs.piano=data&&data.data?data:null; invia({changes:{piano_claude:docs.piano},add:[],remove:[]}); }
     },
@@ -1220,7 +1257,8 @@ async function aggiorna(forza){
   if(inAttesa) await svuota(); else await coda;
   const dati=await scarica(), met=await caricaMeteo(!!forza);
   // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
-  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata(conStorico(LSjson('meteo'))||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
+  const lp=posizione();
+  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata((lp&&conStorico(LSjson(kPos('meteo',lp.lat,lp.lon))))||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
   if(met||forza) emit('meteo_bot');
   if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();
@@ -1231,7 +1269,9 @@ window.GiardinoNet={
   mcp:(action,extra)=>action?api('POST',{action,...(extra||{})},'mcp'):api('GET',null,'mcp'),
   crediti:(rimasti)=>rimasti==null?api('GET',null,'crediti'):api('POST',{rimasti},'crediti'),
   stato:()=>api('GET',null,'stato'),
-  pioggia:()=>api('GET',null,'pioggia'),
+  pioggia:()=>api('GET',null,'pioggia&orto='+encodeURIComponent(ortoId())),
+  // cambio di orto nell'app: il meteo di quell'orto (dalla copia sul telefono se c'è, poi aggiornato)
+  cambiaOrto:()=>{ docs.meteo_bot=null; emit('meteo_bot'); return pronto().then(()=>caricaMeteo(false)).then(()=>emit('meteo_bot')).catch(()=>{}); },
   riconosci:immagine=>api('POST',{immagine},'riconosci'),
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
@@ -1521,6 +1561,28 @@ function nomeFase(specie, fase){ const sp=SPECIE[specie]||SPECIE.altro; return s
 function specieOrdinate(){ return Object.entries(SPECIE).sort(([a,x],[b,y])=>(a==='altro')-(b==='altro') || x.nome.localeCompare(y.nome,'it',{sensitivity:'base'})); }
 // piante in ordine alfabetico, raggruppate per zona (prima quelle con una zona, in ordine alfabetico)
 const zonaDi = p => String(p?.zona||'').trim().replace(/\s+/g,' ');
+/* ---------------- Più orti (città diverse) ----------------
+   data.location è la posizione dell'orto principale (id 'p'); gli altri stanno in data.orti = [{id, nome, location}]
+   (una voce con id 'p' porta solo il nome dell'orto principale). Ogni pianta ha p.orto (assente = principale).
+   La pioggia misurata ARPAE degli altri orti la scrive il bot in data.pioggia_orti[id]. Impostazioni, vacanza,
+   Telegram e connettore sono in comune. vistaOrto() dà i dati di un orto come se fosse l'unico: posizione, piante,
+   eventi e pioggia misurata di quell'orto; tutti i calcoli lavorano su una vista. */
+const ORTO_PRINCIPALE = 'p';
+function orti(data){
+  const o=Array.isArray(data?.orti)?data.orti.filter(x=>x&&typeof x==='object'&&x.id):[], p=o.find(x=>x.id==='p');
+  return [{id:'p', nome:String(p?.nome||'').trim(), location:data?.location||null, pioggia_misurata:data?.pioggia_misurata||null},
+    ...o.filter(x=>x.id!=='p').map(x=>({id:String(x.id), nome:String(x.nome||'').trim(), location:x.location||null, pioggia_misurata:data?.pioggia_orti?.[x.id]||null}))];
+}
+const nomeOrto = o => o?.nome || o?.location?.name || 'Giardino';
+// orto di una pianta: quello scritto, se esiste ancora; altrimenti il principale
+function ortoDi(p, data){ const id=p?.orto; return id && id!=='p' && orti(data).some(o=>o.id===id) ? id : 'p'; }
+function vistaOrto(data, id='p'){
+  const tutti=orti(data), o=tutti.find(x=>x.id===id)||tutti[0], ids=new Set(tutti.map(x=>x.id));
+  const plants=(data?.plants||[]).filter(p=>(p?.orto&&ids.has(p.orto)?p.orto:'p')===o.id), pid=new Set(plants.map(p=>p.id));
+  return {...data, location:o.location, pioggia_misurata:o.pioggia_misurata, plants, eventi:(data?.eventi||[]).filter(e=>!e?.plantId||pid.has(e.plantId)), orto:o, piuOrti:tutti.length>1};
+}
+// le viste degli orti con posizione e piante (quelle su cui bot e connettore lavorano)
+const vistePiene = data => orti(data).map(o=>vistaOrto(data,o.id)).filter(v=>v.location&&v.plants.length);
 function pianteOrdinate(piante){
   const cmp=(a,b)=>a.localeCompare(b,'it',{sensitivity:'base',numeric:true});
   return [...(piante||[])].sort((a,b)=>{ const za=zonaDi(a), zb=zonaDi(b); return (!za)-(!zb) || cmp(za,zb) || cmp(String(a.nome||''),String(b.nome||'')); });
@@ -2179,9 +2241,9 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     out.piante.push({id:p.id, acqua, soglia, valutazione, fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:consigliPianta(p),
       calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da, acquaSecco:+Math.max(0,1-Math.min(k.rawL,k.dSecco)/k.tawL).toFixed(2), seccoOra});
   }
-  const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
+  const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax)), gMin=fut.find(d=>d.tmin===minT)?.date;
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
-  if(freddo.length) out.avvisi.push('Minima di '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
+  if(freddo.length) out.avvisi.push('Minima di '+fmtN(minT)+' °C'+(gMin?(gMin===oggi?' oggi':' '+giornoBreve(gMin)):'')+': proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
   if(chiusiBagnati.size) out.avvisi.push('Pioggia sui vasi senza fori ('+[...chiusiBagnati].join(', ')+'): dopo la pioggia inclina il vaso e togli l\'acqua in più, altrimenti le radici marciscono.');
   if(maxT>=33) out.avvisi.push('Caldo intenso (fino a '+fmtN(maxT)+' °C): innaffia all\'alba e controlla i vasi piccoli anche la sera.');
   // grandine nei prossimi 3 giorni (domani lo dice anche l'avviso della sera): per preparare teli o un riparo
@@ -2596,6 +2658,19 @@ function wxIcon(cond){
      piano    — piano salvato da Claude con il connettore                            (scrive Claude, l'app può tornare al calcolo automatico)
      meteo_bot, piano_bot, eventi_bot — meteo di Open-Meteo, eventi di Telegram e del bot */
 let S = {location:null, plants:[], impostazioni:{...IMP_DEF}, vacanza:null, eventi_app:[]};
+/* Più orti: S è l'orto che hai davanti (posizione e piante di quell'orto; impostazioni, vacanza e diario in comune).
+   ALTRI tiene il resto: posizione dell'orto principale, elenco degli orti, piante degli altri orti. ORTO = orto scelto su
+   questo telefono. pieno() rimette tutto insieme per il salvataggio. */
+let ORTO=(()=>{ try{ return localStorage.getItem('giardino:orto')||'p'; }catch(e){ return 'p'; } })();
+let ALTRI={location:null, orti:[], plants:[], ordine:[]};
+window.ortoAttivo=()=>ORTO;
+const elencoOrti=()=>orti({location:ORTO==='p'?S.location:ALTRI.location, orti:ALTRI.orti.map(o=>o.id===ORTO?{...o,location:S.location}:o)});
+const ortoCorrente=()=>elencoOrti().find(o=>o.id===ORTO)||elencoOrti()[0];
+function pieno(){
+  const pos=new Map(ALTRI.ordine.map((id,i)=>[id,i])), mie=S.plants.map(p=>{ const q={...p}; if(ORTO==='p') delete q.orto; else q.orto=ORTO; return q; });
+  const plants=[...ALTRI.plants, ...mie].sort((a,b)=>(pos.get(a.id)??1e9)-(pos.get(b.id)??1e9));
+  return {...S, location:ORTO==='p'?S.location:ALTRI.location, orti:ALTRI.orti.map(o=>o.id===ORTO&&ORTO!=='p'?{...o,location:S.location}:o), plants};
+}
 let W = {manual:null, bot:null}, P = {claude:null, bot:null}, EB = {eventi:[], aggiornato:null};
 let store = {kind:'none', refs:null};
 let ready = false;
@@ -2616,7 +2691,7 @@ function persist(name, getData, delay=400){
 // le modifiche ancora in attesa partono subito; altrimenti la copia del server le sovrascriverebbe.
 function salvaSubito(){ for(const w of Object.values(writers)) if(w.t){ clearTimeout(w.t); w.run(); } return Promise.all(Object.values(writers).map(w=>w.chain)); }
 function scrittureInSospeso(){ return Object.values(writers).some(w=>w.t); }
-const saveMain = () => persist('giardino', ()=>({...S, updatedAt:new Date().toISOString()}));
+const saveMain = () => persist('giardino', ()=>({...pieno(), updatedAt:new Date().toISOString()}));
 const saveMeteo = () => persist('meteo', ()=>W.manual||{});
 const savePiano = () => persist('piano', ()=>P.claude||{});
 function showNote(kind,msg){ const n=$('#saveNote'); n.className='alert '+(kind==='err'?'err':'info'); n.innerHTML=(kind==='err'?ICON.warn:ICON.info)+'<div>'+esc(msg)+'</div>'; n.hidden=false; }
@@ -2626,7 +2701,11 @@ function applyMain(d){
   // copia: lo stato sullo schermo non deve condividere oggetti con quello che la sincronizzazione usa per capire cosa è cambiato,
   // altrimenti modificando una pianta cambierebbero entrambi e la modifica non partirebbe
   d=JSON.parse(JSON.stringify(d));
-  S={location:d.location||null, plants:Array.isArray(d.plants)?d.plants:[], impostazioni:{...IMP_DEF,...(d.impostazioni||{})}, vacanza:d.vacanza||null, eventi_app:Array.isArray(d.eventi_app)?d.eventi_app:[]};
+  const elenco=Array.isArray(d.orti)?d.orti.filter(o=>o&&o.id):[], ids=new Set(['p',...elenco.map(o=>o.id)]);
+  if(!ids.has(ORTO)) ORTO='p';
+  const tutte=Array.isArray(d.plants)?d.plants:[], mia=p=>(p.orto&&ids.has(p.orto)?p.orto:'p')===ORTO;
+  ALTRI={location:d.location||null, orti:elenco, plants:tutte.filter(p=>!mia(p)), ordine:tutte.map(p=>p.id)};
+  S={location:ORTO==='p'?(d.location||null):(elenco.find(o=>o.id===ORTO)?.location||null), plants:tutte.filter(mia), impostazioni:{...IMP_DEF,...(d.impostazioni||{})}, vacanza:d.vacanza||null, eventi_app:Array.isArray(d.eventi_app)?d.eventi_app:[]};
   return d;
 }
 async function boot(){
@@ -2676,10 +2755,11 @@ async function boot(){
 // con un diario lungo il Diario e il calendario lo facevano ~700 volte per ridisegno.
 let evMemo={a:null, b:null, k:'', all:[], per:new Map()};
 function eventiIndice(){
-  const a=S.eventi_app, b=EB.eventi, k=a.length+'|'+(a[0]?.id||'')+'|'+(a[a.length-1]?.id||'')+'|'+b.length;
-  if(evMemo.a===a && evMemo.b===b && evMemo.k===k) return evMemo;
-  const ids=new Set(a.map(e=>e.id));
-  evMemo={a, b, k, all:[...a, ...b.filter(e=>!ids.has(e.id))], per:new Map()};
+  const a=S.eventi_app, b=EB.eventi, pl=S.plants, k=a.length+'|'+(a[0]?.id||'')+'|'+(a[a.length-1]?.id||'')+'|'+b.length+'|'+pl.length+'|'+ORTO;
+  if(evMemo.a===a && evMemo.b===b && evMemo.pl===pl && evMemo.k===k) return evMemo;
+  // solo gli eventi delle piante dell'orto che hai davanti (il diario degli altri orti resta salvato)
+  const ids=new Set(a.map(e=>e.id)), mie=new Set(pl.map(p=>p.id)), qui=e=>!e.plantId||mie.has(e.plantId);
+  evMemo={a, b, pl, k, all:[...a, ...b.filter(e=>!ids.has(e.id))].filter(qui), per:new Map()};
   return evMemo;
 }
 const allEvents = () => eventiIndice().all;
@@ -2698,9 +2778,10 @@ const fresco = w => w && Array.isArray(w.days) && w.days.some(d=>d.date===today(
 const qui = x => !!(x && S.location && x.lat!=null && Math.abs(x.lat-S.location.lat)<0.3 && Math.abs(x.lon-S.location.lon)<0.3);
 function activeWeather(){
   const wb=qui(W.bot)?W.bot:null;
-  const bot=fresco(wb)?wb:null, man=fresco(W.manual)?W.manual:null;
+  const mq=W.manual&&(W.manual.lat==null||qui(W.manual))?W.manual:null;   // il meteo scritto a mano vale per l'orto dove l'hai scritto
+  const bot=fresco(wb)?wb:null, man=fresco(mq)?mq:null;
   if(bot && man) return (Date.parse(man.updatedAt||0)>Date.parse(bot.updatedAt||0)) ? man : bot;
-  return bot||man||W.manual||wb||null;
+  return bot||man||mq||wb||null;
 }
 function wxDays(){
   const w=activeWeather(); const lat=S.location?.lat;
@@ -2737,7 +2818,7 @@ function activePlan(){
   let fine=''; best.data.piante.forEach(x=>(x.giorni||[]).forEach(g=>{ if(g.data>fine) fine=g.data; }));
   const conAuto=best.data.piante.map(x=>{ const b=local?.piante.find(y=>y.id===x.id); if(!b) return x; const date=new Set((x.giorni||[]).map(g=>g.data));
     return {...x, acqua:x.acqua??b.acqua, soglia:x.soglia??b.soglia, giorni:[...(x.giorni||[]), ...b.giorni.filter(g=>!date.has(g.data)).map(g=>({...g,auto:true}))].sort((a,c)=>a.data<c.data?-1:1)}; });
-  const piante=[...conAuto, ...(local?local.piante.filter(x=>!ids.has(x.id)):[])];
+  const mie=new Set(S.plants.map(p=>p.id)), piante=[...conAuto.filter(x=>mie.has(x.id)), ...(local?local.piante.filter(x=>!ids.has(x.id)):[])];
   const stale = best.source==='claude' ? (best.plantsSig && best.plantsSig!==plantsSig()) : false;
   return {...best, data:{...best.data, piante}, stale, fine};
 }
@@ -2802,7 +2883,9 @@ function renderAll(){
 let renderAtteso=0;
 function renderPresto(){ if(renderAtteso) return; renderAtteso=requestAnimationFrame(()=>{ renderAtteso=0; renderAll(); }); }
 function renderHeader(){
-  $('#locName').textContent=S.location?S.location.name:'Imposta il comune';
+  const tanti=elencoOrti().length>1;
+  $('#locName').textContent=tanti?nomeOrto(ortoCorrente()):S.location?S.location.name:'Imposta il comune';
+  $('#locBtn').setAttribute('aria-label',tanti?'Orto: '+nomeOrto(ortoCorrente())+', cambia orto':'Posizione e orti');
   const ob=ready && (!S.location || !S.plants.length);
   $('#onboarding').hidden=!ob;
   if(!ob) return;
@@ -3055,6 +3138,42 @@ function chiudiFinestra(sh,bg){
   if(sh.classList.contains('esce')) return;
   sh.classList.add('esce'); bg?.classList.add('esce'); sh._esce=setTimeout(fine,230);
 }
+/* ================= Orti ================= */
+function apriOrti(){ renderOrti(); $('#ortoNuovo').open=!S.location; apriFinestra($('#ortiSheet'),$('#ortiBg')); }
+function chiudiOrti(){ chiudiFinestra($('#ortiSheet'),$('#ortiBg')); }
+function renderOrti(){
+  const n=id=>id===ORTO?S.plants.length:ALTRI.plants.filter(p=>(p.orto||'p')===id||(id==='p'&&p.orto&&!ALTRI.orti.some(o=>o.id===p.orto))).length;
+  setHTML($('#ortiLista'),elencoOrti().map(o=>{ const k=n(o.id), on=o.id===ORTO;
+    return `<div class="orto-r${on?' on':''}"><button type="button" data-orto="${esc(o.id)}" aria-pressed="${on}"><span class="oi" aria-hidden="true">${on?'✓':'📍'}</span><span class="ot"><b>${esc(nomeOrto(o))}</b><small>${esc([o.location&&o.nome?o.location.name:o.location?'':'senza posizione', k+(k===1?' pianta':' piante')].filter(Boolean).join(' · '))}</small></span></button>${!on&&o.id!=='p'&&!k?`<button type="button" class="btn small ghost" data-orto-via="${esc(o.id)}">Elimina</button>`:''}</div>`; }).join(''));
+}
+function cambiaOrto(id){
+  if(id===ORTO){ chiudiOrti(); return; }
+  const tutto=pieno(); ORTO=id; try{ localStorage.setItem('giardino:orto',id); }catch(e){}
+  applyMain(tutto); pianoMemo={k:'',v:null};
+  chiudiOrti(); renderAll(); window.GiardinoNet?.cambiaOrto?.(); toast('Orto: '+nomeOrto(ortoCorrente()));
+}
+async function creaOrto(){
+  const nome=$('#onNome').value.trim().replace(/\s+/g,' ').slice(0,30), q=$('#onLoc').value.trim(), info=$('#onInfo'), btn=$('#onCrea');
+  if(!q){ $('#onLoc').focus(); info.textContent='Scrivi il comune: serve per il meteo.'; return; }
+  btn.disabled=true; info.innerHTML=spin('Cerco “'+q+'”…');
+  try{
+    const r=await window.GiardinoNet.geocodifica(q); if(!r){ info.textContent='Non trovato: prova con il nome del comune.'; return; }
+    if(!S.location){ S.location=r; if(nome) rinominaOrto(nome,true); }   // il primo orto senza posizione: la prende lui
+    else { const id='o'+uid().slice(0,7); ALTRI.orti=[...ALTRI.orti, {id, nome, location:r}]; saveMain(); cambiaOrto(id); }
+    $('#onNome').value=''; $('#onLoc').value=''; info.textContent=''; saveMain(); renderAll(); renderOrti();
+  }catch(e){ info.textContent='Ricerca non riuscita: controlla la connessione.'; }
+  finally{ btn.disabled=false; }
+}
+function rinominaOrto(nome, zitto){
+  nome=String(nome||'').trim().replace(/\s+/g,' ').slice(0,30);
+  const c=ALTRI.orti.find(o=>o.id===ORTO);
+  if(c) c.nome=nome; else ALTRI.orti=[{id:'p', nome}, ...ALTRI.orti];
+  saveMain(); renderHeader(); if(!zitto) toast(nome?'Orto: '+nome:'Nome dell\'orto tolto');
+}
+function eliminaOrto(id){
+  if(id==='p'||id===ORTO||ALTRI.plants.some(p=>p.orto===id)) return;
+  ALTRI.orti=ALTRI.orti.filter(o=>o.id!==id); saveMain(); renderHeader(); renderOrti(); toast('Orto eliminato');
+}
 function chiudiMeteo(){ chiudiFinestra($('#wxSheet'),$('#wxBg')); }
 // Con una finestra aperta (meteo del giorno, sotto la pioggia) la pagina sotto non scorre: su iPhone overflow:hidden non
 // basta, quindi la pagina si ferma dov'è (corpo fisso, spostato in su di quanto era scorsa) e alla chiusura torna lì.
@@ -3195,8 +3314,9 @@ function renderSync(){
   $('#syncChip').textContent=t?'alle '+new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'';
 }
 function renderImpostazioni(){
-  const l=S.location;
-  $('#locVal').textContent=l?l.name:'da impostare';
+  const l=S.location, tanti=elencoOrti().length>1;
+  $('#locVal').textContent=l?(tanti?nomeOrto(ortoCorrente())+' · ':'')+l.name:'da impostare';
+  if(document.activeElement!==$('#ortoNome')) $('#ortoNome').value=ortoCorrente()?.nome||'';
   const info=$('#locInfo'); if(!info.querySelector('.spinner')) info.innerHTML=l?'<b>'+esc(l.name)+'</b>'+(l.detail?' · '+esc(l.detail):'')+(l.alt!=null?' · '+fmt(l.alt,0)+' m':''):'Scrivi il comune dove sono le piante: serve per il meteo.';
   const i=S.impostazioni;
   setVal($('#impB'),numIn(i.bicchiere)); setVal($('#impA'),numIn(i.annaffiatoio)); setVal($('#impM'),i.ora_mattina); setVal($('#impS'),i.ora_sera);
@@ -3477,6 +3597,8 @@ function openForm(id){
   $('#plantFormTitle').textContent=id?'Modifica pianta':'Nuova pianta';
   $('#pf-nome').value=p.nome; $('#pf-emoji').value=emojiValida(p.emoji); setSpecie(p.specie); apriPicker(false); specieScelta=false; suggerisciSpecie(); $('#pf-fase').innerHTML=optFasi(p.fase,{value:'auto',label:'Automatica'},p.specie);
   $('#pf-zona').value=zonaDi(p); renderZoneQuick();
+  const eo=elencoOrti(); $('#pf-orto-f').hidden=eo.length<2;
+  $('#pf-orto').innerHTML=eo.map(o=>`<option value="${esc(o.id)}"${o.id===ORTO?' selected':''}>${esc(nomeOrto(o))}${o.location&&o.nome?' ('+esc(o.location.name)+')':''}</option>`).join('');
   $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina'; $('#pf-raccolta').value=p.raccolta||'';
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
   setRadio('materiale',p.materiale||'plastica'); setOrient(p.orient); $('#pf-riserva').value=+p.riserva>0?numIn(p.riserva):'';
@@ -3521,9 +3643,13 @@ function submitForm(e){
   // le ore di sole valgono per il giorno in cui le scrivi: se cambiano (o cambia l'orientamento) la data si aggiorna
   const prima=editingId?S.plants.find(x=>x.id===editingId):null;
   data.luce_data=!data.orient?'':(prima&&orientamento(prima.orient)===data.orient&&+prima.luce===+data.luce&&prima.luce_data)?prima.luce_data:today();
-  if(editingId){ const p=S.plants.find(x=>x.id===editingId); if(p){ Object.assign(p,data); delete p.example; delete p.espo; } }
-  else S.plants.push({id:uid(),...data});
-  saveMain(); closeForm(); renderAll(); toast('Pianta salvata');
+  let p=null;
+  if(editingId){ p=S.plants.find(x=>x.id===editingId); if(p){ Object.assign(p,data); delete p.example; delete p.espo; } }
+  else S.plants.push(p={id:uid(),...data});
+  // un altro orto: la pianta passa là (con il suo diario)
+  const dest=$('#pf-orto-f').hidden?ORTO:($('#pf-orto').value||ORTO);
+  if(p&&dest!==ORTO){ S.plants=S.plants.filter(x=>x!==p); const q={...p}; if(dest==='p') delete q.orto; else q.orto=dest; ALTRI.plants.push(q); }
+  saveMain(); closeForm(); renderAll(); toast(p&&dest!==ORTO?'Pianta spostata in «'+nomeOrto(elencoOrti().find(o=>o.id===dest))+'»':'Pianta salvata');
 }
 
 /* ================= Navigazione ed eventi ================= */
@@ -3736,7 +3862,12 @@ function wire(){
   const meseSposta=n=>{ const [y,m]=calMese.split('-').map(Number), d=new Date(y,m-1+n,1); calMese=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); renderCalendario(); };
   $('#calPrima').addEventListener('click',()=>meseSposta(-1)); $('#calDopo').addEventListener('click',()=>meseSposta(1));
   $('#cal').addEventListener('click',e=>{ const g=e.target.closest('[data-giorno]'); if(g){ calSel=g.dataset.giorno; renderCalendario(); } });
-  $('#locBtn').addEventListener('click',()=>apriSezione('set-loc'));
+  $('#locBtn').addEventListener('click',()=>S.location||elencoOrti().length>1?apriOrti():apriSezione('set-loc'));
+  $('#orChiudi').addEventListener('click',chiudiOrti); $('#ortiBg').addEventListener('click',chiudiOrti);
+  $('#ortiLista').addEventListener('click',e=>{ const x=e.target.closest('[data-orto-via]'); if(x){ eliminaOrto(x.dataset.ortoVia); return; } const b=e.target.closest('[data-orto]'); if(b) cambiaOrto(b.dataset.orto); });
+  $('#onCrea').addEventListener('click',creaOrto); $('#onLoc').addEventListener('keydown',e=>{ if(e.key==='Enter') creaOrto(); });
+  $('#orModifica').addEventListener('click',()=>{ chiudiOrti(); apriSezione('set-loc'); });
+  $('#ortoNome').addEventListener('change',()=>rinominaOrto($('#ortoNome').value));
   $('#obLocSet').addEventListener('click',()=>setLocation($('#obLoc'),$('#obLocSet'),$('#obLocInfo')));
   $('#obLoc').addEventListener('keydown',e=>{ if(e.key==='Enter') setLocation($('#obLoc'),$('#obLocSet'),$('#obLocInfo')); });
   $('#locSet').addEventListener('click',()=>setLocation($('#locInput'),$('#locSet'),$('#locInfo')));
@@ -3815,7 +3946,7 @@ function wire(){
     d[f]=numOrNull(e.target.value);
     if(f==='rain'&&d.rain==null) d.rain=0;
     if(f==='tmax'||f==='tmin') delete d.et0;
-    W.manual={source:'manuale', updatedAt:new Date().toISOString(), days:days.sort((a,b)=>a.date<b.date?-1:1)};
+    W.manual={source:'manuale', updatedAt:new Date().toISOString(), lat:S.location?.lat??null, lon:S.location?.lon??null, days:days.sort((a,b)=>a.date<b.date?-1:1)};
     saveMeteo(); renderAll(); toast('Meteo corretto');
   });
   $('#syncBtn').addEventListener('click',syncNow);
@@ -3842,12 +3973,12 @@ function wire(){
 /* ================= Backup ================= */
 function backupDati(){
   return {app:'giardino', formato:1, creato:new Date().toISOString(),
-    giardino:{location:S.location, plants:S.plants, impostazioni:S.impostazioni, vacanza:S.vacanza, eventi_app:S.eventi_app},
+    giardino:(({location,plants,impostazioni,vacanza,eventi_app,orti})=>({location,plants,impostazioni,vacanza,eventi_app,orti}))(pieno()),
     meteo:W.manual||null, piano:P.claude||null};
 }
 async function scaricaBackup(){
   const testo=JSON.stringify(backupDati(),null,2), nome='giardino-backup-'+today()+'.json';
-  const fine=()=>'('+S.plants.length+' piante, '+S.eventi_app.length+' voci di diario)';
+  const fine=()=>'('+pieno().plants.length+' piante, '+S.eventi_app.length+' voci di diario)';
   // su iPhone il foglio di condivisione permette “Salva su File”; altrove si scarica
   try{
     const file=new File([testo],nome,{type:'application/json'});
@@ -3872,7 +4003,7 @@ function leggiBackup(file){
       if(d?.app!=='giardino'||!d.giardino||!Array.isArray(d.giardino.plants)) throw 0;
       bkPending=d;
       const box=$('#bkConfirm');
-      box.innerHTML=ICON.info+`<div class="stack"><span>Il backup del ${esc(new Date(d.creato).toLocaleString('it-IT',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}))} contiene <b>${d.giardino.plants.length} piante</b> e ${(d.giardino.eventi_app||[]).length} voci di diario. Sostituisce i dati attuali (${S.plants.length} piante).</span><div class="row"><button class="btn small primary" type="button" id="bkYes">Importa</button><button class="btn small ghost" type="button" id="bkNo">Annulla</button></div></div>`;
+      box.innerHTML=ICON.info+`<div class="stack"><span>Il backup del ${esc(new Date(d.creato).toLocaleString('it-IT',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}))} contiene <b>${d.giardino.plants.length} piante</b> e ${(d.giardino.eventi_app||[]).length} voci di diario. Sostituisce i dati attuali (${pieno().plants.length} piante).</span><div class="row"><button class="btn small primary" type="button" id="bkYes">Importa</button><button class="btn small ghost" type="button" id="bkNo">Annulla</button></div></div>`;
       box.hidden=false;
       $('#bkYes').onclick=importaBackup; $('#bkNo').onclick=()=>{ bkPending=null; box.hidden=true; };
     }catch(e){ $('#bkStatus').textContent='Questo file non è un backup di Giardino.'; }
