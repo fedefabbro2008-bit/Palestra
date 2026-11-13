@@ -1063,7 +1063,7 @@ const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').
 // un campo si riscrive solo se il dato salvato è cambiato e non ci stai scrivendo: l'aggiornamento automatico non cancella ciò che stai inserendo
 const setVal = (el,v) => { v=String(v??''); if(!el || document.activeElement===el || el._last===v) return; el.value=v; el._last=v; };
 const setHTML = (el,h) => { if(el._h!==h){ el.innerHTML=h; el._h=h; } };
-function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,2800); }
+function toast(msg,ms){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,ms||2800); }
 async function copyText(text, fallbackEl){
   try{ await navigator.clipboard.writeText(text); return true; }
   catch(e){ if(fallbackEl){ const r=document.createRange(); r.selectNodeContents(fallbackEl); const s=getSelection(); s.removeAllRanges(); s.addRange(r); } return false; }
@@ -1452,7 +1452,7 @@ function apriTerra(pid){
   trPianta=pid;
   const pp=activePlan()?.data?.piante.find(x=>x.id===pid), cm=profonditaDito(p,today(),S.location?.lat);
   setHTML($('#trSub'),'<b>'+esc(p.nome)+'</b>: '+esc(testoDito(cm))+', lontano dal bordo del vaso. Com\'è?');
-  $('#trHint').textContent=(pp?.acqua!=null?'Il calcolo dice ~'+Math.round(pp.acqua*100)+'% d\'acqua nel terriccio. ':'')+'La tua risposta corregge quanto beve questa pianta; se è asciutta l\'app te lo fa annaffiare.';
+  $('#trHint').textContent=(pp?.acqua!=null?'Il calcolo dice ~'+Math.round(pp.acqua*100)+'% d\'acqua nel terriccio. ':'')+'Se è asciutta l\'app valuta se è normale per questa pianta e per i giorni passati: cambia il calcolo solo se asciuga prima del previsto.';
   $('#terraSheet').hidden=false; $('#terraBg').hidden=false;
 }
 function chiudiTerra(){ $('#terraSheet').hidden=true; $('#terraBg').hidden=true; trPianta=null; }
@@ -1460,8 +1460,9 @@ function rispondiVerifica(pid, risposta){
   if(risposta==='dopo'){ try{ localStorage.setItem('giardino:verifica:dopo',today()); }catch(e){} renderAll(); return; }
   const AP=activePlan(), pp=AP?.data?.piante.find(x=>x.id===pid), k=S.plants.find(x=>x.id===pid);
   if(!k) return;
-  const v=esitoVerifica(risposta, pp?.acqua, pp?.soglia);
-  addEvent(pid,'verifica',{esito:risposta, valutazione:v, acqua:pp?.acqua??null}); renderAll(); toast(TESTO_VERIFICA[v]);
+  const v=esitoVerifica(risposta, pp?.acqua, pp?.soglia, pp?.acquaSecco);
+  addEvent(pid,'verifica',{esito:risposta, valutazione:v, acqua:pp?.acqua??null}); renderAll();
+  toast(risposta==='secco'?testoSecco(v, pp?.acqua, pp?.soglia, pp?.acquaSecco, pp?.seccoOra):TESTO_VERIFICA[v], 5000);
 }
 // «L'ho messa sotto la pioggia»: dalle/alle → pioggia MISURATA dalla stazione ARPAE più vicina (ogni 15 minuti) → litri nel vaso.
 // Niente previsioni: se le misure non ci sono, non si registra niente.
@@ -1531,7 +1532,7 @@ function apriMeteo(data){
   const c=(et,v,nota)=>`<div class="wxd-c"><span class="eyebrow">${esc(et)}</span><b>${v}</b>${nota?`<small>${esc(nota)}</small>`:''}</div>`;
   const evap=d.et0!=null?(d.et0<1?'poca, terra che resta umida':d.et0<3?'normale':d.et0<5?'alta: i vasi si asciugano in fretta':'molto alta: controlla i vasi piccoli'):'';
   const vento=d.wind!=null?(d.wind<15?'debole':d.wind<30?'moderato':d.wind<50?'forte: lega le piante alte':'molto forte: metti al riparo i vasi'):'';
-  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.ensemble?(Math.max(...d.rain_modelli)>0?'media di '+d.rain_modelli.length+' modelli ('+fmt(Math.min(...d.rain_modelli),1)+'–'+fmt(Math.max(...d.rain_modelli),1)+' mm)':'nessuno dei '+d.rain_modelli.length+' modelli la prevede'):d.rain_modelli?'media di due modelli ('+d.rain_modelli.map(x=>fmt(x,1)).join(' e ')+' mm)':'';
+  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.rain_modelli?'media dei modelli meteo':'';
   setHTML($('#wxGrid'),[
     c('Massima',d.tmax!=null?fmt(d.tmax,0)+'°':'–'),
     c('Minima',d.tmin!=null?fmt(d.tmin,0)+'°':'–',d.tmin!=null&&d.tmin<=2?'rischio gelo':d.tmin!=null&&d.tmin<=6?'notte fredda':''),

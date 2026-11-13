@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="0f43feb22e71">
+<meta name="giardino-build" content="86b733435a2c">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1852,7 +1852,8 @@ function calibrazione(eventi, plantId, oggi){
   let f=1, verso=0, serie=0;
   const ev=eventiValidi(eventi,plantId).filter(e=>{ const g=giorniTra(e.data,oggi); return g>=0&&g<=60; }).sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
   for(const e of ev){
-    const v=(e.tipo==='umido'||e.tipo==='meno'||(e.tipo==='verifica'&&e.valutazione==='meno'))?-1:(e.tipo==='secco'||e.tipo==='piu'||(e.tipo==='verifica'&&e.valutazione==='piu'))?1:0;
+    // «era secca» conta solo se era più secca del normale per la pianta (valutazione «piu»)
+    const v=(e.tipo==='umido'||e.tipo==='meno'||(e.tipo==='verifica'&&e.valutazione==='meno'))?-1:(e.tipo==='piu'||((e.tipo==='secco'||e.tipo==='verifica')&&e.valutazione==='piu'))?1:0;
     if(!v) continue;
     serie = v===verso ? serie+1 : 1; verso=v;
     const passo=1+0.5*Math.min(serie-1,2);
@@ -1874,14 +1875,26 @@ function verificaDaFare(piante, eventi, oggi, vacanza){
   const ultima=p=>eventiValidi(eventi,p.id).filter(e=>['umido','secco','meno','piu','verifica'].includes(e.tipo)).map(e=>e.data).sort().pop()||'';
   return [...pianteOrdinate(piante)].sort((a,b)=>ultima(a)<ultima(b)?-1:ultima(a)>ultima(b)?1:0)[0];
 }
-// risposta = 'umido' | 'secco'; acqua e soglia = frazione della riserva (dal calcolo, a fine giornata)
-function esitoVerifica(risposta, acqua, soglia){
+// risposta = 'umido' | 'secco'; acqua e soglia = frazione della riserva (dal calcolo, a fine giornata);
+// acquaSecco = acqua sotto la quale è normale che la terra sia asciutta dove tocchi (dal piano; senza, la tacca).
+// «Asciutta» non vuol dire sempre «beve di più»: in un vaso alto o con una pianta che ama asciugare lo strato in alto
+// secca giorni prima della tacca. Cambia il calcolo solo se è asciutta prima di quanto è normale per lei.
+function esitoVerifica(risposta, acqua, soglia, acquaSecco){
   if(acqua==null || soglia==null) return 'ok';
-  if(risposta==='secco' && acqua>soglia+0.15) return 'piu';
+  if(risposta==='secco'){ const c=1-acqua, Rf=1-soglia, ds=acquaSecco!=null?1-acquaSecco:Rf; return c<0.8*Math.min(ds,0.8*Rf) ? 'piu' : 'ok'; }
   if(risposta==='umido' && acqua<soglia) return 'meno';
   return 'ok';
 }
-const TESTO_VERIFICA = {ok:'Il calcolo era giusto: non cambia niente.', piu:'Il calcolo pensava che ci fosse più acqua: da ora conto che beve di più.', meno:'Il calcolo la dava già asciutta: da ora conto che beve di meno.'};
+const TESTO_VERIFICA = {ok:'Il calcolo era giusto: non cambia niente.', piu:'Asciuga prima del previsto: da ora conto che beve di più.', meno:'Il calcolo la dava già asciutta: da ora conto che beve di meno.'};
+// testo dopo «asciutta»: è ora di innaffiare, è normale per la pianta (il calcolo non cambia) o asciuga troppo presto
+// ora = dal piano (seccoOra): con «asciutta» oggi si innaffia
+function testoSecco(v, acqua, soglia, acquaSecco, ora){
+  if(v==='piu') return TESTO_VERIFICA.piu+' Innaffiala quando l\'app lo dice.';
+  if(acqua==null || soglia==null) return TESTO_VERIFICA.ok;
+  const c=1-acqua, Rf=1-soglia, ds=acquaSecco!=null?1-acquaSecco:Rf;
+  if(ora ?? (c>=0.8*Rf || ds>=Rf)) return 'Il calcolo era giusto: è il momento, innaffiala oggi.';
+  return 'Normale per questa pianta: in alto la terra asciuga prima, più sotto c\'è ancora acqua (~'+Math.round(acqua*100)+'%). Il calcolo non cambia.';
+}
 
 /* ---------------- Parametri idrici di una pianta o di un vaso ---------------- */
 function membriVaso(p, faseMain){
@@ -1987,7 +2000,7 @@ function simula(g, k, f){
   for(const d of g){
     if(d.o){
       if(ancorato) pred.push({data:d.date, tipo:d.o, x:dep/T});
-      if(d.o==='umido') dep=Math.min(dep,0.6*R); else if(!d.w) dep=Math.max(dep,R);
+      if(d.o==='umido') dep=Math.min(dep,0.6*R); else if(!d.w) dep=ancoraSecco(dep,k);
       info=true; da=d.date;
     }
     dep=Math.min(T, Math.max(0, dep+d.c*f-d.r));
@@ -2008,13 +2021,14 @@ function stimaConsumo(g, k, eventi, pid, oggi){
   // diagnosi da foto: −10% / +12% ciascuna, come la prima risposta della regola semplice
   for(const e of eventiValidi(eventi,pid)){ const a=giorniTra(e.data,oggi); if(a<0||a>90) continue; if(e.tipo==='meno') mu+=Math.log(0.9); else if(e.tipo==='piu') mu+=Math.log(1.12); }
   // errore misurato in rapporto (logaritmo): «asciutta» col calcolo al 10% invece del 24% pesa come «umida» al 72% invece del 30%
-  const q=k.rawL/k.tawL, S=0.25, SIG=0.3, DZ=logSig(1.5), L=x=>Math.log(Math.max(0.01,x));
+  // «asciutta» è coerente col calcolo da quando lo strato toccato col dito è normale che sia secco (qs), non solo alla tacca
+  const q=k.rawL/k.tawL, qs=Math.min(k.dSecco!=null?k.dSecco/k.tawL:q, 0.8*q), S=0.25, SIG=0.3, DZ=logSig(1.5), L=x=>Math.log(Math.max(0.01,x));
   const vicino=x=>GRIGLIA_F.reduce((a,f)=>Math.abs(Math.log(f)-x)<Math.abs(Math.log(a)-x)?f:a, 1);
   // senza controlli dopo un'innaffiatura conta solo il punto di partenza: niente ricerca (la maggior parte delle piante)
   const n=simula(g,k,1).pred.length;
   if(!n) return {f:+Math.max(0.4,Math.min(2.5,vicino(mu))).toFixed(3), n:0};
   const ll=i=>{ const f=GRIGLIA_F[i], {pred}=simula(g,k,f); let v=-((Math.log(f)-mu)**2)/(2*SIG*SIG);
-    for(const o of pred){ const w=Math.exp(-Math.max(0,giorniTra(o.data,oggi))/60), z=o.tipo==='umido'?(L(q)-L(o.x))/S:(L(o.x)-L(0.8*q))/S; v+=w*Math.min(0,logSig(z)-DZ); }
+    for(const o of pred){ const w=Math.exp(-Math.max(0,giorniTra(o.data,oggi))/60), z=o.tipo==='umido'?(L(q)-L(o.x))/S:(L(o.x)-L(0.8*qs))/S+1.5; v+=w*Math.min(0,logSig(z)-DZ); }
     return v; };
   // prima un fattore ogni tre (13 bilanci invece di 37), poi i due vicini per parte del migliore
   let bi=18, bv=-Infinity; const fatti=new Map(), prova=i=>{ if(i<0||i>=GRIGLIA_F.length) return; const v=fatti.has(i)?fatti.get(i):ll(i); fatti.set(i,v); if(v>bv+1e-9||(Math.abs(v-bv)<=1e-9&&Math.abs(i-18)<Math.abs(bi-18))){ bv=v; bi=i; } };
@@ -2024,6 +2038,7 @@ function stimaConsumo(g, k, eventi, pid, oggi){
 }
 // stato di una pianta all'inizio di oggi, con il fattore di consumo stimato (k = parametri già corretti)
 function bilancioPassato(p, k0, past, eventi, oggi){
+  if(k0.dSecco==null) k0={...k0, dSecco:depSecco(k0, profonditaDito(p, oggi, k0.lat))};
   const fatte=dateInnaffiate(p,eventi), presa=pioggiaPresa(p,eventi), oss=osservazioni(eventi,p.id);
   const g=past.map(d=>({date:d.date, c:consumoL(k0,d), r:pioggiaL(p,k0,d)+(presa[d.date]||0), w:fatte.has(d.date), o:oss[d.date]||null}));
   const cal=stimaConsumo(g, k0, eventi, p.id, oggi);
@@ -2069,6 +2084,20 @@ function testoRaccolto(t){
   if(t.pezzi>0) p.push(t.pezzi+(t.pezzi===1?' pezzo':' pezzi')); if(t.mazzi>0) p.push(t.mazzi+(t.mazzi===1?' mazzo':' mazzi'));
   return p.join(' + ');
 }
+// Quanta acqua (litri) ha già usato la pianta quando lo strato che tocchi col dito (cm) è asciutto: in alto la terra
+// asciuga per prima, quindi in un vaso alto o in piena terra il secco al dito arriva quando sotto c'è ancora acqua.
+// Frazione = cm / altezza del terriccio (tra 15% e 60%); la riserva del sottovaso si consuma prima.
+function depSecco(k, cm){
+  const H = k.vaso ? k.V*1000/(k.Apot*1e4) : (k.sp?.radici||0.4)*(k.fa?.radici??1)*100;
+  const f = Math.max(0.15, Math.min(0.6, cm/Math.max(1,H)));
+  return k.vaso ? (k.riserva||0)+f*k.tawTerra : f*k.tawL;
+}
+// «asciutta» al dito: vicino alla tacca (o con piante che vogliono il terriccio sempre umido) è ora di innaffiare;
+// altrimenti il calcolo sale solo fin dove è normale che lo strato in alto sia secco
+function ancoraSecco(dep, k){
+  const R=k.rawL;
+  return dep>=0.8*R || k.dSecco==null || k.dSecco>=R ? Math.max(dep,R) : Math.max(dep,k.dSecco);
+}
 const testoDito = cm => cm<=1 ? 'tocca la superficie del terriccio (il primo centimetro)' : 'infila un dito nel terriccio per '+cm+'\u00a0cm'+(cm<=3?' (fino alla prima falange)':' (fino alla seconda falange)');
 function germinazione(p, k, oggi, lat){
   if(k.fase!=='germinazione' || p.tipo_data==='trapianto' || SEMI_PROFONDI.has(p.specie) || !k.sp?.ann) return 0;
@@ -2087,7 +2116,9 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     const usaSuolo = suolo!=null && isFinite(suolo) && !k.vaso && p.dove==='aperto' && ![...fatte].some(d=>d>=addDays(oggi,-3));
     if(usaSuolo) dep=deficitDaSuolo(suolo)*k.tawL;
     // oggi: il controllo del mattino, poi l'innaffiatura o la pioggia presa (riempie solo i litri presi)
-    if(oss[oggi]==='umido') dep=Math.min(dep,0.6*k.rawL); else if(oss[oggi]==='secco' && !fatte.has(oggi)) dep=Math.max(dep,k.rawL);
+    // se oggi rispondi «asciutta»: è ora di innaffiare (vicino alla tacca, o pianta da terriccio sempre umido)?
+    const seccoOra = dep>=0.8*k.rawL || k.dSecco>=k.rawL;
+    if(oss[oggi]==='umido') dep=Math.min(dep,0.6*k.rawL); else if(oss[oggi]==='secco' && !fatte.has(oggi)) dep=ancoraSecco(dep,k);
     if(fatte.has(oggi)) dep=0;
     dep=Math.max(0, dep-(presa[oggi]||0));
     // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
@@ -2140,11 +2171,11 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     const valutazione=prima ? 'Prossima innaffiatura: '+(prima.data===oggi?'oggi':giornoBreve(prima.data))+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'
       : ctrl ? 'Nei prossimi giorni basta la riserva; '+giornoBreve(ctrl.data)+' tocca il terriccio.' : 'Nei prossimi '+giorni.length+' giorni non serve acqua.';
     out.piante.push({id:p.id, acqua, soglia, valutazione, fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:consigliPianta(p),
-      calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da});
+      calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da, acquaSecco:+Math.max(0,1-Math.min(k.rawL,k.dSecco)/k.tawL).toFixed(2), seccoOra});
   }
-  const minT=Math.min(...fut.map(d=>d.tmin_freddo??d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
+  const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax));
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
-  if(freddo.length) out.avvisi.push('Minima fino a '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
+  if(freddo.length) out.avvisi.push('Minima di '+fmtN(minT)+' °C: proteggi '+freddo.map(p=>p.nome).join(', ')+'.');
   if(chiusiBagnati.size) out.avvisi.push('Pioggia sui vasi senza fori ('+[...chiusiBagnati].join(', ')+'): dopo la pioggia inclina il vaso e togli l\'acqua in più, altrimenti le radici marciscono.');
   if(maxT>=33) out.avvisi.push('Caldo intenso (fino a '+fmtN(maxT)+' °C): innaffia all\'alba e controlla i vasi piccoli anche la sera.');
   // grandine nei prossimi 3 giorni (domani lo dice anche l'avviso della sera): per preparare teli o un riparo
@@ -2252,16 +2283,15 @@ function avvisiDomani(piante, domani, notte){
   if(!domani) return [];
   const out=[], fuori=piante.filter(p=>!alCoperto(p)), daGelo=piante.filter(p=>p.dove!=='interno');
   const oraria = Array.isArray(notte) && notte.length ? notte : null;
-  // con più modelli: se il più freddo (+1 °C) scende sotto la previsione ora per ora, vale quello (meglio un telo in più)
-  const minOra = oraria ? Math.min(...oraria.map(x=>x.t)) : domani.tmin, freddo = domani.tmin_freddo!=null && domani.tmin_freddo<minOra ? domani.tmin_freddo : null;
-  const minima = freddo ?? minOra;
+  // la minima è quella del giorno (media dei modelli); le ore della notte servono solo a dire quando, spostate sulla media
+  const minOra = oraria ? Math.min(...oraria.map(x=>x.t)) : null, minima = domani.tmin ?? minOra;
+  const sposta = oraria && minima!=null ? minima-minOra : 0, notteM = oraria ? oraria.map(x=>({ora:x.ora, t:+(x.t+sposta).toFixed(1)})) : null;
   const sogliaGelo=p=>gelo(p)-(p.dove==='serra'?4:0);   // il vetro della serra tiene circa 4 gradi
   const fredde=daGelo.filter(p=>minima<=sogliaGelo(p));
   if(fredde.length){
     let testo='Minima di '+fmtN(minima)+' °C';
-    if(freddo!=null) testo='Minima fino a '+fmtN(minima)+' °C secondo il modello più freddo (gli altri '+fmtN(minOra)+' °C)';
-    else if(oraria){
-      const soglia=Math.max(...fredde.map(sogliaGelo)), sotto=oraria.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minima);
+    if(notteM){
+      const soglia=Math.max(...fredde.map(sogliaGelo)), sotto=notteM.filter(x=>x.t<=soglia), piu=oraria.find(x=>x.t===minOra);
       testo='Stanotte minima di '+fmtN(minima)+' °C verso le '+piu.ora+':00'+(sotto.length>1?' (sotto '+fmtN(soglia)+' °C dalle '+sotto[0].ora+':00 alle '+sotto[sotto.length-1].ora+':00)':'');
     }
     const fuoriF=fredde.filter(p=>p.dove!=='serra'), serraF=fredde.filter(p=>p.dove==='serra');
@@ -2406,7 +2436,7 @@ function urlMeteo(lat, lon){
    Office e GFS (USA). Pioggia, minima, massima ed evaporazione sono la media pesata dei modelli che coprono il giorno:
    i primi giorni pesano di più i modelli fitti, che vedono meglio Appennino e temporali; poi ECMWF. Un modello solo
    sbaglia spesso dove cade la pioggia; la media sbaglia meno. La probabilità di pioggia unisce quella di Open-Meteo
-   e la quota di modelli che danno almeno 1 mm. Per il gelo conta anche il modello più freddo (+1 °C).
+   e la quota di modelli che danno almeno 1 mm. Anche per il gelo vale la minima media.
    PESI[modello] = [oggi, domani, dopodomani, poi]. */
 const MODELLI = ['italia_meteo_arpae_icon_2i','icon_seamless','meteofrance_seamless','ecmwf_ifs','ukmo_seamless','gfs_seamless'];
 const MODELLI_PARAMS='precipitation_sum,temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration';
@@ -2426,7 +2456,6 @@ function ensembleGiorni(days, jm, oggi){
     if(tx!=null) out.tmax=+tx.toFixed(1);
     if(tn!=null) out.tmin=+tn.toFixed(1);
     if(et!=null) out.et0=+et.toFixed(2);
-    const fr=v.map(x=>x.n).filter(ok); if(fr.length && out.tmin!=null) out.tmin_freddo=+Math.min(out.tmin, Math.min(...fr)+1).toFixed(1);
     out.prob=Math.round(day.prob!=null ? (day.prob+pMod)/2 : pMod);
     return out;
   });
@@ -2521,7 +2550,7 @@ const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').
 // un campo si riscrive solo se il dato salvato è cambiato e non ci stai scrivendo: l'aggiornamento automatico non cancella ciò che stai inserendo
 const setVal = (el,v) => { v=String(v??''); if(!el || document.activeElement===el || el._last===v) return; el.value=v; el._last=v; };
 const setHTML = (el,h) => { if(el._h!==h){ el.innerHTML=h; el._h=h; } };
-function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,2800); }
+function toast(msg,ms){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,ms||2800); }
 async function copyText(text, fallbackEl){
   try{ await navigator.clipboard.writeText(text); return true; }
   catch(e){ if(fallbackEl){ const r=document.createRange(); r.selectNodeContents(fallbackEl); const s=getSelection(); s.removeAllRanges(); s.addRange(r); } return false; }
@@ -2910,7 +2939,7 @@ function apriTerra(pid){
   trPianta=pid;
   const pp=activePlan()?.data?.piante.find(x=>x.id===pid), cm=profonditaDito(p,today(),S.location?.lat);
   setHTML($('#trSub'),'<b>'+esc(p.nome)+'</b>: '+esc(testoDito(cm))+', lontano dal bordo del vaso. Com\'è?');
-  $('#trHint').textContent=(pp?.acqua!=null?'Il calcolo dice ~'+Math.round(pp.acqua*100)+'% d\'acqua nel terriccio. ':'')+'La tua risposta corregge quanto beve questa pianta; se è asciutta l\'app te lo fa annaffiare.';
+  $('#trHint').textContent=(pp?.acqua!=null?'Il calcolo dice ~'+Math.round(pp.acqua*100)+'% d\'acqua nel terriccio. ':'')+'Se è asciutta l\'app valuta se è normale per questa pianta e per i giorni passati: cambia il calcolo solo se asciuga prima del previsto.';
   $('#terraSheet').hidden=false; $('#terraBg').hidden=false;
 }
 function chiudiTerra(){ $('#terraSheet').hidden=true; $('#terraBg').hidden=true; trPianta=null; }
@@ -2918,8 +2947,9 @@ function rispondiVerifica(pid, risposta){
   if(risposta==='dopo'){ try{ localStorage.setItem('giardino:verifica:dopo',today()); }catch(e){} renderAll(); return; }
   const AP=activePlan(), pp=AP?.data?.piante.find(x=>x.id===pid), k=S.plants.find(x=>x.id===pid);
   if(!k) return;
-  const v=esitoVerifica(risposta, pp?.acqua, pp?.soglia);
-  addEvent(pid,'verifica',{esito:risposta, valutazione:v, acqua:pp?.acqua??null}); renderAll(); toast(TESTO_VERIFICA[v]);
+  const v=esitoVerifica(risposta, pp?.acqua, pp?.soglia, pp?.acquaSecco);
+  addEvent(pid,'verifica',{esito:risposta, valutazione:v, acqua:pp?.acqua??null}); renderAll();
+  toast(risposta==='secco'?testoSecco(v, pp?.acqua, pp?.soglia, pp?.acquaSecco, pp?.seccoOra):TESTO_VERIFICA[v], 5000);
 }
 // «L'ho messa sotto la pioggia»: dalle/alle → pioggia MISURATA dalla stazione ARPAE più vicina (ogni 15 minuti) → litri nel vaso.
 // Niente previsioni: se le misure non ci sono, non si registra niente.
@@ -2989,7 +3019,7 @@ function apriMeteo(data){
   const c=(et,v,nota)=>`<div class="wxd-c"><span class="eyebrow">${esc(et)}</span><b>${v}</b>${nota?`<small>${esc(nota)}</small>`:''}</div>`;
   const evap=d.et0!=null?(d.et0<1?'poca, terra che resta umida':d.et0<3?'normale':d.et0<5?'alta: i vasi si asciugano in fretta':'molto alta: controlla i vasi piccoli'):'';
   const vento=d.wind!=null?(d.wind<15?'debole':d.wind<30?'moderato':d.wind<50?'forte: lega le piante alte':'molto forte: metti al riparo i vasi'):'';
-  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.ensemble?(Math.max(...d.rain_modelli)>0?'media di '+d.rain_modelli.length+' modelli ('+fmt(Math.min(...d.rain_modelli),1)+'–'+fmt(Math.max(...d.rain_modelli),1)+' mm)':'nessuno dei '+d.rain_modelli.length+' modelli la prevede'):d.rain_modelli?'media di due modelli ('+d.rain_modelli.map(x=>fmt(x,1)).join(' e ')+' mm)':'';
+  const pioggiaNota=d.misurata?(d.rain_modello!=null?'prevista '+fmt(d.rain_modello,1)+' mm':''):d.rain_modelli?'media dei modelli meteo':'';
   setHTML($('#wxGrid'),[
     c('Massima',d.tmax!=null?fmt(d.tmax,0)+'°':'–'),
     c('Minima',d.tmin!=null?fmt(d.tmin,0)+'°':'–',d.tmin!=null&&d.tmin<=2?'rischio gelo':d.tmin!=null&&d.tmin<=6?'notte fredda':''),

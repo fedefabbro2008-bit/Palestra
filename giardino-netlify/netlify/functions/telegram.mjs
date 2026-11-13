@@ -123,16 +123,16 @@ async function pulsante(st, t, code, cq) {
 
 // Controllo della settimana: «umido» o «asciutto» confrontato con l'acqua che il calcolo dava nel terriccio.
 async function verifica(st, t, code, cq, rispondi) {
-  const [, data, pid, x, a, sg] = String(cq.data).split("|"), risposta = x === "u" ? "umido" : "secco";
-  const acqua = +a >= 0 ? +a / 100 : null, soglia = +sg >= 0 ? +sg / 100 : null, v = M.esitoVerifica(risposta, acqua, soglia);
+  const [, data, pid, x, a, sg, as, ora] = String(cq.data).split("|"), risposta = x === "u" ? "umido" : "secco";
+  const acqua = +a >= 0 ? +a / 100 : null, soglia = +sg >= 0 ? +sg / 100 : null, acquaSecco = as != null && +as >= 0 ? +as / 100 : null, v = M.esitoVerifica(risposta, acqua, soglia, acquaSecco);
   let nome = pid, gia = false;
   await aggiorna(st, code, (d) => {
     const p = d.plants.find((y) => y.id === pid); if (!p) return false; nome = p.nome;
     if (d.eventi.some((e) => e.plantId === pid && e.data === data && e.tipo === "verifica")) { gia = true; return false; }
     d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo: "verifica", data, fonte: "telegram", ts: new Date().toISOString(), esito: risposta, valutazione: v, acqua });
   });
-  await rispondi(gia ? "Già registrato" : M.TESTO_VERIFICA[v]);
-  if (!gia) await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: `✔ ${corto(nome)}: ${risposta} — ${v === "ok" ? "calcolo giusto" : v === "piu" ? "beve di più" : "beve di meno"}`, callback_data: "x" }]] } }, { ignora: true });
+  await rispondi(gia ? "Già registrato" : risposta === "secco" ? M.testoSecco(v, acqua, soglia, acquaSecco, ora == null ? undefined : ora === "1") : M.TESTO_VERIFICA[v]);
+  if (!gia) await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: `✔ ${corto(nome)}: ${risposta} — ${v === "ok" ? (risposta === "secco" ? "normale, calcolo giusto" : "calcolo giusto") : v === "piu" ? "beve di più" : "beve di meno"}`, callback_data: "x" }]] } }, { ignora: true });
 }
 
 // Annulla: toglie la risposta data da Telegram per quella pianta e quel giorno e rimette i pulsanti com'erano.

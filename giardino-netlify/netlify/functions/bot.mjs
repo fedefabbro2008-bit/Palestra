@@ -29,7 +29,7 @@ export default async () => {
 
 
 async function uno(st, tkey, cr) {
-  const t = await st.get(tkey, { type: "json" });
+  const f = await st.getWithMetadata(tkey, { type: "json" }), t = f?.data;
   if (!t?.chat_id) return;
   // oggi mattino e sera già fatti (e niente avviso dei crediti): niente da leggere né da calcolare fino a domani
   if (!cr) { const { oggi: g } = oraLocale(t.tz || "Europe/Rome"); if (t.ultimo_invio === g && t.ultimo_avviso_sera === g) return; }
@@ -46,7 +46,22 @@ async function uno(st, tkey, cr) {
     avvisoCrediti = true;   // inviato, o spento: per questo mese non si ripropone
   }
   if (!mattina && !sera) return avvisoCrediti;
+  // prenotazione: segno mattino/sera come fatti prima di inviare, solo se nessun altro giro del bot l'ha già fatto
+  // (Netlify a volte avvia la funzione pianificata due volte nello stesso minuto: prima arrivavano due messaggi uguali)
+  const pren = { ...t, ...(mattina ? { ultimo_invio: oggi } : {}), ...(sera ? { ultimo_avviso_sera: oggi } : {}) };
+  const ok = await st.setJSON(tkey, pren, f.etag ? { onlyIfMatch: f.etag } : {});
+  if (ok && ok.modified === false) return avvisoCrediti;
 
+  try { return await invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvisoCrediti); }
+  catch (e) {
+    // invio non riuscito: tolgo la prenotazione, così ci riprova il giro dell'ora dopo
+    const g = await st.getWithMetadata(tkey, { type: "json" }).catch(() => null);
+    if (g?.data) await st.setJSON(tkey, { ...g.data, ...(mattina && g.data.ultimo_invio === oggi ? { ultimo_invio: t.ultimo_invio ?? null } : {}), ...(sera && g.data.ultimo_avviso_sera === oggi ? { ultimo_avviso_sera: t.ultimo_avviso_sera ?? null } : {}) }, { onlyIfMatch: g.etag }).catch(() => {});
+    throw e;
+  }
+}
+
+async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvisoCrediti) {
   // meteo e piano solo se servono a una notifica accesa
   let met = null, ap = null;
   const meteoOra = async () => (met ||= await meteo(cur.data.location.lat, cur.data.location.lon));
@@ -71,8 +86,8 @@ async function uno(st, tkey, cr) {
     // il sabato, il controllo della settimana: una pianta da toccare con il dito
     const pv = on("verifica") && new Date(oggi + "T12:00:00Z").getUTCDay() === 6 && t.ultima_verifica !== oggi ? M.verificaDaFare(data.plants, data.eventi, oggi, data.vacanza) : null;
     if (pv) {
-      const pb = (await pianoOra()).base.piante.find((x) => x.id === pv.id), a = Math.round((pb?.acqua ?? -1) * 100), sg = Math.round((pb?.soglia ?? -1) * 100);
-      const cb = (r) => `v|${oggi}|${pv.id}|${r}|${a}|${sg}`;
+      const pb = (await pianoOra()).base.piante.find((x) => x.id === pv.id), a = Math.round((pb?.acqua ?? -1) * 100), sg = Math.round((pb?.soglia ?? -1) * 100), as = Math.round((pb?.acquaSecco ?? -1) * 100), ora = pb?.seccoOra ? 1 : 0;
+      const cb = (r) => `v|${oggi}|${pv.id}|${r}|${a}|${sg}|${as}|${ora}`;
       await invia(`🔍 <b>Controllo della settimana</b>\n<b>${esc(pv.nome)}</b>: ${esc(M.testoDito(M.profonditaDito(data.plants.find((x) => x.id === pv.id) || pv, oggi, cur.data.location?.lat)))}: com'è?\n<i>Così l'app impara quanto beve davvero.</i>`,
         { reply_markup: { inline_keyboard: [[{ text: "💦 Umido", callback_data: cb("u") }, { text: "🏜 Asciutto", callback_data: cb("s") }]] } });
       next.ultima_verifica = oggi;

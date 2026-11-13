@@ -331,6 +331,12 @@ test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora um
   assert.ok(!kb.flat().some((b) => b.text.includes("Salto")));
   inviati.length = 0; await bot();
   assert.equal(inviati.filter((x) => x[0] === "sendMessage").length, 0, "una volta al giorno");
+  // due giri del bot nello stesso momento (Netlify a volte lo avvia due volte): un messaggio solo
+  const t1 = await st.get("t-" + CODE, { type: "json" });
+  await st.setJSON("t-" + CODE, { ...t1, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  inviati.length = 0; await Promise.all([bot(), bot()]);
+  assert.equal(inviati.filter((x) => x[0] === "sendMessage" && x[1].text.includes("Giardino —")).length, 1, "mattino una volta sola");
+  assert.equal(inviati.filter((x) => x[0] === "sendMessage" && x[1].text.includes("Ancora da innaffiare")).length, 1, "sera una volta sola");
 });
 
 test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della sera sì, anche senza mattino)", async () => {
