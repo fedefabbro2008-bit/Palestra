@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="f70b682e872e">
+<meta name="giardino-build" content="2719cdca73cf">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -103,6 +103,7 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .wx-ico{position:relative;display:block;flex:none;width:28px;height:28px;margin:2px 0}
 .wx-ico>svg{position:absolute;inset:0;width:100%;height:100%;margin:0;overflow:visible}
 .wx-raggi,.wx-nucleo{transform-origin:50% 50%} .wx-raggi.wx-dietro,.wx-nucleo.wx-dietro{transform-origin:27.5% 27.5%}
+.wx-bagliore{opacity:0}   /* senza animazioni (Riduci movimento): niente bagliore fisso */
 .wx-day .t{font-size:.95rem;font-weight:700;line-height:1.15}
 .wx-day .tm{font-size:.8rem;color:var(--muted);line-height:1.15}
 .wx-day .r{font-size:.72rem;font-weight:700;color:var(--water);white-space:nowrap;min-height:1.1em}
@@ -558,7 +559,8 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   .wx-nuvola.wx-n2{animation-duration:6s;animation-direction:alternate-reverse}
   .wx-goccia{animation:piove 1.2s linear infinite}
   .wx-fiocco{animation:nevica 2.4s ease-in-out infinite}
-  .wx-lampo{animation:lampo 3s steps(1) infinite}
+  .wx-lampo{transform-origin:50% 55%;animation:fulmineIco 3.2s linear infinite}
+  .wx-bagliore{opacity:0;animation:bagliore 3.2s linear infinite}
   .wx-nebbia{animation:scorre 3s ease-in-out infinite alternate}
   .wx-day.today{position:relative}
   .wx-day.today::after{content:'';position:absolute;inset:-3px;border-radius:17px;border:3px solid color-mix(in srgb,var(--water) 16%,transparent);opacity:0;pointer-events:none;animation:respira 4s ease-in-out infinite}
@@ -603,7 +605,8 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 @keyframes scorre{from{transform:translateX(-2.5px);opacity:.55}to{transform:translateX(2.5px);opacity:1}}
 @keyframes piove{0%{opacity:0;transform:translateY(-2px)}25%{opacity:1}100%{opacity:0;transform:translate(-1px,3px)}}
 @keyframes nevica{0%{opacity:0;transform:translateY(-2px)}30%{opacity:1}100%{opacity:0;transform:translate(1px,3px)}}
-@keyframes lampo{0%,86%,92%{opacity:1}88%,95%{opacity:.15}}
+@keyframes fulmineIco{0%,58%{opacity:0;transform:translateY(-3px) scaleY(.4)}61%{opacity:1;transform:translateY(0) scaleY(1.06)}64%{opacity:.15;transform:none}67%{opacity:1}74%{opacity:1;transform:translateY(.4px)}82%,100%{opacity:0;transform:translateY(1px)}}
+@keyframes bagliore{0%,59%{opacity:0}61%{opacity:1}64%{opacity:.2}67%{opacity:.9}80%,100%{opacity:0}}
 @keyframes respira{0%,100%{opacity:0}50%{opacity:1}}
 @keyframes ondeggia{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
 @keyframes scuoti{0%,100%{transform:rotate(0)}25%{transform:rotate(-12deg)}50%{transform:rotate(10deg)}75%{transform:rotate(-5deg)}}
@@ -2644,7 +2647,9 @@ function wxIcon(cond){
     case 'poco nuvoloso': l=[L('wx-raggi wx-dietro',piccolo(raggi)), L('wx-nucleo wx-dietro',piccolo(core)), L('wx-nuvola','<g transform="translate(3 3) scale(.8)">'+cloud+'</g>')]; break;
     case 'nebbia': l=[L('wx-nuvola',up), L('wx-nebbia','<path d="M5 19h14M7 22h10" stroke="var(--muted)" stroke-width="1.6" stroke-linecap="round"/>')]; break;
     case 'neve': l=[L('wx-nuvola',up), ...[[8,19.5],[12,21],[16,19.5]].map(([x,y],i)=>L('wx-fiocco',`<circle cx="${x}" cy="${y}" r="1.2" fill="var(--water)"/>`,i*0.8))]; break;
-    case 'temporale': l=[L('wx-nuvola',up), L('wx-lampo','<path d="M12 15l-2 4h3l-2 4" stroke="var(--warn)" stroke-width="1.8" fill="none"/>')]; break;
+    // temporale: il fulmine cade dalla nuvola, sfarfalla e sparisce; intanto il bordo della nuvola si illumina
+    case 'temporale': l=[L('wx-bagliore','<path d="M7 15h10a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 15z" fill="none" stroke="var(--warn)" stroke-width="3.4" stroke-linejoin="round" opacity=".55"/>'),
+      L('',up), L('wx-lampo','<path d="M13.2 13.6l-3.4 5h2.6l-1.6 4.6 4.4-6.1h-2.7l1.9-3.5z" fill="var(--warn)" stroke="var(--warn)" stroke-width=".6" stroke-linejoin="round"/>')]; break;
     case 'pioggia': l=[L('wx-nuvola',up), ...[8,12,16].map((x,i)=>L('wx-goccia',`<path d="M${x} 17.5l-1 3" stroke="var(--water)" stroke-width="1.8" stroke-linecap="round"/>`,i*0.4))]; break;
     default: l=[L('wx-nuvola wx-n2','<g transform="translate(-4.5 -4) scale(.72)" opacity=".75">'+cloud+'</g>'), L('wx-nuvola',cloud)];
   }
