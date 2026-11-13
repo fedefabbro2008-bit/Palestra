@@ -488,10 +488,10 @@ nav.tabs .tab:active{transform:scale(.94)}
 @keyframes sheetIn{from{opacity:0;transform:translate(-50%,40px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes sheetOut{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,48px)}}
 @keyframes fadeOut{from{opacity:1}to{opacity:0}}
-.sheet.esce{animation:sheetOut .22s cubic-bezier(.4,0,1,1) both !important;pointer-events:none;
+.sheet.esce{animation:sheetOut .26s cubic-bezier(.3,0,.4,1) both !important;will-change:transform,opacity;pointer-events:none;
   -webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface)}   /* mentre scende niente sfocatura: è il pezzo più pesante da ridisegnare */
 .sheet.esce>*{animation:none !important}
-.sheet-bg.esce{animation:fadeOut .22s ease both !important;pointer-events:none}
+.sheet-bg.esce{animation:fadeOut .26s ease both !important;pointer-events:none}
 @keyframes pop{0%{transform:scale(.6)}100%{transform:scale(1)}}
 
 /* dettaglio di un giorno del meteo */
@@ -1618,13 +1618,17 @@ function apriMeteo(data){
 }
 // Finestre: si aprono salendo e si chiudono scendendo (prima sparivano di colpo e su iPhone la chiusura scattava).
 // Durante la chiusura la pagina resta ferma; dopo una trascinata la finestra è già scesa e si nasconde subito.
-function apriFinestra(sh,bg){ clearTimeout(sh._esce); sh.classList.remove('esce'); bg?.classList.remove('esce'); sh.hidden=false; if(bg) bg.hidden=false; }
+function apriFinestra(sh,bg){ clearTimeout(sh._esce); sh._finita&&sh.removeEventListener('animationend',sh._finita); sh.classList.remove('esce'); bg?.classList.remove('esce'); sh.hidden=false; if(bg) bg.hidden=false; }
 function chiudiFinestra(sh,bg){
   if(sh.hidden) return;
   const fine=()=>{ sh.hidden=true; if(bg) bg.hidden=true; sh.classList.remove('esce'); bg?.classList.remove('esce'); };
   if(!muovi()||sh.style.translate){ clearTimeout(sh._esce); fine(); return; }
   if(sh.classList.contains('esce')) return;
-  sh.classList.add('esce'); bg?.classList.add('esce'); sh._esce=setTimeout(fine,230);
+  // si nasconde quando l'animazione è davvero finita: con un tempo fisso, su iPhone (animazione un po' indietro) la
+  // finestra spariva di colpo un attimo prima della fine. Il tempo fisso resta solo come riserva.
+  const finita=e=>{ if(e.target!==sh||e.animationName!=='sheetOut') return; sh.removeEventListener('animationend',finita); clearTimeout(sh._esce); requestAnimationFrame(fine); };
+  sh.addEventListener('animationend',finita); sh._finita=finita;
+  sh.classList.add('esce'); bg?.classList.add('esce'); sh._esce=setTimeout(()=>{ sh.removeEventListener('animationend',finita); fine(); },600);
 }
 /* ================= Orti ================= */
 function apriOrti(){ renderOrti(); $('#ortoNuovo').open=!S.location; apriFinestra($('#ortiSheet'),$('#ortiBg')); }
