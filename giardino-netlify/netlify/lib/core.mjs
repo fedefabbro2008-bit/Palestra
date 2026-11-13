@@ -39,8 +39,9 @@ export const IMP_DEF = { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_s
 // mancano. Le risposte ai comandi (/oggi, pulsanti) arrivano sempre, e così il messaggio di riserva da GitHub (sito fermo).
 export const NOTIFICHE = ["mattina", "sera", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"];
 export const notifica = (imp, tipo) => imp?.notifiche?.[tipo] !== false;
-export const vuoto = () => ({ location: null, plants: [], impostazioni: { ...IMP_DEF }, vacanza: null, eventi: [], piano_claude: null, meteo_manual: null });
-export const CAMPI = ["location", "plants", "impostazioni", "vacanza", "meteo_manual", "piano_claude"];
+export const vuoto = () => ({ location: null, plants: [], impostazioni: { ...IMP_DEF }, vacanza: null, eventi: [], piano_claude: null, meteo_manual: null, orti: [] });
+// campi che l'app può scrivere (pioggia_misurata e pioggia_orti li scrive solo il bot)
+export const CAMPI = ["location", "plants", "impostazioni", "vacanza", "meteo_manual", "piano_claude", "orti"];
 
 export async function leggi(st, code) {
   const f = await st.getWithMetadata("d-" + code, { type: "json" });
@@ -167,16 +168,23 @@ export async function aggiornaPioggiaMisurata(st) {
   const { blobs } = await st.list({ prefix: "d-" });
   let testo = null;
   for (const b of blobs) {
-    const code = b.key.slice(2), cur = await leggi(st, code), l = cur?.data?.location;
-    if (!l || !inEmiliaRomagna(l.lat, l.lon)) continue;
-    if (testo === null) { try { const r = await fetch(ARPAE_URL, { headers: { "user-agent": UA } }); testo = r.ok ? await r.text() : ""; } catch (e) { console.warn("ARPAE:", e?.message); testo = ""; } }
-    if (!testo) return;
-    const c = await misureArpae(st, l.lat, l.lon, testo);
-    if (!c?.stazione) continue;
-    const att = cur.data.pioggia_misurata, limite = M.addDays(M.isoDate(new Date()), -60), letto = c;
-    const giorni = { ...Object.fromEntries(Object.entries(att?.stazione === letto.stazione.nome ? att.giorni || {} : {}).filter(([d]) => d >= limite)), ...giorniMisurati(c.ore, "Europe/Rome") };
-    if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome)
-      await aggiorna(st, code, (d) => { d.pioggia_misurata = { stazione: letto.stazione.nome, km: letto.stazione.km, giorni, aggiornato: new Date().toISOString() }; });
+    const code = b.key.slice(2), cur = await leggi(st, code);
+    if (!cur?.data) continue;
+    // ogni orto con la sua stazione: il principale in pioggia_misurata, gli altri in pioggia_orti[id]
+    for (const o of M.orti(cur.data)) {
+      const l = o.location;
+      if (!l || !inEmiliaRomagna(l.lat, l.lon)) continue;
+      if (testo === null) { try { const r = await fetch(ARPAE_URL, { headers: { "user-agent": UA } }); testo = r.ok ? await r.text() : ""; } catch (e) { console.warn("ARPAE:", e?.message); testo = ""; } }
+      if (!testo) return;
+      const c = await misureArpae(st, l.lat, l.lon, testo);
+      if (!c?.stazione) continue;
+      const att = o.pioggia_misurata, limite = M.addDays(M.isoDate(new Date()), -60), letto = c;
+      const giorni = { ...Object.fromEntries(Object.entries(att?.stazione === letto.stazione.nome ? att.giorni || {} : {}).filter(([d]) => d >= limite)), ...giorniMisurati(c.ore, "Europe/Rome") };
+      if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome) {
+        const v = { stazione: letto.stazione.nome, km: letto.stazione.km, giorni, aggiornato: new Date().toISOString() };
+        await aggiorna(st, code, (d) => { if (o.id === "p") d.pioggia_misurata = v; else d.pioggia_orti = { ...(d.pioggia_orti || {}), [o.id]: v }; });
+      }
+    }
   }
 }
 // Storico dei 400 giorni passati: temperature (fasi a gradi-giorno) e pioggia, evaporazione, sole (bilancio dell'acqua).
@@ -215,6 +223,18 @@ export function pianoAttivo(data, met, oggi) {
   }
   return { piano: base, fonte: "calcolo automatico", past, fut, base, meteoFonte: met.fonte || "" };
 }
+
+// Tutti gli orti con posizione e piante, ognuno col suo meteo e il suo piano: [{v, met, ap}] (oggi dal fuso del primo).
+export async function pianiOrti(data, oggiFisso) {
+  const out = [];
+  for (const v of M.vistePiene(data)) {
+    const met = await meteo(v.location.lat, v.location.lon), oggi = oggiFisso || oraLocale(met.tz).oggi;
+    out.push({ v, met, oggi, ap: pianoAttivo(v, met, oggi) });
+  }
+  return out;
+}
+// un piano solo con le piante di tutti gli orti (per /fatto e i pulsanti)
+export const pianoUnito = (lista) => ({ piano: { piante: lista.flatMap((x) => x.ap.piano.piante), avvisi: [] } });
 
 /* ---------------- Telegram ---------------- */
 export async function tg(token, method, payload, { ignora = false } = {}) {
@@ -266,7 +286,7 @@ export function messaggioMattina(data, ap, oggi, { prova = false } = {}) {
     }
   }
   const dataLunga = new Date(oggi + "T12:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
-  let msg = `🪴 <b>Giardino — ${esc(dataLunga)}</b>\n${esc(data.location?.name || "")} · ${esc(d0.cond)}, ${fmt(d0.tmin, 0)}–${fmt(d0.tmax, 0)} °C, pioggia ${fmt(d0.rain)} mm\n`;
+  let msg = `🪴 <b>${esc(data.piuOrti ? M.nomeOrto(data.orto) : "Giardino")} — ${esc(dataLunga)}</b>\n${esc(data.location?.name || "")} · ${esc(d0.cond)}, ${fmt(d0.tmin, 0)}–${fmt(d0.tmax, 0)} °C, pioggia ${fmt(d0.rain)} mm\n`;
   if (M.inVacanza(data.vacanza, oggi)) msg += `\n🧳 <i>Sei in vacanza fino al ${esc(new Date(data.vacanza.al + "T12:00:00").toLocaleDateString("it-IT", { day: "numeric", month: "long" }))}: inoltra questo messaggio a chi bagna le piante.</i>\n`;
   if (righe.innaffia.length) msg += `\n<b>Da innaffiare</b>\n${righe.innaffia.join("\n")}\n`;
   if (righe.controlla.length) msg += `\n<b>Da controllare con un dito</b>\n${righe.controlla.join("\n")}\n`;
@@ -300,7 +320,7 @@ export function presunti(t, data, oggi) {
 const dl = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric" });
 export function messaggioSettimana(data, ap) {
   const imp = { ...IMP_DEF, ...(data.impostazioni || {}) };
-  const L = [`📅 <b>Prossimi 7 giorni</b> · piano: ${esc(ap.fonte)}`];
+  const L = [`📅 <b>Prossimi 7 giorni${data.piuOrti ? " · " + esc(M.nomeOrto(data.orto)) : ""}</b> · piano: ${esc(ap.fonte)}`];
   for (const p of M.pianteOrdinate(data.plants)) {
     const x = ap.piano.piante.find((y) => y.id === p.id); if (!x) continue;
     const g = x.giorni.filter((y) => y.azione !== "salta").map((y) => `${dl(y.data)} ${y.azione === "innaffia" ? fmt(y.litri, y.litri < 2 ? 2 : 1) + " L" : "👆"}`);
@@ -321,7 +341,7 @@ export function calibrazioneVera(data, met, pid, oggi) {
 }
 export function riepilogoSettimana(data, oggi, met) {
   const lat = data.location?.lat, da = M.addDays(oggi, -6);
-  const L = [`📊 <b>La settimana del giardino</b> (${esc(dl(da))} – ${esc(dl(oggi))})`];
+  const L = [`📊 <b>La settimana ${data.piuOrti ? "di " + esc(M.nomeOrto(data.orto)) : "del giardino"}</b> (${esc(dl(da))} – ${esc(dl(oggi))})`];
   let tot = 0;
   for (const p of M.pianteOrdinate(data.plants)) {
     const e = M.eventiValidi(data.eventi, p.id).filter((x) => x.data >= da && x.data <= oggi), f = e.filter((x) => x.tipo === "fatto" || x.tipo === "secco");
@@ -337,7 +357,7 @@ export function riepilogoSettimana(data, oggi, met) {
 }
 export function backup(data) {
   return { app: "giardino", formato: 1, creato: new Date().toISOString(),
-    giardino: { location: data.location, plants: data.plants, impostazioni: data.impostazioni, vacanza: data.vacanza, eventi_app: data.eventi },
+    giardino: { location: data.location, plants: data.plants, impostazioni: data.impostazioni, vacanza: data.vacanza, eventi_app: data.eventi, orti: data.orti || [] },
     meteo: data.meteo_manual || null, piano: data.piano_claude || null };
 }
 export async function inviaFile(token, chat_id, nome, testo, didascalia) {
@@ -423,7 +443,7 @@ export async function segnaFatte(st, code, ap, oggi, { zona = "", pianta = "", f
       if (pianta ? p.id !== pianta : z && M.zonaDi(p).toLowerCase() !== z) continue;
       const g = ap.piano.piante.find((x) => x.id === p.id)?.giorni?.find((x) => x.data === oggi);
       if ((!pianta && g?.azione !== "innaffia") || d.eventi.some((e) => e.plantId === p.id && e.data === oggi && ESITI.includes(e.tipo))) continue;
-      const litri = g?.azione === "innaffia" ? g.litri : +(M.params(p, { oggi, lat: d.location?.lat, eventi: d.eventi }).rawL * 1.1).toFixed(2);
+      const litri = g?.azione === "innaffia" ? g.litri : +(M.params(p, { oggi, lat: M.vistaOrto(d, M.ortoDi(p, d)).location?.lat, eventi: d.eventi }).rawL * 1.1).toFixed(2);
       d.eventi.push({ id: `${fonte === "siri" ? "sr" : "tg"}-f-${oggi}-${p.id}`, plantId: p.id, tipo: "fatto", data: oggi, fonte, ts: new Date().toISOString(), litri });
       fatte.push(p.nome);
     }

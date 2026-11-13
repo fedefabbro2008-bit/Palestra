@@ -34,8 +34,8 @@ test("piante ordinate per zona e poi per nome", () => {
 });
 
 test("avviso del gelo con l'ora leggibile", () => {
-  const [a] = M.avvisiDomani([{ id: "l", nome: "Limone", specie: "agrumi", colt: "vaso", dove: "aperto" }], { tmin: 6, tmax: 15 }, [{ ora: "03", t: 1 }, { ora: "05", t: 0.5 }]);
-  assert.match(a.testo, /verso le 05:00/);
+  const [a] = M.avvisiDomani([{ id: "l", nome: "Limone", specie: "agrumi", colt: "vaso", dove: "aperto" }], { tmin: 2, tmax: 15 }, [{ ora: "03", t: 1 }, { ora: "05", t: 0.5 }]);
+  assert.match(a.testo, /^Stanotte minima di 2 °C verso le 05:00/, "la minima media, l'ora dalla notte");
 });
 
 test("in casa: a 20 °C come prima, più caldo = più acqua; temperatura del giorno tra le stagioni", () => {
@@ -103,7 +103,8 @@ test("calibrazione: la stessa risposta di fila corregge di più, una opposta rip
   const ev = (tipi) => tipi.map((tipo, i) => ({ id: "e" + i, plantId: "x", tipo, data: "2026-11-0" + (i + 1), fonte: "app" }));
   assert.ok(Math.abs(M.calibrazione(ev(["umido"]), "x", "2026-11-09") - 0.9) < 1e-9);
   assert.ok(Math.abs(M.calibrazione(ev(["umido", "umido", "umido"]), "x", "2026-11-09") - 0.9 * 0.85 * 0.8) < 1e-9);
-  assert.ok(Math.abs(M.calibrazione(ev(["umido", "secco"]), "x", "2026-11-09") - 0.9 * 1.12) < 1e-9);
+  assert.ok(Math.abs(M.calibrazione(ev(["umido", "secco"]).map((e) => e.tipo === "secco" ? { ...e, valutazione: "piu" } : e), "x", "2026-11-09") - 0.9 * 1.12) < 1e-9);
+  assert.ok(Math.abs(M.calibrazione(ev(["umido", "secco"]), "x", "2026-11-09") - 0.9) < 1e-9, "«era secca» normale per la pianta: non conta");
 });
 
 test("vaso: terracotta beve di più, senza fori dose esatta, riserva allunga gli intervalli, caldo e vento sui vasi piccoli", () => {
@@ -300,11 +301,35 @@ test("controlli col dito: lo stato si corregge e il consumo stimato segue l'erro
   assert.equal(M.calibrazione(umida, "ba", oggi), u.calibrazione, "l'app e il connettore vedono la stessa stima");
   // «era asciutta» quando il calcolo la dava ancora quasi piena → beve di più
   const s = piano([ev("ba", "fatto", t0), ev("ba", "verifica", M.addDays(t0, 2), { esito: "secco" })]);
-  assert.ok(s.calibrazione > 1.2, "beve di più: ×" + s.calibrazione);
+  assert.ok(s.calibrazione > 1.1, "beve di più: ×" + s.calibrazione);
+  // «era asciutta» quando lo strato toccato è normale che sia secco (metà strada verso la tacca): niente correzione
+  assert.equal(piano([ev("ba", "fatto", t0), ev("ba", "verifica", M.addDays(t0, 3), { esito: "secco" })]).calibrazione, 1);
   // risposta coerente con il calcolo (umida poco dopo l'innaffiatura): niente correzione
   assert.equal(piano([ev("ba", "fatto", t0), ev("ba", "umido", M.addDays(t0, 1))]).calibrazione, 1);
   // la diagnosi da foto sposta il punto di partenza
   assert.ok(piano([ev("ba", "meno", oggi)]).calibrazione < 1);
+});
+
+test("terra asciutta al dito: normale per la pianta (il calcolo non cambia) o è ora di innaffiare", () => {
+  // rosmarino in 20 L (ama asciugare): la terra a 5 cm secca giorni prima della tacca
+  const ro = { id: "ro", nome: "Rosmarino", specie: "rosmarino", fase: "vegetativa", colt: "vaso", vaso: 20, diametro: 35, num: 1, luce: 6, dove: "aperto" };
+  const oggi = "2026-09-20", sett = (da, n) => serie(da, n, { et0: 3, tmax: 24, tmin: 14 }), past = sett("2026-05-23", 120), fut = sett(oggi, 7);
+  const k = M.params(ro, { oggi, lat: 44 }), ds = M.depSecco(k, M.profonditaDito(ro, oggi, 44));
+  assert.ok(ds > 0.15 * k.tawTerra && ds < 0.25 * k.tawTerra && ds < k.rawL, "a 4 cm in un vaso alto ~21 cm: un quinto dell'acqua, prima della tacca");
+  const giro = (g, secco) => M.pianoLocale({ piante: [ro], past, fut, eventi: [ev("ro", "fatto", M.addDays(oggi, -g)), ...(secco ? [ev("ro", "verifica", oggi, { esito: "secco" })] : [])], oggi, lat: 44 }).piante[0];
+  const esito = (r) => { const v = M.esitoVerifica("secco", r.acqua, r.soglia, r.acquaSecco); return [v, M.testoSecco(v, r.acqua, r.soglia, r.acquaSecco, r.seccoOra)]; };
+  // dopo 2 giorni: troppo presto, beve di più
+  assert.equal(esito(giro(2))[0], "piu");
+  // dopo 6 giorni: normale, il calcolo non cambia e oggi non si innaffia
+  const [v6, t6] = esito(giro(6)), s6 = giro(6, true);
+  assert.equal(v6, "ok"); assert.match(t6, /^Normale per questa pianta/);
+  assert.notEqual(s6.giorni[0].azione, "innaffia"); assert.equal(s6.calibrazione, 1);
+  // dopo 10–12 giorni: vicino alla tacca, è il momento (testo e piano d'accordo)
+  for (const g of [10, 11, 12]) { const [v, t] = esito(giro(g)), s = giro(g, true); assert.equal(v, "ok"); assert.equal(/innaffiala oggi/.test(t), s.giorni[0].azione === "innaffia", "giorno " + g); }
+  // una pianta che vuole il terriccio sempre umido (tacca prima dello strato del dito): «asciutta» = innaffia oggi
+  const ca = { id: "ca", nome: "Carnivora", specie: "carnivora", fase: "vegetativa", colt: "vaso", vaso: 2, num: 1, luce: 6, dove: "aperto" };
+  const c = M.pianoLocale({ piante: [ca], past, fut, eventi: [ev("ca", "fatto", M.addDays(oggi, -2)), ev("ca", "verifica", oggi, { esito: "secco" })], oggi, lat: 44 }).piante[0];
+  assert.equal(c.giorni[0].azione, "innaffia"); assert.equal(c.seccoOra, true);
 });
 
 test("storico: archivio compatto e giorni passati con pioggia misurata ed evaporazione mancante", () => {
@@ -348,7 +373,7 @@ test("Kc che cresce e cala con l'età delle annuali", () => {
   assert.ok(M.kcContinuo(sp, 160) < sp.kc[2] && M.kcContinuo(sp, 160) > sp.kc[3]); assert.equal(M.kcContinuo(sp, 300), sp.kc[3]);
 });
 
-test("più modelli: media pesata, probabilità e modello più freddo; con un modello solo resta la base", () => {
+test("più modelli: media pesata e probabilità, gelo dalla minima media; con un modello solo resta la base", () => {
   const days = ["2026-11-06", "2026-11-07", "2026-11-08"].map((date) => ({ date, rain: 10, prob: 80, tmax: 14, tmin: 6, et0: 1 }));
   const d = { time: ["2026-11-07", "2026-11-08"] };
   const val = { italia_meteo_arpae_icon_2i: [8, 0], ecmwf_ifs: [6, 0], gfs_seamless: [20, 0] };
@@ -357,14 +382,16 @@ test("più modelli: media pesata, probabilità e modello più freddo; con un mod
   assert.equal(out[0], days[0], "i giorni passati non cambiano");
   assert.equal(out[1].rain, +((8 * 2 + 6 * 1.5 + 20 * 0.75) / 4.25).toFixed(1), "oggi: ICON-2I pesa di più di GFS");
   assert.equal(out[1].prob, 90, "(80% di Open-Meteo + 100% dei modelli) / 2"); assert.equal(out[2].prob, 40);
-  assert.equal(out[1].tmin_freddo, 2, "il modello più freddo + 1 °C"); assert.equal(out[1].et0, 0.8);
+  assert.equal(out[1].tmin_freddo, undefined, "niente «modello più freddo»"); assert.equal(out[1].tmin, +((5 * 2 + 5 * 1.5 + 1 * 0.75) / 4.25).toFixed(1), "minima media"); assert.equal(out[1].et0, 0.8);
   assert.deepEqual(out[1].rain_modelli, [8, 6, 20]); assert.equal(M.pioggiaAttesa(out[1]), out[1], "la media è già il valore atteso");
   const uno = M.ensembleGiorni(days, { daily: { time: d.time, precipitation_sum_ecmwf_ifs: [6, 0] } }, "2026-11-07");
   assert.equal(uno[1].rain, 10, "un modello solo: resta la previsione di base");
-  // avviso del gelo: conta anche il modello più freddo
+  // avviso del gelo: la minima media; le ore della notte dicono solo quando (spostate sulla media)
   const limone = { id: "l", nome: "Limone", specie: "agrumi", colt: "vaso", dove: "aperto" };
   assert.equal(M.avvisiDomani([limone], { tmin: 7, tmax: 14 }).length, 0);
-  assert.match(M.avvisiDomani([limone], { tmin: 7, tmin_freddo: 4.5, tmax: 14 })[0].testo, /secondo il modello più freddo \(gli altri 7 °C\)/);
+  const notte = [{ ora: "22", t: 6 }, { ora: "03", t: 3 }, { ora: "06", t: 4 }];
+  const g = M.avvisiDomani([limone], { tmin: 4.5, tmax: 14 }, notte)[0].testo;
+  assert.match(g, /^Stanotte minima di 4,5 °C verso le 03:00/); assert.doesNotMatch(g, /fino a|più freddo/);
 });
 
 test("sotto la pioggia di notte: dalle 17:28 di ieri alle 07:15 di oggi", () => {

@@ -57,7 +57,7 @@ Prove in locale (dalla cartella `giardino-netlify`, con Playwright installato in
 Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 
 ## Senza Claude (tutto dentro l'app)
-- **Meteo da più modelli** (`ensembleGiorni`): una richiesta con ICON-2I (ItaliaMeteo-ARPAE, 2,2 km), ICON, Météo-France, ECMWF IFS, UK Met Office e GFS. Pioggia, minima, massima ed evaporazione sono la media pesata dei modelli che coprono il giorno (i primi giorni pesano di più i modelli fitti, poi ECMWF); la probabilità unisce quella di Open-Meteo e la quota di modelli con almeno 1 mm; per il gelo conta anche il modello più freddo + 1 °C (`tmin_freddo`). Con meno di due modelli resta la previsione di base (e, se c'è, la media con ICON-2I ora per ora).
+- **Meteo da più modelli** (`ensembleGiorni`): una richiesta con ICON-2I (ItaliaMeteo-ARPAE, 2,2 km), ICON, Météo-France, ECMWF IFS, UK Met Office e GFS. Pioggia, minima, massima ed evaporazione sono la media pesata dei modelli che coprono il giorno (i primi giorni pesano di più i modelli fitti, poi ECMWF); la probabilità unisce quella di Open-Meteo e la quota di modelli con almeno 1 mm; anche il gelo usa la minima media (le ore della notte dicono solo quando). Con meno di due modelli resta la previsione di base (e, se c'è, la media con ICON-2I ora per ora).
 - **Specie riconosciuta dal nome** («Nepenthes mirabilis» → Nepenthes, «Pomodori ciliegini» → Pomodoro): nuova pianta = scelta da sola; pianta come «Altra pianta» = proposta nella scheda.
 - **Scheda dell'app** per ogni specie: descrizione, condizioni ideali, stagioni (perenni) o fasi settimana per settimana (annuali), calendario dei mesi, consigli della specie + consigli dai dati della pianta (vaso, luce, posto). La scheda di Claude, se c'è, la sostituisce.
 - **Diagnosi guidata** (Scheda → Come sta?): sintomi da spuntare → troppa o poca acqua (registra «meno»/«più» e il calcolo impara) o altre cause (calcare, ferro, luce, oidio, ragnetto, scottature).
@@ -108,6 +108,16 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Apertura istantanea** (`sw.js`): pagina e icone arrivano subito dalla copia salvata sul telefono, anche con rete lenta o assente (con 2 s di rete lenta: ~40 ms invece di ~2 s); intanto la pagina del sito si scarica in sottofondo e aggiorna la copia. Se è una versione nuova (impronta `giardino-build` scritta da `build-app.mjs`) l'app si ricarica: subito se è appena aperta (meno di 3 s) e non l'hai toccata, altrimenti al ritorno sull'app, mai con una finestra aperta o un campo in scrittura, al massimo una volta al minuto. Dati (`/api`) e connettore (`/mcp`) non passano mai dalla copia.
 - **Risposte compresse**: le risposte grandi di `/api/dati` (tutti i dati, a ogni salvataggio e a ogni controllo con novità) arrivano in gzip, circa un decimo dei byte (Netlify non comprime da solo le risposte delle funzioni). Se una risposta non arriva o non si legge, l'app riprova subito in chiaro (`x-giardino-gzip: no`); se la colpa è della compressione (risposta illeggibile, o due errori di fila: un attimo senza rete non conta) per una settimana le chiede così. Una risposta «ok» senza dati non vale mai (non cancella quelli sul telefono).
 - **Prove della rete vera** (`test/sw.test.mjs`): server su localhost e Chromium: apertura dalla copia, versioni nuove, senza rete, compressione e ripiego in chiaro.
+
+## Più orti (città diverse)
+- `data.location` è l'orto principale (id `p`); gli altri in `data.orti = [{id, nome, location}]` (una voce `p` porta solo il nome del principale); ogni pianta ha `orto` (assente = principale). La pioggia ARPAE degli altri orti la scrive il bot in `data.pioggia_orti[id]` (l'app non può scriverla).
+- `vistaOrto(data, id)` (modello) dà un orto come se fosse l'unico: posizione, piante, eventi e pioggia misurata; piano, messaggi, riepilogo e connettore lavorano sulle viste. `vistePiene` = orti con posizione e piante.
+- App: `S` è l'orto scelto su quel telefono (`localStorage giardino:orto`), `ALTRI` il resto, `pieno()` rimette insieme per il salvataggio. Tocca il nome in alto per cambiare o aggiungere un orto; nel modulo della pianta «Orto» la sposta. Meteo e storico salvati sul telefono uno per posizione (`meteo@lat,lon`).
+- Bot: un messaggio del mattino, un promemoria, avvisi, controllo del sabato e riepilogo per orto (titolo con il nome dell'orto); backup e fine piano una volta. `/oggi` e `/settimana` un messaggio per orto. Connettore: «giardino» con una sezione per orto, `modifica_pianta` con `campi.orto`.
+
+## «Terra asciutta» e controlli col dito
+- Lo strato toccato asciuga prima del resto: `depSecco(k, cm)` = litri già usati quando a quei cm la terra è asciutta (cm / altezza del terriccio, 15–60%; prima la riserva del sottovaso).
+- «Asciutta» non cambia sempre il calcolo: se il calcolo è vicino alla tacca (≥ 80%) o la pianta vuole il terriccio sempre umido (strato del dito oltre la tacca) → innaffia oggi; se è normale per la pianta e per i giorni passati → niente correzione; se asciuga prima del normale → beve di più (`esitoVerifica`, `testoSecco`, `seccoOra` nel piano).
 
 ## Come si calcola (vasi)
 

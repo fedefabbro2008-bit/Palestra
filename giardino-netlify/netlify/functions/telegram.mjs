@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, pianiOrti, pianoUnito, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · webhook di Telegram (/api/telegram/<segreto>).
    - /start dalla chat dell'utente: collega il bot a quella chat (solo la prima volta).
@@ -41,12 +41,13 @@ async function messaggio(st, tkey, t, code, m) {
   const invia = (text, extra = {}) => tg(t.token, "sendMessage", { chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
   if (["/oggi", "oggi", "/fatto", "fatto", "/settimana", "settimana"].includes(comando)) {
     const cur = await leggi(st, code);
-    if (!cur?.data?.location || !cur.data.plants.length) { await invia("Aggiungi la posizione e le piante nell'app Giardino."); return; }
-    const met = await meteo(cur.data.location.lat, cur.data.location.lon), { oggi } = oraLocale(met.tz), ap = pianoAttivo(cur.data, met, oggi);
+    if (!M.vistePiene(cur?.data || {}).length) { await invia("Aggiungi la posizione e le piante nell'app Giardino."); return; }
+    // ogni orto con il suo meteo: un messaggio per orto
+    const lista = await pianiOrti(cur.data), oggi = lista[0].oggi, ap = pianoUnito(lista);
     if (comando.endsWith("oggi")) {
-      const { msg, tastiera } = messaggioMattina(cur.data, ap, oggi, { prova: true });
-      await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {});
-    } else if (comando.endsWith("settimana")) await invia(messaggioSettimana(cur.data, ap));
+      for (const x of lista) { const { msg, tastiera } = messaggioMattina(x.v, x.ap, oggi, { prova: true });
+        await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {}); }
+    } else if (comando.endsWith("settimana")) { for (const x of lista) await invia(messaggioSettimana(x.v, x.ap)); }
     else {
       // /fatto balcone → solo la zona «Balcone»; /fatto aglio → solo l'aglio, anche se oggi non era in programma
       const arg = String(m.text || "").trim().split(/\s+/).slice(1).join(" ").slice(0, 40), chi = trovaZonaOPianta(cur.data.plants, arg);
@@ -123,16 +124,16 @@ async function pulsante(st, t, code, cq) {
 
 // Controllo della settimana: «umido» o «asciutto» confrontato con l'acqua che il calcolo dava nel terriccio.
 async function verifica(st, t, code, cq, rispondi) {
-  const [, data, pid, x, a, sg] = String(cq.data).split("|"), risposta = x === "u" ? "umido" : "secco";
-  const acqua = +a >= 0 ? +a / 100 : null, soglia = +sg >= 0 ? +sg / 100 : null, v = M.esitoVerifica(risposta, acqua, soglia);
+  const [, data, pid, x, a, sg, as, ora] = String(cq.data).split("|"), risposta = x === "u" ? "umido" : "secco";
+  const acqua = +a >= 0 ? +a / 100 : null, soglia = +sg >= 0 ? +sg / 100 : null, acquaSecco = as != null && +as >= 0 ? +as / 100 : null, v = M.esitoVerifica(risposta, acqua, soglia, acquaSecco);
   let nome = pid, gia = false;
   await aggiorna(st, code, (d) => {
     const p = d.plants.find((y) => y.id === pid); if (!p) return false; nome = p.nome;
     if (d.eventi.some((e) => e.plantId === pid && e.data === data && e.tipo === "verifica")) { gia = true; return false; }
     d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo: "verifica", data, fonte: "telegram", ts: new Date().toISOString(), esito: risposta, valutazione: v, acqua });
   });
-  await rispondi(gia ? "Già registrato" : M.TESTO_VERIFICA[v]);
-  if (!gia) await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: `✔ ${corto(nome)}: ${risposta} — ${v === "ok" ? "calcolo giusto" : v === "piu" ? "beve di più" : "beve di meno"}`, callback_data: "x" }]] } }, { ignora: true });
+  await rispondi(gia ? "Già registrato" : risposta === "secco" ? M.testoSecco(v, acqua, soglia, acquaSecco, ora == null ? undefined : ora === "1") : M.TESTO_VERIFICA[v]);
+  if (!gia) await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: `✔ ${corto(nome)}: ${risposta} — ${v === "ok" ? (risposta === "secco" ? "normale, calcolo giusto" : "calcolo giusto") : v === "piu" ? "beve di più" : "beve di meno"}`, callback_data: "x" }]] } }, { ignora: true });
 }
 
 // Annulla: toglie la risposta data da Telegram per quella pianta e quel giorno e rimette i pulsanti com'erano.

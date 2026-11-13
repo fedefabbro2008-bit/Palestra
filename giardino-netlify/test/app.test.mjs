@@ -323,7 +323,7 @@ test("schede: cambiano al tocco anche subito dopo un'altra (animazione in corso)
   assert.deepEqual(errori, []);
 });
 
-test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura torna dov'era", async (t) => {
+test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura resta dov'era", async (t) => {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const CODE = "PROVA-FINESTRA-METEO-ABCDEF";
   await dati(new Request("https://x/api/dati", { method: "POST", headers: { "x-giardino-code": CODE, "content-type": "application/json" },
@@ -337,14 +337,20 @@ test("finestra del meteo aperta: la pagina sotto non scorre e alla chiusura torn
   await page.evaluate(() => window.scrollTo(0, 120)); await page.waitForTimeout(100);
   await page.evaluate(() => document.querySelector("[data-wxd]").click());
   await quando(page, () => !document.getElementById("wxSheet").hidden);
-  assert.equal(await page.evaluate(() => document.body.style.position), "fixed", "pagina ferma");
-  assert.equal(await page.evaluate(() => document.body.style.top), "-120px", "nello stesso punto");
+  // la pagina non si tocca (prima: corpo fisso e poi riportato dov'era, e alla chiusura tutta la pagina si ridisegnava)
+  assert.equal(await page.evaluate(() => document.body.style.position), "", "nessun cambio alla pagina");
   await page.mouse.move(195, 80); await page.mouse.wheel(0, 400); await page.waitForTimeout(200);
-  assert.equal(await page.evaluate(() => window.scrollY), 0, "la rotellina non fa scorrere la pagina sotto");
-  await page.click("#wxChiudi");
+  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "la rotellina non fa scorrere la pagina sotto");
+  // trascinando il dito sullo sfondo scuro la pagina sotto resta ferma
+  const cdp = await ctx.newCDPSession(page), tocca = (type, y) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x: 195, y }] });
+  await tocca("touchStart", 60); for (const y of [100, 160, 220, 300]) await tocca("touchMove", y); await tocca("touchEnd"); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "il dito sullo sfondo non fa scorrere la pagina");
+  await page.evaluate(() => chiudiMeteo());   // (il tocco sullo sfondo può averla già chiusa)
   await quando(page, () => document.getElementById("wxSheet").hidden);
-  assert.equal(await page.evaluate(() => document.body.style.position), "");
-  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "alla chiusura torna dov'era");
+  assert.equal(await page.evaluate(() => Math.round(window.scrollY)), 120, "chiusa: la pagina è dov'era, senza salti");
+  // senza finestre aperte la pagina scorre di nuovo col dito
+  await tocca("touchStart", 400); for (const y of [360, 300, 240, 180]) await tocca("touchMove", y); await tocca("touchEnd"); await page.waitForTimeout(400);
+  assert.ok(await page.evaluate(() => window.scrollY) > 150, "la pagina scorre");
   assert.deepEqual(errori, []);
 });
 
@@ -362,11 +368,59 @@ test("storico salvato una volta sola sul telefono e usato per il bilancio dell'a
   await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
   const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
   await page.goto(SITO); await pronta(page);
-  await quando(page, () => (localStorage.getItem("giardino:net:storico") || "").includes('"arch"') && localStorage.getItem("giardino:net:meteo"));
-  const r = await page.evaluate(() => { const m = JSON.parse(localStorage.getItem("giardino:net:meteo")), s = JSON.parse(localStorage.getItem("giardino:net:storico"));
+  // una copia per posizione (più orti): chiavi con la posizione
+  await quando(page, () => (localStorage.getItem("giardino:net:storico@44.18,11.95") || "").includes('"arch"') && localStorage.getItem("giardino:net:meteo@44.18,11.95"));
+  const r = await page.evaluate(() => { const m = JSON.parse(localStorage.getItem("giardino:net:meteo@44.18,11.95")), s = JSON.parse(localStorage.getItem("giardino:net:storico@44.18,11.95"));
     return { meteoHaStorico: "storico" in m || "archivio" in m, arch: Object.keys(s.arch).length, passati: pastDays().length }; });
   assert.equal(r.meteoHaStorico, false, "il meteo salvato non ripete lo storico");
   assert.equal(r.arch, 400);
   assert.ok(r.passati >= 100, "bilancio con " + r.passati + " giorni passati");
+  assert.deepEqual(errori, []);
+});
+
+test("più orti: ognuno con la sua città, le sue piante e il suo meteo; nuovo orto; pianta spostata", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-PIU-ORTI-ABCDEFGHIJKL", H = { "x-giardino-code": CODE, "content-type": "application/json" };
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: H, body: JSON.stringify({ changes: {
+    location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 },
+    orti: [{ id: "o1", nome: "Mare", location: { name: "Rimini", detail: "Emilia-Romagna, Italia", lat: 44.06, lon: 12.57 } }],
+    plants: [{ id: "ag", nome: "Aglio", specie: "aglio", fase: "auto", colt: "vaso", vaso: 30, luce: 4, dove: "aperto" },
+      { id: "ba", nome: "Basilico", specie: "basilico", fase: "auto", colt: "vaso", vaso: 3, luce: 6, dove: "aperto", orto: "o1" }] } }) }));
+  const ctx = await contesto(browser), lat = [];
+  await ctx.route("https://geocoding-api.open-meteo.com/**", (r) => r.fulfill(json({ results: [{ name: "Bologna", admin1: "Emilia-Romagna", country: "Italia", latitude: 44.494, longitude: 11.343, elevation: 54 }] })));
+  await ctx.route("https://api.open-meteo.com/**", (r) => { lat.push(new URL(r.request().url()).searchParams.get("latitude")); return r.fallback(); });
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  const nomi = () => page.evaluate(() => [...document.querySelectorAll("#plantList .pname")].map((x) => x.textContent.trim()));
+  await page.goto(SITO); await pronta(page);
+  await quando(page, () => document.querySelector("#locName").textContent === "Castrocaro Terme");
+  await page.evaluate(() => switchView("piante"));
+  assert.deepEqual(await nomi(), ["Aglio"], "orto principale: solo le sue piante");
+  // l'altro orto: le sue piante e il meteo di Rimini
+  await page.click("#locBtn"); await quando(page, () => !document.querySelector("#ortiSheet").hidden);
+  assert.equal(await page.locator("#ortiLista [data-orto]").count(), 2);
+  await page.click('#ortiLista [data-orto="o1"]');
+  await quando(page, () => document.querySelector("#locName").textContent === "Mare");
+  assert.deepEqual(await nomi(), ["Basilico"]);
+  await quando(page, () => typeof S !== "undefined" && S.location?.name === "Rimini" && wxDays().length > 0);
+  assert.ok(lat.some((x) => (+x).toFixed(2) === "44.06"), "meteo di Rimini: " + lat.join(","));
+  assert.equal(await page.evaluate(() => localStorage.getItem("giardino:orto")), "o1", "l'orto scelto resta su questo telefono");
+  // nuovo orto: Bologna, vuoto
+  await page.click("#locBtn"); await quando(page, () => !document.querySelector("#ortiSheet").hidden);
+  await page.click("#ortoNuovo summary"); await page.fill("#onNome", "Città"); await page.fill("#onLoc", "bologna"); await page.click("#onCrea");
+  await quando(page, () => document.querySelector("#locName").textContent === "Città");
+  assert.deepEqual(await nomi(), []);
+  // il basilico torna nell'orto principale (dal modulo della pianta)
+  await page.click("#locBtn"); await quando(page, () => !document.querySelector("#ortiSheet").hidden);
+  await page.click('#ortiLista [data-orto="o1"]'); await quando(page, () => document.querySelector("#locName").textContent === "Mare");
+  await page.evaluate(() => openForm("ba"));
+  assert.ok(await page.isVisible("#pf-orto"), "con più orti il modulo chiede l'orto");
+  await page.selectOption("#pf-orto", "p"); await page.evaluate(() => document.querySelector("#plantForm").requestSubmit());
+  await quando(page, () => document.querySelectorAll("#plantList .pname").length === 0);
+  await page.evaluate(() => salvaSubito()); await page.waitForTimeout(1500);
+  const d = (await (await dati(new Request("https://x/api/dati", { headers: H }))).json()).data;
+  assert.deepEqual(d.plants.map((p) => [p.id, p.orto || "p"]).sort(), [["ag", "p"], ["ba", "p"]], "basilico spostato, aglio dov'era");
+  assert.deepEqual(d.orti.map((o) => [o.nome, o.location?.name]), [["Mare", "Rimini"], ["Città", "Bologna"]]);
+  assert.equal(d.location.name, "Castrocaro Terme", "la posizione del principale non cambia");
   assert.deepEqual(errori, []);
 });

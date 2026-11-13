@@ -11,7 +11,7 @@ if (!j) { console.log("Open-Meteo non risponde"); process.exit(0); }
 const met = { lat, ...M.componiMeteo(j, null, oggi, ora, jMod), storico: jSt ? M.storicoDa(jSt) : null, archivio: jSt ? M.archivioDa(jSt) : null };
 console.log("più modelli:", jMod ? "ok" : "no", "· giorni", met.days.length, "· storico", Object.keys(met.storico || {}).length, "giorni · archivio", JSON.stringify(met.archivio || {}).length, "byte");
 for (const d of met.days.filter((x) => x.date >= oggi)) console.log("  ", d.date, d.cond.padEnd(14), "pioggia", String(d.rain).padStart(5), "mm", ("(" + d.prob + "%)").padEnd(6),
-  d.ensemble ? "modelli " + d.modelli.length + " [" + d.rain_modelli.join("/") + "] min " + d.tmin + (d.tmin_freddo < d.tmin ? " (più freddo " + d.tmin_freddo + ")" : "") + " et0 " + d.et0 : "base");
+  d.ensemble ? "modelli " + d.modelli.length + " [" + d.rain_modelli.join("/") + "] min " + d.tmin  + " et0 " + d.et0 : "base");
 M.registraClima(lat, M.climaDa(met));
 const past = M.giorniPassati(met, null, oggi);
 console.log("giorni passati per il bilancio:", past.length, "dal", past[0]?.date, "· pioggia totale", past.reduce((a, d) => a + (d.rain || 0), 0).toFixed(0), "mm · ET0 totale", past.reduce((a, d) => a + (d.et0 || 0), 0).toFixed(0), "mm");
