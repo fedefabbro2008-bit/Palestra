@@ -501,3 +501,32 @@ test("più orti: un messaggio per orto (col suo nome), connettore orto per orto,
   assert.equal((await leggiDati()).plants.find((p) => p.id === "bas").orto, undefined);
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { orti: [] } } });
 });
+
+test("richieste insieme invece che in fila: il meteo di più orti, e su Telegram la conferma con i pulsanti nuovi", async () => {
+  const C = await import("../netlify/lib/core.mjs"), vero = globalThis.fetch;
+  // quante richieste sono aperte nello stesso momento (ognuna dura 40 ms)
+  let aperte = 0, massimo = 0; const viste = [];
+  const conta = (quali) => { aperte = 0; massimo = 0; viste.length = 0;
+    globalThis.fetch = async (u, o) => { if (!quali(String(u))) return vero(u, o); viste.push(String(u).split("/").pop().split("?")[0]); massimo = Math.max(massimo, ++aperte); await new Promise((ok) => setTimeout(ok, 40)); aperte--; return vero(u, o); }; };
+  try {
+    // due orti in due città nuove (niente nell'archivio): le previsioni di base partono insieme
+    conta((u) => u.includes("api.open-meteo.com") && u.includes("past_days=3"));
+    const lista = await C.pianiOrti({ location: { name: "Trento", lat: 46.07, lon: 11.12 }, orti: [{ id: "o1", nome: "Lago", location: { name: "Como", lat: 45.81, lon: 9.08 } }],
+      plants: [{ ...PIANTE[0] }, { ...PIANTE[1], orto: "o1" }], eventi: [], impostazioni: {} });
+    assert.deepEqual(lista.map((x) => x.v.orto.id), ["p", "o1"], "nello stesso ordine degli orti");
+    assert.deepEqual(lista.map((x) => x.ap.piano.piante.map((p) => p.id)), [["zuc"], ["bas"]], "ogni orto con il piano delle sue piante");
+    assert.equal(massimo, 2, "il meteo dei due orti chiesto insieme");
+    // pulsante su Telegram: «Registrato» e i pulsanti nuovi partono insieme, e arrivano tutti e due
+    conta((u) => u.includes("api.telegram.org"));
+    const kb = [[{ text: "✅ Annaffiato", callback_data: `g|${OGGI}|pom|f` }], [{ text: "💦 Terreno ancora umido", callback_data: `g|${OGGI}|pom|u` }]];
+    inviati.length = 0;
+    await webhook({ callback_query: { id: "cbpar", data: `g|${OGGI}|pom|u`, message: { message_id: 21, chat: { id: 77 }, reply_markup: { inline_keyboard: kb } } } });
+    assert.deepEqual(viste, ["answerCallbackQuery", "editMessageReplyMarkup"], "prima parte la conferma, poi i pulsanti");
+    assert.equal(massimo, 2, "senza aspettare la risposta alla prima");
+    assert.match(inviati.find((x) => x[0] === "answerCallbackQuery")[1].text, /Registrato: Pomodoro/);
+    assert.match(JSON.stringify(inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup), /Annulla/);
+    // annullo, per lasciare i dati com'erano
+    await webhook({ callback_query: { id: "cbpar2", data: `g|${OGGI}|pom|zn`, message: { message_id: 21, chat: { id: 77 }, reply_markup: { inline_keyboard: inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard } } } });
+    assert.equal(massimo, 2);
+  } finally { globalThis.fetch = vero; }
+});

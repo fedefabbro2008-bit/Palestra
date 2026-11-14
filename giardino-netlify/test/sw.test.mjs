@@ -16,7 +16,7 @@ const attesa = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // sito su localhost: pagina (con versione e ritardo a scelta), file, /api/dati vera con l'archivio finto
 async function sito(t) {
-  const s = { versione: "A", giu: false, ritardo: 0, rovina: 0, guasta: 0, api: [] };
+  const s = { versione: "A", giu: false, ritardo: 0, rovina: 0, guasta: 0, api: [], pagine: 0 };
   const pagina = (v) => fs.readFileSync(PUB + "index.html", "utf8")
     .replace(/(<meta name="giardino-build" content=")\w+/, (m, a) => a + v.toLowerCase().repeat(12))
     .replace("</body>", `<script>window.VERSIONE_PROVA=${JSON.stringify(v)}</script></body>`);
@@ -34,7 +34,7 @@ async function sito(t) {
       s.api.push(req.method + (h["x-giardino-gzip"] === "no" ? " chiaro" : "") + segno);
       res.writeHead(r.status, out); return res.end(corpo);
     }
-    if (u.pathname === "/") { if (s.ritardo) await attesa(s.ritardo); res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" }); return res.end(pagina(s.versione)); }
+    if (u.pathname === "/") { if (s.ritardo) await attesa(s.ritardo); res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", etag: `"pagina-${s.versione}"`, "x-n": String(++s.pagine) }); return res.end(pagina(s.versione)); }
     const f = PUB + u.pathname.slice(1);
     if (!fs.existsSync(f) || u.pathname.endsWith("/")) { res.writeHead(404); return res.end("no"); }
     const tipo = f.endsWith(".js") ? "text/javascript" : f.endsWith(".png") ? "image/png" : "application/manifest+json";
@@ -66,10 +66,15 @@ test("service worker: apertura dalla copia e versioni nuove", async (t) => {
   assert.deepEqual(nav, ["rete"], "la prima volta la pagina arriva dalla rete");
 
   // rete lenta: la pagina arriva subito dalla copia (prima si aspettava il sito fino a 3 secondi)
+  const nCopia = () => page.evaluate(async () => (await caches.match("/"))?.headers.get("x-n"));
+  const n0 = await nCopia(), chieste = s.pagine;
   s.ritardo = 3000; nav = [];
   let t0 = Date.now(); await page.reload(); await s.pronta();
   assert.deepEqual(nav, ["copia"]); assert.ok(Date.now() - t0 < 2000, "aperta in " + (Date.now() - t0) + " ms con la rete lenta");
   s.ritardo = 0; await attesa(3200);   // finisce la richiesta lenta in sottofondo (Chrome mette in fila quelle alla stessa pagina)
+  // pagina uguale (stessa etichetta del sito): il controllo in sottofondo c'è stato, ma la copia non si rilegge né si riscrive
+  assert.ok(s.pagine > chieste, "il sito è stato controllato in sottofondo");
+  assert.ok(n0 && (await nCopia()) === n0, "pagina invariata: la copia sul telefono resta quella");
 
   // versione nuova, app appena aperta e non toccata: si ricarica da sola con la versione nuova
   s.versione = "B"; await page.reload();

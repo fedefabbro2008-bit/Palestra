@@ -424,3 +424,44 @@ test("più orti: ognuno con la sua città, le sue piante e il suo meteo; nuovo o
   assert.equal(d.location.name, "Castrocaro Terme", "la posizione del principale non cambia");
   assert.deepEqual(errori, []);
 });
+
+test("apertura dalla copia sul telefono: piante, meteo e piano subito, senza aspettare server e Open-Meteo; poi le novità", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-APERTURA-DALLA-COPIA-ABC", H = { "x-giardino-code": CODE, "content-type": "application/json" };
+  const posta = (body) => dati(new Request("https://x/api/dati", { method: "POST", headers: H, body: JSON.stringify(body) }));
+  const aloe = { id: "su", nome: "Aloe", specie: "succulenta", fase: "auto", colt: "vaso", vaso: 2, luce: 4, dove: "interno" };
+  await posta({ changes: { location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 }, plants: [aloe] } });
+  const ctx = await contesto(browser);
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  const KM = "giardino:net:meteo@44.18,11.95";
+  await page.goto(SITO); await pronta(page);
+  await quando(page, (k) => document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5 && localStorage.getItem("giardino:net:cache") && localStorage.getItem(k), KM);
+
+  // intanto Claude cambia il vaso dell'Aloe e aggiunge una pianta; il meteo salvato sul telefono invecchia di due ore
+  await posta({ changes: { plants: [{ ...aloe, vaso: 5 }, { id: "ba", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "aperto" }] } });
+  await page.evaluate((k) => { const m = JSON.parse(localStorage.getItem(k)); m.updatedAt = new Date(Date.now() - 2 * 3600e3).toISOString(); localStorage.setItem(k, JSON.stringify(m)); }, KM);
+  // server e Open-Meteo lenti (2,5 secondi)
+  const arrivate = { dati: 0, meteo: 0 }, lento = (cosa) => async (r) => { await new Promise((ok) => setTimeout(ok, 2500)); arrivate[cosa]++; return r.fallback(); };
+  await ctx.route(SITO + "api/dati**", lento("dati")); await ctx.route("https://api.open-meteo.com/**", lento("meteo"));
+  RICHIESTE.length = 0;
+  await page.goto(SITO); await pronta(page);
+  await quando(page, () => document.querySelector("#restList .lrow") && document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5 && document.querySelector("#weekList > *"));
+  assert.deepEqual(arrivate, { dati: 0, meteo: 0 }, "piante, meteo e prossimi giorni sullo schermo prima che server e meteo rispondano");
+  assert.deepEqual(await page.evaluate(() => S.plants.map((p) => p.nome + " " + p.vaso)), ["Aloe 2"], "dalla copia dell'ultima volta");
+  assert.ok(!(await page.isVisible("#wxNote")), "il meteo salvato ha le previsioni di oggi: nessun avviso");
+
+  // un tocco prima che il server risponda: l'innaffiatura parte da sola, senza riportare indietro le modifiche di Claude
+  await page.click('#restList [data-ev="fatto"]');
+  await quando(page, () => S.plants.length === 2 && S.eventi_app.some((e) => e.plantId === "su" && e.tipo === "fatto"));
+  await quando(page, () => Date.now() - Date.parse(W.bot?.updatedAt || 0) < 60000);   // il meteo nuovo ha preso il posto di quello salvato
+  await quando(page, () => !scrittureInSospeso() && /Salvato/.test(document.querySelector("#netStatus")?.textContent || ""));
+  assert.deepEqual(await page.evaluate(() => S.plants.map((p) => p.nome + " " + p.vaso)), ["Aloe 5", "Basilico 3"], "le novità del server sullo schermo");
+  assert.match(await page.textContent("#restList"), /Annaffiata oggi/);
+  const d = (await (await dati(new Request("https://x/api/dati", { headers: H }))).json()).data;
+  assert.deepEqual(d.plants.map((p) => p.nome + " " + p.vaso), ["Aloe 5", "Basilico 3"], "sul server restano le modifiche di Claude");
+  assert.equal(d.eventi.filter((e) => e.plantId === "su" && e.tipo === "fatto" && e.fonte === "app").length, 1, "e l'innaffiatura segnata sul telefono");
+  assert.deepEqual(RICHIESTE.filter((x) => x.startsWith("GET")), ["GET dati (versione)"], "una sola lettura dal server");
+  assert.equal(arrivate.meteo, 2, "meteo: una richiesta di base e una dei modelli, non due volte");
+  assert.deepEqual(errori, []);
+});

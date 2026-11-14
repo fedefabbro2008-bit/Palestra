@@ -1090,7 +1090,8 @@ const GIORNI = ['dom','lun','mar','mer','gio','ven','sab'];
 const dayLabel = iso => { if(iso===today()) return 'Oggi'; if(iso===addDays(today(),1)) return 'Domani'; if(iso===addDays(today(),-1)) return 'Ieri'; const d=new Date(iso+'T12:00:00'); return GIORNI[d.getDay()]+' '+d.getDate(); };
 const dayShort = iso => { if(iso===today()) return 'Oggi'; const d=new Date(iso+'T12:00:00'); return GIORNI[d.getDay()]+' '+d.getDate(); };
 const BREVI=new Map();   // «7 nov»: la formattazione in italiano è lenta e le stesse date tornano spesso
-const dataBreve = iso => { let v=BREVI.get(iso); if(v===undefined){ v=new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{day:'numeric',month:'short'}); if(BREVI.size>800) BREVI.clear(); BREVI.set(iso,v); } return v; };
+let FMT_DATA;
+const dataBreve = iso => { let v=BREVI.get(iso); if(v===undefined){ v=(FMT_DATA ||= new Intl.DateTimeFormat('it-IT',{day:'numeric',month:'short'})).format(new Date(iso+'T12:00:00')); if(BREVI.size>800) BREVI.clear(); BREVI.set(iso,v); } return v; };
 const next7 = () => Array.from({length:7},(_,i)=>addDays(today(),i));
 const numOrNull = v => { if(v===''||v==null) return null; const n=parseFloat(String(v).trim().replace(',','.')); return isFinite(n)?n:null; };
 const numIn = v => v==null||v==='' ? '' : String(v).replace('.',',');
@@ -1099,7 +1100,7 @@ const EMOJI_PIANTE=["🌱", "🌿", "🪴", "🌵", "🌸", "🌼", "🌻", "�
 const piante = () => pianteOrdinate(S.plants);   // sempre in ordine alfabetico, raggruppate per zona
 const chiaveZona = p => zonaDi(p).toLowerCase() || '·';
 const conZone = () => S.plants.some(p=>zonaDi(p));
-function zoneEsistenti(){ const m=new Map(); for(const p of S.plants){ const z=zonaDi(p); if(z&&!m.has(z.toLowerCase())) m.set(z.toLowerCase(),z); } return [...m.values()].sort((a,b)=>a.localeCompare(b,'it',{sensitivity:'base'})); }
+function zoneEsistenti(){ const m=new Map(); for(const p of S.plants){ const z=zonaDi(p); if(z&&!m.has(z.toLowerCase())) m.set(z.toLowerCase(),z); } return [...m.values()].sort(ALFABETICO.compare); }
 const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 // un campo si riscrive solo se il dato salvato è cambiato e non ci stai scrivendo: l'aggiornamento automatico non cancella ciò che stai inserendo
 const setVal = (el,v) => { v=String(v??''); if(!el || document.activeElement===el || el._last===v) return; el.value=v; el._last=v; };

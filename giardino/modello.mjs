@@ -241,7 +241,11 @@ export const FASI = {
 // nome della fase per una specie (aglio e cipolla: “Ingrossamento del bulbo” al posto di “Fruttificazione”)
 export function nomeFase(specie, fase){ const sp=SPECIE[specie]||SPECIE.altro; return sp.fasiNomi?.[fase] || (FASI[fase]||FASI.vegetativa).nome; }
 // specie in ordine alfabetico, “Altra pianta” in fondo
-export function specieOrdinate(){ return Object.entries(SPECIE).sort(([a,x],[b,y])=>(a==='altro')-(b==='altro') || x.nome.localeCompare(y.nome,'it',{sensitivity:'base'})); }
+// Ordine alfabetico in italiano: un confronto creato una volta sola (localeCompare ne creava uno a ogni coppia confrontata,
+// e l'elenco delle piante si riordina più volte a ogni ridisegno).
+const ALFABETICO = new Intl.Collator('it',{sensitivity:'base'}), ALFANUM = new Intl.Collator('it',{sensitivity:'base',numeric:true});
+let SPECIE_ORD=null;   // le specie non cambiano: l'ordine si calcola una volta (chi lo usa non lo modifica)
+export function specieOrdinate(){ return SPECIE_ORD ||= Object.entries(SPECIE).sort(([a,x],[b,y])=>(a==='altro')-(b==='altro') || ALFABETICO.compare(x.nome,y.nome)); }
 // piante in ordine alfabetico, raggruppate per zona (prima quelle con una zona, in ordine alfabetico)
 export const zonaDi = p => String(p?.zona||'').trim().replace(/\s+/g,' ');
 /* ---------------- Più orti (città diverse) ----------------
@@ -267,8 +271,8 @@ export function vistaOrto(data, id='p'){
 // le viste degli orti con posizione e piante (quelle su cui bot e connettore lavorano)
 export const vistePiene = data => orti(data).map(o=>vistaOrto(data,o.id)).filter(v=>v.location&&v.plants.length);
 export function pianteOrdinate(piante){
-  const cmp=(a,b)=>a.localeCompare(b,'it',{sensitivity:'base',numeric:true});
-  return [...(piante||[])].sort((a,b)=>{ const za=zonaDi(a), zb=zonaDi(b); return (!za)-(!zb) || cmp(za,zb) || cmp(String(a.nome||''),String(b.nome||'')); });
+  // zona e nome si leggono una volta per pianta, non a ogni confronto
+  return (piante||[]).map(p=>({p, z:zonaDi(p), n:String(p?.nome||'')})).sort((a,b)=>(!a.z)-(!b.z) || ALFANUM.compare(a.z,b.z) || ALFANUM.compare(a.n,b.n)).map(x=>x.p);
 }
 const DA_LETTERA = {G:'germinazione',P:'piantina',V:'vegetativa',F:'fioritura',T:'fruttificazione',M:'maturazione',R:'riposo'};
 const ORDINE_FASI = ['germinazione','piantina','vegetativa','fioritura','fruttificazione','maturazione'];
@@ -623,8 +627,9 @@ export function verificaDaFare(piante, eventi, oggi, vacanza){
   const g=new Date(oggi+'T12:00:00Z').getUTCDay();
   if((g!==6 && g!==0) || !piante?.length || inVacanza(vacanza, oggi)) return null;
   if((eventi||[]).some(e=>e.tipo==='verifica' && giorniTra(e.data,oggi)>=0 && giorniTra(e.data,oggi)<7)) return null;
-  const ultima=p=>eventiValidi(eventi,p.id).filter(e=>['umido','secco','meno','piu','verifica'].includes(e.tipo)).map(e=>e.data).sort().pop()||'';
-  return [...pianteOrdinate(piante)].sort((a,b)=>ultima(a)<ultima(b)?-1:ultima(a)>ultima(b)?1:0)[0];
+  // ultimo controllo di ogni pianta, letto una volta (prima si rileggeva tutto il diario a ogni confronto)
+  const ultima=new Map(piante.map(p=>[p.id, eventiValidi(eventi,p.id).reduce((m,e)=>['umido','secco','meno','piu','verifica'].includes(e.tipo)&&e.data>m?e.data:m,'')]));
+  return pianteOrdinate(piante).sort((a,b)=>{ const x=ultima.get(a.id), y=ultima.get(b.id); return x<y?-1:x>y?1:0; })[0];
 }
 // risposta = 'umido' | 'secco'; acqua e soglia = frazione della riserva (dal calcolo, a fine giornata);
 // acquaSecco = acqua sotto la quale è normale che la terra sia asciutta dove tocchi (dal piano; senza, la tacca).
@@ -936,7 +941,8 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
   return out;
 }
 const BREVE=new Map();   // «sab 7»: la formattazione in italiano è lenta, si ricorda
-const giornoBreve = iso => { let v=BREVE.get(iso); if(!v){ v=new Date(iso+'T12:00:00').toLocaleDateString('it-IT',{weekday:'short',day:'numeric'}); if(BREVE.size>500) BREVE.clear(); BREVE.set(iso,v); } return v; };
+let FMT_BREVE;
+const giornoBreve = iso => { let v=BREVE.get(iso); if(!v){ v=(FMT_BREVE ||= new Intl.DateTimeFormat('it-IT',{weekday:'short',day:'numeric'})).format(new Date(iso+'T12:00:00')); if(BREVE.size>500) BREVE.clear(); BREVE.set(iso,v); } return v; };
 // Due righe sulla settimana, come le scriverebbe un giardiniere: meteo, chi va bagnato e quando, chi no.
 export function sintesiSettimana(piano, fut, piante){
   if(!fut.length) return '';
@@ -947,7 +953,7 @@ export function sintesiSettimana(piano, fut, piante){
   const si=[], no=[];
   for(const pp of piano.piante){ const g=pp.giorni.filter(x=>x.azione==='innaffia'); if(!nome(pp.id)) continue;
     if(g.length) si.push(nome(pp.id)+' '+g.map(x=>giornoBreve(x.data)).join(', ')); else no.push(nome(pp.id)); }
-  si.sort((a,b)=>a.localeCompare(b,'it')); no.sort((a,b)=>a.localeCompare(b,'it'));
+  const it=(a,b)=>a.localeCompare(b,'it'); si.sort(it); no.sort(it);
   if(si.length) t+=' Da innaffiare: '+si.join('; ')+'.';
   if(no.length) t+=' '+(no.length===1?no[0]+': niente acqua':no.slice(0,-1).join(', ')+' e '+no.at(-1)+': niente acqua')+(rain>=10&&piante.some(p=>!alCoperto(p)&&no.includes(p.nome))?', basta la pioggia o la riserva.':', basta la riserva.');
   return t;

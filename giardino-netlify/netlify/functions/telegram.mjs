@@ -87,7 +87,8 @@ const BREVE = { fatto: "annaffiata", saltato: "saltata", umido: "umida", secco: 
 const annullaCb = (data, pid, v) => `g|${data}|${pid}|z${v}`;
 
 async function pulsante(st, t, code, cq) {
-  const rispondi = (text) => tg(t.token, "answerCallbackQuery", { callback_query_id: cq.id, ...(text ? { text } : {}) }, { ignora: true });
+  // la conferma non blocca mai il resto (parte insieme ai pulsanti nuovi): se Telegram non risponde resta solo nel registro
+  const rispondi = (text) => tg(t.token, "answerCallbackQuery", { callback_query_id: cq.id, ...(text ? { text } : {}) }, { ignora: true }).catch((e) => { console.warn("Telegram answerCallbackQuery:", e?.message); return null; });
   if (cq.message?.chat?.id !== t.chat_id) return rispondi();
   const [k, data, pid, x] = String(cq.data || "").split("|");
   if (k === "v" && /^[us]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return verifica(st, t, code, cq, rispondi);
@@ -103,7 +104,8 @@ async function pulsante(st, t, code, cq) {
     const g = d.piano_claude?.data?.piante?.find((y) => y.id === pid)?.giorni?.find((y) => y.data === data);
     d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo, data, fonte: "telegram", ts: new Date().toISOString(), ...(tipo === "fatto" || tipo === "secco" ? { litri: g?.litri ?? (t.notificati?.[data] || []).find((n) => n.id === pid)?.litri ?? null } : {}) });
   });
-  await rispondi(`Registrato: ${nome} — ${ETICHETTE[tipo]}`);
+  // la conferma e i pulsanti nuovi partono insieme (prima una richiesta a Telegram dopo l'altra: il doppio dell'attesa)
+  const conferma = rispondi(`Registrato: ${nome} — ${ETICHETTE[tipo]}`);
   const kb = cq.message?.reply_markup?.inline_keyboard;
   if (kb) {
     // le righe della pianta premuta (Annaffiato + Terreno ancora umido/Salto, oppure Concimata) diventano una sola riga:
@@ -120,6 +122,7 @@ async function pulsante(st, t, code, cq) {
     }).filter(Boolean);
     await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: nuova } }, { ignora: true });
   }
+  await conferma;
 }
 
 // Controllo della settimana: «umido» o «asciutto» confrontato con l'acqua che il calcolo dava nel terriccio.
@@ -132,8 +135,9 @@ async function verifica(st, t, code, cq, rispondi) {
     if (d.eventi.some((e) => e.plantId === pid && e.data === data && e.tipo === "verifica")) { gia = true; return false; }
     d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo: "verifica", data, fonte: "telegram", ts: new Date().toISOString(), esito: risposta, valutazione: v, acqua });
   });
-  await rispondi(gia ? "Già registrato" : risposta === "secco" ? M.testoSecco(v, acqua, soglia, acquaSecco, ora == null ? undefined : ora === "1") : M.TESTO_VERIFICA[v]);
+  const conferma = rispondi(gia ? "Già registrato" : risposta === "secco" ? M.testoSecco(v, acqua, soglia, acquaSecco, ora == null ? undefined : ora === "1") : M.TESTO_VERIFICA[v]);
   if (!gia) await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [[{ text: `✔ ${corto(nome)}: ${risposta} — ${v === "ok" ? (risposta === "secco" ? "normale, calcolo giusto" : "calcolo giusto") : v === "piu" ? "beve di più" : "beve di meno"}`, callback_data: "x" }]] } }, { ignora: true });
+  await conferma;
 }
 
 // Annulla: toglie la risposta data da Telegram per quella pianta e quel giorno e rimette i pulsanti com'erano.
@@ -147,12 +151,13 @@ async function annulla(st, t, code, cq, data, pid, v, rispondi) {
     if (!tolte) return false;
   });
   if (!p) return rispondi("Pianta non trovata");
-  await rispondi(tolte ? `Annullato: ${p.nome}` : "Niente da annullare");
+  const conferma = rispondi(tolte ? `Annullato: ${p.nome}` : "Niente da annullare");
   const kb = cq.message?.reply_markup?.inline_keyboard;
-  if (!kb) return;
+  if (!kb) return conferma;
   const altre = kb.flat().some((b) => /^g\|/.test(b.callback_data || "") && !(b.callback_data || "").startsWith(`g|${data}|${pid}|`));
   const righe = v === "c" ? [[{ text: "🌱 " + corto(p.nome) + " concimata", callback_data: `g|${data}|${pid}|c` }]]
     : pulsantiAcqua(p, data, { conNome: altre, salto: v === "s", secca: v === "a" });
   const nuova = kb.flatMap((row) => row.some((b) => b.callback_data === cq.data) ? righe : [row]);
   await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: nuova } }, { ignora: true });
+  await conferma;
 }

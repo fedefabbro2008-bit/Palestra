@@ -226,12 +226,9 @@ export function pianoAttivo(data, met, oggi) {
 
 // Tutti gli orti con posizione e piante, ognuno col suo meteo e il suo piano: [{v, met, ap}] (oggi dal fuso del primo).
 export async function pianiOrti(data, oggiFisso) {
-  const out = [];
-  for (const v of M.vistePiene(data)) {
-    const met = await meteo(v.location.lat, v.location.lon), oggi = oggiFisso || oraLocale(met.tz).oggi;
-    out.push({ v, met, oggi, ap: pianoAttivo(v, met, oggi) });
-  }
-  return out;
+  // il meteo di tutti gli orti insieme (prima uno dopo l'altro: con due città si aspettava il doppio)
+  const viste = M.vistePiene(data), metei = await Promise.all(viste.map((v) => meteo(v.location.lat, v.location.lon)));
+  return viste.map((v, i) => { const met = metei[i], oggi = oggiFisso || oraLocale(met.tz).oggi; return { v, met, oggi, ap: pianoAttivo(v, met, oggi) }; });
 }
 // un piano solo con le piante di tutti gli orti (per /fatto e i pulsanti)
 export const pianoUnito = (lista) => ({ piano: { piante: lista.flatMap((x) => x.ap.piano.piante), avvisi: [] } });

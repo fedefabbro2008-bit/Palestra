@@ -15,10 +15,10 @@ export const config = { schedule: "@hourly" };
 export default async () => {
   const st = store();
   // crediti Netlify: conta la versione pubblicata; sopra l'80% della stima avvisa una volta al mese
-  let cr = null; try { cr = await crediti(st); } catch (e) { console.error("crediti", e?.message); }
+  // (crediti ed elenco dei bot collegati si leggono insieme: ogni ora, quasi sempre senza altro da fare)
+  const [cr, { blobs }] = await Promise.all([crediti(st).catch((e) => { console.error("crediti", e?.message); return null; }), st.list({ prefix: "t-" })]);
   // ogni 3 ore: pioggia misurata dalle stazioni ARPAE (solo per le posizioni in Emilia-Romagna)
   if (new Date().getUTCHours() % 3 === 0) { try { await aggiornaPioggiaMisurata(st); } catch (e) { console.error("pioggia misurata", e?.message); } }
-  const { blobs } = await st.list({ prefix: "t-" });
   let avvisati = 0;
   for (const b of blobs) {
     try { if (await uno(st, b.key, cr && cr.alto && !cr.avvisato ? cr : null)) avvisati++; } catch (e) { console.error(b.key, e?.message || e); }

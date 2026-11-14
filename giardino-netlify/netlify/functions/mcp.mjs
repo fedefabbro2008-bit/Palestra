@@ -29,8 +29,9 @@ async function contesto(ctx) {
   const data = cur.data, viste = M.orti(data).map((o) => M.vistaOrto(data, o.id)).filter((v) => v.location);
   if (!viste.length) throw new Error("Manca la posizione: impostala nell'app Giardino (Impostazioni → Posizione).");
   // ogni orto (città) con il suo meteo e il suo piano
-  const lista = []; let oggi = null;
-  for (const v of viste) { const met = await meteo(v.location.lat, v.location.lon); oggi ||= oraLocale(met.tz).oggi; lista.push({ v, met, ap: pianoAttivo(v, met, oggi) }); }
+  // il meteo di tutti gli orti insieme (prima uno dopo l'altro)
+  const metei = await Promise.all(viste.map((v) => meteo(v.location.lat, v.location.lon))), oggi = oraLocale(metei[0].tz).oggi;
+  const lista = viste.map((v, i) => ({ v, met: metei[i], ap: pianoAttivo(v, metei[i], oggi) }));
   const diPianta = (p) => lista.find((x) => x.v.plants.some((y) => y.id === p.id)) || lista[0];
   return { data, oggi, lista, diPianta, piuOrti: M.orti(data).length > 1 };
 }
