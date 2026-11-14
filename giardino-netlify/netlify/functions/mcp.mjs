@@ -110,9 +110,12 @@ async function toolDiario(ctx, a) {
   const giorni = Math.max(1, Math.min(365, parseInt(a.giorni) || 30)), oggi = M.isoDate(new Date()), d = cur.data;
   const ev = d.eventi.filter((e) => e.data >= M.addDays(oggi, -giorni)).sort((x, y) => y.data.localeCompare(x.data));
   const L = [`# Diario degli ultimi ${giorni} giorni: ${ev.length} voci`];
+  // la correzione è quella del bilancio dell'acqua (la stessa di «giardino» e dell'app), con il meteo dell'orto di ogni pianta;
+  // prima qui valeva la regola semplice e i due strumenti davano numeri diversi (es. ×0,9 qui e nessuna correzione nel calcolo)
+  const metei = new Map(), correzione = async (p) => { const v = vistaDi(d, p), k = v.orto.id; if (!metei.has(k)) metei.set(k, meteoDi(v)); return calibrazioneVera(v, await metei.get(k), p.id, oggi); };
   for (const p of M.pianteOrdinate(d.plants)) {
     const e = M.eventiValidi(ev, p.id), f = e.filter((x) => x.tipo === "fatto" || x.tipo === "secco");
-    L.push(`- ${p.nome}: ${f.length} innaffiature, ${fmt(f.reduce((s, x) => s + (+x.litri || 0), 0))} L, "era umida" ${e.filter((x) => x.tipo === "umido").length}, "era secca" ${e.filter((x) => x.tipo === "secco").length}, correzione ×${fmt(M.calibrazione(d.eventi, p.id, oggi), 2)}`);
+    L.push(`- ${p.nome}: ${f.length} innaffiature, ${fmt(f.reduce((s, x) => s + (+x.litri || 0), 0))} L, "era umida" ${e.filter((x) => x.tipo === "umido").length}, "era secca" ${e.filter((x) => x.tipo === "secco").length}, correzione ×${fmt(await correzione(p), 2)}`);
   }
   L.push("", ...ev.slice(0, 200).map((e) => `[${e.id}] ${e.data} ${d.plants.find((p) => p.id === e.plantId)?.nome || e.plantId}: ${e.tipo}${e.litri ? " " + fmt(+e.litri, 2) + " L" : ""}${e.nota ? " — " + e.nota : ""} (${e.fonte})`));
   return L.join("\n");

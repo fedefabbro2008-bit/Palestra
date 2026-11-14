@@ -502,6 +502,28 @@ test("più orti: un messaggio per orto (col suo nome), connettore orto per orto,
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { orti: [] } } });
 });
 
+test("connettore: «diario» mostra la stessa correzione del consumo usata dal calcolo («giardino»)", async () => {
+  const C = await import("../netlify/lib/core.mjs"), d = await leggiDati(), oggi = M.isoDate(new Date());
+  const met = await C.meteo(d.location.lat, d.location.lon), testo = (await strumento("diario", { giorni: 30 })).content[0].text;
+  let diverse = 0;
+  for (const p of M.vistaOrto(d, "p").plants) {
+    const vera = C.calibrazioneVera(M.vistaOrto(d, "p"), met, p.id, oggi), riga = testo.split("\n").find((l) => l.startsWith("- " + p.nome + ":"));
+    assert.ok(riga, "nel diario c'è " + p.nome);
+    assert.equal(riga.split("correzione ×")[1], String(Math.round(vera * 100) / 100).replace(".", ","), p.nome);
+    if (Math.abs(vera - regolaSemplice(d.eventi, p.id, oggi)) > 0.005) diverse++;
+  }
+  assert.ok(diverse > 0, "almeno una pianta dove la regola semplice darebbe un altro numero");
+});
+// la regola semplice di prima (±10–24% per risposta), senza la stima del bilancio
+function regolaSemplice(eventi, pid, oggi) {
+  let f = 1, verso = 0, serie = 0;
+  for (const e of M.eventiValidi(eventi, pid).filter((e) => { const g = M.giorniTra(e.data, oggi); return g >= 0 && g <= 60; }).sort((a, b) => (a.data < b.data ? -1 : 1))) {
+    const v = e.tipo === "umido" || e.tipo === "meno" ? -1 : e.tipo === "piu" ? 1 : 0; if (!v) continue;
+    serie = v === verso ? serie + 1 : 1; verso = v; f *= v < 0 ? 1 - 0.1 * (1 + 0.5 * Math.min(serie - 1, 2)) : 1 + 0.12 * (1 + 0.5 * Math.min(serie - 1, 2));
+  }
+  return Math.max(0.4, Math.min(2.5, f));
+}
+
 test("richieste insieme invece che in fila: il meteo di più orti, e su Telegram la conferma con i pulsanti nuovi", async () => {
   const C = await import("../netlify/lib/core.mjs"), vero = globalThis.fetch;
   // quante richieste sono aperte nello stesso momento (ognuna dura 40 ms)
