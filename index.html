@@ -4852,8 +4852,9 @@ function fitNameField(el){
    accanto, aperto o chiuso) ha la stessa altezza. Così una spunta non obbliga a reimpaginare tutta la seduta */
 const nameH = new Map();
 const nameKey = el=> (el.closest('.sess-grp') ? 'g' : '-')+el.parentElement.childElementCount+(el.readOnly ? 'c' : 'o')+'|'+el.value;
-function fitSessionNames(){
-  const els = [...document.querySelectorAll('#sessList .sess-name-input')];
+function fitSessionNames(cards){
+  // cards: solo le schede appena create (le altre hanno già l'altezza giusta); senza, tutte
+  const els = cards ? cards.flatMap(c=> [...c.querySelectorAll('.sess-name-input')]) : [...document.querySelectorAll('#sessList .sess-name-input')];
   const todo = els.filter(el=>{ const h = nameH.get(nameKey(el)); if(h){ el.style.height = h; return false; } return true; });
   todo.forEach(el=>{ el.style.height='auto'; });
   const m = todo.map(el=> [el.scrollHeight, el.offsetHeight - el.clientHeight]);
@@ -5295,10 +5296,10 @@ function renderSession(){
   renderSessionList();
   try{ flipSession(before); }catch(e){}
 }
+let sessStruct = null;   // struttura dell'elenco a schermo: se è uguale si aggiornano solo le schede cambiate
 function renderSessionList(){
   const list = document.getElementById('sessList');
   list.classList.toggle('with-rpe', !!state.settings.showRpe);
-  list.innerHTML='';
   // prossima serie da fare: il primo esercizio con serie aperte; dentro un circuito si va
   // a giri (serie 1 di A, serie 1 di B, serie 2 di A…) come dice il cartellino "passa al prossimo"
   const nt = nextTarget();
@@ -5312,14 +5313,17 @@ function renderSessionList(){
     : `<span class="st-kicker">Completato</span>Premi Termina per salvare`;
   const hist = exerciseIndex();
   const sessBlocks = blocksOf(session.exercises);
+  // prima si prepara tutto come testo (plan), poi si tocca la pagina: così, se l'elenco ha la stessa struttura di prima,
+  // si cambiano solo le schede il cui contenuto è diverso (a ogni spunta ne cambia una o due, non tutte)
+  const plan = [];
   let grpBox = null, lastPh = null;
   const multiPh = new Set(session.exercises.map(x=> x.phase||'main')).size>1;
   session.exercises.forEach((exx,ei)=>{
     const ph = exx.phase || 'main';
-    if(multiPh && ph!==lastPh && sessBlocks[ei].pos===0){ const h = document.createElement('div'); h.className = 'sess-section'; h.innerHTML = '<span>'+PHASE_LBL[ph]+'</span>'; list.appendChild(h); }
+    if(multiPh && ph!==lastPh && sessBlocks[ei].pos===0)plan.push({ t:'h', ph });
     if(sessBlocks[ei].pos===0) lastPh = ph;
     const T = EX_TYPES[exx.type] || EX_TYPES.reps;
-    const div = document.createElement('div');
+    const div = { dataset:{} };
     const allDone = exx.sets.length>0 && exx.sets.every(s=>!setOpen(exx,s)) && exx.sets.some(s=>s.done);
     const collapsed = allDone && !sessExpanded.has(sk(exx));
     const sb = sessBlocks[ei];
@@ -5410,26 +5414,53 @@ function renderSessionList(){
         const doneR = Math.min(...g.map(x=> x.sets.filter(t=>!t.warm && t.done).length));
         const allDone = g.every(x=> x.sets.every(t=> !setOpen(x,t)));
         const prog = sb.rounds ? `<span class="g-round">${allDone ? 'fatto' : 'giro '+Math.min(sb.rounds, doneR+1)+'/'+sb.rounds}</span>` : '';
-        grpBox = document.createElement('div');
+        grpBox = {};
         grpBox.className = 'sess-grp'+(allDone?' done':'')+(currentIdx>=sb.start && currentIdx<sb.start+sb.size ? ' has-current' : '');
         grpBox.innerHTML = grpBand(sb, 'sess-grp-h', prog);
-        list.appendChild(grpBox);
+        plan.push({ t:'g', d:grpBox });
       }
-      grpBox.appendChild(div);
-    } else list.appendChild(div);
+      plan.push({ t:'x', d:div, g:true });
+    } else plan.push({ t:'x', d:div, g:false });
   });
 
-  list.querySelectorAll('.hint-apply').forEach(b=> b.addEventListener('click', ()=> applyHint(+b.dataset.ei)));
-  list.querySelectorAll('.sess-mv').forEach(b=> b.addEventListener('click', ()=> sessMove(+b.dataset.ei, +b.dataset.d)));
-  list.querySelectorAll('.sess-link').forEach(b=> b.addEventListener('click', ()=> sessToggleLink(+b.dataset.ei)));
-  list.querySelectorAll('.sess-add-grp').forEach(b=> b.addEventListener('click', ()=>{ const x = session.exercises[+b.dataset.ei]; if(x) openAddSheet({ group:x }); }));
-  list.querySelectorAll('.sess-sub-btn').forEach(b=> b.addEventListener('click', ()=> openSubSheet(+b.dataset.ei)));
+  const fresh = [];   // schede create adesso: solo a queste si attaccano i comandi
+  const mkCard = d=>{ const el = document.createElement('div'); el.className = d.className; el.dataset.k = d.dataset.k; el.innerHTML = d.innerHTML; el._html = d.innerHTML; fresh.push(el); return el; };
+  const xs = plan.filter(it=> it.t==='x'), gs = plan.filter(it=> it.t==='g');
+  const struct = plan.map(it=> it.t==='x' ? 'x'+it.d.dataset.k+(it.g ? 'g' : '') : it.t==='g' ? 'g' : 'h'+it.ph).join('|');
+  const cardsNow = struct===sessStruct ? [...list.querySelectorAll('.sess-ex[data-k]')] : null;
+  const grpsNow = cardsNow ? [...list.querySelectorAll('.sess-grp')] : null;
+  if(cardsNow && cardsNow.length===xs.length && grpsNow.length===gs.length && cardsNow.every((el,i)=> el.dataset.k===xs[i].d.dataset.k && typeof el._html==='string')){
+    // stessa struttura: restano le schede identiche (coi loro comandi), si sostituiscono solo quelle cambiate
+    list.querySelectorAll('.just-done, .pr-new').forEach(el=> el.classList.remove('just-done', 'pr-new'));   // effetti della spunta di prima
+    xs.forEach((it,i)=>{ const el = cardsNow[i];
+      if(el._html===it.d.innerHTML){ if(el.className!==it.d.className) el.className = it.d.className; }
+      else el.replaceWith(mkCard(it.d)); });
+    gs.forEach((it,i)=>{ const el = grpsNow[i];
+      if(el.className!==it.d.className) el.className = it.d.className;
+      if(el._h!==it.d.innerHTML && el.firstElementChild){ const tmp = document.createElement('div'); tmp.innerHTML = it.d.innerHTML; el.firstElementChild.replaceWith(tmp.firstElementChild); el._h = it.d.innerHTML; } });
+  } else {
+    list.innerHTML = '';
+    let box = null;
+    plan.forEach(it=>{
+      if(it.t==='h'){ const h = document.createElement('div'); h.className = 'sess-section'; h.innerHTML = '<span>'+PHASE_LBL[it.ph]+'</span>'; list.appendChild(h); }
+      else if(it.t==='g'){ box = document.createElement('div'); box.className = it.d.className; box.innerHTML = it.d.innerHTML; box._h = it.d.innerHTML; list.appendChild(box); }
+      else (it.g && box ? box : list).appendChild(mkCard(it.d));
+    });
+  }
+  sessStruct = struct;
+  const inFresh = sel=> fresh.flatMap(el=> [...el.querySelectorAll(sel)]);
+
+  inFresh('.hint-apply').forEach(b=> b.addEventListener('click', ()=> applyHint(+b.dataset.ei)));
+  inFresh('.sess-mv').forEach(b=> b.addEventListener('click', ()=> sessMove(+b.dataset.ei, +b.dataset.d)));
+  inFresh('.sess-link').forEach(b=> b.addEventListener('click', ()=> sessToggleLink(+b.dataset.ei)));
+  inFresh('.sess-add-grp').forEach(b=> b.addEventListener('click', ()=>{ const x = session.exercises[+b.dataset.ei]; if(x) openAddSheet({ group:x }); }));
+  inFresh('.sess-sub-btn').forEach(b=> b.addEventListener('click', ()=> openSubSheet(+b.dataset.ei)));
   // esercizio finito riaperto a mano: si richiude col pulsante ⌃
-  list.querySelectorAll('.sess-fold-btn').forEach(b=> b.addEventListener('click', ()=>{
+  inFresh('.sess-fold-btn').forEach(b=> b.addEventListener('click', ()=>{
     const x = session.exercises[+b.dataset.ei]; if(!x) return;
     sessExpanded.delete(sk(x)); sessMetaOpen.delete(sk(x)); renderSession();
   }));
-  list.querySelectorAll('.sess-meta-btn').forEach(b=> b.addEventListener('click', ()=>{
+  inFresh('.sess-meta-btn').forEach(b=> b.addEventListener('click', ()=>{
     const ei=+b.dataset.ei;
     const k = sk(session.exercises[ei]);
     if(sessMetaOpen.has(k)) sessMetaOpen.delete(k); else sessMetaOpen.add(k);
@@ -5437,7 +5468,7 @@ function renderSessionList(){
   }));
 
   // una card compressa si riapre toccandola: serve per togliere una spunta sbagliata
-  list.querySelectorAll('.sess-ex.collapsed .sess-ex-head').forEach(head=>{
+  inFresh('.sess-ex.collapsed .sess-ex-head').forEach(head=>{
     head.style.cursor='pointer';
     head.addEventListener('click', (ev)=>{
       if(ev.target.closest('.sess-ex-del')) return;
@@ -5446,17 +5477,17 @@ function renderSessionList(){
     });
   });
 
-  const bindInput = (sel, fn)=> list.querySelectorAll(sel).forEach(el=> el.addEventListener('input', ()=>{ fn(el); saveSession(); }));
+  const bindInput = (sel, fn)=> inFresh(sel).forEach(el=> el.addEventListener('input', ()=>{ fn(el); saveSession(); }));
   bindInput('.sess-name-input', el=>{
     // è un campo di una riga che va a capo da solo: niente a capo veri nel nome
     if(/[\r\n]/.test(el.value)) el.value = el.value.replace(/\s*[\r\n]+\s*/g,' ');
     session.exercises[+el.dataset.ei].name = el.value; fitNameField(el);
   });
-  list.querySelectorAll('.sess-name-input').forEach(el=> el.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); } }));
-  list.querySelectorAll('.sess-name-input').forEach(el=> el.addEventListener('focus', ()=>{
+  inFresh('.sess-name-input').forEach(el=> el.addEventListener('keydown', ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); } }));
+  inFresh('.sess-name-input').forEach(el=> el.addEventListener('focus', ()=>{
     const x = session && session.exercises[+el.dataset.ei]; if(x) el._orig = x.name;
   }));
-  list.querySelectorAll('.sess-name-input').forEach(el=> el.addEventListener('change', ()=>{
+  inFresh('.sess-name-input').forEach(el=> el.addEventListener('change', ()=>{
     const x = session && session.exercises[+el.dataset.ei];
     if(x && !String(x.name).trim()){ x.name = 'Esercizio'; el.value = x.name; saveSession(); fitNameField(el); }
     // nome cambiato davvero (non un errore di battitura): è un altro esercizio, come con "Sostituisci".
@@ -5467,19 +5498,19 @@ function renderSessionList(){
       el._orig = x.name; saveSession();   // niente ridisegno qui: il tocco che ha chiuso il campo deve arrivare a destinazione
     }
   }));
-  fitSessionNames();
+  fitSessionNames(fresh);
   bindInput('.sess-muscle-select', el=>{ session.exercises[+el.dataset.ei].muscle = el.value; });
   bindInput('.sess-secondary-select', el=>{ session.exercises[+el.dataset.ei].secondary = el.value || null; });
   bindInput('.sess-rest-input', el=>{ session.exercises[+el.dataset.ei].rest = Math.max(0, Math.round(num(el.value))); });
-  list.querySelectorAll('.sess-side-btn').forEach(b=> b.addEventListener('click', ()=>{
+  inFresh('.sess-side-btn').forEach(b=> b.addEventListener('click', ()=>{
     const x = session.exercises[+b.dataset.ei]; if(!x) return;
     x.perSide = !sideOf(x); saveSession(); renderSession(); updateSessionElapsed();
     infoToast(x.perSide ? 'Per lato: scrivi le ripetizioni di un lato, il peso sollevato conta i due lati' : 'Ripetizioni totali, non per lato', 2600);
   }));
-  list.querySelectorAll('.sess-type-select').forEach(el=> el.addEventListener('input', ()=>{
+  inFresh('.sess-type-select').forEach(el=> el.addEventListener('input', ()=>{
     session.exercises[+el.dataset.ei].type = el.value; saveSession(); renderSession();
   }));
-  list.querySelectorAll('.sess-set-row input').forEach(inp=>{
+  inFresh('.sess-set-row input').forEach(inp=>{
     inp.addEventListener('input', ()=>{
       const ei=+inp.dataset.ei, si=+inp.dataset.si, f=inp.dataset.f;
       const s = session.exercises[ei].sets[si];
@@ -5510,7 +5541,7 @@ function renderSessionList(){
       }
     });
   });
-  list.querySelectorAll('.sess-ex-del').forEach(b=>{
+  inFresh('.sess-ex-del').forEach(b=>{
     b.addEventListener('click', async ()=>{
       const ei=+b.dataset.ei;
       const ok = await customConfirm('Rimuovere questo esercizio dall\'allenamento di oggi?');
@@ -5537,7 +5568,7 @@ function renderSessionList(){
       });
     });
   });
-  list.querySelectorAll('.check').forEach(b=>{
+  inFresh('.check').forEach(b=>{
     b.addEventListener('click', ()=>{
       const ei=+b.dataset.ei, si=+b.dataset.si;
       const exx = session.exercises[ei], s = exx.sets[si];
@@ -5581,7 +5612,7 @@ function renderSessionList(){
       }
     });
   });
-  list.querySelectorAll('.sess-set-row .idx').forEach(b=>{
+  inFresh('.sess-set-row .idx').forEach(b=>{
     b.addEventListener('click', async ()=>{
       const exx = session.exercises[+b.dataset.ei], st = exx && exx.sets[+b.dataset.si];
       if(!st) return;
@@ -5592,7 +5623,7 @@ function renderSessionList(){
       infoToast(SET_TYPE_MSG[k] || 'Ora è una serie di lavoro', 2600);
     });
   });
-  list.querySelectorAll('.sess-wu-btn').forEach(b=>{
+  inFresh('.sess-wu-btn').forEach(b=>{
     b.addEventListener('click', ()=>{
       const exx = session.exercises[+b.dataset.ei];
       if(!exx) return;
@@ -5612,7 +5643,7 @@ function renderSessionList(){
       infoToast('Avvicinamento: '+ramp.map(r=>setTxt(r.kg, r.reps, EX_TYPES.reps)).join(' → ')+' · non contano nel volume', 4000);
     });
   });
-  list.querySelectorAll('.sess-add-set').forEach(b=>{
+  inFresh('.sess-add-set').forEach(b=>{
     b.addEventListener('click', ()=>{
       const exx = session.exercises[+b.dataset.ei];
       const last = exx.sets[exx.sets.length-1];
@@ -5987,7 +6018,7 @@ async function finalizeSession(){
 
   // backup: la copia completa sul telefono sempre (sostituisce la precedente); il file da salvare su File
   // col menu Condividi se l'opzione è attiva. Il menu va aperto adesso, dentro il tocco su Termina
-  const bkJson = backupJson();
+  const bkJson = backupJson(true);   // persist('logs') è appena riuscito: lo storico serializzato è quello
   const bkName = backupFileName();
   const wantFile = state.settings.fileBackupAfter!==false;
   const bkFile = wantFile ? shareableFile(bkJson, bkName, 'application/json') : null;
@@ -7719,7 +7750,15 @@ function downloadJSON(obj, filename, isBackup, okMsg){
    Copia completa (scheda + storico + impostazioni) in IndexedDB: fuori da localStorage, quindi non ne
    consuma i 5 MB. Ce n'è una sola: ogni allenamento la sostituisce e la precedente sparisce. */
 function backupData(){ return { type:'palestra-backup', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), days:state.days, logs:logsForExport(), settings:state.settings }; }
-function backupJson(){ return JSON.stringify(backupData()); }
+/* reuseLogs: subito dopo un salvataggio riuscito dello storico il suo testo è già pronto (savedText.logs, stessa forma
+   compatta): si riusa invece di riserializzare tutti gli allenamenti (con anni di storico, decine di ms a ogni Termina) */
+function backupJson(reuseLogs){
+  if(reuseLogs && !logsLocked && typeof savedText.logs==='string' && savedText.logs.charAt(0)==='{'){
+    const head = JSON.stringify({ type:'palestra-backup', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), days:state.days });
+    return head.slice(0, -1)+',"logs":'+savedText.logs+',"settings":'+JSON.stringify(state.settings)+'}';
+  }
+  return JSON.stringify(backupData());
+}
 function idbOk(){ try{ return !!window.indexedDB; }catch(e){ return false; } }
 function abTx(mode, fn){
   return new Promise((res, rej)=>{
