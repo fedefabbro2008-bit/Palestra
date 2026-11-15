@@ -30,8 +30,9 @@ const rpcOk = (id, result) => ({ jsonrpc: "2.0", id, result });
 const rpcErr = (id, code, message) => ({ jsonrpc: "2.0", id: id === undefined ? null : id, error: { code, message } });
 
 /* ---------------- regole dell'app (index.html) ---------------- */
-const MUSCLES = ["Petto", "Schiena", "Spalle", "Bicipiti", "Tricipiti", "Addominali", "Quadricipiti", "Femorale", "Glutei", "Polpacci", "Altro"];
-const TARGET = { Petto: [10, 20], Schiena: [10, 20], Spalle: [8, 16], Bicipiti: [6, 14], Tricipiti: [6, 14], Addominali: [6, 12], Quadricipiti: [8, 16], Femorale: [6, 12], Glutei: [6, 12], Polpacci: [6, 12] };
+const MUSCLES = ["Petto", "Schiena", "Spalle", "Bicipiti", "Tricipiti", "Addominali", "Quadricipiti", "Femorale", "Glutei", "Polpacci", "Avambracci", "Altro"];
+const OPTIONAL = new Set(["Avambracci"]);   // compare nelle serie per muscolo solo se allenato o in scheda
+const TARGET = { Petto: [10, 20], Schiena: [10, 20], Spalle: [8, 16], Bicipiti: [6, 14], Tricipiti: [6, 14], Addominali: [6, 12], Quadricipiti: [8, 16], Femorale: [6, 12], Glutei: [6, 12], Polpacci: [6, 12], Avambracci: [2, 8] };
 const TYPES = { reps: { unit: "", word: "rip" }, time: { unit: "s", word: "s" }, dist: { unit: "m", word: "m" } };
 const KINDS = { f: "F", d: "D", a: "A" };
 const PHASE_LBL = { warm: "Riscaldamento", main: "Allenamento", cool: "Stretching" };
@@ -307,7 +308,7 @@ const TYPE_IN = { ripetizioni: "reps", tempo: "time", distanza: "dist", reps: "r
 const TYPE_WORD = { reps: "ripetizioni", time: "tempo", dist: "distanza" };
 const MUSCLE_ALIAS = { pettorali: "Petto", pettorale: "Petto", dorso: "Schiena", dorsali: "Schiena", dorsale: "Schiena", spalla: "Spalle", deltoidi: "Spalle",
   deltoide: "Spalle", bicipite: "Bicipiti", tricipite: "Tricipiti", addome: "Addominali", addominale: "Addominali", core: "Addominali",
-  quadricipite: "Quadricipiti", femorali: "Femorale", ischiocrurali: "Femorale", gluteo: "Glutei", polpaccio: "Polpacci" };
+  quadricipite: "Quadricipiti", femorali: "Femorale", ischiocrurali: "Femorale", gluteo: "Glutei", polpaccio: "Polpacci", avambraccio: "Avambracci", polsi: "Avambracci" };
 const NO_MUSCLE = ["nessuno", "nessuna", "niente", "-", "—"];
 function muscleIn(v, optional, bad) {
   if (optional && (v === null || v === "" || NO_MUSCLE.includes(fold(v)))) return null;
@@ -727,7 +728,7 @@ function toolPlan(data) {
   const vol = Object.fromEntries(MUSCLES.map((m) => [m, 0]));
   for (const d of days) dayBlock(d, L, vol);
   L.push("", "## Serie a settimana previste dalla scheda (una seduta per giornata, riserve escluse; secondario ½)");
-  L.push(Object.keys(TARGET).map((m) => `${m} ${fn(vol[m])} (obiettivo ${TARGET[m][0]}-${TARGET[m][1]})`).join(" · "));
+  L.push(Object.keys(TARGET).filter((m) => !OPTIONAL.has(m) || vol[m] > 0).map((m) => `${m} ${fn(vol[m])} (obiettivo ${TARGET[m][0]}-${TARGET[m][1]})`).join(" · "));
   return L.join("\n");
 }
 function toolWorkouts(data, a) {
@@ -774,11 +775,11 @@ function toolVolume(data, a) {
     const from = addDays(mon, -7 * w), to = addDays(from, 6), cur = w === 0, r = stats(S, from, cur ? today : to);
     if (!cur) full.push(r);
     L.push("", `## ${dm(from)}–${dm(to)}${cur ? " (in corso)" : ""}: ${many(r.n, "allenamento", "allenamenti")} · ${fmtTon(r.ton)} · ${r.sets} serie di lavoro`);
-    L.push(Object.keys(TARGET).map((m) => { const v = Math.round(r.vol[m]), t = TARGET[m]; return `${m} ${v} (${t[0]}-${t[1]}${v < t[0] ? ", sotto" : v > t[1] ? ", oltre" : ""})`; }).join(" · "));
+    L.push(Object.keys(TARGET).filter((m) => !OPTIONAL.has(m) || r.vol[m] > 0 || S.some((s) => s.entries.some((e) => e.muscle === m || e.secondary === m))).map((m) => { const v = Math.round(r.vol[m]), t = TARGET[m]; return `${m} ${v} (${t[0]}-${t[1]}${v < t[0] ? ", sotto" : v > t[1] ? ", oltre" : ""})`; }).join(" · "));
   }
   if (full.length) {
     L.push("", full.length === 1 ? "## Media (una sola settimana completa)" : `## Media delle ${full.length} settimane complete`);
-    L.push(Object.keys(TARGET).map((m) => `${m} ${fn(Math.round(full.reduce((x, r) => x + r.vol[m], 0) / full.length * 10) / 10)}`).join(" · "));
+    L.push(Object.keys(TARGET).filter((m) => !OPTIONAL.has(m) || full.some((r) => r.vol[m] > 0)).map((m) => `${m} ${fn(Math.round(full.reduce((x, r) => x + r.vol[m], 0) / full.length * 10) / 10)}`).join(" · "));
     L.push(`Allenamenti a settimana: ${fn(Math.round(full.reduce((x, r) => x + r.n, 0) / full.length * 10) / 10)} · peso sollevato a settimana: ${fmtTon(full.reduce((x, r) => x + r.ton, 0) / full.length)}`);
   }
   return L.join("\n");

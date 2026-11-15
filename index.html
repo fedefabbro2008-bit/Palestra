@@ -2297,7 +2297,9 @@ function slideIn(el){ if(el && motionOK()) el.animate([{transform:'translateX(-4
 const SCHEMA_VERSION  = 2;   // struttura dati (logs multi-sessione, exId, tipi)
 const CONTENT_VERSION = 9;   // versione della scheda di default (8: + giornate di riserva; 9: + riscaldamento spalle e gomiti)
 
-const MUSCLES = ['Petto','Schiena','Spalle','Bicipiti','Tricipiti','Addominali','Quadricipiti','Femorale','Glutei','Polpacci','Altro'];
+const MUSCLES = ['Petto','Schiena','Spalle','Bicipiti','Tricipiti','Addominali','Quadricipiti','Femorale','Glutei','Polpacci','Avambracci','Altro'];
+/* muscoli che nelle statistiche compaiono solo se li alleni o li hai in scheda (di solito lavorano già come secondari: non è un buco da riempire) */
+const MUSCLE_OPTIONAL = new Set(['Avambracci']);
 /* muscolo secondario che conta ½ serie: un muscolo vero, diverso dal principale, e il principale non è "Altro"
    (riscaldamento e stretching non allenano neanche il secondario). Stessa regola ovunque */
 function secOf(e){
@@ -2314,7 +2316,7 @@ function sideOf(e){ return !!e && (typeof e.perSide==='boolean' ? e.perSide : SI
 function tonOf(detail, type, side){ return (detail||[]).reduce((a,d)=> a + num(d.kg)*((type||'reps')==='reps' ? num(d.val) : 1), 0) * (side ? 2 : 1); }
 /* perSide salvato solo se diverso dal nome (così rinominando "… (per lato)" segue il nome) */
 function tidySide(e){ if(typeof e.perSide!=='boolean' || e.perSide===SIDE_RX.test(String(e.name||''))) delete e.perSide; return e; }
-const MUSCLE_TARGET = { Petto:[10,20], Schiena:[10,20], Spalle:[8,16], Bicipiti:[6,14], Tricipiti:[6,14], Addominali:[6,12], Quadricipiti:[8,16], Femorale:[6,12], Glutei:[6,12], Polpacci:[6,12], Altro:[0,999] };
+const MUSCLE_TARGET = { Petto:[10,20], Schiena:[10,20], Spalle:[8,16], Bicipiti:[6,14], Tricipiti:[6,14], Addominali:[6,12], Quadricipiti:[8,16], Femorale:[6,12], Glutei:[6,12], Polpacci:[6,12], Avambracci:[2,8], Altro:[0,999] };
 
 // tipo di esercizio: cosa si misura in ogni serie
 // senza prototipo: EX_TYPES['constructor'] o ['toString'] (da un file importato) non devono risultare tipi validi
@@ -3682,6 +3684,7 @@ let bodySel = null;
       ['Bicipiti', [[140,116],[148,121],[156,118],[159,130],[160,143],[156,152],[147,153],[141,140],[139,126]]],
       ['Addominali',[[101,125],[112,125],[113,142],[113,162],[112,182],[108,198],[101,202]]],
       ['Addominali',[[113,125],[130,122],[133,133],[129,148],[126,162],[129,177],[121,190],[112,197],[113,170],[114,142]]],
+      ['Avambracci',[[147,154],[156,153],[161,159],[165,168],[166,180],[165,194],[163,204],[156,205],[154.5,194],[152,182],[150,170],[148,162]]],
       ['Quadricipiti',[[103,214],[110,205],[123,199],[135,195],[139,211],[140,229],[137,252],[132,276],[127,291],[119,298],[111,294],[106,276],[104,250]]],
     ],
     back: [
@@ -3691,12 +3694,13 @@ let bodySel = null;
       ['Schiena',  [[110,115],[121,120],[132,121],[136,114],[134,126],[131,140],[127,155],[119,167],[107,174],[103,155],[103,134]]],
       ['Schiena',  [[100,132],[104,146],[106,172],[110,188],[100,193]]],
       ['Tricipiti',[[140,116],[148,118],[156,117],[159,130],[160,143],[156,152],[147,153],[141,140],[139,126]]],
+      ['Avambracci',[[147,154],[156,153],[161,159],[165,168],[166,180],[165,194],[163,204],[156,205],[154.5,194],[152,182],[150,170],[148,162]]],
       ['Glutei',   [[100,194],[111,187],[127,185],[135,194],[139,210],[136,226],[125,234],[110,234],[101,228]]],
       ['Femorale', [[103,237],[117,238],[137,232],[138,248],[135,268],[130,288],[123,297],[112,297],[106,282],[104,258]]],
       ['Polpacci', [[106,308],[118,302],[130,306],[133,319],[133,334],[128,350],[119,357],[110,350],[104,334],[104,318]]],
     ]
   };
-  // niente zone chiuse su avambracci e stinchi (davano l'effetto manichino a pezzi): solo qualche linea
+  // stinchi: niente zona chiusa (davano l'effetto manichino a pezzi), solo qualche linea; gli avambracci hanno la loro zona
   const BD_DECOR = { front: [], back: [] };
   const BD_LINES = {
     front: [ [[101,139],[113,138]], [[101,153],[113,152]], [[101,168],[113,167]],
@@ -4990,7 +4994,7 @@ const ALT_LIB = {
   Quadricipiti:[],
   Femorale:[['Hyperextension 45° · mani al petto','Glutei','10-15'],['Reverse hyperextension su panca · gambe tese','Glutei','12-15'],['Slanci posteriori a pancia in giù · gamba tesa (per lato)','Glutei','12-15']],
   Glutei:[['Reverse hyperextension su panca · gambe tese','Femorale','12-15'],['Hyperextension 45° · mani al petto, focus glutei','Femorale','10-15'],['Slanci posteriori a pancia in giù · gamba tesa (per lato)','Femorale','12-15'],["Abduzioni d'anca sul fianco, gamba tesa (per lato)",null,'12-15']],
-  Polpacci:[],
+  Polpacci:[], Avambracci:[],
   Altro:[['Riscaldamento · Mobilità spalle con elastico (pull-apart, rotazioni esterne, circonduzioni)',null,'5 min','time'],['Band pull-apart con elastico',null,'15'],['Rotazioni esterne con elastico (per lato)',null,'15']]
 };
 /* altri esercizi comuni (da palestra e a corpo libero), per muscolo: si scelgono dall'elenco invece di scrivere il nome,
@@ -5016,6 +5020,8 @@ const COMMON_LIB = {
     ['Sollevamento gambe tese da sdraiato',null,'10-15'],['Russian twist',null,'20'],['Ruota per addominali (ab wheel)',null,'8-12'],
     ['Hollow hold',null,'20-30','time'],['Woodchopper ai cavi (per lato)',null,'10-12']],
   Quadricipiti:[], Polpacci:[],
+  Avambracci:[['Wrist curl con manubri',null,'12-20'],['Reverse wrist curl con manubri',null,'12-20'],['Curl inverso con bilanciere EZ','Bicipiti','10-12'],
+    ['Farmer walk (camminata con manubri)',null,'30','dist'],['Dead hang alla sbarra',null,'30-45','time']],
   Femorale:[['Hyperextension 45° con disco','Glutei','8-12'],['Good morning con bilanciere','Glutei','8-12']],
   Glutei:[['Reverse hyperextension alla macchina','Femorale','12-15'],['Slanci laterali da sdraiato con cavigliera (per lato)',null,'12-15']],
   Altro:[['Mobilità toracica a terra (rotazioni)',null,'10'],['Dislocazioni delle spalle con elastico',null,'10'],['Ergometro a braccia',null,'10 min','time'],
@@ -5023,7 +5029,7 @@ const COMMON_LIB = {
 };
 /* altri nomi con cui si cerca un muscolo ("dorso", "core"…) */
 const MUSCLE_ALIAS = { Petto:'pettorali pettorale', Schiena:'dorso dorsali lat trapezio', Spalle:'deltoidi deltoide', Bicipiti:'bicipite braccia', Tricipiti:'tricipite braccia',
-  Addominali:'addome core obliqui', Quadricipiti:'cosce gambe', Femorale:'femorali bicipite femorale gambe', Glutei:'gluteo sedere', Polpacci:'polpaccio gambe', Altro:'riscaldamento stretching mobilita cardio' };
+  Addominali:'addome core obliqui', Quadricipiti:'cosce gambe', Femorale:'femorali bicipite femorale gambe', Glutei:'gluteo sedere', Polpacci:'polpaccio gambe', Avambracci:'avambraccio braccia polsi presa grip', Altro:'riscaldamento stretching mobilita cardio' };
 /* esercizi che piegano o caricano il ginocchio: mai proposti come sostituti, nemmeno se fatti in passato.
    "kickback" solo quello dei glutei (in quadrupedia, ginocchio piegato): quello con i manubri è dei tricipiti */
 const KNEE_RE = /leg ?curl|leg ?press|leg ?extension|squat|affond|calf|ponte glutei|hip thrust|cyclette|ellittica|glute\w* ?kickback|kickback (?:per (?:i )?glute|in quadrupedia)|clamshell|abductor|step[ -]?up|marcia|tapis|stacc|pistol|polpacci al muro/i;
@@ -5866,6 +5872,7 @@ const NAME_MUSCLE = [
   [/leg ?curl|hyperextension|stacc|good ?morning/i, 'Femorale'],
   [/leg ?extension|squat|leg ?press|affond/i, 'Quadricipiti'],
   [/calf|polpacc/i, 'Polpacci'],
+  [/wrist ?curl|curl (?:dei |ai )?polsi|curl inverso|reverse curl|farmer|dead ?hang|rullo per (?:polsi|avambracc)/i, 'Avambracci'],
   [/crunch|plank|addom|sollevam\w* (delle )?gamb|leg ?raise|dead ?bug|barchetta|hollow|russian twist|ab ?wheel|pallof/i, 'Addominali'],
   [/pushdown|push ?down|french ?press|tricip|estension\w* sopra la testa|kickback con manubri|\bdips?\b/i, 'Tricipiti'],
   [/\bcurl\b/i, 'Bicipiti'],
@@ -6730,7 +6737,7 @@ document.getElementById('weekTiles').addEventListener('click', ev=>{
 function muscleRowsHtml(vol, wk, planned, sec){
   if(!planned){ planned = new Set(); Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ planned.add(e.muscle); const sec=secOf(e); if(sec) planned.add(sec); })); }
   // tutti i muscoli, anche quelli che la scheda non allena (Quadricipiti, Polpacci): restano a 0, in rosso
-  const rows = MUSCLES.filter(m=>m!=='Altro' && MUSCLE_TARGET[m])
+  const rows = MUSCLES.filter(m=>m!=='Altro' && MUSCLE_TARGET[m] && (!MUSCLE_OPTIONAL.has(m) || vol[m]>0 || planned.has(m)))
     .map(m=>({m, avg:Math.round(vol[m]/wk*10)/10, t:MUSCLE_TARGET[m]}))
     .sort((a,b)=> a.avg/a.t[0] - b.avg/b.t[0]);
   const f1 = v=> fn(Math.round(v*10)/10);
@@ -7460,7 +7467,7 @@ function buildAiSummary(range){
     const vol = {};
     allSessions().forEach(({iso,s})=>{ const d=fromIso(iso); if(d<from||d>to) return;
       s.entries.forEach(e=>{ if(e.muscle!=='Altro') vol[e.muscle]=(vol[e.muscle]||0)+num(e.sets); const sec=secOf(e); if(sec) vol[sec]=(vol[sec]||0)+num(e.sets)*0.5; }); });
-    const parts = MUSCLES.filter(m=>m!=='Altro').map(m=> m+' '+fn(vol[m]||0)+' (obiettivo '+MUSCLE_TARGET[m][0]+'-'+MUSCLE_TARGET[m][1]+')');
+    const parts = MUSCLES.filter(m=>m!=='Altro' && (!MUSCLE_OPTIONAL.has(m) || vol[m]>0)).map(m=> m+' '+fn(vol[m]||0)+' (obiettivo '+MUSCLE_TARGET[m][0]+'-'+MUSCLE_TARGET[m][1]+')');
     L.push('- Settimana '+dm(isoOf(from))+'–'+dm(isoOf(to))+': '+parts.join(', '));
   }
   L.push('');
