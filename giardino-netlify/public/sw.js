@@ -26,7 +26,11 @@ let inCorso = null;
 async function aggiornaPagina(cache) {
   const r = await fetch(new Request('/', { cache: 'no-cache', credentials: 'same-origin' }));
   if (!buona(r)) return;
-  const prima = await (await cache.match('/'))?.text(), ora = await r.clone().text();
+  // stessa pagina di prima (stessa etichetta «etag» del sito): niente da leggere né da riscrivere. Prima, a ogni apertura,
+  // si rileggevano le due pagine intere (370 KB l'una) e si riscriveva la copia sul telefono, anche senza novità.
+  const copia = await cache.match('/'), etag = r.headers.get('etag');
+  if (etag && copia && copia.headers.get('etag') === etag) return;
+  const prima = await copia?.text(), ora = await r.clone().text();
   await cache.put('/', r);
   if (prima != null && diversa(prima, ora)) await avvisa();
 }

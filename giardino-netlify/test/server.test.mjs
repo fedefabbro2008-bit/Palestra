@@ -331,6 +331,12 @@ test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora um
   assert.ok(!kb.flat().some((b) => b.text.includes("Salto")));
   inviati.length = 0; await bot();
   assert.equal(inviati.filter((x) => x[0] === "sendMessage").length, 0, "una volta al giorno");
+  // due giri del bot nello stesso momento (Netlify a volte lo avvia due volte): un messaggio solo
+  const t1 = await st.get("t-" + CODE, { type: "json" });
+  await st.setJSON("t-" + CODE, { ...t1, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  inviati.length = 0; await Promise.all([bot(), bot()]);
+  assert.equal(inviati.filter((x) => x[0] === "sendMessage" && x[1].text.includes("Giardino —")).length, 1, "mattino una volta sola");
+  assert.equal(inviati.filter((x) => x[0] === "sendMessage" && x[1].text.includes("Ancora da innaffiare")).length, 1, "sera una volta sola");
 });
 
 test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della sera sì, anche senza mattino)", async () => {
@@ -439,4 +445,110 @@ test("correzione del consumo nei messaggi e nel connettore: la stessa del bilanc
   assert.ok(atteso < 0.95, "il controllo «era umida» abbassa il consumo");
   assert.equal(C.calibrazioneVera({ ...data, eventi: [...eventi] }, met, "ba", oggi), atteso, "stessa stima anche con un elenco di eventi nuovo");
   assert.match(C.riepilogoSettimana({ ...data, eventi: [...eventi] }, oggi, met), new RegExp("ora conto il " + Math.round((1 - atteso) * 100) + "% in meno"));
+});
+
+test("più orti: un messaggio per orto (col suo nome), connettore orto per orto, pioggia misurata per orto", async () => {
+  const st = getStore({ name: "giardino" }), C2 = "GRD-PIUORT-ABCDEF-GHJKLM-NPQRST", H2 = { "x-giardino-code": C2 };
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
+  await call(dati, "/api/dati", { method: "POST", headers: H2, body: { changes: {
+    location: { name: "Castrocaro Terme", lat: 44.18, lon: 11.95 },
+    orti: [{ id: "o1", nome: "Mare", location: { name: "Rimini", lat: 44.06, lon: 12.57 } }, { id: "o2", nome: "Vuoto", location: { name: "Bologna", lat: 44.49, lon: 11.34 } }],
+    plants: [{ ...PIANTE[0] }, { ...PIANTE[1], orto: "o1" }, { ...PIANTE[2], orto: "sparito" }],
+    impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
+  const d0 = (await call(dati, "/api/dati", { headers: H2 })).body.data;
+  // viste: il pomodoro con un orto che non esiste più torna nel principale; l'orto senza piante non conta
+  assert.deepEqual(M.orti(d0).map((o) => M.nomeOrto(o)), ["Castrocaro Terme", "Mare", "Vuoto"]);
+  assert.deepEqual(M.vistaOrto(d0, "p").plants.map((p) => p.id), ["zuc", "pom"]);
+  assert.deepEqual(M.vistaOrto(d0, "o1").plants.map((p) => p.id), ["bas"]);
+  assert.equal(M.vistaOrto(d0, "o1").location.name, "Rimini");
+  assert.deepEqual(M.vistePiene(d0).map((v) => v.orto.id), ["p", "o1"]);
+  // Telegram: mattino e sera, un messaggio per orto
+  await st.setJSON("t-" + C2, { token: "TOK2", chat_id: 99, tz, notificati: {}, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: new Date().toISOString().slice(0, 7) });
+  inviati.length = 0; await bot();
+  const miei = inviati.filter((x) => x[0] === "sendMessage" && x[1].chat_id === 99).map((x) => x[1].text);
+  const mattino = miei.filter((x) => /^🪴 <b>/.test(x));
+  assert.equal(mattino.length, 2, "due orti con piante: due messaggi del mattino");
+  assert.ok(mattino.some((x) => x.startsWith("🪴 <b>Castrocaro Terme —") && x.includes("Zucchine") && !x.includes("Basilico")));
+  assert.ok(mattino.some((x) => x.startsWith("🪴 <b>Mare —") && x.includes("Basilico") && x.includes("Rimini")));
+  const t2 = await st.get("t-" + C2, { type: "json" });
+  assert.ok(t2.notificati[t2.ultimo_invio].some((n) => n.id === "bas"), "le piante di tutti gli orti nel promemoria della sera");
+  // pioggia misurata ARPAE: una per orto (Rimini ha la sua stazione)
+  const C = await import("../netlify/lib/core.mjs"), ieri = new Date(Date.now() - 864e5).toISOString().slice(0, 10), righe = [];
+  const giorno = (iso) => [...Array(27)].map((_, h) => new Date(Date.parse(iso + "T00:00:00Z") - 2 * 36e5 + h * 36e5).toISOString().replace(".000", ""));
+  for (const t of giorno(ieri)) {
+    righe.push(JSON.stringify({ network: "locali", lon: 1194940, lat: 4417012, date: t, data: [{ vars: { B01019: { v: "Castrocaro" } } }, { timerange: [1, 0, 3600], vars: { B13011: { v: 0.5 } } }] }));
+    righe.push(JSON.stringify({ network: "locali", lon: 1256800, lat: 4406000, date: t, data: [{ vars: { B01019: { v: "Rimini" } } }, { timerange: [1, 0, 3600], vars: { B13011: { v: 1 } } }] }));
+  }
+  const vero = globalThis.fetch;
+  globalThis.fetch = async (u, o) => String(u).includes("dati-simc.arpae.it") ? new Response(righe.join("\n")) : vero(u, o);
+  try { await C.aggiornaPioggiaMisurata(st); } finally { globalThis.fetch = vero; }
+  const d1 = (await call(dati, "/api/dati", { headers: H2 })).body.data;
+  assert.equal(d1.pioggia_misurata.stazione, "Castrocaro"); assert.equal(d1.pioggia_orti.o1.stazione, "Rimini");
+  assert.equal(M.vistaOrto(d1, "o1").pioggia_misurata.stazione, "Rimini");
+  assert.equal((await call(dati, "/api/dati?op=pioggia&orto=o1", { headers: H2 })).body.stazione, "Rimini", "l'app chiede la pioggia dell'orto scelto");
+  // l'app non può scrivere la pioggia misurata degli orti
+  await call(dati, "/api/dati", { method: "POST", headers: H2, body: { changes: { pioggia_orti: {} } } });
+  assert.equal((await call(dati, "/api/dati", { headers: H2 })).body.data.pioggia_orti.o1.stazione, "Rimini");
+  // connettore: lo stesso, sui dati di prova principali con un secondo orto
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { orti: [{ id: "o1", nome: "Mare", location: { name: "Rimini", lat: 44.06, lon: 12.57 } }] } } });
+  const g = (await strumento("giardino")).content[0].text;
+  assert.match(g, /## Orto «Castrocaro Terme» \[orto p\]/); assert.match(g, /## Orto «Mare» \[orto o1\] · Rimini/);
+  assert.match((await strumento("modifica_pianta", { azione: "modifica", pianta: "bas", campi: { orto: "boh" } })).content[0].text, /orto sconosciuto/);
+  await strumento("modifica_pianta", { azione: "modifica", pianta: "bas", campi: { orto: "o1" } });
+  assert.equal((await leggiDati()).plants.find((p) => p.id === "bas").orto, "o1");
+  assert.match((await strumento("pianta", { pianta: "bas" })).content[0].text, /^# Basilico · orto «Mare» \(Rimini\)/);
+  await strumento("modifica_pianta", { azione: "modifica", pianta: "bas", campi: { orto: "" } });
+  assert.equal((await leggiDati()).plants.find((p) => p.id === "bas").orto, undefined);
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { orti: [] } } });
+});
+
+test("connettore: «diario» mostra la stessa correzione del consumo usata dal calcolo («giardino»)", async () => {
+  const C = await import("../netlify/lib/core.mjs"), d = await leggiDati(), oggi = M.isoDate(new Date());
+  const met = await C.meteo(d.location.lat, d.location.lon), testo = (await strumento("diario", { giorni: 30 })).content[0].text;
+  let diverse = 0;
+  for (const p of M.vistaOrto(d, "p").plants) {
+    const vera = C.calibrazioneVera(M.vistaOrto(d, "p"), met, p.id, oggi), riga = testo.split("\n").find((l) => l.startsWith("- " + p.nome + ":"));
+    assert.ok(riga, "nel diario c'è " + p.nome);
+    assert.equal(riga.split("correzione ×")[1], String(Math.round(vera * 100) / 100).replace(".", ","), p.nome);
+    if (Math.abs(vera - regolaSemplice(d.eventi, p.id, oggi)) > 0.005) diverse++;
+  }
+  assert.ok(diverse > 0, "almeno una pianta dove la regola semplice darebbe un altro numero");
+});
+// la regola semplice di prima (±10–24% per risposta), senza la stima del bilancio
+function regolaSemplice(eventi, pid, oggi) {
+  let f = 1, verso = 0, serie = 0;
+  for (const e of M.eventiValidi(eventi, pid).filter((e) => { const g = M.giorniTra(e.data, oggi); return g >= 0 && g <= 60; }).sort((a, b) => (a.data < b.data ? -1 : 1))) {
+    const v = e.tipo === "umido" || e.tipo === "meno" ? -1 : e.tipo === "piu" ? 1 : 0; if (!v) continue;
+    serie = v === verso ? serie + 1 : 1; verso = v; f *= v < 0 ? 1 - 0.1 * (1 + 0.5 * Math.min(serie - 1, 2)) : 1 + 0.12 * (1 + 0.5 * Math.min(serie - 1, 2));
+  }
+  return Math.max(0.4, Math.min(2.5, f));
+}
+
+test("richieste insieme invece che in fila: il meteo di più orti, e su Telegram la conferma con i pulsanti nuovi", async () => {
+  const C = await import("../netlify/lib/core.mjs"), vero = globalThis.fetch;
+  // quante richieste sono aperte nello stesso momento (ognuna dura 40 ms)
+  let aperte = 0, massimo = 0; const viste = [];
+  const conta = (quali) => { aperte = 0; massimo = 0; viste.length = 0;
+    globalThis.fetch = async (u, o) => { if (!quali(String(u))) return vero(u, o); viste.push(String(u).split("/").pop().split("?")[0]); massimo = Math.max(massimo, ++aperte); await new Promise((ok) => setTimeout(ok, 40)); aperte--; return vero(u, o); }; };
+  try {
+    // due orti in due città nuove (niente nell'archivio): le previsioni di base partono insieme
+    conta((u) => u.includes("api.open-meteo.com") && u.includes("past_days=3"));
+    const lista = await C.pianiOrti({ location: { name: "Trento", lat: 46.07, lon: 11.12 }, orti: [{ id: "o1", nome: "Lago", location: { name: "Como", lat: 45.81, lon: 9.08 } }],
+      plants: [{ ...PIANTE[0] }, { ...PIANTE[1], orto: "o1" }], eventi: [], impostazioni: {} });
+    assert.deepEqual(lista.map((x) => x.v.orto.id), ["p", "o1"], "nello stesso ordine degli orti");
+    assert.deepEqual(lista.map((x) => x.ap.piano.piante.map((p) => p.id)), [["zuc"], ["bas"]], "ogni orto con il piano delle sue piante");
+    assert.equal(massimo, 2, "il meteo dei due orti chiesto insieme");
+    // pulsante su Telegram: «Registrato» e i pulsanti nuovi partono insieme, e arrivano tutti e due
+    conta((u) => u.includes("api.telegram.org"));
+    const kb = [[{ text: "✅ Annaffiato", callback_data: `g|${OGGI}|pom|f` }], [{ text: "💦 Terreno ancora umido", callback_data: `g|${OGGI}|pom|u` }]];
+    inviati.length = 0;
+    await webhook({ callback_query: { id: "cbpar", data: `g|${OGGI}|pom|u`, message: { message_id: 21, chat: { id: 77 }, reply_markup: { inline_keyboard: kb } } } });
+    assert.deepEqual(viste, ["answerCallbackQuery", "editMessageReplyMarkup"], "prima parte la conferma, poi i pulsanti");
+    assert.equal(massimo, 2, "senza aspettare la risposta alla prima");
+    assert.match(inviati.find((x) => x[0] === "answerCallbackQuery")[1].text, /Registrato: Pomodoro/);
+    assert.match(JSON.stringify(inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup), /Annulla/);
+    // annullo, per lasciare i dati com'erano
+    await webhook({ callback_query: { id: "cbpar2", data: `g|${OGGI}|pom|zn`, message: { message_id: 21, chat: { id: 77 }, reply_markup: { inline_keyboard: inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard } } } });
+    assert.equal(massimo, 2);
+  } finally { globalThis.fetch = vero; }
 });

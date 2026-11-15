@@ -1,5 +1,5 @@
 import { VERSIONE } from "../lib/versione.mjs";
-import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, crediti, correggiCrediti, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, COMANDI } from "../lib/core.mjs";
+import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, crediti, correggiCrediti, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, pianiOrti, messaggioMattina, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
@@ -46,14 +46,16 @@ async function gestisci(request) {
       const b = await request.json().catch(() => null), r = await riconosciPianta(b?.immagine);
       return r.errore ? reply({ error: r.errore }, r.codice || 502) : reply(r);
     }
+    // ?orto=<id>: la posizione di quell'orto (senza, l'orto principale)
+    const ortoQ = url.searchParams.get("orto") || "p", posOrto = (cur) => cur?.data ? M.vistaOrto(cur.data, ortoQ).location : null;
     if (op === "meteo") {   // l'app non raggiunge Open-Meteo: il meteo del server (Open-Meteo o la riserva MET Norway)
-      const cur = await leggi(st, code), l = cur?.data?.location;
+      const cur = await leggi(st, code), l = posOrto(cur);
       if (!l) return reply({ error: "manca la posizione" }, 409);
       const met = await meteo(l.lat, l.lon);
       return reply({ ...met, lat: l.lat, lon: l.lon });
     }
     if (op === "pioggia") {   // pioggia misurata dalla stazione ARPAE più vicina (ogni 15 minuti), per «l'ho messa sotto la pioggia»
-      const cur = await leggi(st, code), l = cur?.data?.location;
+      const cur = await leggi(st, code), l = posOrto(cur);
       if (!l || !inEmiliaRomagna(l.lat, l.lon)) return reply({ disponibile: false, motivo: "Le misure ARPAE ci sono solo in Emilia-Romagna." });
       const c = await misureArpae(st, l.lat, l.lon, null, { massimaEta: 15 * 60e3 });
       if (!c?.stazione) return reply({ disponibile: false, motivo: "Le misure della stazione ARPAE non sono raggiungibili adesso: riprova tra poco." });
@@ -147,10 +149,11 @@ async function opTelegram(request, st, code) {
   if (action === "test") {
     if (!t?.chat_id) return reply({ error: "Prima apri il bot su Telegram e premi Avvia." }, 409);
     const cur = await leggi(st, code);
-    if (!cur?.data?.location || !cur.data.plants.length) { await tg(t.token, "sendMessage", { chat_id: t.chat_id, text: "🪴 Giardino è collegato. Aggiungi la posizione e le piante nell'app per ricevere il piano." }); return reply({ ok: true }); }
-    const met = await meteo(cur.data.location.lat, cur.data.location.lon), { oggi } = oraLocale(met.tz);
-    const { msg } = messaggioMattina(cur.data, pianoAttivo(cur.data, met, oggi), oggi, { prova: true });
-    await tg(t.token, "sendMessage", { chat_id: t.chat_id, text: "🧪 <i>Messaggio di prova</i>\n\n" + msg, parse_mode: "HTML", disable_web_page_preview: true });
+    if (!M.vistePiene(cur?.data || {}).length) { await tg(t.token, "sendMessage", { chat_id: t.chat_id, text: "🪴 Giardino è collegato. Aggiungi la posizione e le piante nell'app per ricevere il piano." }); return reply({ ok: true }); }
+    for (const x of await pianiOrti(cur.data)) {
+      const { msg } = messaggioMattina(x.v, x.ap, x.oggi, { prova: true });
+      await tg(t.token, "sendMessage", { chat_id: t.chat_id, text: "🧪 <i>Messaggio di prova</i>\n\n" + msg, parse_mode: "HTML", disable_web_page_preview: true });
+    }
     return reply({ ok: true });
   }
   return reply({ error: "azione non valida" }, 400);
