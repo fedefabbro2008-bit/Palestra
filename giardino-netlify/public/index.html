@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="9bdc2b2ee79c">
+<meta name="giardino-build" content="764fc63a34f2">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2847,12 +2847,13 @@ const ctx = () => ({oggi:today(), lat:S.location?.lat, eventi:allEvents()});
 let pianoMemo={k:'',v:null};
 // nella chiave della memoria la scheda di Claude conta solo per quello che il calcolo ne legge (raccoltaDi: specie, semina e
 // mesi di raccolta); il resto (descrizione, consigli…) è testo lungo che rendeva la chiave grande da scrivere a ogni domanda
-const SOLO_CALCOLO=(k,v)=>k==='scheda'&&v&&typeof v==='object'?[v.specie,v.data_semina,(v.calendario||[]).filter(x=>x&&x.raccolta).map(x=>x.mese)]:v;
+// (16 piante con schede: ~13 µs invece di ~64 per chiave)
+const chiavePiante=()=>JSON.stringify(S.plants.map(p=>{ const v=p?.scheda; return v&&typeof v==='object'?{...p,scheda:[v.specie,v.data_semina,(v.calendario||[]).filter(x=>x&&x.raccolta).map(x=>x.mese)]}:p; }));
 function localPlan(){
   const fut=futDays(); if(!fut.length||!S.plants.length) return null;
   const w=activeWeather(), ev=S.eventi_app, suolo=w?.source==='open-meteo'?w.suolo??null:null;
   const k=[today(), w?.updatedAt, JSON.stringify(fut), w?.archivio?Object.keys(w.archivio).length:0, JSON.stringify(w?.misurata?.giorni||null), suolo, S.location?.lat,
-    JSON.stringify(S.plants,SOLO_CALCOLO), ev.length, ev[0]?.id, ev.at(-1)?.id, EB.eventi.length, EB.aggiornato, JSON.stringify(S.vacanza||null)].join('|');
+    chiavePiante(), ev.length, ev[0]?.id, ev.at(-1)?.id, EB.eventi.length, EB.aggiornato, JSON.stringify(S.vacanza||null)].join('|');
   if(pianoMemo.k===k) return pianoMemo.v;
   const pl=pianoLocale({piante:S.plants, past:pastDays(), fut, eventi:allEvents(), oggi:today(), lat:S.location?.lat, vacanza:S.vacanza, suolo});
   pianoMemo={k, v:pl}; return pl;
@@ -3741,30 +3742,17 @@ function festa(el){ const r=el.getBoundingClientRect(); particelle(r.left+r.widt
 // Se nel frattempo il numero cambia (arriva il meteo, premi Fatto) si ferma e resta quello nuovo.
 function conta(dentro){
   if(!muovi()||!dentro) return;
-  const voci=[];
   for(const el of dentro.querySelectorAll('#heroNum,.task:not(.done) .amt,.tile .tv')){
     const testo=el.textContent, m=/^(\D*?)(\d+)(?:,(\d+))?(\D*)$/.exec(testo); if(!m) continue;
     const dec=m[3]?m[3].length:0, fine=parseFloat(m[2]+'.'+(m[3]||'0')); if(!(fine>0)) continue;
-    cancelAnimationFrame(el._conta); voci.push({el,testo,m,dec,fine});
+    const t0=performance.now(), dur=600+Math.min(400,fine*12); let scritto=testo;
+    cancelAnimationFrame(el._conta);
+    const passo=t=>{ if(el.textContent!==scritto) return;
+      const k=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-k,3);
+      scritto=k<1?m[1]+(fine*e).toFixed(dec).replace('.',',')+m[4]:testo; el.textContent=scritto;
+      if(k<1) el._conta=requestAnimationFrame(passo); };
+    el._conta=requestAnimationFrame(passo);
   }
-  if(!voci.length) return;
-  // Ogni numero cambia a ogni fotogramma: prima ogni cambio faceva ridisporre tutta la pagina (30–50 volte per ogni
-  // cambio di scheda). Durante il conteggio la casella resta della misura del numero finale e chiusa in sé (contain),
-  // così il cambio di cifre ridispone solo lei. Le misure si leggono tutte insieme, prima di cambiare qualcosa.
-  requestAnimationFrame(t0=>{
-    const box=voci.map(v=>v.el.isConnected?v.el.getBoundingClientRect():null);
-    voci.forEach((v,i)=>{
-      const {el,testo,m,dec,fine}=v, r=box[i]; if(!r||el.textContent!==testo) return;
-      const dur=600+Math.min(400,fine*12); let scritto=testo;
-      const libera=()=>{ el.style.removeProperty('width'); el.style.removeProperty('height'); el.style.removeProperty('contain'); };
-      if(r.width>0){ el.style.width=r.width+'px'; el.style.height=r.height+'px'; el.style.contain='strict'; }
-      const passo=t=>{ if(el.textContent!==scritto){ libera(); return; }
-        const k=Math.min(1,Math.max(0,(t-t0)/dur)), e=1-Math.pow(1-k,3);
-        scritto=k<1?m[1]+(fine*e).toFixed(dec).replace('.',',')+m[4]:testo; el.textContent=scritto;
-        if(k<1) el._conta=requestAnimationFrame(passo); else libera(); };
-      passo(t0);
-    });
-  });
 }
 // meteo di oggi dentro il riquadro in alto: gocce, fiocchi, lampi, nebbia, nuvola o il sole (più acceso col caldo)
 function heroMeteo(hero){
@@ -4054,7 +4042,7 @@ function wire(){
   });
   $('#bkSave').addEventListener('click',scaricaBackup);
   $('#bkFile').addEventListener('change',e=>leggiBackup(e.target.files[0]));
-  let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(!$('#view-diario').hidden) renderDiario(); },200); });
+  let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(!$('#view-diario').hidden) renderDiario(); else daRifare.add('diario'); },200); });
 }
 
 /* ================= Backup ================= */

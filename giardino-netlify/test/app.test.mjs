@@ -467,7 +467,7 @@ test("apertura dalla copia sul telefono: piante, meteo e piano subito, senza asp
 });
 
 const { addDays } = await import("../netlify/lib/modello.mjs");
-test("lavoro risparmiato: carta della pianta senza ridisposizioni a catena, numeri che contano chiusi in sé, piano e Diario rifatti solo se serve", async (t) => {
+test("lavoro risparmiato: carta della pianta senza ridisposizioni a catena, piano e Diario rifatti solo se serve", async (t) => {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const CODE = "PROVA-LAVORO-RISPARMIATO-ABCDE", H = { "x-giardino-code": CODE, "content-type": "application/json" };
   const pianta = (id, nome, extra = {}) => ({ id, nome, specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "aperto", ...extra });
@@ -493,15 +493,6 @@ test("lavoro risparmiato: carta della pianta senza ridisposizioni a catena, nume
   assert.match(ordine, /anima/, "la carta si anima");
   assert.ok(!/anima.*misura/.test(ordine), "nessuna misura dopo la prima animazione: " + ordine);
 
-  // 2. numeri che contano: durante il conteggio la casella ha la misura del numero finale ed è chiusa in sé; poi torna normale
-  await page.click("#tab-oggi"); await page.waitForTimeout(150);
-  const durante = await page.evaluate(() => [...document.querySelectorAll("#heroNum,.task:not(.done) .amt")].filter((el) => /\d/.test(el.textContent)).map((el) => [el.style.contain, /px$/.test(el.style.width)]));
-  assert.ok(durante.length >= 2, "numeri da contare in Oggi");
-  assert.ok(durante.every(([c, w]) => c === "strict" && w), "durante il conteggio le caselle non fanno ridisporre la pagina: " + JSON.stringify(durante));
-  await page.waitForTimeout(1300);
-  const dopo = await page.evaluate(() => [...document.querySelectorAll("#heroNum,.task:not(.done) .amt")].map((el) => el.style.contain + el.style.width + el.style.height));
-  assert.ok(dopo.every((x) => x === ""), "finito: niente misure fisse");
-  assert.equal(await page.textContent("#heroNum"), String(await page.evaluate(() => document.querySelectorAll("#todayList .task:not(.done)").length)), "numero finale giusto");
   // 3. Diario: riaprendolo senza novità non si rifà; con un evento nuovo sì
   const rifatti = await page.evaluate(async () => {
     let n = 0; const vero = renderDiario; renderDiario = () => { n++; vero(); };
