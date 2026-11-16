@@ -785,8 +785,8 @@ nav.bottom button{
 }
 nav.bottom button:active{background:var(--card-2); transform:scale(.96);}
 nav.bottom button .ic{transition:transform .15s ease;}
-nav.bottom button.active .ic{transform:translateY(-1px);}
-nav.bottom button .ic{width:22px; height:22px;}
+nav.bottom button .ic{width:25px; height:25px;}
+nav.bottom button{gap:2px; font-size:clamp(10px,2.9vw,12px); font-weight:600; min-width:0; white-space:nowrap;}
 nav.bottom button.active{color:var(--accent-hi);}
 body.dark nav.bottom button.active{color:#ff7d8f;}   /* sulla pillola di vetro il bordeaux chiaro restava a 4.3:1 */
 
@@ -1392,12 +1392,21 @@ nav.bottom button::before{content:''; position:absolute; inset:0; border-radius:
 nav.bottom button > *{position:relative;}
 nav.bottom{isolation:isolate;}
 nav.bottom button.active::before{background:var(--glass-pill); box-shadow:inset 0 1px 0 var(--glass-hi-soft);}
-nav.bottom button:active{background:none;} nav.bottom button:active::before{background:var(--glass-pill);}
-/* pillola che scorre fra le sezioni (si allunga come un liquido e torna normale): sostituisce quella fissa sotto il pulsante attivo */
-.nav-ind{position:absolute; top:5px; bottom:5px; left:5px; width:0; border-radius:25px; background:var(--glass-pill);
-  box-shadow:inset 0 1px 0 var(--glass-hi-soft); pointer-events:none; z-index:-1; will-change:transform; transform-origin:50% 50%;}
-nav.bottom.has-ind button.active::before{background:transparent; box-shadow:none;}
-nav.bottom.has-ind button.active:active::before{background:var(--glass-pill);}
+nav.bottom button:active{background:none;}
+/* come nella barra del giardino: una pillola sola, larga un quarto, che scivola con un piccolo rimbalzo elastico
+   (oltrepassa appena la sezione e torna); l'icona scelta fa un saltello; premendo il pulsante si rimpicciolisce */
+nav.bottom{touch-action:none; -webkit-user-select:none; user-select:none;}
+.nav-ind{position:absolute; top:5px; bottom:5px; left:5px; width:calc((100% - 10px) / 4); border-radius:25px; background:var(--glass-pill);
+  box-shadow:inset 0 1px 0 var(--glass-hi-soft); pointer-events:none; z-index:-1; transform:translateX(calc(var(--i, 0) * 100%));}
+nav.bottom button.active::before{background:transparent; box-shadow:none;}
+nav.bottom button:active::before{background:transparent;}
+nav.bottom button{transition:color .2s ease, transform .12s ease;}
+nav.bottom button:active{transform:scale(.94);}
+@media (prefers-reduced-motion: no-preference){
+  .nav-ind{transition:transform .5s cubic-bezier(.3,1.35,.45,1);}
+  nav.bottom button.active .ic{animation:navSaltello .5s cubic-bezier(.3,1.6,.5,1);}
+}
+@keyframes navSaltello{0%{transform:scale(.8) translateY(2px)} 60%{transform:scale(1.15) translateY(-3px)} 100%{transform:none}}
 /* timer di recupero: capsula di vetro color accento sopra la barra */
 .timer-bar{border-radius:24px; border:1px solid rgba(255,255,255,.22);
   background:rgba(184,25,58,.62); -webkit-backdrop-filter:var(--glass-blur); backdrop-filter:var(--glass-blur);
@@ -3167,33 +3176,26 @@ document.addEventListener('blur', (e)=>{
 const tabScroll = { workout:0, stats:0, month:0, plan:0 };
 /* le statistiche stanno in tre tab: "stats" (settimana), "month" (mese) e "plan" (progressi della scheda) */
 function isStatsTab(t){ return t==='stats' || t==='month' || t==='plan'; }
-/* pillola della barra: si sposta scorrendo e si allunga verso la sezione nuova, poi si ricompone */
-const navInd = document.querySelector('nav.bottom .nav-ind');
-let navIndAnim = null;
-function navIndTo(btn, animate){
-  if(!navInd || !btn) return;
-  const nav = navInd.parentNode, w = btn.offsetWidth, x1 = btn.offsetLeft;
-  if(!w) return;                     // barra nascosta (tastiera aperta): si sistema al prossimo ridimensionamento
-  nav.classList.add('has-ind');
-  // da dove parte: posizione attuale, anche a metà di un'animazione interrotta da un tocco veloce
-  let x0 = navInd.offsetLeft;
-  if(navIndAnim){ try{ const m = new DOMMatrixReadOnly(getComputedStyle(navInd).transform); x0 += m.m41; }catch(e){} navIndAnim.cancel(); navIndAnim = null; }
-  navInd.style.width = w+'px'; navInd.style.left = x1+'px';
-  const d = x0 - x1;
-  if(!animate || !d || !motionOK()) return;
-  const a = Math.abs(d), sgn = Math.sign(d), st = Math.min(1 + a/w*0.45, 2.1);
-  navIndAnim = navInd.animate([
-    { transform:`translateX(${d}px) scale(1,1)` },
-    { transform:`translateX(${d*0.5}px) scale(${st},.86)`, offset:.42 },
-    { transform:`translateX(${-sgn*Math.min(6, a*0.04)}px) scale(.94,1.06)`, offset:.78 },
-    { transform:'translateX(0) scale(1,1)' }
-  ], { duration: Math.min(560, 380 + a*0.35), easing:'cubic-bezier(.3,.7,.3,1)' });
-  navIndAnim.onfinish = ()=>{ navIndAnim = null; };
+/* pillola della barra: la posizione è solo l'indice della sezione (--i); lo scivolamento elastico lo fa il CSS */
+function navIndTo(btn){
+  const nav = document.querySelector('nav.bottom'); if(!nav || !btn) return;
+  nav.style.setProperty('--i', [...nav.querySelectorAll('button')].indexOf(btn));
 }
+navIndTo(document.querySelector('nav.bottom button.active'));
+/* le sezioni cambiano al tocco anche mentre la pagina scorre per inerzia: su iPhone il tocco che ferma lo scorrimento
+   non diventa un «click» e andava a vuoto (come nel giardino). Con mouse e tastiera resta il click. */
 (()=>{
-  const place = ()=> navIndTo(document.querySelector('nav.bottom button.active'), false);
-  place();
-  try{ new ResizeObserver(place).observe(document.querySelector('nav.bottom')); }catch(e){ addEventListener('resize', place); }
+  const nav = document.querySelector('nav.bottom'); if(!nav) return;
+  let start = null, tapAt = 0, synth = false;
+  nav.addEventListener('touchstart', e=>{ const b = e.target.closest('button'), t = e.changedTouches[0]; start = b && t ? { b, x:t.clientX, y:t.clientY } : null; }, { passive:true });
+  nav.addEventListener('touchend', e=>{
+    const a = start; start = null; const t = e.changedTouches[0]; if(!a || !t) return;
+    const el = document.elementFromPoint(t.clientX, t.clientY), b = el && el.closest ? el.closest('nav.bottom button') : null;
+    if(b===a.b && Math.hypot(t.clientX-a.x, t.clientY-a.y) < 30){ e.preventDefault(); tapAt = Date.now(); synth = true; try{ b.click(); }finally{ synth = false; } }
+  }, { passive:false });
+  nav.addEventListener('touchcancel', ()=>{ start = null; });
+  // il click "vero" che il browser manda dopo un tocco già gestito: ignorato, se no la sezione cambierebbe due volte
+  nav.addEventListener('click', e=>{ if(!synth && Date.now()-tapAt < 700){ e.stopImmediatePropagation(); e.preventDefault(); } }, true);
 })();
 document.querySelectorAll('nav.bottom button').forEach(btn=>{
   btn.addEventListener('click', ()=>{
@@ -3212,7 +3214,7 @@ document.querySelectorAll('nav.bottom button').forEach(btn=>{
     const tabEl = document.getElementById('tab-'+target);
     currentTab = target;
     document.querySelectorAll('nav.bottom button').forEach(b=>b.classList.toggle('active', b===btn));
-    navIndTo(btn, true);
+    navIndTo(btn);
     document.querySelectorAll('.tab').forEach(s=>s.classList.remove('active'));
     document.getElementById('tab-'+currentTab).classList.add('active');
     if(isStatsTab(currentTab)) try{ reobserveCharts(); }catch(e){}
