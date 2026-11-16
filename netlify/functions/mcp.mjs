@@ -3,7 +3,9 @@ import { getStore } from "@netlify/blobs";
 /* Palestra · server MCP (Model Context Protocol) per Claude.
    Claude (claude.ai, app, Desktop) lo aggiunge come "connettore personalizzato" e legge da solo scheda e allenamenti
    sincronizzati: niente copia e incolla del riepilogo. Se l'utente lo permette nell'app («Claude può modificare la
-   scheda»), Claude cambia anche la SCHEDA (modifica_scheda, annulla_modifica); lo storico resta sempre in sola lettura.
+   scheda»), Claude cambia anche la SCHEDA (modifica_scheda, annulla_modifica). Con un permesso a parte («Claude può correggere
+   lo storico») può correggere le SERIE di un esercizio già fatto (correggi_storico, annulla_correzione_storico): mai creare
+   o cancellare allenamenti. I due permessi sono indipendenti.
 
    Indirizzo:  https://<sito>/mcp/<CHIAVE>              (la chiave nell'indirizzo, "Nessun accesso")
          o:    https://<sito>/mcp  +  "Authorization: Bearer <CHIAVE>" nelle Request headers (la chiave non è nell'indirizzo)
@@ -588,6 +590,143 @@ async function toolUndo(ctx) {
   return `Fatto: la scheda è tornata com'era prima della modifica del ${when} («${String(u.why || "")}»). Arriva sul telefono alla prossima sincronizzazione (quando l'utente apre l'app).`;
 }
 
+/* ---------------- correzione dello storico ----------------
+   Un allenamento già fatto, un esercizio: kg, ripetizioni, RPE o tipo di una serie, una serie in più o in meno. Mai
+   allenamenti creati o cancellati. Si scrive sulla forma salvata dall'app (compatta): si modifica la voce com'è e si
+   ricalcolano serie, kg, ripetizioni e peso sollevato come fa l'app (recalcEntry), perché l'app si fida dei valori salvati. */
+const NO_WRITE_LOGS = "Claude non ha il permesso di correggere lo storico. Nell'app Palestra l'utente deve accendere «Claude può correggere lo storico» (Impostazioni → Claude legge i tuoi allenamenti); poi riprova. Le letture funzionano comunque.";
+const TIPO_SERIE = { lavoro: "", riscaldamento: "w", cedimento: "f", drop: "d", "drop set": "d", amrap: "a" };
+const MAX_VAL = { reps: 1000, time: 36000, dist: 100000 };
+const clone = (v) => JSON.parse(JSON.stringify(v));
+const rawSet = (d) => ({ kg: Math.max(0, num(d.kg)), val: Math.max(0, num(d.val !== undefined ? d.val : d.reps)), w: !!d.w, t: !d.w && own(KINDS, d.t) ? d.t : "" });
+const rawSetTxt = (d, type) => { const x = rawSet(d); return (x.w ? "R " : "") + (x.t ? KINDS[x.t] + " " : "") + setTxt(x, type) + (num(d.rpe) >= 1 && num(d.rpe) <= 10 ? " @" + fn(num(d.rpe)) : ""); };
+/* serie, kg, ripetizioni, peso sollevato di una voce, come recalcEntry dell'app, e nella forma compatta che l'app salva */
+function fixEntry(e) {
+  const type = own(TYPES, e.type) ? e.type : "reps", nd = e.detail.map(rawSet);
+  const w = work(nd), m = main(nd), base = m.length ? m : w;
+  const kg = base.length ? Math.max(...base.map((d) => d.kg)) : 0;
+  const val = base.length ? Math.max(...base.filter((d) => d.kg === kg).map((d) => d.val)) : 0;
+  delete e.sets;   // le serie di lavoro: l'app le ricalcola dal dettaglio
+  if (kg !== 0) e.kg = kg; else delete e.kg;
+  e.val = val;
+  if (nd.some((d) => d.w)) e.tonnage = tonOf(nd, type, sideOf(e)); else delete e.tonnage;   // senza riscaldamenti lo ricalcola l'app
+}
+const numIn = (v, lo, hi, what, bad) => { const n = typeof v === "number" ? v : (typeof v === "string" && v.trim() !== "" ? num(v) : NaN); if (!Number.isFinite(n) || n < lo || n > hi) bad(`${what} deve essere un numero da ${lo} a ${hi}`); return n; };
+function editLogs(cur, args) {
+  const bad = (m) => { throw new Error("Nessuna modifica salvata: " + m); };
+  const why = String(args.motivo == null ? "" : args.motivo).trim().slice(0, 300);
+  if (!why) bad("scrivi il motivo (l'utente lo legge nell'app).");
+  const list = Array.isArray(args.correzioni) ? args.correzioni : [];
+  if (!list.length) bad("manca l'elenco «correzioni».");
+  if (list.length > 20) bad("al massimo 20 correzioni per chiamata.");
+  const logs = clone(cur.logs && typeof cur.logs === "object" && !Array.isArray(cur.logs) ? cur.logs : {});
+  const touched = new Map(), lines = [];
+  list.forEach((o, i) => {
+    const at = "correzione " + (i + 1);
+    if (!o || typeof o !== "object" || Array.isArray(o)) bad(at + ": voce non valida.");
+    const iso = String(o.data == null ? "" : o.data);
+    if (!validIso(iso) || !Array.isArray(logs[iso]) || !logs[iso].length) bad(`${at}: nessun allenamento il ${o.data}. Leggi «allenamenti» o «storico_esercizio» per le date.`);
+    const q = fold(o.esercizio);
+    if (!q) bad(at + ": manca «esercizio».");
+    const sess = logs[iso].filter((s) => s && typeof s === "object" && Array.isArray(s.entries));
+    let cand = [];
+    sess.forEach((s) => s.entries.forEach((e) => { if (e && typeof e === "object" && Array.isArray(e.detail) && fold(e.name) === q) cand.push({ s, e }); }));
+    if (!cand.length) bad(`${at}: il ${dmy(iso)} non c'è «${o.esercizio}» (nome intero, come in «storico_esercizio»). Quel giorno: ${[...new Set(sess.flatMap((s) => s.entries.map((e) => e && e.name)))].filter(Boolean).join(", ") || "niente"}.`);
+    if (o.ora != null && o.ora !== "") { const h = String(o.ora).trim(); cand = cand.filter((c) => hhmm(num(c.s.startedAt)) === h); if (!cand.length) bad(`${at}: nessun allenamento delle ${h} con quell'esercizio.`); }
+    if (cand.length > 1) bad(`${at}: il ${dmy(iso)} ci sono ${cand.length} voci con «${o.esercizio}» (allenamenti delle ${cand.map((c) => hhmm(num(c.s.startedAt))).join(", ")}): indica «ora» (HH:MM), e se l'esercizio è ripetuto nello stesso allenamento non lo correggo.`);
+    const { s, e } = cand[0], det = e.detail, type = own(TYPES, e.type) ? e.type : "reps", sid = String(s.id);
+    if (!touched.has(sid)) touched.set(sid, { iso, before: clone(s), id: sid });
+    const op = o.operazione == null || o.operazione === "" ? "modifica" : String(o.operazione);
+    if (!["modifica", "aggiungi", "togli"].includes(op)) bad(`${at}: operazione «${op}» sconosciuta (modifica, aggiungi, togli).`);
+    const A = o.a && typeof o.a === "object" && !Array.isArray(o.a) ? o.a : null;
+    const where = `${dmy(iso)} ${hhmm(num(s.startedAt))} · ${e.name}`;
+    const mx = MAX_VAL[type];
+    const kindOf = (t) => { const k = String(t).trim().toLowerCase(); if (!own(TIPO_SERIE, k)) bad(`${at}: tipo «${t}» sconosciuto (lavoro, riscaldamento, cedimento, drop, amrap).`); return TIPO_SERIE[k]; };
+    const setKind = (d, k) => { delete d.w; delete d.t; if (k === "w") d.w = true; else if (k) d.t = k; };
+    if (op === "aggiungi") {
+      if (!A || A.ripetizioni === undefined) bad(`${at}: per aggiungere una serie serve «a» con almeno «ripetizioni».`);
+      if (det.length >= 40) bad(`${at}: già 40 serie in questo esercizio.`);
+      const d = {}, kg = A.kg === undefined ? 0 : numIn(A.kg, 0, 1000, at + ": «kg»", bad);
+      if (kg !== 0) d.kg = kg;
+      d.val = numIn(A.ripetizioni, 0, mx, at + ": «ripetizioni»", bad);
+      if (A.rpe !== undefined && A.rpe !== null) d.rpe = numIn(A.rpe, 1, 10, at + ": «rpe»", bad);
+      if (A.tipo !== undefined) setKind(d, kindOf(A.tipo));
+      det.push(d);
+      lines.push(`${where}: serie aggiunta (serie ${det.length}): ${rawSetTxt(d, type)}`);
+    } else {
+      const n = Math.round(num(o.serie));
+      if (!(n >= 1 && n <= det.length)) bad(`${at}: «serie» deve essere da 1 a ${det.length} (la posizione nell'elenco di «storico_esercizio», riscaldamenti compresi): ${det.map((d, k) => (k + 1) + ") " + rawSetTxt(d, type)).join(", ")}.`);
+      const D = o.da && typeof o.da === "object" && !Array.isArray(o.da) ? o.da : null;
+      if (!D || (D.kg === undefined && D.ripetizioni === undefined)) bad(`${at}: indica «da» (kg e ripetizioni che la serie ha ora): serve a non correggere la serie sbagliata.`);
+      const d = det[n - 1], x = rawSet(d);
+      if ((D.kg !== undefined && num(D.kg) !== x.kg) || (D.ripetizioni !== undefined && num(D.ripetizioni) !== x.val))
+        bad(`${at}: la serie ${n} di ${where} è ${rawSetTxt(d, type)}, non quella che indichi in «da». Rileggi lo storico.`);
+      const was = rawSetTxt(d, type);
+      if (op === "togli") {
+        if (det.length <= 1) bad(`${at}: è l'ultima serie dell'esercizio: non lo tolgo dall'allenamento.`);
+        det.splice(n - 1, 1);
+        lines.push(`${where}: tolta la serie ${n} (${was})`);
+      } else {
+        if (!A || ["kg", "ripetizioni", "rpe", "tipo"].every((k) => A[k] === undefined)) bad(`${at}: in «a» indica cosa cambiare (kg, ripetizioni, rpe, tipo).`);
+        if (A.kg !== undefined) { const v = numIn(A.kg, 0, 1000, at + ": «kg»", bad); if (v !== 0) d.kg = v; else delete d.kg; }
+        if (A.ripetizioni !== undefined) d.val = numIn(A.ripetizioni, 0, mx, at + ": «ripetizioni»", bad);
+        if (A.rpe !== undefined) { if (A.rpe === null) delete d.rpe; else d.rpe = numIn(A.rpe, 1, 10, at + ": «rpe»", bad); }
+        if (A.tipo !== undefined) setKind(d, kindOf(A.tipo));
+        lines.push(`${where}: serie ${n}: ${was} → ${rawSetTxt(d, type)}`);
+      }
+    }
+    fixEntry(e);
+  });
+  const ids = [...touched.keys()], after = {};
+  for (const [id, t] of touched) after[id] = daysHash(logs[t.iso].find((x) => x && String(x.id) === id));
+  return { logs, why, lines, ids, before: [...touched.values()].map((t) => ({ iso: t.iso, session: t.before })), after };
+}
+/* come saveDays, ma per lo storico: non tocca scheda, giorni né il segno "claude" della scheda; lascia il segno "claudeLog" */
+async function saveLogs(ctx, build) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const f = await ctx.store.getWithMetadata("u-" + ctx.code, { type: "json" });
+    if (!f || !f.data || typeof f.data !== "object") throw new Error("Nessun dato sincronizzato: apri l'app Palestra con la sincronizzazione attiva.");
+    const cur = f.data, res = build(cur), now = Date.now();
+    const out = { ...cur, rev: (Number(cur.rev) || 0) + 1, at: now, logs: res.logs, wid: "claude-" + newId().slice(1, 11),
+      claudeLog: { at: now, why: res.why.slice(0, 300), lines: res.lines.slice(0, 60).map((x) => String(x).slice(0, 300)), ids: res.ids.slice(0, 60), ...(res.undo ? { undo: true } : {}) } };
+    if (JSON.stringify(out).length > 5 * 1024 * 1024) throw new Error("Dati troppo grandi per la sincronizzazione (oltre 5 MB): nessuna modifica salvata.");
+    const w = await ctx.store.setJSON("u-" + ctx.code, out, f.etag ? { onlyIfMatch: f.etag } : {});
+    if (w && w.modified === false) continue;
+    ctx.saved(out);
+    return { cur, out, res };
+  }
+  throw new Error("L'app sta sincronizzando proprio adesso: nessuna modifica salvata, riprova fra qualche secondo.");
+}
+const AFTER_SAVE_LOGS = "Arrivano sul telefono alla prossima sincronizzazione (quando l'utente apre l'app): lì vede cosa è cambiato e può tornare indietro con «Rimetti com'era». Puoi annullare anche tu con annulla_correzione_storico.";
+async function toolEditLogs(ctx, args) {
+  const { out, res } = await saveLogs(ctx, (cur) => editLogs(cur, args));
+  let undoNote = "";
+  try { await ctx.store.setJSON("h-" + ctx.code, { at: out.at, why: res.why, before: res.before, after: res.after }); }
+  catch (e) { undoNote = "\n(annulla_correzione_storico non disponibile per questa modifica: l'utente può annullare dall'app.)"; }
+  const L = [`# Storico corretto: ${many(res.lines.length, "correzione salvata", "correzioni salvate")}`, `Motivo: ${res.why}`, ""];
+  res.lines.forEach((x) => L.push("- " + x));
+  L.push("", AFTER_SAVE_LOGS + undoNote);
+  return L.join("\n");
+}
+async function toolUndoLogs(ctx) {
+  const u = await ctx.store.get("h-" + ctx.code, { type: "json" });
+  if (!u || !Array.isArray(u.before) || !u.before.length || !u.after || typeof u.after !== "object") return "Niente da annullare: nessuna correzione di Claude allo storico salvata di recente (o è già stata annullata).";
+  const when = `${dmy(isoAt(num(u.at)))} alle ${hhmm(num(u.at))}`;
+  await saveLogs(ctx, (cur) => {
+    const logs = clone(cur.logs && typeof cur.logs === "object" && !Array.isArray(cur.logs) ? cur.logs : {});
+    const spots = u.before.map((b) => {
+      const sid = String(b && b.session && b.session.id), arr = b && Array.isArray(logs[b.iso]) ? logs[b.iso] : null, idx = arr ? arr.findIndex((x) => x && String(x.id) === sid) : -1;
+      if (idx < 0) throw new Error(`L'allenamento del ${dmy(String(b && b.iso))} non c'è più (cancellato dall'app o da un altro dispositivo): non annullo.`);
+      if (daysHash(arr[idx]) !== u.after[sid]) throw new Error(`L'allenamento del ${dmy(b.iso)} è cambiato dopo la correzione di Claude (dall'app o da un altro dispositivo): non lo rimetto com'era per non perdere quei cambiamenti. Fai le correzioni inverse con correggi_storico.`);
+      return { arr, idx, b };
+    });
+    spots.forEach((p) => { p.arr[p.idx] = p.b.session; });
+    return { logs, why: "Annullata la correzione di Claude del " + when + ": " + String(u.why || ""), lines: [`allenamenti rimessi com'erano prima della correzione del ${when}`], ids: u.before.map((b) => String(b.session.id)), undo: true };
+  });
+  try { await ctx.store.delete("h-" + ctx.code); } catch (e) { /* resta: un secondo annulla trova gli allenamenti cambiati e si ferma */ }
+  return `Fatto: lo storico è tornato com'era prima della correzione del ${when} («${String(u.why || "")}»). Arriva sul telefono alla prossima sincronizzazione (quando l'utente apre l'app).`;
+}
+
 /* ---------------- strumenti ---------------- */
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const TOOLS = [
@@ -657,6 +796,31 @@ const TOOLS = [
     description: "Rimette la scheda com'era prima dell'ultima modifica_scheda. Non annulla se nel frattempo la scheda è cambiata dall'app (lì l'utente ha «Rimetti com'era»). Serve il permesso «Claude può modificare la scheda».",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, title: "Annulla modifica" }, run: toolUndo },
+  { name: "correggi_storico", title: "Correggi lo storico di un esercizio", writeLogs: true,
+    description: "Corregge le SERIE di un esercizio in un allenamento GIÀ FATTO, quando l'utente si è sbagliato (kg o ripetizioni scritti male, tipo di serie, RPE, una serie di troppo o dimenticata). Non crea né cancella allenamenti e non cambia la scheda. "
+      + "Prima leggi «storico_esercizio» (le serie sono numerate nell'ordine dell'elenco, riscaldamenti compresi), proponi la correzione all'utente e falla solo se è d'accordo. Per ogni correzione: data, nome intero dell'esercizio, numero di serie e «da» (kg e ripetizioni che ha ora: se non coincidono non si cambia niente). "
+      + "Tutte le correzioni in UNA chiamata: se una non è valida non si salva niente e la risposta dice quale. L'utente vede cosa è cambiato nell'app e può annullare. Funziona solo se nell'app è acceso «Claude può correggere lo storico».",
+    inputSchema: { type: "object", properties: {
+      motivo: { type: "string", maxLength: 300, description: "Perché correggi, in una frase: l'utente la legge nell'app (es. \"Panca 8 kg scritti al posto di 80\")." },
+      correzioni: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", properties: {
+        data: { type: "string", description: "Giorno dell'allenamento, AAAA-MM-GG." },
+        esercizio: { type: "string", description: "Nome intero dell'esercizio, come in «storico_esercizio»." },
+        ora: { type: "string", description: "HH:MM di inizio dell'allenamento, solo se quel giorno ce n'è più di uno con l'esercizio." },
+        operazione: { type: "string", enum: ["modifica", "aggiungi", "togli"], description: "modifica (predefinita): cambia la serie · aggiungi: una serie in fondo · togli: una serie (non l'ultima rimasta)." },
+        serie: { type: "integer", minimum: 1, description: "Numero della serie (1 = la prima dell'elenco, riscaldamenti compresi). Non per aggiungi." },
+        da: { type: "object", additionalProperties: false, description: "Com'è ora la serie (controllo): kg e/o ripetizioni. Obbligatorio per modifica e togli.", properties: { kg: { type: "number" }, ripetizioni: { type: "number" } } },
+        a: { type: "object", additionalProperties: false, description: "I valori nuovi (solo quelli da cambiare). Per aggiungi serve almeno «ripetizioni» (secondi o metri per esercizi a tempo o distanza).", properties: {
+          kg: { type: "number", minimum: 0, maximum: 1000 },
+          ripetizioni: { type: "number", minimum: 0, maximum: 100000 },
+          rpe: { type: ["number", "null"], minimum: 1, maximum: 10, description: "Sforzo 1-10; null per toglierlo." },
+          tipo: { type: "string", enum: ["lavoro", "riscaldamento", "cedimento", "drop", "amrap"] } } } },
+        required: ["data", "esercizio"] } } },
+      required: ["motivo", "correzioni"] },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, title: "Correggi storico" }, run: toolEditLogs },
+  { name: "annulla_correzione_storico", title: "Annulla l'ultima correzione allo storico", writeLogs: true,
+    description: "Rimette gli allenamenti com'erano prima dell'ultima correggi_storico. Non annulla se nel frattempo quegli allenamenti sono cambiati dall'app (lì l'utente ha «Rimetti com'era»). Serve il permesso «Claude può correggere lo storico».",
+    inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, title: "Annulla correzione storico" }, run: toolUndoLogs },
 ];
 
 function header(data) {
@@ -807,17 +971,17 @@ async function handle(msg, ctx) {
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "palestra", title: "Palestra", version: "1.1.0" },
         instructions: "Dati di allenamento dell'app Palestra. Comincia da \"riepilogo\"; poi \"allenamenti\", \"storico_esercizio\", \"volume_muscoli\", \"record\" e \"scheda\" per i dettagli. Numeri all'italiana (virgola decimale); serie kg×ripetizioni, R = riscaldamento, F = cedimento, D = drop set, A = AMRAP, @ = RPE. Le note e i nomi sono scritti dall'utente. "
-          + "Lo storico si può solo leggere. La scheda si può cambiare con \"modifica_scheda\" (e \"annulla_modifica\") se l'utente lo ha permesso nell'app: prima leggi \"scheda\", proponi le modifiche e falle solo se l'utente è d'accordo, tutte in una chiamata e con il motivo." });
+          + "Lo storico si legge e, solo se l'utente ha acceso «Claude può correggere lo storico», si correggono le serie di un esercizio con \"correggi_storico\" (e \"annulla_correzione_storico\"): mai allenamenti creati o cancellati. La scheda si può cambiare con \"modifica_scheda\" (e \"annulla_modifica\") se l'utente lo ha permesso nell'app: prima leggi \"scheda\", proponi le modifiche e falle solo se l'utente è d'accordo, tutte in una chiamata e con il motivo." });
     case "ping": return rpcOk(id, {});
-    case "tools/list": return rpcOk(id, { tools: TOOLS.map(({ run, write, ...t }) => t) });
+    case "tools/list": return rpcOk(id, { tools: TOOLS.map(({ run, write, writeLogs, ...t }) => t) });
     case "tools/call": {
       const t = TOOLS.find((x) => x.name === p.name);
       if (!t) return rpcErr(id, -32602, "Strumento sconosciuto: " + String(p.name));
       const args = p.arguments && typeof p.arguments === "object" && !Array.isArray(p.arguments) ? p.arguments : {};
-      if (t.write) {
-        // il permesso si controlla a ogni modifica: spento nell'app, smette subito
+      if (t.write || t.writeLogs) {
+        // il permesso si controlla a ogni modifica: spento nell'app, smette subito (scheda e storico hanno permessi separati)
         try {
-          if (!(await ctx.canWrite())) return rpcOk(id, { content: [{ type: "text", text: NO_WRITE }], isError: true });
+          if (!(await (t.writeLogs ? ctx.canWriteLogs() : ctx.canWrite()))) return rpcOk(id, { content: [{ type: "text", text: t.writeLogs ? NO_WRITE_LOGS : NO_WRITE }], isError: true });
           return rpcOk(id, { content: [{ type: "text", text: cut(await t.run(ctx, args)) }], isError: false });
         } catch (e) {
           return rpcOk(id, { content: [{ type: "text", text: (e && e.message) || "Errore: nessuna modifica salvata." }], isError: true });
@@ -858,6 +1022,7 @@ export default async (request) => {
     data: async () => { if (cache === undefined) cache = await store.get("u-" + ref.code, { type: "json" }); return cache; },
     saved: (d) => { cache = d; },
     // permesso di modificare: acceso nell'app e per questa chiave (non per una revocata o cambiata)
+    canWriteLogs: async () => { const m = await store.get("m-" + ref.code, { type: "json" }); return !!(m && m.token === token && m.writeLogs === true); },
     canWrite: async () => { if (canW === undefined) { const m = await store.get("m-" + ref.code, { type: "json" }); canW = !!(m && m.token === token && m.write === true); } return canW; } };
   if (Array.isArray(body)) {
     if (!body.length) return json(rpcErr(null, -32600, "Invalid Request"), 400);

@@ -1602,6 +1602,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 .tg-state .ko{color:var(--warn);}
 #tgCard .field{margin:10px 0 0;} #tgCard .field input{font-size:16px;}
 .mcp-write{margin-top:8px; padding-top:12px; border-top:1px solid var(--border);}
+.mcp-write.mcp-write-2{margin-top:0; border-top:0; padding-top:10px;}
 .sync-st.warn{color:var(--warn);}
 </style>
 </head>
@@ -1623,6 +1624,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
     <div id="planView">
       <div id="doneCard"></div>
       <div id="claudeCard"></div>
+      <div id="claudeLogCard"></div>
       <div class="card" id="todayCard">
         <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6M6.5 5.5v13M17.5 5.5v13M21 9v6M6.5 12h11"/></svg>Allenamento di oggi<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoToday"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
         <div class="card-info" id="infoToday"><p>La giornata evidenziata è quella che tocca, dopo l'ultima che hai fatto. Tocca un'altra giornata per scegliere quella.</p><p><b>Questo mese</b>: allenamenti dall'1 del mese. <b>Settimane di fila</b>: settimane consecutive con almeno un allenamento (quella in corso non interrompe la serie); valgono anche le riserve, come giorni veri. <b>Totali</b>: tutti gli allenamenti registrati.</p></div>
@@ -2040,7 +2042,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card" id="mcpCard" hidden>
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Claude legge i tuoi allenamenti<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoMcp"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoMcp"><p>Con un <b>connettore</b> Claude legge da solo scheda, allenamenti, serie per muscolo, record ed esercizi fermi: in una chat chiedi «com'è andata questa settimana?» e risponde con i tuoi dati, senza copia e incolla.</p><p>Con <b>Claude può modificare la scheda</b> acceso, se glielo chiedi cambia anche la <b>scheda</b>: serie, ripetizioni, kg, recuperi, esercizi e giornate. Lo <b>storico</b> degli allenamenti resta in sola lettura. Ogni modifica arriva con la sincronizzazione e compare in <b>Allenamento</b>: cosa è cambiato e perché, con <b>Rimetti com'era</b>. La scheda di prima resta anche come backup (Backup e dati → Altre opzioni → Ripristina). Prima di usare uno strumento Claude ti chiede l'approvazione: per rivedere ogni modifica, a «modifica_scheda» non dare il permesso per sempre (in Personalizza → Connettori → Palestra puoi anche bloccarlo).</p><p>Legge i dati <b>sincronizzati</b>, cioè l'ultima sincronizzazione (di solito pochi secondi dopo ogni modifica; durante l'allenamento aspetta che finisca).</p><p>La <b>chiave</b> è diversa dal codice di sincronizzazione: con lei non si risale al codice e non si tocca lo storico. Chi ha l'indirizzo legge i tuoi allenamenti (e, se l'hai acceso, cambia la scheda), quindi non condividerlo. <b>Nuova chiave</b> fa smettere subito quella di prima, <b>Disattiva</b> la toglie.</p><p>In Claude i connettori personalizzati ci sono anche col piano gratuito (uno solo).</p></div>
+      <div class="card-info" id="infoMcp"><p>Con un <b>connettore</b> Claude legge da solo scheda, allenamenti, serie per muscolo, record ed esercizi fermi: in una chat chiedi «com'è andata questa settimana?» e risponde con i tuoi dati, senza copia e incolla.</p><p>Con <b>Claude può modificare la scheda</b> acceso, se glielo chiedi cambia anche la <b>scheda</b>: serie, ripetizioni, kg, recuperi, esercizi e giornate. Ogni modifica arriva con la sincronizzazione e compare in <b>Allenamento</b>: cosa è cambiato e perché, con <b>Rimetti com'era</b>. La scheda di prima resta anche come backup (Backup e dati → Altre opzioni → Ripristina). Prima di usare uno strumento Claude ti chiede l'approvazione: per rivedere ogni modifica, a «modifica_scheda» non dare il permesso per sempre (in Personalizza → Connettori → Palestra puoi anche bloccarlo).</p><p>Con <b>Claude può correggere lo storico</b> (un interruttore a parte, spento di default) può correggere un errore in un allenamento già fatto: kg o ripetizioni scritti male, il tipo di una serie, una serie di troppo o dimenticata. <b>Non crea e non cancella allenamenti</b> e non tocca la scheda. Anche queste correzioni compaiono in <b>Allenamento</b> con <b>Rimetti com'era</b>, e puoi sempre correggere a mano da Mese → Correggi questo allenamento. Se hai cambiato lo stesso allenamento su un altro dispositivo prima della sincronizzazione, vale la tua versione e te lo dice.</p><p>Legge i dati <b>sincronizzati</b>, cioè l'ultima sincronizzazione (di solito pochi secondi dopo ogni modifica; durante l'allenamento aspetta che finisca).</p><p>La <b>chiave</b> è diversa dal codice di sincronizzazione: con lei non si risale al codice. Chi ha l'indirizzo legge i tuoi allenamenti (e, con gli interruttori accesi, cambia la scheda e corregge le serie dello storico), quindi non condividerlo. <b>Nuova chiave</b> fa smettere subito quella di prima, <b>Disattiva</b> la toglie.</p><p>In Claude i connettori personalizzati ci sono anche col piano gratuito (uno solo).</p></div>
       <div id="mcpOff">
         <p class="sync-intro">Claude legge scheda e allenamenti da solo, senza copia e incolla. Se lo permetti, modifica anche la scheda.</p>
         <button class="btn primary mcp-on" id="mcpOnBtn" type="button">Collega Claude</button>
@@ -2060,6 +2062,11 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
           <div><span class="sw-lbl">Claude può modificare la scheda</span>
             <span class="sw-sub" id="mcpWriteSub">Spento: Claude legge soltanto.</span></div>
           <label class="switch"><input type="checkbox" id="mcpWriteToggle" aria-label="Claude può modificare la scheda"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="switch-row mcp-write mcp-write-2">
+          <div><span class="sw-lbl">Claude può correggere lo storico</span>
+            <span class="sw-sub" id="mcpLogsSub">Spento: lo storico lo legge soltanto.</span></div>
+          <label class="switch"><input type="checkbox" id="mcpLogsToggle" aria-label="Claude può correggere lo storico"><span class="track"></span><span class="knob"></span></label>
         </div>
         <div class="btn-grid" style="margin-top:12px;"><button class="btn" id="mcpNewBtn" type="button">Nuova chiave</button><button class="btn danger" id="mcpOffBtn" type="button">Disattiva</button></div>
       </div>
@@ -2874,6 +2881,7 @@ function persist(key){
     const txt = storedText(key);
     if(savedText[key]!==txt){
       localStorage.setItem(LS_PREFIX+key, txt); savedText[key] = txt; try{ syncNoteChange(key); }catch(e){}
+      if(key==='logs' && claudeLogNote && !syncApplying) try{ claudeLogCheck(); }catch(e){}   // storico cambiato dopo Claude
       if(key==='days' && claudeNote) try{ claudeNoteCheck(); }catch(e){}   // scheda cambiata dopo Claude: l'avviso non vale più
     }
     storageFull = false;
@@ -3541,6 +3549,7 @@ function renderWorkout(){
 
   renderDoneCard();
   try{ renderClaudeCard(); }catch(e){ console.error('renderClaudeCard', e); }
+  try{ renderClaudeLogCard(); }catch(e){ console.error('renderClaudeLogCard', e); }
   renderNextHint();
   renderExList();
 }
@@ -8728,12 +8737,13 @@ function syncMerge(remote, opts){
   const L = flatLogs(state.logs), R = flatLogs(rLogs);
   const out = {}; let pull = false, push = false; const removed = [];
   const put = (x)=> (out[x.iso] = out[x.iso] || []).push(x.s);
+  const pulledIds = new Set(), keptIds = new Set();   // allenamenti arrivati dal server / rimasti come qui
   new Set([...Object.keys(L), ...Object.keys(R)]).forEach(id=>{
     const l = L[id], r = R[id], b = bl[id];
     if(l && r){
       if(l.h===r.h) put(l);
-      else if(r.h!==b && l.h===b){ put(r); pull = true; }          // cambiato solo sull'altro dispositivo
-      else { put(l); push = true; }                                // cambiato qui (o da tutte e due: vince questo)
+      else if(r.h!==b && l.h===b){ put(r); pull = true; pulledIds.add(id); }          // cambiato solo sull'altro dispositivo
+      else { put(l); push = true; keptIds.add(id); }                                // cambiato qui (o da tutte e due: vince questo)
     } else if(l){
       if(b && l.h===b && !opts.keepDeleted){ removed.push(l); pull = true; }   // cancellato sull'altro dispositivo
       else { put(l); push = true; }                                // nuovo qui (o corretto qui e cancellato là: si tiene)
@@ -8765,14 +8775,27 @@ function syncMerge(remote, opts){
     if(opts.join || (rCh && (!lCh || num(remote.setAt) > num(sync.setAt)))){ settings = remote.settings; pull = true; }
     else push = true;
   }
-  return { logs: pull ? out : null, days, settings, push, pull, removed, claude: fresh && days ? cm : null, claudeLost: fresh && !days && lh!==rh };
+  // lo storico l'ha corretto Claude (connettore, mcp.mjs) e qui non è ancora stato visto: quali allenamenti sono arrivati e quali no
+  const cl = remote && remote.claudeLog;
+  let claudeLog = null;
+  if(!opts.join && cl && typeof cl==='object' && !Array.isArray(cl) && Array.isArray(cl.ids) && num(cl.at) > num(sync.claudeLogSeen)){
+    const ids = cl.ids.map(String);
+    claudeLog = { cl, applied: ids.filter(id=> pulledIds.has(id)), lost: ids.filter(id=> keptIds.has(id)) };
+  }
+  return { logs: pull ? out : null, days, settings, push, pull, removed, claude: fresh && days ? cm : null, claudeLost: fresh && !days && lh!==rh, claudeLog };
 }
 /* true se lo storico qui è cambiato unendo (esercizi ricollegati alla scheda nuova): va rimandato al server */
 function syncApply(m){
   syncApplying = true;
   let relinked = false;
   try{
-    if(m.logs){ state.logs = m.logs; persist('logs'); }
+    let logBefore = null;
+    if(m.logs){
+      // gli allenamenti corretti da Claude: com'erano qui un attimo prima, per «Rimetti com'era»
+      if(m.claudeLog && m.claudeLog.applied.length){ const L = flatLogs(state.logs); logBefore = m.claudeLog.applied.filter(id=> L[id]).map(id=> ({ iso:L[id].iso, session: JSON.parse(JSON.stringify(L[id].s)) })); }
+      state.logs = m.logs; persist('logs');
+      if(logBefore && logBefore.length) claudeLogNoteFrom(m.claudeLog.cl, logBefore);
+    }
     if(m.days){
       const before = m.claude ? JSON.parse(JSON.stringify(state.days)) : null;
       // da un telefono con la versione di prima la scheda può arrivare con la sezione nel nome: la si sistema subito
@@ -8794,6 +8817,7 @@ function syncApply(m){
     invalidateStats(); applyPrefs(); renderAll();
   }finally{ syncApplying = false; }
   if(m.claude && m.days) showToast(m.claude.undo===true ? 'Claude ha rimesso la scheda com\'era' : 'Claude ha modificato la scheda', 'Vedi', claudeShow, 6000);
+  else if(claudeLogNote && m.claudeLog && m.claudeLog.applied.length) showToast(m.claudeLog.cl.undo===true ? 'Claude ha rimesso lo storico com\'era' : 'Claude ha corretto lo storico', 'Vedi', claudeShow, 6000);
   return relinked;
 }
 /* qualcosa è cambiato qui dall'ultima sincronizzazione? (storico, scheda, impostazioni sincronizzate) */
@@ -8844,6 +8868,8 @@ async function syncNow(opts){
       if(m.pull && syncApply(m)) m.push = true;
       if(fullSetHash(state.settings)!==sync.fullHash) m.push = true;   // impostazioni del backup cambiate qui
       if(m.claudeLost) infoToast('Modifiche di Claude alla scheda non applicate: qui l\'hai cambiata dopo', 5000, 'warn');
+      if(m.claudeLog && m.claudeLog.lost.length) infoToast(m.claudeLog.lost.length===1 ? 'Correzione di Claude a un allenamento non applicata: qui l\'avevi cambiato dopo' : 'Correzioni di Claude non applicate a '+m.claudeLog.lost.length+' allenamenti: qui li avevi cambiati dopo', 5000, 'warn');
+      if(remote && remote.claudeLog && num(remote.claudeLog.at) > num(sync.claudeLogSeen)) sync.claudeLogSeen = num(remote.claudeLog.at);
       if(remote && remote.claude && num(remote.claude.at) > num(sync.claudeSeen)) sync.claudeSeen = num(remote.claude.at);
       if(!m.push){ syncRememberBase(num(remote.rev), remote.wid, remote.etag); saved = true; break; }
       const wid = Date.now().toString(36)+Math.random().toString(36).slice(2,10);
@@ -8933,11 +8959,11 @@ document.getElementById('syncCopyBtn').addEventListener('click', ()=>{
 document.getElementById('syncOffBtn').addEventListener('click', async ()=>{
   // Claude collegato: la chiave resta sul server (vale per il codice, non per questo telefono): lo si dice
   const yes = await customConfirm('Smetti di sincronizzare questo dispositivo? I dati restano qui e sugli altri; per ricollegarlo ti servirà il codice.'
-    + (mcp && mcp.state==='on' ? '\n\nClaude resta collegato e continua a leggere i dati sincronizzati'+(mcp.write ? ' (e a poter cambiare la scheda, ma qui non arriverebbe più)' : '')+': per scollegarlo tocca prima Disattiva in «Claude legge i tuoi allenamenti».' : '')
+    + (mcp && mcp.state==='on' ? '\n\nClaude resta collegato e continua a leggere i dati sincronizzati'+(mcp.write || mcp.writeLogs ? ' (e a poter cambiare '+(mcp.write && mcp.writeLogs ? 'scheda e storico' : mcp.write ? 'la scheda' : 'lo storico')+', ma qui non arriverebbe più)' : '')+': per scollegarlo tocca prima Disattiva in «Claude legge i tuoi allenamenti».' : '')
     + (tgSt && tgSt.state==='on' ? '\n\nIl backup su Telegram continua ad arrivare (dai dati sincronizzati fino a ora): per fermarlo tocca prima Scollega in «Backup su Telegram».' : ''), 'Disattiva', 'Annulla');
   if(!yes) return;
   sync = {}; try{ localStorage.removeItem(SYNC_LS); }catch(e){}
-  mcp = { state:'unknown', token:null, write:false, busy:false, msg:'', kind:'' };
+  mcp = { state:'unknown', token:null, write:false, writeLogs:false, busy:false, msg:'', kind:'' };
   tgSt = { state:'unknown', info:null, busy:false, msg:'', kind:'' };
   window.__extAt = 0;   // ricollegato, lo stato di Claude e Telegram si rilegge subito
   syncMsg = ''; renderSync(); showToast('Sincronizzazione disattivata su questo dispositivo');
@@ -8948,7 +8974,7 @@ document.getElementById('syncOffBtn').addEventListener('click', async ()=>{
    sincronizzati da /mcp (mcp.mjs) e, se qui è acceso «Claude può modificare la scheda», per cambiare la scheda (mai lo
    storico). Qui si crea, si cambia, si revoca e si dà o si toglie il permesso di modificare.
    var (non let): renderSync la legge e può essere chiamata prima che questa parte del codice sia eseguita */
-var mcp = { state:'unknown', token:null, write:false, busy:false, msg:'', kind:'' };
+var mcp = { state:'unknown', token:null, write:false, writeLogs:false, busy:false, msg:'', kind:'' };
 async function mcpReq(action, extra){
   const url = SYNC_API+'?code='+encodeURIComponent(sync.code)+'&op=mcp';
   const r = await fetch(url, action ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(Object.assign({ action }, extra||{})), cache:'no-store' } : { cache:'no-store' });
@@ -8962,7 +8988,7 @@ function mcpErrMsg(e){
     : e.message==='nodata' ? 'Prima sincronizza almeno una volta (Sincronizza ora), poi riprova.'
     : (navigator.onLine===false || e instanceof TypeError) ? 'Serve la rete: riprova quando sei connesso.' : 'Non riuscito ('+e.message+'). Riprova.';
 }
-/* action: null = solo stato (all'apertura delle Impostazioni, in silenzio se fallisce), 'on' | 'new' | 'off' | 'write' ({on}) */
+/* action: null = solo stato (all'apertura delle Impostazioni, in silenzio se fallisce), 'on' | 'new' | 'off' | 'write' | 'writeLogs' ({on}) */
 async function mcpRun(action, extra){
   if(!sync || !sync.code || mcp.busy) return;
   if(!/^https?:$/.test(location.protocol)){ if(action){ mcp.msg = 'Funziona solo con l\'app pubblicata (Netlify).'; mcp.kind = 'warn'; renderMcp(); } return; }
@@ -8971,10 +8997,12 @@ async function mcpRun(action, extra){
     const j = await mcpReq(action, extra);
     mcp.state = j.active && j.token ? 'on' : 'off'; mcp.token = mcp.state==='on' ? String(j.token) : null;
     mcp.write = mcp.state==='on' && j.write===true;
+    mcp.writeLogs = mcp.state==='on' && j.writeLogs===true;
     mcp.msg = action==='new' ? 'Chiave cambiata: in Claude (Personalizza → Connettori → Palestra, menu ⋯) metti questo indirizzo nuovo; con la chiave in Request headers togli il connettore e aggiungilo di nuovo.' : ''; mcp.kind = action==='new' ? 'warn' : '';
     if(action==='on') infoToast('Fatto: copia l\'indirizzo e aggiungilo in Claude come connettore', 3500);
     if(action==='off') infoToast('Claude non legge più i tuoi allenamenti', 3000);
-    if(action==='write') infoToast(mcp.write ? 'Claude può modificare la scheda: ogni modifica compare in Allenamento, con «Rimetti com\'era»' : 'Claude torna a leggere soltanto', 3800);
+    if(action==='write') infoToast(mcp.write ? 'Claude può modificare la scheda: ogni modifica compare in Allenamento, con «Rimetti com\'era»' : 'Claude non può più modificare la scheda', 3800);
+    if(action==='writeLogs') infoToast(mcp.writeLogs ? 'Claude può correggere le serie dello storico: ogni correzione compare in Allenamento, con «Rimetti com\'era»' : 'Claude non può più correggere lo storico', 3800);
   }catch(e){ if(action){ mcp.msg = mcpErrMsg(e); mcp.kind = 'err'; } }
   finally{ mcp.busy = false; renderMcp(); }
 }
@@ -8994,7 +9022,10 @@ function renderMcp(){
   ['mcpOnBtn','mcpNewBtn','mcpOffBtn'].forEach(id=>{ const b = document.getElementById(id); if(b) b.disabled = mcp.busy; });
   const wt = document.getElementById('mcpWriteToggle');
   if(wt){ wt.checked = active && mcp.write; wt.disabled = mcp.busy || !active; }
-  setText(document.getElementById('mcpWriteSub'), mcp.write ? 'Acceso: se glielo chiedi cambia giornate ed esercizi; in Allenamento vedi cosa ha cambiato e puoi rimetterla com\'era. Lo storico non lo tocca.' : 'Spento: Claude legge soltanto.');
+  setText(document.getElementById('mcpWriteSub'), mcp.write ? 'Acceso: se glielo chiedi cambia giornate ed esercizi; in Allenamento vedi cosa ha cambiato e puoi rimetterla com\'era.' : 'Spento: la scheda la legge soltanto.');
+  const lt = document.getElementById('mcpLogsToggle');
+  if(lt){ lt.checked = active && mcp.writeLogs; lt.disabled = mcp.busy || !active; }
+  setText(document.getElementById('mcpLogsSub'), mcp.writeLogs ? 'Acceso: se glielo chiedi corregge kg, ripetizioni o serie di un esercizio già fatto (mai allenamenti creati o cancellati); in Allenamento vedi cosa ha cambiato e puoi rimetterlo com\'era.' : 'Spento: lo storico lo legge soltanto.');
   const st = document.getElementById('mcpStatus');
   st.hidden = !mcp.msg; setText(st, mcp.msg); st.className = 'bk-status sync-st'+(mcp.kind ? ' '+mcp.kind : '');
 }
@@ -9007,6 +9038,11 @@ document.getElementById('mcpWriteToggle').addEventListener('change', e=>{
   const on = e.target.checked;
   e.target.checked = !!mcp.write;   // resta com'era finché il server non conferma
   mcpRun('write', { on });
+});
+document.getElementById('mcpLogsToggle').addEventListener('change', e=>{
+  const on = e.target.checked;
+  e.target.checked = !!mcp.writeLogs;   // resta com'era finché il server non conferma
+  mcpRun('writeLogs', { on });
 });
 document.getElementById('mcpNewBtn').addEventListener('click', async ()=>{
   if(!(await customConfirm('Nuova chiave? Quella di adesso smette subito di funzionare: in Claude dovrai aggiornare il connettore con il nuovo indirizzo.', 'Nuova chiave', 'Annulla'))) return;
@@ -9134,8 +9170,73 @@ function claudeShow(){
   if(session) return;
   closeSettings();
   if(currentTab!=='workout'){ const b = document.querySelector('nav.bottom button[data-tab="workout"]'); if(b) b.click(); }
-  const c = document.getElementById('claudeCard');
-  if(c && c.firstElementChild) try{ c.scrollIntoView({ block:'start', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
+  const c = [document.getElementById('claudeCard'), document.getElementById('claudeLogCard')].find(x=> x && x.firstElementChild);
+  if(c) try{ c.scrollIntoView({ block:'start', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
+}
+/* ---- correzioni di Claude allo storico (correggi_storico): stesso schema della scheda, per gli allenamenti toccati.
+   before = gli allenamenti com'erano qui prima dell'arrivo; after = impronta di ciascuno come sono arrivati. Finché uno
+   solo cambia (da te, da un altro dispositivo) l'avviso non vale più: «Rimetti com'era» cancellerebbe quel cambiamento. */
+var claudeLogNote, claudeLogOpen = false;
+function claudeLogKey(){ return LS_PREFIX+'claude-log'; }
+function claudeLogGet(){
+  if(claudeLogNote===undefined){
+    claudeLogNote = null;
+    try{ const v = JSON.parse(localStorage.getItem(claudeLogKey())||'null'); if(v && typeof v==='object' && Array.isArray(v.before) && v.after && typeof v.after==='object') claudeLogNote = v; }catch(e){}
+  }
+  return claudeLogNote;
+}
+function claudeLogSave(v){ claudeLogNote = v || null; try{ if(v) localStorage.setItem(claudeLogKey(), JSON.stringify(v)); else localStorage.removeItem(claudeLogKey()); }catch(e){} }
+function logSessById(id){ for(const iso of Object.keys(state.logs)){ const i = state.logs[iso].findIndex(x=> String(x.id)===String(id)); if(i>=0) return { iso, i, s:state.logs[iso][i] }; } return null; }
+function claudeLogStale(v){ return v.before.some(b=>{ const f = logSessById(b.session.id); return !f || sessHash(f.s)!==v.after[String(b.session.id)]; }); }
+function claudeLogNoteFrom(cl, before){
+  const after = {}; before.forEach(b=>{ const f = logSessById(b.session.id); if(f) after[String(b.session.id)] = sessHash(f.s); });
+  const lines = (Array.isArray(cl.lines) ? cl.lines : []).slice(0, 60).map(x=> String(x).slice(0, 300));
+  claudeLogSave({ at: num(cl.at) || Date.now(), why: String(cl.why==null ? '' : cl.why).slice(0, 300), undo: cl.undo===true, lines, before, after });
+  claudeLogOpen = false;
+  try{ writeBackup('logs-backup-vclaude', JSON.stringify(before)); }catch(e){}
+}
+function renderClaudeLogCard(){
+  const box = document.getElementById('claudeLogCard'); if(!box) return;
+  let v = claudeLogGet();
+  if(v && claudeLogStale(v)){ claudeLogSave(null); v = null; }
+  if(!v){ if(box.innerHTML) box.innerHTML = ''; return; }
+  const MAX = 6, all = Array.isArray(v.lines) ? v.lines : [], shown = claudeLogOpen || all.length<=MAX+1 ? all : all.slice(0, MAX);
+  box.innerHTML = `<div class="card done-card claude-card">
+    <div class="dc-head">
+      <span class="dc-ic">${ic('spark')}</span>
+      <div class="dc-t"><b>${v.undo ? 'Claude ha rimesso lo storico com\'era' : 'Claude ha corretto lo storico'}</b><span>${escapeHtml(fmtAgo(num(v.at)))}${all.length ? ' · '+(all.length===1 ? '1 correzione' : all.length+' correzioni') : ''}</span></div>
+      <button class="icon-btn" id="claudeLogClose" type="button" aria-label="Va bene, chiudi l'avviso">${ic('x')}</button>
+    </div>
+    ${v.why ? `<p class="cl-why">${escapeHtml(v.why)}</p>` : ''}
+    ${shown.length ? `<ul class="cl-lines">${shown.map(x=> `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : ''}
+    ${shown.length<all.length ? `<button class="btn-ghost cl-more" id="claudeLogMore" type="button">${ic('chevD')}Mostra tutte (${all.length})</button>` : ''}
+    <div class="btn-row cl-actions"><button class="btn" id="claudeLogUndo" type="button">${ic('undo')}Rimetti com'era</button><button class="btn primary" id="claudeLogOk" type="button">${ic('check')}Va bene</button></div>
+  </div>`;
+  const ok = ()=>{ claudeLogSave(null); renderClaudeLogCard(); };
+  document.getElementById('claudeLogClose').addEventListener('click', ok);
+  document.getElementById('claudeLogOk').addEventListener('click', ok);
+  document.getElementById('claudeLogUndo').addEventListener('click', claudeLogUndo);
+  const more = document.getElementById('claudeLogMore');
+  if(more) more.addEventListener('click', ()=>{ claudeLogOpen = true; renderClaudeLogCard(); });
+}
+/* storico cambiato dopo l'arrivo: l'avviso non vale più */
+function claudeLogCheck(){ const v = claudeLogNote; if(v && claudeLogStale(v)){ claudeLogSave(null); renderClaudeLogCard(); } }
+/* mette al posto degli allenamenti di list (iso + session) le versioni date; ritorna le versioni che c'erano */
+function logSwap(list){
+  const prev = [];
+  list.forEach(b=>{ const f = logSessById(b.session.id); if(!f) return; prev.push({ iso:f.iso, session: JSON.parse(JSON.stringify(f.s)) }); state.logs[f.iso][f.i] = JSON.parse(JSON.stringify(b.session)); });
+  return prev;
+}
+async function claudeLogUndo(){
+  const v = claudeLogGet(); if(!v) return;
+  if(session){ showToast('Termina o annulla l\'allenamento in corso prima'); return; }
+  const yes = await customConfirm(v.undo ? 'Rimettere le correzioni di Claude che aveva annullato?' : 'Rimettere gli allenamenti com\'erano prima delle correzioni di Claude?', 'Rimetti com\'era', 'No');
+  if(!yes || session || claudeLogGet()!==v) return;
+  if(claudeLogStale(v)){ claudeLogSave(null); renderClaudeLogCard(); showToast('Gli allenamenti sono cambiati dopo Claude: per tornare indietro correggili a mano da Mese', null, null, 5000, 'warn'); return; }
+  const prev = logSwap(v.before);
+  if(!persist('logs')){ logSwap(prev); showToast('Spazio esaurito: non rimesso com\'era', null, null, 3500, 'err'); return; }
+  claudeLogSave(null); invalidateStats(); renderAll();
+  showToast('Storico rimesso com\'era', 'Rifai', ()=>{ if(session) return; logSwap(prev); if(persist('logs')){ invalidateStats(); renderAll(); } });
 }
 async function claudeUndo(){
   const v = claudeNoteGet(); if(!v) return;

@@ -35,21 +35,21 @@ async function mcpKey(request, store, code) {
   try { const f = await store.getWithMetadata(mkey, { type: "json" }); if (f) { cur = f.data; etag = f.etag || null; } }
   catch (e) { return reply({ error: "lettura non riuscita" }, 503); }
   const on = cur && typeof cur.token === "string";
-  const state = (c) => ({ active: true, token: c.token, at: c.at || 0, write: c.write === true });
+  const state = (c) => ({ active: true, token: c.token, at: c.at || 0, write: c.write === true, writeLogs: c.writeLogs === true });
   if (request.method === "GET") return reply(on ? state(cur) : { active: false });
   let body = null;
   try { body = await request.json(); } catch (e) { return reply({ error: "JSON non valido" }, 400); }
   const action = body && body.action;
-  if (!["on", "new", "off", "write"].includes(action)) return reply({ error: "azione non valida" }, 400);
+  if (!["on", "new", "off", "write", "writeLogs"].includes(action)) return reply({ error: "azione non valida" }, 400);
   if (action === "on" && on) return reply(state(cur));
   if (action === "off") {
     try { if (on) await store.delete("r-" + cur.token); await store.delete(mkey); } catch (e) { return reply({ error: "revoca non riuscita" }, 500); }
     return reply({ active: false });
   }
-  if (action === "write") {
+  if (action === "write" || action === "writeLogs") {
     if (!on) return reply({ error: "collegamento non attivo" }, 409);
     if (typeof body.on !== "boolean") return reply({ error: "on deve essere true o false" }, 400);
-    const next = { ...cur, write: body.on };
+    const next = { ...cur, [action]: body.on };
     try {
       const res = await store.setJSON(mkey, next, etag ? { onlyIfMatch: etag } : {});
       if (res && res.modified === false) return reply({ error: "riprova" }, 409);   // cambiata nello stesso istante altrove
@@ -61,7 +61,7 @@ async function mcpKey(request, store, code) {
   catch (e) { return reply({ error: "lettura non riuscita" }, 503); }
   const token = newToken(), at = Date.now();
   // la chiave nuova tiene il permesso di modificare di quella di prima; una chiave appena creata solo legge
-  const next = { token, at, write: !!(on && cur.write === true) };
+  const next = { token, at, write: !!(on && cur.write === true), writeLogs: !!(on && cur.writeLogs === true) };
   try {
     await store.setJSON("r-" + token, { code, at });
     // condizionata: due dispositivi che creano la chiave nello stesso momento non lasciano una chiave orfana valida
@@ -182,6 +182,8 @@ export default async (request) => {
     allSettings: body.allSettings && typeof body.allSettings === "object" && !Array.isArray(body.allSettings) ? body.allSettings
       : (current && current.allSettings && typeof current.allSettings === "object" ? current.allSettings : undefined),
     claude: current && current.claude && typeof current.claude === "object" && !Array.isArray(current.claude) ? current.claude : undefined,
+    // l'ultima correzione di Claude allo storico (mcp.mjs): resta, l'app la mostra una volta sola
+    claudeLog: current && current.claudeLog && typeof current.claudeLog === "object" && !Array.isArray(current.claudeLog) ? current.claudeLog : undefined,
   };
   let res;
   // con l'etag la scrittura è atomica; se il negozio non lo fornisce (es. in locale) resta il controllo sulla rev
