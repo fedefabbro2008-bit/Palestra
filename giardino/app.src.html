@@ -1286,11 +1286,14 @@ const pastDays = () => { const w=activeWeather(), wb=W.bot;
 const ctx = () => ({oggi:today(), lat:S.location?.lat, eventi:allEvents()});
 // il piano si ricalcola solo se cambia qualcosa che conta (prima: a ogni ridisegno, più volte per ridisegno)
 let pianoMemo={k:'',v:null};
+// nella chiave della memoria la scheda di Claude conta solo per quello che il calcolo ne legge (raccoltaDi: specie, semina e
+// mesi di raccolta); il resto (descrizione, consigli…) è testo lungo che rendeva la chiave grande da scrivere a ogni domanda
+const SOLO_CALCOLO=(k,v)=>k==='scheda'&&v&&typeof v==='object'?[v.specie,v.data_semina,(v.calendario||[]).filter(x=>x&&x.raccolta).map(x=>x.mese)]:v;
 function localPlan(){
   const fut=futDays(); if(!fut.length||!S.plants.length) return null;
   const w=activeWeather(), ev=S.eventi_app, suolo=w?.source==='open-meteo'?w.suolo??null:null;
   const k=[today(), w?.updatedAt, JSON.stringify(fut), w?.archivio?Object.keys(w.archivio).length:0, JSON.stringify(w?.misurata?.giorni||null), suolo, S.location?.lat,
-    JSON.stringify(S.plants), ev.length, ev[0]?.id, ev.at(-1)?.id, EB.eventi.length, EB.aggiornato, JSON.stringify(S.vacanza||null)].join('|');
+    JSON.stringify(S.plants,SOLO_CALCOLO), ev.length, ev[0]?.id, ev.at(-1)?.id, EB.eventi.length, EB.aggiornato, JSON.stringify(S.vacanza||null)].join('|');
   if(pianoMemo.k===k) return pianoMemo.v;
   const pl=pianoLocale({piante:S.plants, past:pastDays(), fut, eventi:allEvents(), oggi:today(), lat:S.location?.lat, vacanza:S.vacanza, suolo});
   pianoMemo={k, v:pl}; return pl;
@@ -1855,7 +1858,9 @@ function renderNotifiche(){
 }
 const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],raccolto:['🧺','raccolta'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito'],pioggia:['🌧','presa la pioggia']};
 const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
+let diarioDel='';
 function renderDiario(){
+  diarioDel=today();
   localPlan();   // la stima del consumo («stima −X%») è quella del bilancio: il piano la calcola (dalla memoria, se non è cambiato niente)
   const ev=allEvents(), t=today(), lim=addDays(t,-29);
   const giorni=Array.from({length:30},(_,i)=>addDays(t,i-29));
@@ -2177,17 +2182,30 @@ function festa(el){ const r=el.getBoundingClientRect(); particelle(r.left+r.widt
 // Se nel frattempo il numero cambia (arriva il meteo, premi Fatto) si ferma e resta quello nuovo.
 function conta(dentro){
   if(!muovi()||!dentro) return;
+  const voci=[];
   for(const el of dentro.querySelectorAll('#heroNum,.task:not(.done) .amt,.tile .tv')){
     const testo=el.textContent, m=/^(\D*?)(\d+)(?:,(\d+))?(\D*)$/.exec(testo); if(!m) continue;
     const dec=m[3]?m[3].length:0, fine=parseFloat(m[2]+'.'+(m[3]||'0')); if(!(fine>0)) continue;
-    const t0=performance.now(), dur=600+Math.min(400,fine*12); let scritto=testo;
-    cancelAnimationFrame(el._conta);
-    const passo=t=>{ if(el.textContent!==scritto) return;
-      const k=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-k,3);
-      scritto=k<1?m[1]+(fine*e).toFixed(dec).replace('.',',')+m[4]:testo; el.textContent=scritto;
-      if(k<1) el._conta=requestAnimationFrame(passo); };
-    el._conta=requestAnimationFrame(passo);
+    cancelAnimationFrame(el._conta); voci.push({el,testo,m,dec,fine});
   }
+  if(!voci.length) return;
+  // Ogni numero cambia a ogni fotogramma: prima ogni cambio faceva ridisporre tutta la pagina (30–50 volte per ogni
+  // cambio di scheda). Durante il conteggio la casella resta della misura del numero finale e chiusa in sé (contain),
+  // così il cambio di cifre ridispone solo lei. Le misure si leggono tutte insieme, prima di cambiare qualcosa.
+  requestAnimationFrame(t0=>{
+    const box=voci.map(v=>v.el.isConnected?v.el.getBoundingClientRect():null);
+    voci.forEach((v,i)=>{
+      const {el,testo,m,dec,fine}=v, r=box[i]; if(!r||el.textContent!==testo) return;
+      const dur=600+Math.min(400,fine*12); let scritto=testo;
+      const libera=()=>{ el.style.removeProperty('width'); el.style.removeProperty('height'); el.style.removeProperty('contain'); };
+      if(r.width>0){ el.style.width=r.width+'px'; el.style.height=r.height+'px'; el.style.contain='strict'; }
+      const passo=t=>{ if(el.textContent!==scritto){ libera(); return; }
+        const k=Math.min(1,Math.max(0,(t-t0)/dur)), e=1-Math.pow(1-k,3);
+        scritto=k<1?m[1]+(fine*e).toFixed(dec).replace('.',',')+m[4]:testo; el.textContent=scritto;
+        if(k<1) el._conta=requestAnimationFrame(passo); else libera(); };
+      passo(t0);
+    });
+  });
 }
 // meteo di oggi dentro il riquadro in alto: gocce, fiocchi, lampi, nebbia, nuvola o il sole (più acceso col caldo)
 function heroMeteo(hero){
@@ -2268,7 +2286,8 @@ function switchView(v){
   if(window.scrollY) window.scrollTo({top:0});
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.view===v)));
   document.querySelectorAll('section.view').forEach(s=>s.hidden=s.id!=='view-'+v);
-  if(v==='diario'||daRifare.has(v)) renderVista(v);
+  // il Diario dice «oggi», «ieri»: aprendolo si ridisegna anche se è cambiato il giorno (prima: sempre, anche senza novità)
+  if(daRifare.has(v)||(v==='diario'&&diarioDel!==today())) renderVista(v);
   entra($('#view-'+v), true);
   if(v==='impostazioni') caricaStato();
 }
@@ -2405,9 +2424,12 @@ function wire(){
     el.forEach(c=>c.getAnimations().forEach(a=>a.cancel()));
     d.open=apre;
     const T={duration:360,easing:'cubic-bezier(.2,.8,.2,1)'};
-    for(const c of el){ const a=A.get(c), b=c.getBoundingClientRect(), dx=a.left-b.left, dy=a.top-b.top;
+    // prima tutte le misure nuove, poi tutte le animazioni: misurare una carta dopo aver animato la precedente faceva
+    // ridisporre la pagina una volta per carta (17 volte con 16 piante)
+    const B=new Map(el.map(c=>[c,c.getBoundingClientRect()])), raggio=getComputedStyle(d).borderRadius||'0';
+    for(const c of el){ const a=A.get(c), b=B.get(c), dx=a.left-b.left, dy=a.top-b.top;
       if(c===d){
-        const r=getComputedStyle(c).borderRadius||'0';
+        const r=raggio;
         const k=[{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}];
         if(apre){ k[0].clipPath=`inset(0 ${Math.max(0,b.width-a.width)}px ${Math.max(0,b.height-a.height)}px 0 round ${r})`; k[1].clipPath=`inset(0 0 0 0 round ${r})`; }
         else { k[0].opacity=.6; k[1].opacity=1; }

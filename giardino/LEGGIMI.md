@@ -112,6 +112,7 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Service worker**: se la pagina del sito è la stessa (stessa `etag`) la copia non si rilegge né si riscrive (prima 370 KB letti due volte e riscritti a ogni apertura).
 - **Ordinamenti e date**: un solo `Intl.Collator` e un solo `Intl.DateTimeFormat` per tipo (`localeCompare` e `toLocaleDateString` ne creavano uno a ogni chiamata); l'elenco delle specie si ordina una volta.
 - **Server**: il meteo di più orti si chiede insieme (`pianiOrti`, connettore); su Telegram la conferma del pulsante e i pulsanti nuovi partono insieme; il bot orario legge crediti ed elenco dei bot insieme.
+- **Meno ridisposizioni della pagina** (misurate in Chromium con telefono simulato 4 volte più lento, 16 piante e 864 eventi): la carta della pianta che si allarga legge tutte le misure prima di animare (ridisposizioni da 18 a 3 aprendo, da 19 a 4 chiudendo); i numeri che contano restano della misura del numero finale e chiusi in sé (`contain: strict`) mentre cambiano cifra; il Diario aprendolo si rifà solo se è cambiato qualcosa o il giorno; la chiave della memoria del piano usa della scheda di Claude solo quello che il calcolo legge (specie, semina, mesi di raccolta).
 - **Prove della rete vera** (`test/sw.test.mjs`): server su localhost e Chromium: apertura dalla copia, versioni nuove, senza rete, compressione e ripiego in chiaro.
 
 ## Più orti (città diverse)

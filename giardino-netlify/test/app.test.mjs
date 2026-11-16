@@ -465,3 +465,61 @@ test("apertura dalla copia sul telefono: piante, meteo e piano subito, senza asp
   assert.equal(arrivate.meteo, 2, "meteo: una richiesta di base e una dei modelli, non due volte");
   assert.deepEqual(errori, []);
 });
+
+const { addDays } = await import("../netlify/lib/modello.mjs");
+test("lavoro risparmiato: carta della pianta senza ridisposizioni a catena, numeri che contano chiusi in sé, piano e Diario rifatti solo se serve", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-LAVORO-RISPARMIATO-ABCDE", H = { "x-giardino-code": CODE, "content-type": "application/json" };
+  const pianta = (id, nome, extra = {}) => ({ id, nome, specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "aperto", ...extra });
+  const scheda = { specie: "carota", data_semina: addDays(OGGI, -20), aggiornata: new Date().toISOString(), descrizione: "Testo lungo", calendario: [{ mese: addDays(OGGI, 120).slice(0, 7), fase: "raccolta", raccolta: true }] };
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: H, body: JSON.stringify({ changes: { location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 },
+    plants: [pianta("a", "Alfa"), pianta("b", "Beta"), pianta("c", "Gamma"), pianta("d", "Delta"), pianta("ca", "Carote", { specie: "carota", fase: "auto", data_semina: addDays(OGGI, -20), tipo_data: "semina", vaso: 20, scheda })] } }) }));
+  const ctx = await contesto(browser);
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await quando(page, () => document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5 && activePlan());
+
+  // 1. carta che si allarga: prima tutte le misure, poi tutte le animazioni (prima: una ridisposizione per carta)
+  await page.click("#tab-piante"); await page.waitForTimeout(700);
+  const ordine = await page.evaluate(() => {
+    const log = [], gbr = Element.prototype.getBoundingClientRect, an = Element.prototype.animate;
+    Element.prototype.getBoundingClientRect = function () { log.push("misura"); return gbr.call(this); };
+    Element.prototype.animate = function (...a) { log.push("anima"); return an.apply(this, a); };
+    document.querySelector("#plantList details.plant > summary").click();
+    Element.prototype.getBoundingClientRect = gbr; Element.prototype.animate = an;
+    return log.join(" ");
+  });
+  assert.match(ordine, /anima/, "la carta si anima");
+  assert.ok(!/anima.*misura/.test(ordine), "nessuna misura dopo la prima animazione: " + ordine);
+
+  // 2. numeri che contano: durante il conteggio la casella ha la misura del numero finale ed è chiusa in sé; poi torna normale
+  await page.click("#tab-oggi"); await page.waitForTimeout(150);
+  const durante = await page.evaluate(() => [...document.querySelectorAll("#heroNum,.task:not(.done) .amt")].filter((el) => /\d/.test(el.textContent)).map((el) => [el.style.contain, /px$/.test(el.style.width)]));
+  assert.ok(durante.length >= 2, "numeri da contare in Oggi");
+  assert.ok(durante.every(([c, w]) => c === "strict" && w), "durante il conteggio le caselle non fanno ridisporre la pagina: " + JSON.stringify(durante));
+  await page.waitForTimeout(1300);
+  const dopo = await page.evaluate(() => [...document.querySelectorAll("#heroNum,.task:not(.done) .amt")].map((el) => el.style.contain + el.style.width + el.style.height));
+  assert.ok(dopo.every((x) => x === ""), "finito: niente misure fisse");
+  assert.equal(await page.textContent("#heroNum"), String(await page.evaluate(() => document.querySelectorAll("#todayList .task:not(.done)").length)), "numero finale giusto");
+  // 3. Diario: riaprendolo senza novità non si rifà; con un evento nuovo sì
+  const rifatti = await page.evaluate(async () => {
+    let n = 0; const vero = renderDiario; renderDiario = () => { n++; vero(); };
+    const vai = async (v) => { document.querySelector("#tab-" + v).click(); await new Promise((r) => setTimeout(r, 250)); };
+    await vai("diario"); n = 0;   // la prima volta si disegna
+    await vai("oggi"); await vai("diario"); await vai("piante"); await vai("diario"); const senza = n;
+    await vai("oggi"); document.querySelector('#restList [data-ev="fatto"]').click(); await new Promise((r) => setTimeout(r, 200)); await vai("diario");
+    renderDiario = vero; return [senza, n];
+  });
+  assert.deepEqual(rifatti, [0, 1], "Diario rifatto solo dopo una novità");
+
+  // 4. piano: la descrizione della scheda non lo fa ricalcolare, i mesi di raccolta sì (le fasi delle carote cambiano)
+  const piano = await page.evaluate(() => {
+    const p0 = localPlan(), car = S.plants.find((p) => p.id === "ca");
+    car.scheda = { ...car.scheda, descrizione: "Un'altra descrizione, molto più lunga" }; const p1 = localPlan();
+    car.scheda = { ...car.scheda, calendario: [{ mese: car.scheda.calendario[0].mese.slice(0, 4) - 0 + 1 + "-01", fase: "raccolta", raccolta: true }] }; const p2 = localPlan();
+    return [p0 === p1, p1 === p2];
+  });
+  assert.deepEqual(piano, [true, false], "ricalcolo solo se cambia ciò che il calcolo legge");
+  assert.deepEqual(errori, []);
+});
