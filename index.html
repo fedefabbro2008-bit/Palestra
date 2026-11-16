@@ -1407,6 +1407,38 @@ nav.bottom button:active{transform:scale(.94);}
   nav.bottom button.active .ic{animation:navSaltello .5s cubic-bezier(.3,1.6,.5,1);}
 }
 @keyframes navSaltello{0%{transform:scale(.8) translateY(2px)} 60%{transform:scale(1.15) translateY(-3px)} 100%{transform:none}}
+
+/* ===================== ANIMAZIONI (giro della barra) =====================
+   1 timer: anello e capsula si riempiono in modo continuo · 2 la serie dopo si accende · 6 interruttori elastici
+   7 pillola che scorre sulle giornate · 9 numeri che contano · 10 riquadri di Progressi che compaiono · 12 fiammella */
+.timer-bar{position:relative; overflow:hidden;}
+.timer-bar .tb-prog{position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(255,255,255,.6); transform-origin:0 50%; transform:scaleX(0); pointer-events:none;}
+.timer-bar.ended .tb-prog, .timer-bar.paused .tb-prog{opacity:.55;}
+@keyframes nextGlow{0%{background-color:transparent;} 30%{background-color:color-mix(in srgb, var(--accent-hi) 22%, transparent);} 100%{background-color:transparent;}}
+.day-pills{position:relative;}
+.day-pills .dp-ind{position:absolute; left:0; top:0; width:0; height:0; border-radius:12px; background:var(--accent-dim); border:1px solid var(--accent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14), 0 0 18px rgba(184,25,58,.18); pointer-events:none; z-index:0; opacity:0;}
+.day-pills.has-ind .day-pill{position:relative; z-index:1;}
+.day-pills.has-ind .day-pill:not(.active){background:color-mix(in srgb, var(--card-2) 72%, transparent);}
+.day-pills.has-ind .day-pill.active{background:transparent; border-color:transparent; box-shadow:none;}
+.day-pills.has-ind .dp-ind{opacity:1;}
+.reveal{opacity:0; transform:translateY(18px) scale(.985);}
+.reveal.in{opacity:1; transform:none; transition:opacity .45s ease, transform .5s cubic-bezier(.2,.8,.2,1);}
+.flame{display:inline-block; width:1.05em; height:1.05em; vertical-align:-.17em; margin-right:2px; overflow:visible;}
+.flame .fo{fill:url(#flameGrad);} .flame .fi{fill:#ffd54a;}
+@media (prefers-reduced-motion: no-preference){
+  .sess-set-row.next-glow{animation:nextGlow 1s ease;}
+  .switch .knob{transition:transform .4s cubic-bezier(.3,1.45,.5,1), width .2s ease, background .2s ease;}
+  .switch input:active:not(:disabled) ~ .knob{width:25px;}
+  .switch input:checked:active:not(:disabled) ~ .knob{transform:translateX(13px);}
+  .day-pills .dp-ind.go{transition:left .5s cubic-bezier(.3,1.35,.45,1), width .5s cubic-bezier(.3,1.35,.45,1), top .3s ease, height .3s ease;}
+  .flame{transform-origin:50% 90%; animation:flameFlick 1.8s ease-in-out infinite;}
+  .flame .fi{transform-origin:50% 95%; animation:flameCore 1.1s ease-in-out infinite;}
+  .flame.lit{animation:flameLit .7s cubic-bezier(.3,1.6,.5,1), flameFlick 1.8s ease-in-out .7s infinite;}
+}
+@keyframes flameFlick{0%,100%{transform:scale(1,1) rotate(-2deg);} 30%{transform:scale(.96,1.06) rotate(2deg);} 60%{transform:scale(1.03,.97) rotate(-1deg);}}
+@keyframes flameCore{0%,100%{transform:scale(1);} 50%{transform:scale(.85,1.12);}}
+@keyframes flameLit{0%{transform:scale(.2); opacity:0;} 60%{transform:scale(1.35); opacity:1;} 100%{transform:scale(1);}}
 /* timer di recupero: capsula di vetro color accento sopra la barra */
 .timer-bar{border-radius:24px; border:1px solid rgba(255,255,255,.22);
   background:rgba(184,25,58,.62); -webkit-backdrop-filter:var(--glass-blur); backdrop-filter:var(--glass-blur);
@@ -2213,8 +2245,10 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
   </div>
 </div>
 
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><linearGradient id="flameGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#e8283c"/><stop offset=".55" stop-color="#ff6a2b"/><stop offset="1" stop-color="#ffa53a"/></linearGradient></defs></svg>
 <div class="bottom-stack">
   <div class="timer-bar" id="timerBar">
+    <i class="tb-prog" id="tbProg" aria-hidden="true"></i>
     <div class="tb-info">
       <span class="tb-label" id="tbLabel">Timer</span>
       <span class="tb-time mono" id="tbTime">2:00</span>
@@ -3176,12 +3210,33 @@ document.addEventListener('blur', (e)=>{
 const tabScroll = { workout:0, stats:0, month:0, plan:0 };
 /* le statistiche stanno in tre tab: "stats" (settimana), "month" (mese) e "plan" (progressi della scheda) */
 function isStatsTab(t){ return t==='stats' || t==='month' || t==='plan'; }
+/* 9. la prima volta che apri Settimana, Mese o Progressi i numeri del riepilogo contano da 0 al loro valore;
+   10. in Progressi i riquadri sotto lo schermo compaiono con una dissolvenza quando ci arrivi scorrendo (una volta sola) */
+const statsFxDone = new Set();
+const CNT_FMT = { int: v=> fn(Math.round(v)), ton: v=> fmtTon(v), min: v=> fmtMin(v) };
+function statsFirstFx(tab){
+  if(statsFxDone.has(tab)) return;
+  statsFxDone.add(tab);
+  if(!motionOK()) return;
+  const box = document.getElementById('tab-'+tab); if(!box) return;
+  box.querySelectorAll('[data-cnt]').forEach(el=>{
+    const to = +el.dataset.cnt, f = CNT_FMT[el.dataset.cf];
+    if(f && to>0 && el.textContent===f(to)) countTo(el, to, f, { from:0, ms:750 });
+  });
+  if(tab!=='plan' || typeof IntersectionObserver!=='function') return;
+  const below = [...box.querySelectorAll('.card')].filter(c=> !c.parentElement.closest('.card') && c.offsetHeight && c.getBoundingClientRect().top > innerHeight - 40);
+  if(!below.length) return;
+  const io = new IntersectionObserver(es=> es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); setTimeout(()=> e.target.classList.remove('reveal','in'), 700); } }), { rootMargin:'0px 0px -8% 0px' });
+  below.forEach(c=>{ c.classList.add('reveal'); io.observe(c); });
+}
 /* pillola della barra: la posizione è solo l'indice della sezione (--i); lo scivolamento elastico lo fa il CSS */
 function navIndTo(btn){
   const nav = document.querySelector('nav.bottom'); if(!nav || !btn) return;
   nav.style.setProperty('--i', [...nav.querySelectorAll('button')].indexOf(btn));
 }
 navIndTo(document.querySelector('nav.bottom button.active'));
+// su iPhone :active (interruttori che si allungano premendo) funziona solo se la pagina ascolta i tocchi
+document.addEventListener('touchstart', ()=>{}, { passive:true });
 /* le sezioni cambiano al tocco anche mentre la pagina scorre per inerzia: su iPhone il tocco che ferma lo scorrimento
    non diventa un «click» e andava a vuoto (come nel giardino). Con mouse e tastiera resta il click. */
 (()=>{
@@ -3226,6 +3281,7 @@ document.querySelectorAll('nav.bottom button').forEach(btn=>{
       // (le notifiche stanno nelle Impostazioni: si aggiornano quando le apri, non a ogni cambio di sezione)
     }
     if(currentTab==='workout' && session){ fitSessionNames(); updateSessionElapsed(); }
+    if(isStatsTab(currentTab)) try{ statsFirstFx(currentTab); }catch(e){}
     // si riposiziona solo se serve: assegnare scrollTop obbliga il browser a impaginare subito tutta la sezione
     const want = tabScroll[currentTab] || 0;
     if(want !== prevTop) main.scrollTop = want;
@@ -3410,12 +3466,32 @@ function renderDayPills(){
     if(isSpare(k) && spareWrap){ btn.classList.add('spare'); spareWrap.appendChild(btn); }
     else wrap.appendChild(btn);
   });
-  if(!planEditMode) return;   // aggiungere una giornata è una modifica della scheda: il "+" compare in Modifica
-  const addBtn = document.createElement('button');
-  addBtn.className='day-pill add-day-pill'; addBtn.innerHTML=ic('plus'); addBtn.title='Nuova giornata'; addBtn.setAttribute('aria-label','Nuova giornata');
-  addBtn.addEventListener('click', addNewDay);
-  wrap.appendChild(addBtn);
+  if(planEditMode){   // aggiungere una giornata è una modifica della scheda: il "+" compare in Modifica
+    const addBtn = document.createElement('button');
+    addBtn.className='day-pill add-day-pill'; addBtn.innerHTML=ic('plus'); addBtn.title='Nuova giornata'; addBtn.setAttribute('aria-label','Nuova giornata');
+    addBtn.addEventListener('click', addNewDay);
+    wrap.appendChild(addBtn);
+  }
+  placeDayInd(wrap);
 }
+/* 7. evidenziazione della giornata scelta: un riquadro solo che scivola da una giornata all'altra (come la barra in basso).
+   Le giornate si ricreano a ogni disegno: il riquadro resta lo stesso elemento, quindi scivola dalla posizione di prima */
+let dayInd = null;
+function placeDayInd(wrap){
+  if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); }
+  const a = wrap.querySelector('.day-pill.active');
+  wrap.insertBefore(dayInd, wrap.firstChild);
+  void dayInd.offsetWidth;   // rimesso nella lista: si calcola la posizione di prima, così scivola da lì
+  if(!a || !a.offsetWidth){ wrap.classList.remove('has-ind'); dayInd.classList.remove('go'); dayInd._at = null; return; }
+  const at = [a.offsetLeft, a.offsetTop, a.offsetWidth, a.offsetHeight];
+  // la prima volta (o dopo essere stata nascosta) si mette al suo posto senza scivolare
+  dayInd.classList.toggle('go', !!dayInd._at && motionOK());
+  if(!dayInd._at) void dayInd.offsetWidth;
+  dayInd.style.left = at[0]+'px'; dayInd.style.top = at[1]+'px'; dayInd.style.width = at[2]+'px'; dayInd.style.height = at[3]+'px';
+  dayInd._at = at;
+  wrap.classList.add('has-ind');
+}
+addEventListener('resize', ()=>{ const w = document.getElementById('dayPills'); if(w && dayInd && dayInd._at){ dayInd._at = null; placeDayInd(w); } });
 /* allenamenti corti: un pulsante discreto sotto le giornate apre la finestra con le riserve */
 function renderSpareOpen(){
   const b = document.getElementById('spareOpenBtn'); if(!b) return;
@@ -3545,7 +3621,8 @@ function renderWorkout(){
     row.className='stat-line';
     const prevStats = homeStatsShown;
     homeStatsShown = { m:monthCount, s:streak, t:total };
-    row.innerHTML = `<span><b id="statMonth">${monthCount}</b> questo mese</span><i> · </i><span><b id="statStreak">${streak}</b> ${streak===1?'settimana':'settimane'} di fila</span><i> · </i><span><b id="statTotal">${total}</b> in tutto</span>`;
+    const lit = !!(prevStats && streak > prevStats.s);   // la serie è appena aumentata: la fiammella si accende
+    row.innerHTML = `<span><b id="statMonth">${monthCount}</b> questo mese</span><i> · </i><span>${streak>0 ? `<svg class="flame${lit?' lit':''}" viewBox="0 0 24 24" aria-hidden="true"><path class="fo" d="M12 2.5c.6 3.2 2.6 4.9 4.3 6.9 1.5 1.8 2.7 3.8 2.7 6.2A7 7 0 0 1 5 15.6c0-2.6 1.3-4.6 2.9-6.1.3 1.7 1.1 2.9 2.4 3.5-.6-3.9.2-7.3 1.7-10.5z"/><path class="fi" d="M12.2 11.2c1.5 1.6 3 3.1 3 5.1a3.2 3.2 0 0 1-6.4 0c0-1.4.8-2.5 1.7-3.3.1.8.5 1.4 1.1 1.7-.2-1.3.1-2.4.6-3.5z"/></svg>` : ''}<b id="statStreak">${streak}</b> ${streak===1?'settimana':'settimane'} di fila</span><i> · </i><span><b id="statTotal">${total}</b> in tutto</span>`;
     if(prevStats){ [['statMonth','m'],['statStreak','s'],['statTotal','t']].forEach(([id,k])=>{ if(prevStats[k]!==homeStatsShown[k]) countTo(document.getElementById(id), homeStatsShown[k], v=> String(Math.round(v)), { from:prevStats[k], ms:600 }); }); }
   }
 
@@ -5640,6 +5717,7 @@ function renderSessionList(){
       tickSound();
       const newBtn = list.querySelector(`.check[data-ei="${ei}"][data-si="${si}"]`);
       if(newBtn){ newBtn.classList.add('pulse'); setTimeout(()=>newBtn.classList.remove('pulse'), 400); }
+      if(becomingDone) setTimeout(nextSetGlow, 320);
       if(becomingDone && newBtn){
         const row = newBtn.closest('.sess-set-row'); if(row) row.classList.add('just-done');
         // ultima serie dell'esercizio: un lampo sul riquadro (già richiuso)
@@ -6718,8 +6796,8 @@ function heroHtml(cur, expected, d){
   d = d || {};
   // solo corpo libero (0 kg): al posto di "Peso sollevato 0 kg" le ripetizioni
   const second = cur.ton>0 || !cur.reps
-    ? `<span class="k">Peso sollevato</span><span class="v">${fmtTon(cur.ton)} ${d.ton||''}</span>`
-    : `<span class="k">Ripetizioni</span><span class="v">${fn(Math.round(cur.reps))} ${d.reps||''}</span>`;
+    ? `<span class="k">Peso sollevato</span><span class="v"><span data-cnt="${cur.ton}" data-cf="ton">${fmtTon(cur.ton)}</span> ${d.ton||''}</span>`
+    : `<span class="k">Ripetizioni</span><span class="v"><span data-cnt="${Math.round(cur.reps)}" data-cf="int">${fn(Math.round(cur.reps))}</span> ${d.reps||''}</span>`;
   expected = Math.max(1, Math.round(expected));
   const ratio = Math.min(1, cur.n/expected);
   // rosso sotto il 75% degli allenamenti previsti, verde dal 75% al 100%, azzurro oltre (più del previsto)
@@ -6730,12 +6808,12 @@ function heroHtml(cur, expected, d){
           <circle class="m-ring-bg" cx="50" cy="50" r="42"/>
           <circle class="m-ring-val" cx="50" cy="50" r="42" pathLength="1" style="stroke-dashoffset:${(1-ratio).toFixed(3)}"/>
         </svg>
-        <div class="m-ring-txt"><b>${cur.n}</b><span>di ${expected}</span></div>
+        <div class="m-ring-txt"><b data-cnt="${cur.n}" data-cf="int">${cur.n}</b><span>di ${expected}</span></div>
       </div>
       <div class="m-nums">
-        <div class="m-num"><span class="k">Allenamenti</span><span class="v">${cur.n} ${d.n||''}</span></div>
+        <div class="m-num"><span class="k">Allenamenti</span><span class="v"><span data-cnt="${cur.n}" data-cf="int">${cur.n}</span> ${d.n||''}</span></div>
         <div class="m-num">${second}</div>
-        <div class="m-num"><span class="k">In palestra</span><span class="v">${fmtMin(cur.min)} ${d.min||''}</span></div>
+        <div class="m-num"><span class="k">In palestra</span><span class="v"><span data-cnt="${cur.min}" data-cf="min">${fmtMin(cur.min)}</span> ${d.min||''}</span></div>
       </div>
     </div>`;
 }
@@ -8299,7 +8377,7 @@ function tick(){
   const rem=Math.ceil((timer.endAt-Date.now())/1000);
   const prev=timer.remaining;
   timer.remaining=Math.max(0,rem);
-  if(rem>0 && rem<=3 && rem!==prev){ blip(1400,0.07,0.12); timerPulse(); }   // conto alla rovescia finale: suono e battito
+  if(rem>0 && rem<=3 && rem!==prev){ blip(1400,0.07,0.12); timerPulse(); if(navigator.vibrate && motionOK()) try{ navigator.vibrate(25); }catch(e){} }   // conto alla rovescia finale: suono, battito e vibrazione
   if(rem<=0 && !timer.notified){
     timer.notified=true; timer.running=false; timer.paused=false; timer.endAt=null; timer.remaining=timer.duration;
     clearInterval(timerHandle); saveTimer(); beep();
@@ -8312,6 +8390,19 @@ function tick(){
   }
   // in background il conto continua (suono e vibrazione a fine recupero), ma non si ridisegna niente
   if(document.visibilityState!=='hidden') refreshTimerUI();
+}
+/* 2. dopo una spunta: la serie che tocca si illumina e, se è fuori dallo schermo (sotto la barra o sopra), ci si scorre */
+function nextSetGlow(){
+  if(!session || currentTab!=='workout') return;
+  const row = document.querySelector('#sessList .sess-set-row.next'); if(!row) return;
+  if(motionOK()){ row.classList.remove('next-glow'); void row.offsetWidth; row.classList.add('next-glow'); row.addEventListener('animationend', ()=> row.classList.remove('next-glow'), { once:true }); }
+  const main = document.querySelector('main'); if(!main) return;
+  const r = row.getBoundingClientRect(), tb = document.querySelector('.session-topbar');
+  const top = (tb && tb.offsetHeight ? tb.getBoundingClientRect().bottom : 0) + 12;
+  const stack = document.querySelector('.bottom-stack'), bottom = (stack ? stack.getBoundingClientRect().top : innerHeight) - 16;
+  let d = 0;
+  if(r.bottom > bottom) d = r.bottom - bottom + 40; else if(r.top < top) d = r.top - top - 40;
+  if(Math.abs(d) > 4) try{ main.scrollBy({ top:d, behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){ main.scrollTop += d; }
 }
 /* 5. ultimi 3 secondi: anello e barra fanno un battito a ogni secondo */
 function timerPulse(){
@@ -8337,6 +8428,26 @@ function updateSheetDisplay(){
   const pct = timer.duration>0 ? (1 - timer.remaining/timer.duration) : 0;
   const ring = document.getElementById('timerRing');
   if(ring){ const C=2*Math.PI*54, off=(C*(1-pct)).toFixed(1); if(ring._off!==off){ ring.style.strokeDasharray=C; ring.style.strokeDashoffset=off; ring._off=off; } }
+  timerFlow(pct);
+}
+/* 1. anello e capsula del timer si riempiono in modo continuo (non a scatti di un secondo): un'animazione lineare fino a
+   endAt, rifatta solo quando cambia il recupero (avvio, +15 s, pausa, stop) */
+let timerFlowKey = null, timerFlowAnims = [];
+function timerFlow(pct){
+  const ring = document.getElementById('timerRing'), bar = document.getElementById('tbProg');
+  const live = timer.running && timer.endAt && motionOK();
+  const key = live ? timer.endAt+'|'+timer.duration : 'p'+pct.toFixed(3);
+  if(key===timerFlowKey) return;
+  timerFlowKey = key;
+  timerFlowAnims.forEach(a=>{ try{ a.cancel(); }catch(e){} }); timerFlowAnims = [];
+  if(bar) bar.style.transform = 'scaleX('+Math.max(0, Math.min(1, pct)).toFixed(4)+')';
+  if(!live) return;
+  const left = timer.endAt - Date.now(); if(!(left>0) || !(timer.duration>0)) return;
+  const p0 = Math.max(0, Math.min(1, 1 - left/1000/timer.duration)), C = 2*Math.PI*54, opt = { duration:left, easing:'linear', fill:'forwards' };
+  try{
+    if(ring) timerFlowAnims.push(ring.animate([{ strokeDashoffset: C*(1-p0) }, { strokeDashoffset: 0 }], opt));
+    if(bar) timerFlowAnims.push(bar.animate([{ transform:'scaleX('+p0.toFixed(4)+')' }, { transform:'scaleX(1)' }], opt));
+  }catch(e){}
 }
 function refreshTimerUI(){
   updateSheetDisplay();
