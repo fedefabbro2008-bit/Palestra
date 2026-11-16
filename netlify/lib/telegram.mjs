@@ -41,7 +41,7 @@ export async function findChat(token) {
 }
 
 /* il file di backup e la didascalia, dai dati sincronizzati */
-export function buildBackup(data, now = Date.now()) {
+export function buildBackup(data, now = Date.now(), code = null) {
   const logs = data && data.logs && typeof data.logs === "object" && !Array.isArray(data.logs) ? data.logs : {};
   const days = data && data.days && typeof data.days === "object" ? data.days : {};
   const isos = Object.keys(logs).filter((k) => Array.isArray(logs[k]) && logs[k].length).sort();
@@ -50,11 +50,12 @@ export function buildBackup(data, now = Date.now()) {
   // quelle sincronizzate (tema, sfondo, testo per Claude…), che valgono per tutti i dispositivi
   const obj = (o) => o && typeof o === "object" && !Array.isArray(o) ? o : {};
   const settings = { ...obj(data && data.allSettings), ...obj(data && data.settings) };
-  const file = { type: "palestra-backup", schemaVersion: 2, exportedAt: new Date(now).toISOString(), source: "telegram", days, logs, settings };
+  // come nell'app: il codice di sincronizzazione, per ricollegare tutto importando il file su un altro telefono (il token no)
+  const file = { type: "palestra-backup", schemaVersion: 2, exportedAt: new Date(now).toISOString(), source: "telegram", ...(code ? { link: { sync: code } } : {}), days, logs, settings };
   const nDays = Object.keys(days).length;
   const last = isos.length ? isos[isos.length - 1] : null;
   const caption = `Backup Palestra · ${dmy(now)}\n${n === 1 ? "1 allenamento" : n + " allenamenti"}${last ? " · ultimo " + last.slice(8, 10) + "/" + last.slice(5, 7) : ""} · scheda di ${nDays === 1 ? "1 giornata" : nDays + " giornate"}`
-    + `\nPer ripristinarlo: app Palestra → Impostazioni → Backup e dati → Importa questo file.`;
+    + `\nPer ripristinarlo: app Palestra → Impostazioni → Backup e dati → Importa questo file (ricollega anche sincronizzazione, Telegram e Claude). Contiene il codice di sincronizzazione: non inoltrarlo.`;
   return { json: JSON.stringify(file), name: `palestra-backup-${ymd(now)}.json`, caption, sessions: n };
 }
 
@@ -62,7 +63,7 @@ export function buildBackup(data, now = Date.now()) {
 export async function sendBackup(store, code, conf, now = Date.now()) {
   const data = await store.get("u-" + code, { type: "json" });
   if (!data) throw new Error("Nessun dato sincronizzato con questo codice");
-  const b = buildBackup(data, now);
+  const b = buildBackup(data, now, code);
   const fd = new FormData();
   fd.append("chat_id", conf.chatId);
   fd.append("caption", b.caption);

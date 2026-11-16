@@ -1988,7 +1988,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9M10 13h4"/></svg>Backup e dati<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoBackup"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoBackup"><p>I dati stanno su questo dispositivo; con la sincronizzazione attiva anche sul server, protetti dal tuo codice (vedi <b>Più dispositivi e senza rete</b>). Il <b>backup completo</b> contiene scheda, storico e tutte le impostazioni (tema, RPE, <span class="only-ios">orologio, salva su File, notifiche,</span><span class="only-android">scarica a fine allenamento,</span> testo per Claude): è quello da tenere da parte e, reimportato, rimette l'app esattamente com'era.</p><p><b>Backup automatico</b>: a fine allenamento l'app salva da sola una copia completa (scheda, storico e impostazioni) sul telefono, separata dai dati dell'app, e cancella quella precedente: ce n'è sempre una sola, la più recente. <b>Ripristina</b> (in Altre opzioni) la rimette al posto dei dati di adesso.</p><p class="only-ios">Quella copia resta sul telefono: se elimini l'app dalla schermata Home se ne va con lei. Per averla anche fuori dal telefono tieni attivo <b>Salva su File</b>: un'app web non può salvare su File senza un tuo tocco, quindi a fine allenamento ti apre già il menu giusto.</p><p class="only-android">Quella copia resta sul telefono: se disinstalli l'app o cancelli i dati di Chrome per questo sito se ne va con lei. Per averla anche fuori dall'app tieni attivo <b>Scarica il backup a fine allenamento</b>: il file finisce nella cartella <b>Download</b>, da lì puoi anche caricarlo su Google Drive.</p></div>
+      <div class="card-info" id="infoBackup"><p>I dati stanno su questo dispositivo; con la sincronizzazione attiva anche sul server, protetti dal tuo codice (vedi <b>Più dispositivi e senza rete</b>). Il <b>backup completo</b> contiene scheda, storico e tutte le impostazioni (tema, RPE, <span class="only-ios">orologio, salva su File, notifiche,</span><span class="only-android">scarica a fine allenamento,</span> testo per Claude): è quello da tenere da parte e, reimportato, rimette l'app esattamente com'era.</p><p>Con la sincronizzazione attiva il backup contiene anche il <b>codice di sincronizzazione</b>: importandolo su un altro telefono l'app propone di ricollegarlo, e tornano sincronizzazione, backup su Telegram e Claude senza rifare niente. Per questo il file va tenuto per te: chi lo ha può leggere e cambiare i tuoi dati sincronizzati. Il token del bot e la chiave di Claude non ci sono.</p><p><b>Backup automatico</b>: a fine allenamento l'app salva da sola una copia completa (scheda, storico e impostazioni) sul telefono, separata dai dati dell'app, e cancella quella precedente: ce n'è sempre una sola, la più recente. <b>Ripristina</b> (in Altre opzioni) la rimette al posto dei dati di adesso.</p><p class="only-ios">Quella copia resta sul telefono: se elimini l'app dalla schermata Home se ne va con lei. Per averla anche fuori dal telefono tieni attivo <b>Salva su File</b>: un'app web non può salvare su File senza un tuo tocco, quindi a fine allenamento ti apre già il menu giusto.</p><p class="only-android">Quella copia resta sul telefono: se disinstalli l'app o cancelli i dati di Chrome per questo sito se ne va con lei. Per averla anche fuori dall'app tieni attivo <b>Scarica il backup a fine allenamento</b>: il file finisce nella cartella <b>Download</b>, da lì puoi anche caricarlo su Google Drive.</p></div>
       <div class="btn-grid">
         <button class="btn primary" id="exportAllBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>Backup completo</button>
         <button class="btn" id="importBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m0 0l-4 4m4-4l4 4M4 5h16"/></svg>Importa</button>
@@ -2068,7 +2068,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card" id="tgCard" hidden>
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4L3 11l6 2.5L11.5 20 15 15l4.5 3.5z"/><path d="M9 13.5l6-4.5"/></svg>Backup su Telegram<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoTg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoTg"><p>Il <b>1° e il 16 di ogni mese</b> (verso le 8 d'inverno, le 9 d'estate) il server ti manda su Telegram il <b>backup completo</b>: scheda, storico e impostazioni, lo stesso file di «Backup completo». Funziona anche con l'app chiusa, perché parte dai dati <b>sincronizzati</b>.</p><p>Per ripristinarlo: scarica il file da Telegram e in <b>Backup e dati</b> tocca <b>Importa</b>.</p><p>Il <b>token</b> del bot resta sul server: l'app non lo rilegge e non lo mostra. <b>Scollega</b> lo cancella. Il bot può essere anche quello di un'altra tua app: in quel caso, se non trova la chat, scrivi il chat ID a mano.</p></div>
+      <div class="card-info" id="infoTg"><p>Il <b>1° e il 16 di ogni mese</b> (verso le 8 d'inverno, le 9 d'estate) il server ti manda su Telegram il <b>backup completo</b>: scheda, storico e impostazioni, lo stesso file di «Backup completo». Funziona anche con l'app chiusa, perché parte dai dati <b>sincronizzati</b>.</p><p>Per ripristinarlo: scarica il file da Telegram e in <b>Backup e dati</b> tocca <b>Importa</b>. Il file contiene il codice di sincronizzazione: su un telefono nuovo l'app propone di ricollegarlo, e tornano anche sincronizzazione, Telegram e Claude.</p><p>Il <b>token</b> del bot resta sul server: l'app non lo rilegge e non lo mostra. <b>Scollega</b> lo cancella. Il bot può essere anche quello di un'altra tua app: in quel caso, se non trova la chat, scrivi il chat ID a mano.</p></div>
       <div id="tgOff">
         <p class="sync-intro">Due volte al mese ti arriva su Telegram il backup completo, da reimportare se perdi o cambi telefono.</p>
         <ol class="clock-steps">
@@ -7817,12 +7817,17 @@ function downloadJSON(obj, filename, isBackup, okMsg){
 /* ---------- backup automatico a fine allenamento ----------
    Copia completa (scheda + storico + impostazioni) in IndexedDB: fuori da localStorage, quindi non ne
    consuma i 5 MB. Ce n'è una sola: ogni allenamento la sostituisce e la precedente sparisce. */
-function backupData(){ return { type:'palestra-backup', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), days:state.days, logs:logsForExport(), settings:state.settings }; }
+/* collegamento nel backup: il solo codice di sincronizzazione. Sincronizzazione, backup su Telegram e Claude stanno sul server
+   sotto quel codice, quindi reimportando il file su un altro telefono e ricollegando il codice tornano tutti e tre.
+   Il token del bot e la chiave di Claude restano sul server: nel file non ci sono. */
+function backupLink(){ return (sync && sync.code) ? { sync: sync.code } : null; }
+function backupData(){ const link = backupLink(); return { type:'palestra-backup', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), ...(link ? { link } : {}), days:state.days, logs:logsForExport(), settings:state.settings }; }
 /* reuseLogs: subito dopo un salvataggio riuscito dello storico il suo testo è già pronto (savedText.logs, stessa forma
    compatta): si riusa invece di riserializzare tutti gli allenamenti (con anni di storico, decine di ms a ogni Termina) */
 function backupJson(reuseLogs){
   if(reuseLogs && !logsLocked && typeof savedText.logs==='string' && savedText.logs.charAt(0)==='{'){
-    const head = JSON.stringify({ type:'palestra-backup', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), days:state.days });
+    const link = backupLink();
+    const head = JSON.stringify({ type:'palestra-backup', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), ...(link ? { link } : {}), days:state.days });
     return head.slice(0, -1)+',"logs":'+savedText.logs+',"settings":'+JSON.stringify(state.settings)+'}';
   }
   return JSON.stringify(backupData());
@@ -8069,6 +8074,7 @@ function applyImportData(data, okMsg, askLost){
       applyPrefs();
       renderAll();
       showToast(okMsg || 'Importato: '+msg.join(' · '), 'Ripristina', restore);
+      if(askLost) offerRelink(data);
     }catch(err){
       console.error(err);
       restore();
@@ -8082,6 +8088,15 @@ function applyImportData(data, okMsg, askLost){
   const n = lost.length, last = lost[n-1].iso;
   customConfirm(`Il file non contiene ${many(n, 'allenamento', 'allenamenti')} che hai adesso (${n===1 ? 'del' : 'l\'ultimo del'} ${dm(last)}): importandolo ${n===1 ? 'lo perdi' : 'li perdi'}. Importare lo stesso?`, 'Importa', 'Annulla')
     .then(ok=>{ if(ok && !session) commit(); });
+}
+/* dopo l'import di un file: il backup contiene il codice di sincronizzazione e questo telefono non è collegato.
+   Si chiede (non si collega da solo: qui la sincronizzazione potrebbe essere stata tolta apposta); syncEnable controlla
+   che il codice esista sul server e unisce i dati come quando lo si scrive a mano. */
+async function offerRelink(data){
+  const c = data && data.link && typeof data.link==='object' ? cleanSyncCode(data.link.sync) : null;
+  if(!c || (sync && sync.code)) return;
+  const ok = await customConfirm('Il backup contiene anche il collegamento: sincronizzazione, backup su Telegram e Claude. Ricolleghi questo telefono? I dati appena importati si uniscono a quelli sincronizzati.', 'Ricollega', 'Non ora');
+  if(ok) await syncEnable(c, true);
 }
 function lostSessions(newLogs){
   const ids = new Set();
