@@ -4907,7 +4907,14 @@ function planWarmRows(e, nW, count, prev, work){
    STALLO: nessun progresso nelle ultime 3 sedute rispetto al meglio di prima
    (forza stimata kg×(1+rip/30) oppure volume delle serie di lavoro: basta uno dei due per "progresso")
    ============================================================ */
+/* prestazione di una voce di storico: pura dei suoi dati, si calcola una volta finché non cambiano (dataVersion), come burstOf */
+const perfCache = new WeakMap();
 function perfOf(e){
+  if(!e || typeof e!=='object') return perfCompute(e);
+  const c = perfCache.get(e); if(c && c.v===dataVersion) return c.p;
+  const p = perfCompute(e); perfCache.set(e, { v:dataVersion, p }); return p;
+}
+function perfCompute(e){
   const w = mainDetail(e && e.detail);
   if(!w.length) return null;
   const reps = e.type==='reps';
@@ -7029,14 +7036,33 @@ function renderPlanPage(){
 const fmtRest = s=>{ s = Math.round(s); return s<60 ? s+'s' : Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };   // "45s" come "rec. 90s" nel resto dell'app (nel font a spaziatura fissa "45 s" aveva un buco)
 const fmtDelta = s=>{ s = Math.round(s); return (s>0?'+':s<0?'−':'')+fmtRest(Math.abs(s)); };
 // recuperi veri di un esercizio in una seduta (secondi, già tolto il tempo della serie)
+/* orari di tutte le serie della seduta, in ordine, con l'esercizio a cui appartengono: si preparano una volta per seduta */
+const timesCache = new WeakMap();
+function sessionTimes(s){
+  const c = timesCache.get(s); if(c && c.v===dataVersion) return c.t;
+  const t = []; s.entries.forEach(x=> (x.detail||[]).forEach(d=>{ if(d.at) t.push({ t:num(d.at), en:x }); }));
+  t.sort((p,q)=> p.t-q.t); timesCache.set(s, { v:dataVersion, t }); return t;
+}
+/* c'è una serie di un altro esercizio (≠ en) con orario fra a e z (estremi esclusi)? */
+function otherBetween(times, en, a, z){
+  let lo = 0, hi = times.length;
+  while(lo<hi){ const m = (lo+hi)>>1; if(times[m].t>a) hi = m; else lo = m+1; }   // primo orario > a
+  for(let i=lo; i<times.length && times[i].t<z; i++) if(times[i].en!==en) return true;
+  return false;
+}
+const gapCache = new WeakMap();
 function restGapsIn(s, en, type){
+  const gc = gapCache.get(en); if(gc && gc.v===dataVersion && gc.s===s && gc.type===type) return gc.out;
+  const out = restGapsCompute(s, en, type); gapCache.set(en, { v:dataVersion, s, type, out }); return out;
+}
+function restGapsCompute(s, en, type){
   const w = workDetail(en.detail).filter(d=>d.at).sort((a,b)=>num(a.at)-num(b.at));
   // serie degli altri esercizi della seduta: una pausa con dentro un altro esercizio non è un recupero
-  const others = []; s.entries.forEach(x=>{ if(x!==en) (x.detail||[]).forEach(d=>{ if(d.at) others.push(num(d.at)); }); });
+  const times = sessionTimes(s);
   const out = [], B = burstOf(s);
   for(let i=1;i<w.length;i++){
     const a = num(w[i-1].at), z = num(w[i].at), g = (z-a)/1000;
-    if(others.some(t=> t>a && t<z) || w[i].t==='d') continue;   // dentro c'è un altro esercizio, o è un drop set
+    if(otherBetween(times, en, a, z) || w[i].t==='d') continue;   // dentro c'è un altro esercizio, o è un drop set
     if(B.has(w[i]) || B.has(w[i-1])) continue;   // spuntate dopo: orari non veri
     if(g>15 && g<1200) out.push(Math.max(0, g - etaSetSec(en.type||type, w[i], sideOf(en))));
   }
@@ -8449,10 +8475,14 @@ else if(staleSessionSaved) renderAll();
   const st = document.querySelector('.bottom-stack'); if(!st) return;
   const hd = document.querySelector('header'), sb = document.querySelector('#sessionView .session-topbar');
   // --sess-h: altezza della barra della seduta (0 fuori dall'allenamento), per il margine di scorrimento di main
-  const set = ()=>{ const ds = document.documentElement.style;
-    ds.setProperty('--stack-h', st.offsetHeight+'px');
-    if(hd) ds.setProperty('--head-h', hd.offsetHeight+'px');
-    if(sb) ds.setProperty('--sess-h', sb.offsetHeight+'px'); };
+  // prima si leggono tutte le altezze, poi si scrive solo quella cambiata: scrivere una variabile sulla radice invalida
+  // lo stile di tutta la pagina e la lettura successiva forzava ogni volta un nuovo calcolo (a ogni spunta, ogni timer)
+  const last = {};
+  const set = ()=>{
+    const v = [['--stack-h', st.offsetHeight], hd && ['--head-h', hd.offsetHeight], sb && ['--sess-h', sb.offsetHeight]];
+    const ds = document.documentElement.style;
+    v.forEach(x=>{ if(x && last[x[0]]!==x[1]){ last[x[0]] = x[1]; ds.setProperty(x[0], x[1]+'px'); } });
+  };
   set();
   try{ const ro = new ResizeObserver(set); ro.observe(st); if(hd) ro.observe(hd); if(sb) ro.observe(sb); }catch(e){ window.addEventListener('resize', set); }
 })();
