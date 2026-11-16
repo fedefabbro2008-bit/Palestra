@@ -1393,6 +1393,11 @@ nav.bottom button > *{position:relative;}
 nav.bottom{isolation:isolate;}
 nav.bottom button.active::before{background:var(--glass-pill); box-shadow:inset 0 1px 0 var(--glass-hi-soft);}
 nav.bottom button:active{background:none;} nav.bottom button:active::before{background:var(--glass-pill);}
+/* pillola che scorre fra le sezioni (si allunga come un liquido e torna normale): sostituisce quella fissa sotto il pulsante attivo */
+.nav-ind{position:absolute; top:5px; bottom:5px; left:5px; width:0; border-radius:25px; background:var(--glass-pill);
+  box-shadow:inset 0 1px 0 var(--glass-hi-soft); pointer-events:none; z-index:-1; will-change:transform; transform-origin:50% 50%;}
+nav.bottom.has-ind button.active::before{background:transparent; box-shadow:none;}
+nav.bottom.has-ind button.active:active::before{background:var(--glass-pill);}
 /* timer di recupero: capsula di vetro color accento sopra la barra */
 .timer-bar{border-radius:24px; border:1px solid rgba(255,255,255,.22);
   background:rgba(184,25,58,.62); -webkit-backdrop-filter:var(--glass-blur); backdrop-filter:var(--glass-blur);
@@ -2204,6 +2209,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
     </div>
   </div>
   <nav class="bottom">
+    <span class="nav-ind" aria-hidden="true"></span>
     <button class="active" data-tab="workout"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6M6.5 5.5v13M17.5 5.5v13M21 9v6M6.5 12h11"/></svg>Allenamento</button>
     <button data-tab="stats"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Settimana</button>
     <button data-tab="month"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Mese</button>
@@ -3153,6 +3159,34 @@ document.addEventListener('blur', (e)=>{
 const tabScroll = { workout:0, stats:0, month:0, plan:0 };
 /* le statistiche stanno in tre tab: "stats" (settimana), "month" (mese) e "plan" (progressi della scheda) */
 function isStatsTab(t){ return t==='stats' || t==='month' || t==='plan'; }
+/* pillola della barra: si sposta scorrendo e si allunga verso la sezione nuova, poi si ricompone */
+const navInd = document.querySelector('nav.bottom .nav-ind');
+let navIndAnim = null;
+function navIndTo(btn, animate){
+  if(!navInd || !btn) return;
+  const nav = navInd.parentNode, w = btn.offsetWidth, x1 = btn.offsetLeft;
+  if(!w) return;                     // barra nascosta (tastiera aperta): si sistema al prossimo ridimensionamento
+  nav.classList.add('has-ind');
+  // da dove parte: posizione attuale, anche a metà di un'animazione interrotta da un tocco veloce
+  let x0 = navInd.offsetLeft;
+  if(navIndAnim){ try{ const m = new DOMMatrixReadOnly(getComputedStyle(navInd).transform); x0 += m.m41; }catch(e){} navIndAnim.cancel(); navIndAnim = null; }
+  navInd.style.width = w+'px'; navInd.style.left = x1+'px';
+  const d = x0 - x1;
+  if(!animate || !d || !motionOK()) return;
+  const a = Math.abs(d), sgn = Math.sign(d), st = Math.min(1 + a/w*0.45, 2.1);
+  navIndAnim = navInd.animate([
+    { transform:`translateX(${d}px) scale(1,1)` },
+    { transform:`translateX(${d*0.5}px) scale(${st},.86)`, offset:.42 },
+    { transform:`translateX(${-sgn*Math.min(6, a*0.04)}px) scale(.94,1.06)`, offset:.78 },
+    { transform:'translateX(0) scale(1,1)' }
+  ], { duration: Math.min(560, 380 + a*0.35), easing:'cubic-bezier(.3,.7,.3,1)' });
+  navIndAnim.onfinish = ()=>{ navIndAnim = null; };
+}
+(()=>{
+  const place = ()=> navIndTo(document.querySelector('nav.bottom button.active'), false);
+  place();
+  try{ new ResizeObserver(place).observe(document.querySelector('nav.bottom')); }catch(e){ addEventListener('resize', place); }
+})();
 document.querySelectorAll('nav.bottom button').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     try{ checkNewDay(); }catch(e){}   // app rimasta aperta oltre la mezzanotte
@@ -3170,6 +3204,7 @@ document.querySelectorAll('nav.bottom button').forEach(btn=>{
     const tabEl = document.getElementById('tab-'+target);
     currentTab = target;
     document.querySelectorAll('nav.bottom button').forEach(b=>b.classList.toggle('active', b===btn));
+    navIndTo(btn, true);
     document.querySelectorAll('.tab').forEach(s=>s.classList.remove('active'));
     document.getElementById('tab-'+currentTab).classList.add('active');
     if(isStatsTab(currentTab)) try{ reobserveCharts(); }catch(e){}
