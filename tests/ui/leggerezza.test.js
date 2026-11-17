@@ -24,7 +24,7 @@ async function trace(browser, p, fn) {
   // 1. avvio: niente secondo ricalcolo di tutta la pagina
   const tot0 = await p.evaluate(() => document.getElementsByTagName('*').length);
   const st = await trace(browser, p, async () => { await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(800); });
-  check(st.sumStyle < tot0 * 0.55, `avvio: elementi ricalcolati in tutto ${st.sumStyle} su ${tot0} (prima circa il 70%)`);
+  check(st.sumStyle < tot0 * 0.45, `avvio: elementi ricalcolati in tutto ${st.sumStyle} su ${tot0} (prima circa il 70%)`);
   // radice: niente :has(), classe del tema anche su html
   const css = await p.evaluate(() => [...document.styleSheets].map(s => { try { return [...s.cssRules].map(r => r.cssText).join('\n'); } catch (e) { return ''; } }).join('\n'));
   check(!/html:has\(/.test(css), 'nessun html:has(...) nello stile');
