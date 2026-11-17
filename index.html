@@ -2118,7 +2118,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card" id="syncCard">
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 00-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0014.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>Più dispositivi e senza rete<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoSync"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoSync"><p><b>Sincronizzazione</b>: scheda, storico e impostazioni (tema, animazioni, RPE, sfondo, testo per Claude) uguali su iPhone, iPad, Android e computer. Attivala su un dispositivo, copia il codice e inseriscilo sugli altri con <b>Ho già un codice</b>: i dati si uniscono, non si sovrascrivono. Poi si sincronizza da solo a ogni modifica, quando apri l'app e appena torna la rete; durante un allenamento aspetta che finisca.</p><p>Il <b>codice è la chiave</b> dei tuoi dati: chi lo conosce li legge e li modifica. Non condividerlo.</p><p><b>Senza rete</b>: l'app resta salvata sul dispositivo e si apre anche in palestra senza campo; se la rete è lenta, dopo 3 secondi apre la copia salvata. Le versioni nuove arrivano da sole quando c'è rete.</p><p>Per funzionare su Netlify servono, accanto a index.html, anche <b>sw.js</b>, <b>netlify.toml</b>, <b>package.json</b> e la cartella <b>netlify</b> (functions con sync.mjs, mcp.mjs e telegram-backup.mjs, e lib con telegram.mjs).</p></div>
+      <div class="card-info" id="infoSync"><p><b>Sincronizzazione</b>: scheda, storico e impostazioni (tema, animazioni, RPE, sfondo, testo per Claude) uguali su iPhone, iPad, Android e computer. Attivala su un dispositivo, copia il codice e inseriscilo sugli altri con <b>Ho già un codice</b>: i dati si uniscono, non si sovrascrivono. Poi si sincronizza da solo a ogni modifica, quando apri l'app e appena torna la rete; durante un allenamento aspetta che finisca.</p><p>Il <b>codice è la chiave</b> dei tuoi dati: chi lo conosce li legge e li modifica. Non condividerlo.</p><p><b>Senza rete</b>: l'app resta salvata sul dispositivo e si apre subito, anche in palestra senza campo o con la rete lentissima; tutto funziona (allenamento, statistiche, backup) e la sincronizzazione riprova da sola quando la rete torna. Le versioni nuove si scaricano da sole quando c'è rete: compare <b>Aggiorna</b>, altrimenti arrivano alla prossima apertura.</p><p>Per funzionare su Netlify servono, accanto a index.html, anche <b>sw.js</b>, la cartella <b>fonts</b>, <b>netlify.toml</b>, <b>package.json</b> e la cartella <b>netlify</b> (functions con sync.mjs, mcp.mjs e telegram-backup.mjs, e lib con telegram.mjs).</p></div>
       <div id="syncOff">
         <p class="sync-intro">Stessi dati su tutti i tuoi dispositivi.</p>
         <div class="btn-grid">
@@ -8838,8 +8838,9 @@ function refreshTimerUI(){
 /* ============================================================
    OFFLINE
    ------------------------------------------------------------
-   Font, icone e manifest sono incorporati qui dentro: la pagina
-   non chiede niente alla rete. L'apertura senza campo la dà sw.js
+   Icone e manifest sono incorporati qui dentro; i caratteri sono in
+   fonts/ e sw.js li salva all'installazione. L'apertura (subito,
+   dalla copia salvata, anche senza campo) la dà sw.js
    (un service worker deve essere un file .js a parte, servito
    dalla stessa origine): se è pubblicato accanto a questo file
    viene registrato da swInit() (in fondo), altrimenti l'app
@@ -9139,6 +9140,15 @@ window.addEventListener('storage', e=>{
    sw.js accanto a index.html: la pagina resta salvata sul telefono e si apre anche senza rete.
    Dalla preview, da file o se sw.js non c'è: niente, l'app funziona come prima */
 let swState = 'no';   // 'no' | 'wait' | 'ok'
+/* l'app si apre dalla copia salvata; se intanto sw.js ha scaricato una versione nuova lo dice qui.
+   In allenamento niente avviso: la versione nuova arriva alla prossima apertura */
+let newVersionShown = false;
+function newVersionReady(){
+  if(newVersionShown || session) return;
+  if(toastAction){ setTimeout(newVersionReady, 8000); return; }   // non copre un «Ripristina» ancora attivo
+  newVersionShown = true;
+  showToast('Nuova versione dell\'app pronta', 'Aggiorna', ()=> location.reload(), 15000);
+}
 function swInit(){
   try{
     if(!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
@@ -9147,6 +9157,7 @@ function swInit(){
     const check = navigator.serviceWorker.controller ? Promise.resolve(true)
       : fetch('sw.js', { method:'HEAD', cache:'no-store' }).then(r=> r.ok && /javascript/.test(r.headers.get('content-type')||''), ()=> false);
     check.then(okSw=>{ if(!okSw){ swState = 'no'; renderSync(); return; }
+    navigator.serviceWorker.addEventListener('message', e=>{ if(e.data && e.data.type==='palestra-nuova-versione') newVersionReady(); });
     navigator.serviceWorker.register('sw.js').then(reg=>{
       if(navigator.serviceWorker.controller) swState = 'ok';
       else { swState = 'wait'; reg && (reg.installing || reg.waiting || reg.active) && navigator.serviceWorker.ready.then(()=>{ swState = 'ok'; renderSync(); }); }
@@ -9163,13 +9174,22 @@ function swInit(){
    - storico: allenamento per allenamento (nuovi, corretti, cancellati), da entrambe le parti
    - scheda e impostazioni (tema, animazioni, RPE, sfondo, testo per Claude, inizi delle schede): vince la modifica più recente
    - durante un allenamento non si sincronizza (si fa appena finisce); senza rete riprova quando torna */
+/* rete lenta (palestra sotto terra): una richiesta che non risponde entro ms si abbandona come "senza rete",
+   invece di restare appesa per minuti con la sincronizzazione bloccata */
+function fetchT(url, opts, ms){
+  if(typeof AbortController!=='function') return fetch(url, opts);
+  const ac = new AbortController(), t = setTimeout(()=> ac.abort(), ms || 20000);
+  return fetch(url, Object.assign({}, opts, { signal: ac.signal }))
+    .catch(e=>{ throw (e && e.name==='AbortError') ? new TypeError('rete troppo lenta') : e; })
+    .finally(()=> clearTimeout(t));
+}
 const SYNC_LS = LS_PREFIX+'sync';
 const SYNC_API = '/api/sync';
 const SYNC_SET_KEYS = ['dark','animations','showRpe','bg','bgLast','aiContext','reviewSnooze','planStarts'];
 const SYNC_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 // var (non let): persist() li legge anche durante l'avvio, prima che questa parte del codice sia eseguita
 var sync = null, syncApplying = false;
-let syncBusy = false, syncTimer = 0, syncLastTry = 0, syncMsg = '', syncMsgKind = '';
+let syncBusy = false, syncTimer = 0, syncLastTry = 0, syncMsg = '', syncMsgKind = '', syncWait = 0;
 try{ sync = JSON.parse(localStorage.getItem(SYNC_LS)||'{}') || {}; }catch(e){ sync = {}; }
 if(typeof sync!=='object' || Array.isArray(sync)) sync = {};
 function saveSync(){ try{ localStorage.setItem(SYNC_LS, JSON.stringify(sync)); }catch(e){} }
@@ -9328,13 +9348,13 @@ async function syncNow(opts){
   if(!opts.manual && syncUiBusy()){ syncSoon(8000); return; }
   if(logsLocked || logsUnreadable){ syncStatus('Storico illeggibile su questo dispositivo: sincronizzazione sospesa per non cancellare niente altrove. Ripristina un backup.', 'err'); return; }
   if(!/^https?:$/.test(location.protocol)){ syncStatus('Funziona solo con l\'app pubblicata (Netlify).', 'err'); return; }
-  if(navigator.onLine===false){ syncStatus('Senza rete: sincronizzo appena torna.', 'warn'); return; }
+  if(navigator.onLine===false){ syncStatus('Senza rete: sincronizzo appena torna.', 'warn'); syncRetry(); return; }
   syncBusy = true; syncLastTry = Date.now(); syncStatus('Sincronizzo…', '');
   const url = SYNC_API+'?code='+encodeURIComponent(sync.code);
   try{
     // versione del server già nota: se non è cambiata risponde "same" (pochi byte) invece di tutto lo storico
     const known = sync.etag && sync.base && !sync.joining ? '&etag='+encodeURIComponent(sync.etag) : '';
-    let r = await fetch(url+known, { cache:'no-store' });
+    let r = await fetchT(url+known, { cache:'no-store' }, 20000);
     if(!r.ok) throw new Error(r.status===404 ? 'nofn' : 'http '+r.status);
     let remote = await r.json();
     let saved = false, direct = false;
@@ -9363,7 +9383,7 @@ async function syncNow(opts){
       const wid = Date.now().toString(36)+Math.random().toString(36).slice(2,10);
       const body = JSON.stringify({ baseRev: direct ? num(sync.rev) : num(remote.rev), logs: compactLogs(state.logs), days: state.days, daysAt: num(sync.daysAt),
                                     settings: syncSetPick(state.settings), setAt: num(sync.setAt), allSettings: state.settings, wid });
-      r = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body, cache:'no-store' });
+      r = await fetchT(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body, cache:'no-store' }, 30000);
       if(r.status===409){ remote = await r.json(); direct = false; continue; }   // un altro dispositivo ha appena salvato: si riunisce
       if(r.status===413) throw new Error('big');
       if(!r.ok) throw new Error('http '+r.status);
@@ -9372,6 +9392,7 @@ async function syncNow(opts){
       saved = true;
     }
     if(!saved) throw new Error('busy');   // altri dispositivi salvano di continuo: si riprova fra poco
+    syncWait = 0;
     syncStatus('', '');
   }catch(e){
     const msg = e.message==='nofn' ? 'Il server di sincronizzazione non risponde: pubblica anche la cartella netlify (vedi la spiegazione).'
@@ -9381,8 +9402,12 @@ async function syncNow(opts){
     sync.lastErr = msg; saveSync();
     syncStatus(msg, e instanceof TypeError || e.message==='busy' ? 'warn' : 'err');
     if(e.message==='busy') syncSoon(15000);
+    else if(e instanceof TypeError || /^http 5/.test(e.message)) syncRetry();   // rete assente o lenta, server in errore
   }finally{ syncBusy = false; renderSync(); }
 }
+/* senza rete o col server in errore si riprova da sola, sempre più di rado (30 s, 1, 2, 4… fino a 10 min):
+   il telefono non sempre avvisa quando la rete torna (su iPhone con campo debole spesso no) */
+function syncRetry(){ syncWait = Math.min(syncWait ? syncWait*2 : 30000, 600000); syncSoon(syncWait); }
 function syncStatus(msg, kind){ syncMsg = msg; syncMsgKind = kind; renderSync(); }
 function fmtAgo(t){
   const s = Math.round((Date.now()-t)/1000);
@@ -9413,7 +9438,7 @@ async function syncEnable(code, join){
     // ("Collegato"), e i due dispositivi restavano separati senza che nessuno se ne accorgesse
     if(!/^https?:$/.test(location.protocol)){ showToast('Funziona solo con l\'app pubblicata (Netlify).', null, null, 3500, 'warn'); return false; }
     let remote = null, status = 0;
-    try{ const r = await fetch(SYNC_API+'?code='+encodeURIComponent(code), { cache:'no-store' }); status = r.status; if(r.ok) remote = await r.json(); }catch(e){}
+    try{ const r = await fetchT(SYNC_API+'?code='+encodeURIComponent(code), { cache:'no-store' }, 20000); status = r.status; if(r.ok) remote = await r.json(); }catch(e){}
     if(!remote){ showToast(status===404 ? 'Il server di sincronizzazione non risponde: pubblica anche la cartella netlify.' : 'Serve la rete per collegarti: riprova quando sei connesso.', null, null, 4000, 'warn'); return false; }
     if(!num(remote.rev)){ showToast('Nessun dato con questo codice: controlla di averlo copiato intero dall\'altro dispositivo.', null, null, 5000, 'warn'); return false; }
   }
@@ -9465,7 +9490,7 @@ document.getElementById('syncOffBtn').addEventListener('click', async ()=>{
 var mcp = { state:'unknown', token:null, write:false, writeLogs:false, busy:false, msg:'', kind:'' };
 async function mcpReq(action, extra){
   const url = SYNC_API+'?code='+encodeURIComponent(sync.code)+'&op=mcp';
-  const r = await fetch(url, action ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(Object.assign({ action }, extra||{})), cache:'no-store' } : { cache:'no-store' });
+  const r = await fetchT(url, action ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(Object.assign({ action }, extra||{})), cache:'no-store' } : { cache:'no-store' }, 20000);
   let j = null; try{ j = await r.json(); }catch(e){}
   // 404 col nostro messaggio = codice senza dati; 404 senza = la funzione non è pubblicata
   if(!r.ok) throw new Error(r.status===404 ? (j && j.error ? 'nodata' : 'nofn') : (j && j.error) || 'http '+r.status);
@@ -9549,7 +9574,7 @@ document.getElementById('mcpCopyKeyBtn').addEventListener('click', ()=>{ if(mcp.
 var tgSt = { state:'unknown', info:null, busy:false, msg:'', kind:'' };
 async function tgReq(body){
   const url = SYNC_API+'?code='+encodeURIComponent(sync.code)+'&op=tg';
-  const r = await fetch(url, body ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body), cache:'no-store' } : { cache:'no-store' });
+  const r = await fetchT(url, body ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body), cache:'no-store' } : { cache:'no-store' }, 30000);
   let j = null; try{ j = await r.json(); }catch(e){}
   if(!r.ok){ const err = new Error(r.status===404 && !(j && j.error) ? 'nofn' : (j && j.error) || 'http '+r.status); err.data = j; throw err; }
   return j || {};

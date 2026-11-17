@@ -34,6 +34,7 @@ export const TESTS = [
   { nome: 'peso-per-giornata', file: 'ui/peso-per-giornata.test.js', args: FD, cosa: 'Peso totale per giornata: riserve, sedute escluse' },
   // dati: backup, import, sicurezza, memoria
   { nome: 'senza-rete-backup-import', file: 'ui/senza-rete-backup-import.test.js', cosa: 'senza rete, Backup completo, CSV, import, file rotti, ripristino' },
+  { nome: 'offline-completo', file: 'ui/offline-completo.test.js', cosa: 'senza rete o con rete lentissima: apertura subito, Aggiorna, allenamento, backup, sync che riprova', minuti: 4 },
   { nome: 'caratteri', file: 'ui/caratteri.test.js', cosa: 'caratteri in fonts/: impronta, sw.js, salvati e disponibili senza rete' },
   { nome: 'server-in-errore', file: 'ui/server-in-errore.test.js', cosa: 'Netlify in errore: copia salvata' },
   { nome: 'backup-a-termina', file: 'ui/backup-a-termina.test.js', cosa: 'copia a Termina identica ai dati' },

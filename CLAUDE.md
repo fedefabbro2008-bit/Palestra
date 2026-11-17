@@ -35,6 +35,9 @@ Regole:
 - Dati nel telefono: chiavi `palestra:*` in localStorage; la copia automatica in IndexedDB.
 - `fonts/`: i caratteri (nome con l'impronta del contenuto: un carattere nuovo ha un nome nuovo). `sw.js` li salva
   all'installazione e li serve dalla copia.
+- `sw.js`: la pagina si apre sempre dalla copia salvata (subito, anche con rete lentissima); la versione pubblicata si
+  scarica in sottofondo e, se è cambiata, la pagina mostra «Aggiorna» (mai durante un allenamento). Le richieste al
+  server passano da `fetchT` (tempo massimo) e la sincronizzazione riprova da sola (`syncRetry`).
 - `netlify/functions/sync.mjs`: sincronizzazione (unione a tre con versione ed etag), chiave del connettore, Telegram.
 - `netlify/functions/mcp.mjs`: connettore per Claude (lettura; scheda e storico solo con i permessi accesi nell'app).
 - `netlify/functions/telegram-backup.mjs` + `netlify/lib/telegram.mjs`: backup su Telegram il 1° e il 16 del mese.
