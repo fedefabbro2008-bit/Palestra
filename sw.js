@@ -4,10 +4,15 @@
    - /api/ (sincronizzazione) mai in copia: sono i tuoi dati, devono essere sempre freschi */
 const CACHE = 'palestra-v1';
 const PAGE = './index.html';
+// caratteri dell'app (file a parte, nome con l'impronta del contenuto: non cambiano mai)
+const FONTS = ['./fonts/space-grotesk-600.e0dc4433.woff2', './fonts/space-grotesk-700.4d117949.woff2', './fonts/jetbrains-mono-500.b392a220.woff2', './fonts/jetbrains-mono-700.f677c52d.woff2', './fonts/inter-400.03f3afb5.woff2', './fonts/inter-500.07516f15.woff2', './fonts/inter-600.e014be68.woff2'];
 
 self.addEventListener('install', e=>{
   e.waitUntil(caches.open(CACHE)
-    .then(c=> fetch(PAGE, {cache:'reload'}).then(r=>{ if(r.ok) return Promise.all([c.put(PAGE, r.clone()), c.put('./', r)]); }))
+    .then(c=> Promise.all([
+      fetch(PAGE, {cache:'reload'}).then(r=>{ if(r.ok) return Promise.all([c.put(PAGE, r.clone()), c.put('./', r)]); }),
+      c.addAll(FONTS).catch(()=>{})   // se non riesce ora, si salvano al primo uso
+    ]))
     .catch(()=>{}));
   self.skipWaiting();
 });
@@ -32,6 +37,11 @@ self.addEventListener('fetch', e=>{
   if(req.method!=='GET') return;
   const url = new URL(req.url);
   if(url.origin!==self.location.origin || url.pathname.startsWith('/api/')) return;
+  // caratteri: prima la copia salvata (non cambiano mai), la rete solo se manca
+  if(url.pathname.indexOf('/fonts/')>=0){
+    e.respondWith(caches.open(CACHE).then(c=> c.match(req).then(hit=> hit || fetch(req).then(r=>{ if(r.ok) c.put(req, r.clone()); return r; }))));
+    return;
+  }
   e.respondWith(new Promise(resolve=>{
     let done = false;
     const finish = r=>{ if(!done && r){ done = true; resolve(r); } };
