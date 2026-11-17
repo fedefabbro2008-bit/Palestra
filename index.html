@@ -8806,8 +8806,10 @@ function updateSheetDisplay(){
   timerFlow(pct);
 }
 /* 1. anello e capsula del timer si riempiono in modo continuo (non a scatti di un secondo): un'animazione lineare fino a
-   endAt, rifatta solo quando cambia il recupero (avvio, +15 s, pausa, stop) */
-let timerFlowKey = null, timerFlowAnims = [];
+   endAt, rifatta solo quando cambia il recupero (avvio, +15 s, pausa, stop).
+   L'anello (nella finestra del timer) si anima solo quando la finestra è aperta: la sua animazione non la fa la scheda
+   grafica, e da nascosto faceva ridisegnare la pagina 60 volte al secondo per tutto il recupero (batteria) */
+let timerFlowKey = null, timerFlowAnims = [], ringAnim = null;
 function timerFlow(pct){
   const ring = document.getElementById('timerRing'), bar = document.getElementById('tbProg');
   const live = timer.running && timer.endAt && motionOK();
@@ -8816,14 +8818,25 @@ function timerFlow(pct){
   timerFlowKey = key;
   timerFlowAnims.forEach(a=>{ try{ a.cancel(); }catch(e){} }); timerFlowAnims = [];
   if(bar) bar.style.transform = 'scaleX('+Math.max(0, Math.min(1, pct)).toFixed(4)+')';
+  ringFlow();
   if(!live) return;
   const left = timer.endAt - Date.now(); if(!(left>0) || !(timer.duration>0)) return;
-  const p0 = Math.max(0, Math.min(1, 1 - left/1000/timer.duration)), C = 2*Math.PI*54, opt = { duration:left, easing:'linear', fill:'forwards' };
-  try{
-    if(ring) timerFlowAnims.push(ring.animate([{ strokeDashoffset: C*(1-p0) }, { strokeDashoffset: 0 }], opt));
-    if(bar) timerFlowAnims.push(bar.animate([{ transform:'scaleX('+p0.toFixed(4)+')' }, { transform:'scaleX(1)' }], opt));
-  }catch(e){}
+  const p0 = Math.max(0, Math.min(1, 1 - left/1000/timer.duration)), opt = { duration:left, easing:'linear', fill:'forwards' };
+  try{ if(bar) timerFlowAnims.push(bar.animate([{ transform:'scaleX('+p0.toFixed(4)+')' }, { transform:'scaleX(1)' }], opt)); }catch(e){}
 }
+/* anello: finestra aperta = animazione dal punto esatto di adesso alla fine; chiusa = ferma dov'è (resta giusta anche
+   mentre la finestra si chiude) e niente lavoro; alla riapertura riparte dal punto giusto */
+function ringFlow(){
+  const ring = document.getElementById('timerRing'); if(!ring) return;
+  if(!overlay.classList.contains('show')){ if(ringAnim) try{ ringAnim.pause(); }catch(e){} return; }
+  if(ringAnim){ try{ ringAnim.cancel(); }catch(e){} ringAnim = null; }
+  if(!(timer.running && timer.endAt && motionOK())) return;
+  const left = timer.endAt - Date.now(); if(!(left>0) || !(timer.duration>0)) return;
+  const p0 = Math.max(0, Math.min(1, 1 - left/1000/timer.duration)), C = 2*Math.PI*54;
+  try{ ringAnim = ring.animate([{ strokeDashoffset: C*(1-p0) }, { strokeDashoffset: 0 }], { duration:left, easing:'linear', fill:'forwards' }); }catch(e){}
+}
+let ringShown = false;   // la finestra si apre o si chiude (non le altre classi delle animazioni di entrata e uscita)
+try{ new MutationObserver(()=>{ const sh = overlay.classList.contains('show'); if(sh!==ringShown){ ringShown = sh; ringFlow(); } }).observe(overlay, { attributes:true, attributeFilter:['class'] }); }catch(e){}
 function refreshTimerUI(){
   updateSheetDisplay();
   const active = timer.running || (!!timer.paused && timer.remaining>0);
