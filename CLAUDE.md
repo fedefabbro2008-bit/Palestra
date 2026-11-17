@@ -40,6 +40,9 @@ Regole:
   server passano da `fetchT` (tempo massimo) e la sincronizzazione riprova da sola (`syncRetry`).
 - `netlify/functions/sync.mjs`: sincronizzazione (unione a tre con versione ed etag), chiave del connettore, Telegram.
 - `netlify/functions/mcp.mjs`: connettore per Claude (lettura; scheda e storico solo con i permessi accesi nell'app).
+  Storico: `correggi_storico`, `sposta_storico`, `elimina_storico_esercizio` (tutto o niente, su una copia) e
+  `annulla_correzione_storico` (pila delle ultime 10 modifiche, in chiave `h-`). Il segno `claudeLog` tiene anche le
+  ultime modifiche (`items`): l'app mostra insieme tutte quelle non ancora viste e «Rimetti com'era» le annulla tutte.
 - `netlify/functions/telegram-backup.mjs` + `netlify/lib/telegram.mjs`: backup su Telegram il 1° e il 16 del mese.
 
 ## Stile
