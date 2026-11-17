@@ -37,8 +37,8 @@ if(/Android/i.test(navigator.userAgent)){
 }
 </script>
 <style>
-/* Font incorporati nel file (sottoinsieme latino + accentate italiane).
-   Nessuna richiesta di rete: l'app si disegna identica anche senza connessione. */
+/* Caratteri in fonts/ (sottoinsieme latino + accentate italiane): chiesti subito con la pagina (preload) e salvati
+   da sw.js all'installazione, quindi l'app si disegna identica anche senza connessione. */
 @font-face{font-family:'Space Grotesk';font-style:normal;font-weight:600;font-display:swap;src:url(fonts/space-grotesk-600.e0dc4433.woff2) format('woff2');}
 @font-face{font-family:'Space Grotesk';font-style:normal;font-weight:700;font-display:swap;src:url(fonts/space-grotesk-700.4d117949.woff2) format('woff2');}
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:500;font-display:swap;src:url(fonts/jetbrains-mono-500.b392a220.woff2) format('woff2');}
@@ -208,7 +208,7 @@ html,body{height:100%; touch-action:pan-y; overflow:hidden; width:100%;}
    un trascinamento che parte al bordo della lista sposta tutta la pagina come un'immagine e la
    lista resta ferma finché il gesto non finisce */
 html{overscroll-behavior:none; background:#000000;}
-html:has(body.light){background:#ffffff;}
+html.light{background:#ffffff;}   /* classe messa insieme a quella del body (applyPrefs): con html:has(body.light), in tema scuro ogni ricalcolo della radice scorreva tutta la pagina */
 /* se iOS lascia comunque una fascia fuori dalla pagina, ha il colore della barra in basso e non si vede */
 body{
   margin:0; background:var(--bg); color:var(--text);
@@ -3130,6 +3130,7 @@ function loadAll(){
 function applyPrefs(){
   const eco = ecoOn();
   document.body.className = isDark() ? 'dark' : 'light';
+  document.documentElement.classList.toggle('light', !isDark());   // per lo sfondo della radice (vedi html.light)
   document.documentElement.classList.toggle('eco', eco);
   document.documentElement.classList.toggle('no-anim', state.settings.animations===false || eco);
   // animazioni spente: nessun grafico deve restare "da comporre" (invisibile) in attesa di un'animazione che non parte
