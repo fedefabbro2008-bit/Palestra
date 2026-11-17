@@ -3288,7 +3288,7 @@ function liquidMove(el, to, opt){
   kf.push(Object.assign(T(past), { offset:.72, easing:'cubic-bezier(.4,0,.4,1)' }));
   kf.push(Object.assign(T(back), { offset:.88, easing:'ease-out' }));
   kf.push({ transform:'none' });
-  const duration = Math.min(720, 500 + dist*0.55);
+  const duration = Math.min(580, 400 + dist*0.45);   // circa il 20% più veloce di prima (era 500-720 ms)
   try{
     el._liq = el.animate(kf, { duration }); el._liq.onfinish = ()=>{ el._liq = null; };
     if(glow){ glow._liq = glow.animate([{ opacity:glowFrom }, { opacity:1, offset:.12 }, { opacity:1, offset:.5 }, { opacity:0 }], { duration }); glow._liq.onfinish = ()=>{ glow._liq = null; }; }
