@@ -1455,7 +1455,17 @@ body.dark nav.bottom.lq-drag button.lq-over{color:#ff7d8f;}
 @keyframes flameFlick{0%,100%{transform:scale(1,1) rotate(-2deg); opacity:1;} 30%{transform:scale(.95,1.08) rotate(2deg); opacity:.9;} 60%{transform:scale(1.04,.96) rotate(-1deg); opacity:1;} 80%{transform:scale(.98,1.03) rotate(1deg); opacity:.94;}}
 @keyframes flameLit{0%{transform:scale(.2); opacity:0;} 60%{transform:scale(1.35); opacity:1;} 100%{transform:scale(1);}}
 /* 3. muscoli allenati davvero: colori dell'obiettivo settimanale (come «Serie per muscolo») */
-.seg.seg2{grid-template-columns:repeat(2,1fr);}
+.mf-head{display:flex; align-items:flex-end; justify-content:space-between; gap:8px; margin-top:18px;}
+.mf-head .m-sec{margin:0 0 7px;}
+.mf-tabs{display:inline-flex; gap:2px; padding:2px; border-radius:999px; background:var(--card-2); border:1px solid var(--border); margin-bottom:4px; flex:none;}
+.mf-tabs button{border:0; background:none; color:var(--text-faint); font-size:11.5px; font-weight:600; padding:4px 11px; border-radius:999px; transition:background-color .25s ease, color .25s ease;}
+.mf-tabs button.on{background:var(--accent-dim); color:var(--accent-hi);}
+.mf-pages{display:flex; gap:24px; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; scrollbar-width:none; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; align-items:flex-start;}
+.mf-pages::-webkit-scrollbar{display:none;}
+.mf-pages{touch-action:pan-x pan-y;}   /* main e body lasciano solo lo scorrimento verticale: qui serve anche l'orizzontale */
+.mf-page{flex:0 0 100%; min-width:0; scroll-snap-align:start; scroll-snap-stop:always;}
+.mf-swipe{font-size:11.5px; color:var(--text-faint); text-align:right; margin-top:6px;}
+.mf-figs .bd-fig{max-width:160px;}
 .bd-m.tu{fill:var(--st-low); color:var(--st-low);} .bd-m.tk{fill:var(--st-ok); color:var(--st-ok);} .bd-m.tv{fill:var(--st-over); color:var(--st-over);}
 .bd-k.tu{background:var(--st-low);} .bd-k.tk{background:var(--st-ok);} .bd-k.tv{background:var(--st-over);}
 .bd-pill.tu{color:var(--st-low);} .bd-pill.tk{color:var(--st-ok);} .bd-pill.tv{color:var(--st-over);}
@@ -1791,13 +1801,6 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
       <div id="weekTiles"></div>
     </div>
 
-    <div class="card" id="trainCard">
-      <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="4.5" r="2.5"/><path d="M7 9.5h10M12 8v6M12 14l-3 7M12 14l3 7M7 9.5l-2 5M17 9.5l2 5"/></svg>Muscoli allenati davvero <span class="sub" id="trainSub">ultimi 7 giorni</span><button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoTrain"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoTrain"><p>Le serie che hai <b>fatto</b> (non quelle della scheda): il muscolo principale conta 1 serie, il secondario ½; riscaldamenti e stretching non contano. Con <b>4 settimane</b> si guarda la media a settimana.</p><p>Colori come in «Serie per muscolo»: <b>rosso</b> sotto l'obiettivo settimanale, <b>verde</b> nell'obiettivo, <b>azzurro</b> oltre, <b>grigio</b> nessuna serie. Tocca un muscolo per vedere quante serie e con quali esercizi.</p></div>
-      <div class="seg seg2" id="trainSeg" role="radiogroup" aria-label="Periodo"><button type="button" role="radio" aria-checked="true" data-p="7">7 giorni</button><button type="button" role="radio" aria-checked="false" data-p="28">4 settimane</button></div>
-      <div class="bd-figs" id="trainFigs"></div>
-      <div class="bd-legend"><span><i class="bd-k tu"></i>sotto</span><span><i class="bd-k tk"></i>nell'obiettivo</span><span><i class="bd-k tv"></i>oltre</span><span><i class="bd-k n0"></i>nessuna serie</span></div>
-      <div id="trainDetail"></div>
     </div>
 
 
@@ -4114,62 +4117,73 @@ document.getElementById('bodyCard').addEventListener('click', ev=>{
 });
 
 /* ============================================================
-   MUSCOLI ALLENATI DAVVERO (Settimana): la stessa figura, con le serie fatte negli ultimi 7 giorni o nelle ultime
-   4 settimane (media a settimana) rispetto all'obiettivo settimanale di ogni muscolo. Principale 1, secondario ½.
+   SERIE PER MUSCOLO: elenco e, scorrendo a destra, la figura del corpo con gli stessi dati (serie fatte nel periodo,
+   principale 1, secondario ½, media a settimana) e gli stessi colori: rosso sotto l'obiettivo, verde dentro, azzurro
+   oltre, grigio nessuna serie. Settimana: ultimi 7 giorni. Mese: il mese che stai guardando.
    ============================================================ */
-let trainDays = 7, trainSel = null;
-function trainedLoad(days){
-  const since = new Date(); since.setHours(0,0,0,0); since.setDate(since.getDate() - (days-1));
-  const fromI = isoOf(since), toI = todayISO();
-  const load = {}, by = {}; let n = 0;
+const mfPage = {};      // pagina scelta (0 elenco, 1 corpo) per sezione: resta cambiando mese o ridisegnando
+function trainedLoad(fromI, toI){
+  const load = {}, by = {};
   Object.keys(state.logs).forEach(iso=>{
     if(iso < fromI || iso > toI) return;
-    state.logs[iso].forEach(s=>{
-      n++;
-      s.entries.forEach(e=>{
-        if(!MUSCLES.includes(e.muscle) || e.muscle==='Altro') return;
-        const k = num(e.sets); if(!(k>0)) return;
-        const add = (m, v, sec)=>{ load[m] = (load[m]||0) + v; const b = (by[m] = by[m] || {}), key = e.name+(sec?' ·sec':''); (b[key] = b[key] || { name:e.name, v:0, sec }).v += v; };
-        add(e.muscle, k, false);
-        const sm = secOf(e); if(sm) add(sm, k*0.5, true);
-      });
-    });
+    state.logs[iso].forEach(s=> s.entries.forEach(e=>{
+      if(!MUSCLES.includes(e.muscle) || e.muscle==='Altro') return;
+      const k = num(e.sets); if(!(k>0)) return;
+      const add = (m, v, sec)=>{ load[m] = (load[m]||0) + v; const b = (by[m] = by[m] || {}), key = e.name+(sec?' ·sec':''); (b[key] = b[key] || { name:e.name, v:0, sec }).v += v; };
+      add(e.muscle, k, false);
+      const sm = secOf(e); if(sm) add(sm, k*0.5, true);
+    }));
   });
-  return { load, by, wk: days/7, n };
+  return { load, by };
 }
 function trainLevel(m, avg){ if(!(avg>0)) return 'n0'; const st = tgtStatus(m, avg); return st==='under' ? 'tu' : st==='over' ? 'tv' : 'tk'; }
-function renderTrainCard(keepFigs){
-  const figs = document.getElementById('trainFigs'); if(!figs) return;
-  const T = trainedLoad(trainDays), lvl = {};
-  MUSCLES.forEach(m=>{ if(m!=='Altro') lvl[m] = trainLevel(m, (T.load[m]||0)/T.wk); });
-  if(trainSel && !(trainSel in lvl)) trainSel = null;
-  document.getElementById('trainSub').textContent = trainDays===7 ? 'ultimi 7 giorni' : 'ultime 4 settimane';
-  document.querySelectorAll('#trainSeg button').forEach(b=> b.setAttribute('aria-checked', String(+b.dataset.p===trainDays)));
-  if(keepFigs && figs.querySelector('.bd-m')) figs.querySelectorAll('.bd-m').forEach(el=> el.classList.toggle('sel', el.getAttribute('data-m')===trainSel));
-  else figs.innerHTML = `<div class="bd-col">${bodyFigure('front', lvl, trainSel)}<span>Davanti</span></div><div class="bd-col">${bodyFigure('back', lvl, trainSel)}<span>Dietro</span></div>`;
-  figs.classList.toggle('focus', !!trainSel);
-  const det = document.getElementById('trainDetail');
-  if(!trainSel){
-    det.innerHTML = '<div class="bd-hint">' + (T.n ? 'Tocca un muscolo per vedere serie ed esercizi.' : (trainDays===7 ? 'Nessun allenamento negli ultimi 7 giorni.' : 'Nessun allenamento nelle ultime 4 settimane.')) + '</div>';
-    return;
-  }
-  const m = trainSel, tot = T.load[m]||0, avg = tot/T.wk, t = MUSCLE_TARGET[m], cls = lvl[m];
+/* title: intestazione · rows: l'elenco già pronto · vol/wk: gli stessi numeri dell'elenco · key: 'week' | 'month' */
+function muscleBlock(title, rows, vol, wk, fromI, toI, key){
+  const lvl = {};
+  MUSCLES.forEach(m=>{ if(m!=='Altro') lvl[m] = trainLevel(m, (vol[m]||0)/wk); });
+  const p = mfPage[key] ? 1 : 0;
+  return `<div class="mf" data-mf="${key}" data-from="${fromI}" data-to="${toI}" data-wk="${wk}">
+    <div class="mf-head"><div class="m-sec">${title}</div>
+      <div class="mf-tabs" role="tablist"><button type="button" role="tab" data-i="0" class="${p ? '' : 'on'}" aria-selected="${!p}">Elenco</button><button type="button" role="tab" data-i="1" class="${p ? 'on' : ''}" aria-selected="${!!p}">Corpo</button></div></div>
+    <div class="mf-pages">
+      <div class="mf-page">${rows}<div class="mf-swipe">Scorri a destra per vederli sul corpo ›</div></div>
+      <div class="mf-page"><div class="bd-figs mf-figs"><div class="bd-col">${bodyFigure('front', lvl, null)}<span>Davanti</span></div><div class="bd-col">${bodyFigure('back', lvl, null)}<span>Dietro</span></div></div>
+        <div class="bd-legend"><span><i class="bd-k tu"></i>sotto</span><span><i class="bd-k tk"></i>nell'obiettivo</span><span><i class="bd-k tv"></i>oltre</span><span><i class="bd-k n0"></i>nessuna serie</span></div>
+        <div class="mf-det"><div class="bd-hint">Tocca un muscolo per vedere serie ed esercizi.</div></div></div>
+    </div></div>`;
+}
+/* dopo aver messo l'HTML: pagina scelta, linguette che seguono lo scorrimento */
+function wireMuscleBlocks(root){
+  (root || document).querySelectorAll('.mf:not([data-wired])').forEach(mf=>{
+    mf.setAttribute('data-wired', '1');
+    const pages = mf.querySelector('.mf-pages'), tabs = [...mf.querySelectorAll('.mf-tabs button')], key = mf.dataset.mf;
+    const step = ()=> pages.scrollWidth / 2;
+    const mark = i=>{ tabs.forEach((b, k)=>{ b.classList.toggle('on', k===i); b.setAttribute('aria-selected', String(k===i)); }); mfPage[key] = i; };
+    if(mfPage[key]) requestAnimationFrame(()=>{ pages.scrollLeft = step(); });
+    let raf = 0;
+    pages.addEventListener('scroll', ()=>{ if(raf) return; raf = requestAnimationFrame(()=>{ raf = 0; const i = pages.scrollLeft > step()/2 ? 1 : 0; if(i!==(mfPage[key]||0)) mark(i); }); }, { passive:true });
+    tabs.forEach(b=> b.addEventListener('click', ()=>{ const i = +b.dataset.i; mark(i); try{ pages.scrollTo({ left: i*step(), behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){ pages.scrollLeft = i*step(); } }));
+  });
+}
+/* tocco su un muscolo della figura: si accende lui, sotto serie ed esercizi del periodo */
+document.addEventListener('click', ev=>{
+  const figs = ev.target.closest && ev.target.closest('.mf-figs'); if(!figs) return;
+  const mf = figs.closest('.mf'), det = mf.querySelector('.mf-det');
+  const t = ev.target.closest('.bd-m[data-m]');
+  const cur = figs.dataset.sel || null, m = t ? (t.getAttribute('data-m')===cur ? null : t.getAttribute('data-m')) : null;
+  if(!t && !cur) return;
+  figs.dataset.sel = m || '';
+  figs.querySelectorAll('.bd-m').forEach(el=> el.classList.toggle('sel', el.getAttribute('data-m')===m));
+  figs.classList.toggle('focus', !!m);
+  if(!m){ det.innerHTML = '<div class="bd-hint">Tocca un muscolo per vedere serie ed esercizi.</div>'; return; }
+  const wk = +mf.dataset.wk || 1, T = trainedLoad(mf.dataset.from, mf.dataset.to), tot = T.load[m]||0, avg = tot/wk, tg = MUSCLE_TARGET[m], cls = trainLevel(m, avg);
   const word = cls==='tu' ? 'sotto l\'obiettivo' : cls==='tv' ? 'oltre l\'obiettivo' : cls==='tk' ? 'nell\'obiettivo' : 'nessuna serie';
   const rows = Object.values(T.by[m]||{}).sort((a,b)=> b.v-a.v || a.name.localeCompare(b.name));
-  det.innerHTML = `<div class="bd-det"><div class="bd-det-h"><b>${m}</b><span class="bd-pill ${cls}">${tot ? fn(Math.round(avg*10)/10)+' serie '+(T.wk>1 ? 'a settimana' : '')+' · '+word : word}${t ? ' · obiettivo '+t[0]+'-'+t[1] : ''}</span></div>`
+  det.innerHTML = `<div class="bd-det"><div class="bd-det-h"><b>${m}</b><span class="bd-pill ${cls}">${tot ? Math.round(avg)+' serie'+(wk>1.01 ? ' a settimana' : '')+' · '+word : word}${tg ? ' · obiettivo '+tg[0]+'-'+tg[1] : ''}</span></div>`
     + (rows.length ? rows.map(r=> `<div class="pr-row pr-compact"><span class="pr-name">${escapeHtml(r.name)}${r.sec ? '<small>muscolo secondario: vale metà</small>' : ''}</span><span class="val">${r.sec ? fn(r.v*2)+' serie → '+fn(r.v) : fn(r.v)+' serie'}</span></div>`).join('')
-                   + (T.wk>1 ? '<div class="bd-hint">Serie in tutte e 4 le settimane; il colore guarda la media a settimana.</div>' : '')
+                   + (wk>1.01 ? '<div class="bd-hint">Serie in tutto il periodo; il colore guarda la media a settimana.</div>' : '')
                    : '<div class="bd-hint">Nessuna serie per questo muscolo nel periodo.</div>')
     + '</div>';
-}
-document.getElementById('trainCard').addEventListener('click', ev=>{
-  const p = ev.target.closest('#trainSeg button');
-  if(p){ const d = +p.dataset.p; if(d!==trainDays){ trainDays = d; renderTrainCard(false); } return; }
-  const t = ev.target.closest('[data-m]');
-  if(!t){ if(trainSel && ev.target.closest('#trainFigs')){ trainSel = null; renderTrainCard(true); } return; }
-  const m = t.getAttribute('data-m');
-  trainSel = trainSel===m ? null : m;
-  renderTrainCard(true);
 });
 
 function renderExList(){
@@ -6993,12 +7007,12 @@ function renderWeekStats(){
     : '<div class="chart-empty"><b>Nessun allenamento negli ultimi 7 giorni.</b><span>Quando ne finisci uno, qui compaiono allenamenti, peso sollevato e serie per ogni muscolo, a confronto con i 7 giorni prima.</span></div>';
   // muscoli: stessa lista di Mese e Progressi (muscoli della scheda, prima quelli più indietro)
   document.getElementById('volList').innerHTML = weekSessions
-    ? '<div class="m-sec">Serie per muscolo</div>' + muscleRowsHtml(volume, 1, null, volSec)
+    ? muscleBlock('Serie per muscolo', muscleRowsHtml(volume, 1, null, volSec), volume, 1, isoOf(since), todayISO(), 'week')
     : '';
+  wireMuscleBlocks(document.getElementById('volList'));
 
   /* --- record battuti ed esercizi fermi della settimana (stessi riquadri del Mese e di Progressi) --- */
   renderWeekTiles();
-  try{ renderTrainCard(false); }catch(e){ console.error('renderTrainCard', e); }
 
   /* --- note recenti --- */
   const noted=[];
@@ -7303,11 +7317,8 @@ function renderMonth(){
     ${prevAvg>0 ? `<div class="m-legend"><i class="lg-avg"></i>media a settimana ${aPm}${avgFrom>pFromI ? ' (dal '+dm(avgFrom)+')' : ''}: ${fmtW(prevAvg)}</div>` : ''}`;
 
   /* 3. muscoli: serie di lavoro a settimana rispetto all'obiettivo */
-  html += '<div class="m-sec">Serie a settimana per muscolo</div>';
-  if(days<7) html += '<div class="m-none">Si calcola dalla seconda settimana del mese.</div>';
-  else {
-    html += muscleRowsHtml(cur.vol, days/7, null, cur.sec);
-  }
+  if(days<7) html += '<div class="m-sec">Serie a settimana per muscolo</div><div class="m-none">Si calcola dalla seconda settimana del mese.</div>';
+  else html += muscleBlock('Serie a settimana per muscolo', muscleRowsHtml(cur.vol, days/7, null, cur.sec), cur.vol, days/7, fromI, toI, 'month');
 
   /* 4. record e stallo: solo i numeri; i nomi si aprono a richiesta */
   const recs = monthRecords(fromI, toI), st = stalledList(fromI, toI);
@@ -7320,6 +7331,7 @@ function renderMonth(){
   if(monthOpen==='rec' && recs.length) html += '<div class="m-more">'+recRowsHtml(recs)+'</div>';
   if(monthOpen==='stall' && st.length) html += '<div class="m-more">'+stallRowsHtml(st)+'</div>';
   body.innerHTML = html;
+  wireMuscleBlocks(body);
 }
 document.getElementById('monthBody').addEventListener('click', ev=>{
   const bar = ev.target.closest('.m-wbar');
