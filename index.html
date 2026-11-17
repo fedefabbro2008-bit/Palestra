@@ -5717,7 +5717,7 @@ function renderSessionList(){
       tickSound();
       const newBtn = list.querySelector(`.check[data-ei="${ei}"][data-si="${si}"]`);
       if(newBtn){ newBtn.classList.add('pulse'); setTimeout(()=>newBtn.classList.remove('pulse'), 400); }
-      if(becomingDone) setTimeout(nextSetGlow, 320);
+      if(becomingDone) setTimeout(()=> nextSetGlow(exx, s), 320);
       if(becomingDone && newBtn){
         const row = newBtn.closest('.sess-set-row'); if(row) row.classList.add('just-done');
         // ultima serie dell'esercizio: un lampo sul riquadro (già richiuso)
@@ -8391,11 +8391,41 @@ function tick(){
   // in background il conto continua (suono e vibrazione a fine recupero), ma non si ridisegna niente
   if(document.visibilityState!=='hidden') refreshTimerUI();
 }
-/* 2. dopo una spunta: la serie che tocca si illumina e, se è fuori dallo schermo (sotto la barra o sopra), ci si scorre */
-function nextSetGlow(){
+/* ordine in cui si fanno le serie di tutto l'allenamento, come nextTarget: esercizio per esercizio; in un superset o
+   circuito prima i riscaldamenti di ciascuno, poi le serie di lavoro a giri */
+function sessionSetOrder(){
+  const ex = session.exercises, out = [];
+  for(let g0 = 0; g0 < ex.length; ){
+    let g1 = g0; while(g1 < ex.length-1 && ex[g1].linkNext) g1++;
+    if(g0===g1) ex[g0].sets.forEach((st, si)=> out.push({ ei:g0, si }));
+    else {
+      for(let k=g0; k<=g1; k++) ex[k].sets.forEach((st, si)=>{ if(st.warm) out.push({ ei:k, si }); });
+      const work = k=> ex[k].sets.map((st, si)=>({ st, si })).filter(o=> !o.st.warm);
+      const off = k=> Math.max(0, Math.round(num(ex[k].roundOffset))||0);
+      const rounds = Math.max(...ex.slice(g0, g1+1).map((_, j)=> off(g0+j)+work(g0+j).length));
+      for(let r=0; r<rounds; r++) for(let k=g0; k<=g1; k++){ const o = work(k)[r-off(k)]; if(o) out.push({ ei:k, si:o.si }); }
+    }
+    g0 = g1 + 1;
+  }
+  return out;
+}
+/* 2. dopo una spunta: si illumina la prima serie ancora da fare DOPO quella spuntata (stesso esercizio, poi i successivi;
+   in un superset il giro che segue), mai una rimasta indietro più su; se è fuori dallo schermo ci si scorre */
+function nextSetGlow(exx, set){
   if(!session || currentTab!=='workout') return;
-  const row = document.querySelector('#sessList .sess-set-row.next'); if(!row) return;
+  const ei = session.exercises.indexOf(exx), si = ei>=0 ? exx.sets.indexOf(set) : -1;
+  if(si<0) return;
+  const order = sessionSetOrder(), at = order.findIndex(o=> o.ei===ei && o.si===si);
+  const nx = at<0 ? null : order.slice(at+1).find(o=>{ const x = session.exercises[o.ei]; return setOpen(x, x.sets[o.si]); });
+  if(!nx) return;   // dopo questa non resta niente: nessuna animazione
+  const chk = document.querySelector(`#sessList .check[data-ei="${nx.ei}"][data-si="${nx.si}"]`);
+  let row = chk ? chk.closest('.sess-set-row') : null;
+  // esercizio richiuso (serie nascoste): si mostra il suo riquadro
+  if(!row || !row.offsetHeight){ const card = document.querySelector(`#sessList .sess-ex[data-k="${sk(session.exercises[nx.ei])}"]`); if(card) nextSetScroll(card); return; }
   if(motionOK()){ row.classList.remove('next-glow'); void row.offsetWidth; row.classList.add('next-glow'); row.addEventListener('animationend', ()=> row.classList.remove('next-glow'), { once:true }); }
+  nextSetScroll(row);
+}
+function nextSetScroll(row){
   const main = document.querySelector('main'); if(!main) return;
   const r = row.getBoundingClientRect(), tb = document.querySelector('.session-topbar');
   const top = (tb && tb.offsetHeight ? tb.getBoundingClientRect().bottom : 0) + 12;
