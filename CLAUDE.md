@@ -47,4 +47,7 @@ Regole:
 - Testi dell'interfaccia e commenti in italiano semplice.
 - Le animazioni rispettano «Riduci movimento», le animazioni spente e il risparmio energetico (`motionOK()`).
 - Animazioni continue solo con `transform` e `opacity`.
+- Vetro liquido (come iOS 26, in CSS): `.lg` bordo di luce, `.lg-i` luce sotto il dito, `.lg-btn` pulsante tondo di vetro.
+  Solo sui comandi che galleggiano sopra il contenuto (mai sui riquadri), niente vetro sfocato dentro un altro vetro
+  sfocato, e ogni regola nuova va spenta anche in `html.eco` e con «Riduci trasparenza».
 - Lo zip per Netlify contiene `index.html`, `sw.js`, `fonts/`, `netlify.toml`, `package.json`, `netlify/` (non `tests/`).
