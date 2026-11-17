@@ -1415,13 +1415,6 @@ nav.bottom button:active{transform:scale(.94);}
 .timer-bar .tb-prog{position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(255,255,255,.6); transform-origin:0 50%; transform:scaleX(0); pointer-events:none;}
 .timer-bar.ended .tb-prog, .timer-bar.paused .tb-prog{opacity:.55;}
 @keyframes nextGlow{0%{background-color:transparent;} 30%{background-color:color-mix(in srgb, var(--accent-hi) 22%, transparent);} 100%{background-color:transparent;}}
-.day-pills{position:relative;}
-.day-pills .dp-ind{position:absolute; left:0; top:0; width:0; height:0; border-radius:12px; background:var(--accent-dim); border:1px solid var(--accent);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.14), 0 0 18px rgba(184,25,58,.18); pointer-events:none; z-index:0; opacity:0;}
-.day-pills.has-ind .day-pill{position:relative; z-index:1;}
-.day-pills.has-ind .day-pill:not(.active){background:color-mix(in srgb, var(--card-2) 72%, transparent);}
-.day-pills.has-ind .day-pill.active{background:transparent; border-color:transparent; box-shadow:none;}
-.day-pills.has-ind .dp-ind{opacity:1;}
 .reveal{opacity:0; transform:translateY(18px) scale(.985);}
 .reveal.in{opacity:1; transform:none; transition:opacity .45s ease, transform .5s cubic-bezier(.2,.8,.2,1);}
 .flame{display:inline-block; width:1.05em; height:1.05em; vertical-align:-.17em; margin-right:2px; overflow:visible;}
@@ -1431,7 +1424,10 @@ nav.bottom button:active{transform:scale(.94);}
   .switch .knob{transition:transform .4s cubic-bezier(.3,1.45,.5,1), width .2s ease, background .2s ease;}
   .switch input:active:not(:disabled) ~ .knob{width:25px;}
   .switch input:checked:active:not(:disabled) ~ .knob{transform:translateX(13px);}
-  .day-pills .dp-ind.go{transition:left .5s cubic-bezier(.3,1.35,.45,1), width .5s cubic-bezier(.3,1.35,.45,1), top .3s ease, height .3s ease;}
+  /* 7. cambio giornata: le giornate restano ferme, il colore passa dolcemente dalla vecchia alla nuova */
+  .day-pill{transition:background-color .32s ease, border-color .32s ease, box-shadow .32s ease, transform .12s ease;}
+  .day-pill .dp-key, .day-pill .dp-focus, .day-pill .last{transition:color .32s ease;}
+  .day-pill:active{transform:scale(.97);}
   .flame{transform-origin:50% 90%; animation:flameFlick 1.8s ease-in-out infinite;}
   .flame .fi{transform-origin:50% 95%; animation:flameCore 1.1s ease-in-out infinite;}
   .flame.lit{animation:flameLit .7s cubic-bezier(.3,1.6,.5,1), flameFlick 1.8s ease-in-out .7s infinite;}
@@ -3441,29 +3437,40 @@ document.getElementById('clockTestBtn').addEventListener('click', ()=>{
    ============================================================ */
 function renderDayPills(){
   const wrap = document.getElementById('dayPills'), spareWrap = document.getElementById('sparePills');
-  wrap.innerHTML='';
-  if(spareWrap) spareWrap.innerHTML = '';
   renderSpareOpen();
-  Object.keys(state.days).forEach(k=>{
+  const items = Object.keys(state.days).map(k=>{
     const lastLog = lastLogDateFor(k);
-    const btn = document.createElement('button');
-    btn.className = 'day-pill'+(k===currentDay?' active':'');
     // la parte distintiva del nome è alla FINE ("Giorno 1 · Trazione Superiore"):
     // troncare l'inizio rendeva tutte le pill identiche
     const p = splitDayName(state.days[k].name, k);
     // nella finestra delle riserve: anche durata prevista e numero di esercizi
     const spareMeta = isSpare(k) ? (()=>{ const sec = planEtaSec(k), n = state.days[k].exercises.filter(e=>e.muscle!=='Altro').length;
       return `<span class="sp-meta">${sec>=60 ? '~'+fmtMin(sec/60)+' · ' : ''}${n===1?'1 esercizio':n+' esercizi'}</span>`; })() : '';
-    btn.innerHTML = `<span class="dp-key">${escapeHtml(p.key)}</span>`
+    return { k, html: `<span class="dp-key">${escapeHtml(p.key)}</span>`
       + (p.focus?`<span class="dp-focus">${escapeHtml(p.focus)}</span>`:'')
       + spareMeta
-      + `<span class="last">${lastLog ? (isSpare(k) ? 'ultima volta '+dm(lastLog) : dm(lastLog)) : 'mai fatto'}</span>`;
+      + `<span class="last">${lastLog ? (isSpare(k) ? 'ultima volta '+dm(lastLog) : dm(lastLog)) : 'mai fatto'}</span>`, spare: isSpare(k) && !!spareWrap };
+  });
+  // cambia solo la giornata scelta: si sposta la classe "active", così il passaggio di colore è graduale (ricreandole scattava)
+  const sig = JSON.stringify([items, planEditMode]);
+  if(wrap._sig===sig){
+    [wrap, spareWrap].forEach(w=>{ if(w) w.querySelectorAll('.day-pill[data-k]').forEach(b=> b.classList.toggle('active', b.dataset.k===currentDay)); });
+    return;
+  }
+  wrap._sig = sig;
+  wrap.innerHTML='';
+  if(spareWrap) spareWrap.innerHTML = '';
+  items.forEach(({ k, html, spare })=>{
+    const btn = document.createElement('button');
+    btn.className = 'day-pill'+(k===currentDay?' active':'');
+    btn.dataset.k = k;
+    btn.innerHTML = html;
     btn.addEventListener('click', ()=>{
       currentDay=k; state.settings.lastDay=k; persist('settings');
       if(isSpare(k)) closeSpareSheet();
       renderWorkout();
     });
-    if(isSpare(k) && spareWrap){ btn.classList.add('spare'); spareWrap.appendChild(btn); }
+    if(spare){ btn.classList.add('spare'); spareWrap.appendChild(btn); }
     else wrap.appendChild(btn);
   });
   if(planEditMode){   // aggiungere una giornata è una modifica della scheda: il "+" compare in Modifica
@@ -3472,26 +3479,7 @@ function renderDayPills(){
     addBtn.addEventListener('click', addNewDay);
     wrap.appendChild(addBtn);
   }
-  placeDayInd(wrap);
 }
-/* 7. evidenziazione della giornata scelta: un riquadro solo che scivola da una giornata all'altra (come la barra in basso).
-   Le giornate si ricreano a ogni disegno: il riquadro resta lo stesso elemento, quindi scivola dalla posizione di prima */
-let dayInd = null;
-function placeDayInd(wrap){
-  if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); }
-  const a = wrap.querySelector('.day-pill.active');
-  wrap.insertBefore(dayInd, wrap.firstChild);
-  void dayInd.offsetWidth;   // rimesso nella lista: si calcola la posizione di prima, così scivola da lì
-  if(!a || !a.offsetWidth){ wrap.classList.remove('has-ind'); dayInd.classList.remove('go'); dayInd._at = null; return; }
-  const at = [a.offsetLeft, a.offsetTop, a.offsetWidth, a.offsetHeight];
-  // la prima volta (o dopo essere stata nascosta) si mette al suo posto senza scivolare
-  dayInd.classList.toggle('go', !!dayInd._at && motionOK());
-  if(!dayInd._at) void dayInd.offsetWidth;
-  dayInd.style.left = at[0]+'px'; dayInd.style.top = at[1]+'px'; dayInd.style.width = at[2]+'px'; dayInd.style.height = at[3]+'px';
-  dayInd._at = at;
-  wrap.classList.add('has-ind');
-}
-addEventListener('resize', ()=>{ const w = document.getElementById('dayPills'); if(w && dayInd && dayInd._at){ dayInd._at = null; placeDayInd(w); } });
 /* allenamenti corti: un pulsante discreto sotto le giornate apre la finestra con le riserve */
 function renderSpareOpen(){
   const b = document.getElementById('spareOpenBtn'); if(!b) return;
