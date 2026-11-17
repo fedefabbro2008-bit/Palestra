@@ -1422,6 +1422,8 @@ nav.bottom button:active{transform:scale(.94);}
 .day-pills.has-ind .day-pill{position:relative; z-index:1;}
 .day-pills.has-ind .day-pill.active{background-color:var(--glass-fill); border-color:var(--border-input); box-shadow:inset 0 1px 0 var(--glass-hi-soft);}   /* uguale alle altre: il colore lo dà il riquadro che scivola */
 .day-pills.has-ind .dp-ind{opacity:1;}
+/* le giornate ci stanno senza scorrere: il riquadro può andare un po' oltre la prima e l'ultima senza essere tagliato */
+.day-pills.fits{overflow:visible;}
 .reveal{opacity:0; transform:translateY(18px) scale(.985);}
 .reveal.in{opacity:1; transform:none; transition:opacity .45s ease, transform .5s cubic-bezier(.2,.8,.2,1);}
 .flame{display:inline-block; width:1.05em; height:1.05em; vertical-align:-.17em; margin-right:2px; overflow:visible;}
@@ -1433,8 +1435,6 @@ nav.bottom button:active{transform:scale(.94);}
   .switch input:checked:active:not(:disabled) ~ .knob{transform:translateX(13px);}
   /* 7. cambio giornata: il riquadro scivola con un piccolo rimbalzo (senza rimbalzo verso la prima e l'ultima, dove
      uscirebbe dal bordo e verrebbe tagliato); le scritte cambiano colore sfumando */
-  .day-pills .dp-ind.go{transition:left .5s cubic-bezier(.3,1.35,.45,1), width .5s cubic-bezier(.3,1.35,.45,1), top .3s ease, height .3s ease;}
-  .day-pills .dp-ind.go.edge{transition-timing-function:cubic-bezier(.2,.8,.2,1);}
   .day-pill{transition:transform .12s ease;}
   .day-pill .dp-key, .day-pill .dp-focus, .day-pill .last{transition:color .3s ease;}
   .day-pill:active{transform:scale(.97);}
@@ -3496,19 +3496,42 @@ function renderDayPills(){
    Le giornate restano le stesse (cambia solo quale è attiva), quindi il riquadro parte da dove era. animate=false quando
    le giornate sono state ridisegnate (testo cambiato): lì si mette al posto giusto senza scivolare */
 let dayInd = null;
+/* come il vetro liquido: il bordo davanti parte per primo e quello dietro lo segue (il riquadro si allunga), poi va un po'
+   oltre la giornata e torna indietro ricomponendosi. Se le giornate scorrono (tante), contro la prima o l'ultima non
+   esce dal bordo: si schiaccia un attimo contro la parete. Un tocco a metà corsa riparte da dove si trova. */
+let dayIndAnim = null;
 function placeDayInd(wrap, animate){
   if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); }
   if(dayInd.parentNode!==wrap){ wrap.appendChild(dayInd); animate = false; }
   const a = wrap.querySelector('.day-pill.active');
-  if(!a || !a.offsetWidth){ wrap.classList.remove('has-ind'); dayInd.classList.remove('go'); dayInd._on = false; return; }
-  const pills = [...wrap.querySelectorAll('.day-pill:not(.add-day-pill)')];
-  const go = animate && dayInd._on && motionOK();
-  dayInd.classList.toggle('go', go);
-  dayInd.classList.toggle('edge', a===pills[0] || a===pills[pills.length-1]);
-  if(!go) void dayInd.offsetWidth;
-  dayInd.style.left = a.offsetLeft+'px'; dayInd.style.top = a.offsetTop+'px'; dayInd.style.width = a.offsetWidth+'px'; dayInd.style.height = a.offsetHeight+'px';
-  dayInd._on = true;
+  if(!a || !a.offsetWidth){ wrap.classList.remove('has-ind'); dayInd._on = false; return; }
+  // da dove parte: anche a metà di un'animazione interrotta
+  const cs = getComputedStyle(dayInd), L0 = parseFloat(cs.left) || 0, W0 = parseFloat(cs.width) || 0;
+  if(dayIndAnim){ try{ dayIndAnim.cancel(); }catch(e){} dayIndAnim = null; }
+  const L1 = a.offsetLeft, W1 = a.offsetWidth;
+  dayInd.style.left = L1+'px'; dayInd.style.top = a.offsetTop+'px'; dayInd.style.width = W1+'px'; dayInd.style.height = a.offsetHeight+'px';
+  wrap.classList.toggle('fits', wrap.scrollWidth <= wrap.clientWidth + 1);
+  const was = dayInd._on; dayInd._on = true;
   wrap.classList.add('has-ind');
+  if(!animate || !was || !motionOK() || !dayInd.animate || Math.abs(L1-L0) < 1) return;
+  const R0 = L0 + W0, R1 = L1 + W1, right = L1 > L0, dist = Math.abs(L1 - L0);
+  const ov = Math.min(10, Math.max(4, dist * 0.06));          // quanto va oltre
+  // allungato a metà strada: il bordo davanti al 75%, quello dietro al 30%
+  const lead = right ? R0 + (R1-R0)*0.75 : L0 + (L1-L0)*0.75, tail = right ? L0 + (L1-L0)*0.3 : R0 + (R1-R0)*0.3;
+  const mid = right ? { left: tail, width: lead - tail } : { left: lead, width: tail - lead };
+  const pills = [...wrap.querySelectorAll('.day-pill:not(.add-day-pill)')];
+  const wall = !wrap.classList.contains('fits') && (a===pills[0] || a===pills[pills.length-1]);
+  // oltre: spostato di ov nella direzione del moto e un po' più stretto; contro la parete invece schiacciato sul posto
+  const past = wall ? (right ? { left: L1 + ov, width: W1 - ov } : { left: L1, width: W1 - ov })
+                    : { left: L1 + (right ? ov : -ov), width: W1 - ov*0.6 };
+  const px = o=> ({ left: o.left.toFixed(1)+'px', width: Math.max(8, o.width).toFixed(1)+'px' });
+  dayIndAnim = dayInd.animate([
+    { left: L0+'px', width: W0+'px', easing: 'cubic-bezier(.45,0,.6,1)' },
+    Object.assign(px(mid), { offset: .38, easing: 'cubic-bezier(.2,.7,.3,1)' }),
+    Object.assign(px(past), { offset: .72, easing: 'cubic-bezier(.4,0,.3,1)' }),
+    { left: L1+'px', width: W1+'px' }
+  ], { duration: Math.min(620, 420 + dist*0.6) });
+  dayIndAnim.onfinish = ()=>{ dayIndAnim = null; };
 }
 addEventListener('resize', ()=>{ const w = document.getElementById('dayPills'); if(w && dayInd && dayInd._on) placeDayInd(w, false); });
 /* allenamenti corti: un pulsante discreto sotto le giornate apre la finestra con le riserve */
