@@ -27,7 +27,6 @@ export const TESTS = [
   // barra, animazioni
   { nome: 'barra-lente', file: 'ui/barra-lente.test.js', cosa: 'lente della barra: scivola, va oltre, un tocco = un cambio' },
   { nome: 'barra-trascinamento', file: 'ui/barra-trascinamento.test.js', cosa: 'lente afferrata: segue il dito, si allunga, rilascio' },
-  { nome: 'vetro', file: 'ui/vetro.test.js', cosa: 'vetro liquido: bordo di luce, luce del tocco, pulsanti tondi, interruttore lente, ripieghi' },
   { nome: 'animazioni', file: 'ui/animazioni.test.js', cosa: 'timer, serie dopo, interruttori, giornate, numeri, riquadri, fiammella' },
   // statistiche
   { nome: 'muscoli-corpo-costanza', file: 'ui/muscoli-corpo-costanza.test.js', args: DF, cosa: 'Serie per muscolo con il corpo, costanza 6 mesi' },

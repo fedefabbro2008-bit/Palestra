@@ -1441,10 +1441,7 @@ body.dark nav.bottom.lq-drag button.lq-over{color:#ff7d8f;}
   .sess-set-row.next-glow{animation:nextGlow 1s ease;}
   .switch .knob{transition:transform .4s cubic-bezier(.3,1.45,.5,1), width .2s ease, background .2s ease;}
   .switch input:active:not(:disabled) ~ .knob{width:25px;}
-  .switch input:checked:active:not(:disabled) ~ .knob{transform:translateX(13px) scale(1.25);}
-  .switch input:active:not(:disabled) ~ .knob{transform:scale(1.25); background:rgba(255,255,255,.16);
-    box-shadow:inset 1px 1px 1px rgba(255,255,255,.75), inset -1px -1px 1px rgba(255,255,255,.3), 0 3px 10px rgba(0,0,0,.35);}
-  body.light .switch input:active:not(:disabled) ~ .knob{background:rgba(255,255,255,.5); box-shadow:inset 1px 1px 1px #fff, inset -1px -1px 1px rgba(255,255,255,.8), 0 3px 10px rgba(0,0,0,.2);}
+  .switch input:checked:active:not(:disabled) ~ .knob{transform:translateX(13px);}
   /* 7. cambio giornata: il riquadro scivola con un piccolo rimbalzo (senza rimbalzo verso la prima e l'ultima, dove
      uscirebbe dal bordo e verrebbe tagliato); le scritte cambiano colore sfumando */
   .day-pill{transition:transform .12s ease;}
@@ -1511,8 +1508,7 @@ body.light .session-topbar{background:rgba(236,236,236,.58);}
 .sheet-overlay, .timer-overlay{background:rgba(0,0,0,.4);}
 .sheet, .timer-sheet, .confirm-box{background:var(--glass-strong); -webkit-backdrop-filter:blur(30px) saturate(180%); backdrop-filter:blur(30px) saturate(180%);
   border-color:var(--glass-line); box-shadow:inset 0 1px 0 var(--glass-hi), 0 -10px 40px rgba(0,0,0,.5);}
-.sheet, .timer-sheet{border-radius:34px 34px 0 0; box-shadow:inset 1px 1px 0 rgba(255,255,255,.2), inset -1px 0 0 rgba(255,255,255,.07), inset 0 1px 1px rgba(255,255,255,.12), 0 -10px 40px rgba(0,0,0,.5);}
-body.light :is(.sheet, .timer-sheet){box-shadow:inset 1px 1px 0 rgba(255,255,255,.95), inset -1px 0 0 rgba(255,255,255,.6), 0 -10px 34px rgba(0,0,0,.14);}
+.sheet, .timer-sheet{border-radius:28px 28px 0 0;}
 .confirm-box{border-radius:24px;}
 #settingsSheet .card, .sheet .card{background-color:transparent;}
 /* riquadri: fondo nero con riflesso in alto e bordo di luce */
@@ -1553,88 +1549,6 @@ main{padding-top:var(--head-h, 0px);}
 .vol-track{background-color:var(--glass-fill); box-shadow:inset 0 1px 2px rgba(0,0,0,.4);}
 @media (prefers-reduced-transparency: reduce){
   nav.bottom, .toast, .sheet, .timer-sheet, .confirm-box, .session-topbar, header{background:var(--bg-elev); -webkit-backdrop-filter:none; backdrop-filter:none;}
-}
-
-/* ===================== VETRO LIQUIDO (come iOS 26) =====================
-   Le app native lo fanno con expo-glass-effect / SwiftUI glassEffect; qui è lo stesso materiale in CSS, solo sui
-   comandi che galleggiano sopra il contenuto (barra in basso, timer, pulsanti in alto, avvisi, pannelli), mai
-   sui riquadri del contenuto, come fa Apple.
-   - bordo di luce (.lg): riflesso forte in alto a sinistra e in basso a destra, quasi niente sui lati
-   - spessore: luce interna sopra e sotto
-   - interattivo (.lg-i): dove tocchi si accende una luce che segue il dito e si spegne quando lasci
-   - pulsanti di vetro (.lg-btn): tondi, premuti si gonfiano invece di rimpicciolirsi
-   - barre in alto: niente riga netta, il contenuto sfuma sotto di loro (bordo morbido)
-   Niente rifrazione (la distorsione ai bordi): nel browser dell'iPhone non si può fare.
-   Niente vetro sopra vetro: le lenti e i pulsanti dentro una barra sfocata hanno solo bordo e tinta. */
-:root{
-  --lg-rim:linear-gradient(135deg, rgba(255,255,255,.62) 0%, rgba(255,255,255,.16) 20%, rgba(255,255,255,0) 40%,
-    rgba(255,255,255,0) 62%, rgba(255,255,255,.12) 82%, rgba(255,255,255,.42) 100%);
-  --lg-depth:inset 0 1px 1px rgba(255,255,255,.14), inset 0 -1px 1px rgba(255,255,255,.05), inset 0 0 16px rgba(255,255,255,.04);
-  --lg-btn:rgba(40,40,44,.42);
-  --lg-edge:rgba(0,0,0,.55);
-}
-body.light{
-  --lg-rim:linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(255,255,255,.55) 22%, rgba(255,255,255,.1) 42%,
-    rgba(255,255,255,.1) 62%, rgba(255,255,255,.5) 82%, rgba(255,255,255,.95) 100%);
-  --lg-depth:inset 0 1px 1px rgba(255,255,255,.85), inset 0 -1px 1px rgba(255,255,255,.4), inset 0 0 16px rgba(255,255,255,.3);
-  --lg-btn:rgba(255,255,255,.55);
-  --lg-edge:rgba(236,236,236,.62);
-}
-.confirm-box.lg, .btn.lg, .icon-btn.lg, .tb-controls button.lg{position:relative;}   /* il bordo di luce sta sopra di loro, non sopra la barra */
-@supports ((mask-composite:exclude) or (-webkit-mask-composite:xor)){
-  .lg::after{content:''; position:absolute; inset:-1px; border-radius:inherit; padding:1.2px; background:var(--lg-rim);
-    pointer-events:none; z-index:3;
-    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor;
-            mask:linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);}
-  .nav-ind.lg::after, .dp-ind.lg::after{inset:0; padding:1px; opacity:.9;}
-  .btn.primary.lg::after{opacity:.75;}
-}
-nav.bottom.lg{box-shadow:var(--lg-depth), 0 10px 30px rgba(0,0,0,.5);}
-body.light nav.bottom.lg{box-shadow:var(--lg-depth), 0 8px 24px rgba(0,0,0,.16);}
-.timer-bar.lg{box-shadow:inset 0 1px 1px rgba(255,255,255,.28), inset 0 -1px 1px rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.45);}
-.toast.lg, .confirm-box.lg{box-shadow:var(--lg-depth), 0 12px 32px rgba(0,0,0,.5);}
-body.light :is(.toast.lg, .confirm-box.lg){box-shadow:var(--lg-depth), 0 10px 28px rgba(0,0,0,.16);}
-.toast.lg{border-radius:22px;}
-.confirm-box.lg{border-radius:30px;}
-/* la lente che scorre (barra e giornate): vetro chiaro col suo bordo di luce, senza sfocatura sua */
-.nav-ind.lg{background:rgba(255,255,255,.10); box-shadow:inset 0 1px 1px rgba(255,255,255,.2), inset 0 -1px 1px rgba(255,255,255,.06);}
-body.light .nav-ind.lg{background:rgba(255,255,255,.55); box-shadow:inset 0 1px 1px rgba(255,255,255,.9), 0 1px 4px rgba(0,0,0,.08);}
-/* pulsanti di vetro: tondi; dentro la barra del timer (già sfocata) solo tinta e bordo */
-.icon-btn.lg-btn{border-radius:50%; border-color:transparent; background:var(--lg-btn) !important;
-  -webkit-backdrop-filter:blur(12px) saturate(180%); backdrop-filter:blur(12px) saturate(180%); box-shadow:var(--lg-depth);}
-body.light .icon-btn.lg-btn{border-color:rgba(0,0,0,.07); box-shadow:var(--lg-depth), 0 2px 10px rgba(0,0,0,.10);}   /* bianco su bianco: un filo d'ombra lo stacca */
-.timer-bar .tb-controls button.lg{border-radius:50%; background:rgba(255,255,255,.12); box-shadow:inset 0 1px 1px rgba(255,255,255,.3);}
-.timer-bar.paused .tb-controls button.lg{background:rgba(0,0,0,.12);}
-@media (prefers-reduced-motion: no-preference){
-  .lg-btn, .timer-bar .tb-controls button.lg{transition:transform .38s cubic-bezier(.3,1.6,.5,1);}
-  .lg-btn:active, .timer-bar .tb-controls button.lg:active{transform:scale(1.12);}
-}
-/* luce del tocco: dentro un contenitore ritagliato sulla forma; si muove solo con transform */
-.lg-lights{position:absolute; inset:0; border-radius:inherit; overflow:hidden; pointer-events:none; z-index:2;}
-.lg-light{position:absolute; left:0; top:0; width:150px; height:150px; margin:-75px 0 0 -75px; border-radius:50%;
-  background:radial-gradient(circle, rgba(255,255,255,.26), rgba(255,255,255,.09) 38%, rgba(255,255,255,0) 70%);
-  opacity:0; transition:opacity .5s ease; will-change:transform, opacity; pointer-events:none;}
-.lg-btn .lg-light{width:90px; height:90px; margin:-45px 0 0 -45px;}
-.lg-lights.on .lg-light{opacity:1; transition-duration:.12s;}
-body.light .lg-light{background:radial-gradient(circle, rgba(0,0,0,.075), rgba(0,0,0,.03) 40%, rgba(0,0,0,0) 70%);}   /* sul vetro chiaro una luce bianca non si vedrebbe: un'ombra leggera */
-/* barre in alto: al posto della riga netta il contenuto sfuma sotto (vetro che si dissolve in basso).
-   Lo strato è dietro i testi e non cambia l'altezza delle barre */
-header, .session-topbar{background:transparent; border-bottom-color:transparent;}
-header::before, .session-topbar::before{content:''; position:absolute; left:0; right:0; top:0; bottom:-18px; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, var(--glass) 0%, var(--glass) calc(100% - 18px), transparent 100%);
-  -webkit-backdrop-filter:var(--glass-blur); backdrop-filter:var(--glass-blur);
-  -webkit-mask-image:linear-gradient(180deg, #000 0%, #000 calc(100% - 26px), transparent 100%);
-          mask-image:linear-gradient(180deg, #000 0%, #000 calc(100% - 26px), transparent 100%);}
-.session-topbar::before{background:linear-gradient(180deg, var(--lg-edge) 0%, var(--lg-edge) calc(100% - 18px), transparent 100%);}
-/* risparmio energetico: niente riflessi, luci e sfumature (resta il nero pieno) */
-html.eco .lg::after, html.eco .lg-lights, html.eco header::before, html.eco .session-topbar::before{display:none !important;}
-html.eco :is(header, .session-topbar){border-bottom-color:#2a2a2a !important;}
-html.eco .icon-btn.lg-btn{background:#111 !important; border-color:#2a2a2a;}
-/* «Riduci trasparenza» dell'iPhone: barre e pulsanti pieni */
-@media (prefers-reduced-transparency: reduce){
-  header::before, .session-topbar::before{background:var(--bg-elev); -webkit-backdrop-filter:none; backdrop-filter:none; -webkit-mask-image:none; mask-image:none; bottom:0;}
-  header, .session-topbar{border-bottom-color:var(--border);}
-  .icon-btn.lg-btn{background:var(--bg-elev) !important; -webkit-backdrop-filter:none; backdrop-filter:none;}
 }
 
 /* ===================== FORME E SPAZI UNIFORMI (tutte le sezioni) =====================
@@ -1791,7 +1705,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 <header>
   <h1><svg class="ic ic-lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6M6.5 5.5v13M17.5 5.5v13M21 9v6M6.5 12h11"/></svg>Palestra</h1>
   <div style="display:flex; gap:8px;">
-    <button class="icon-btn lg lg-i lg-btn" id="settingsBtn" aria-label="Impostazioni" title="Impostazioni"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.4"/><circle cx="15" cy="17" r="2.4"/></svg></button>
+    <button class="icon-btn" id="settingsBtn" aria-label="Impostazioni" title="Impostazioni"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.4"/><circle cx="15" cy="17" r="2.4"/></svg></button>
   </div>
 </header>
 
@@ -1856,8 +1770,8 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
           </div>
           <div class="st-title" id="sessTitle">Allenamento</div>
           <div class="st-actions">
-            <button class="icon-btn lg lg-i lg-btn" id="sessCancelBtn" aria-label="Annulla allenamento" title="Annulla allenamento"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-            <button class="btn primary lg lg-i" id="sessFinishBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>Termina</button>
+            <button class="icon-btn" id="sessCancelBtn" aria-label="Annulla allenamento" title="Annulla allenamento"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <button class="btn primary" id="sessFinishBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>Termina</button>
           </div>
         </div>
         <div class="st-progress"><div id="sessProgress" style="width:0%"></div></div>
@@ -2087,7 +2001,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
   </div>
 </div>
 
-<div class="toast lg" id="toast"><span id="toastMsg"></span><button id="toastAct" style="display:none;"></button></div>
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastAct" style="display:none;"></button></div>
 
 <div class="sheet-overlay" id="editSessSheet">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="esTitle">
@@ -2109,7 +2023,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
   </div>
 </div>
 <div class="confirm-overlay" id="confirmOverlay">
-  <div class="confirm-box lg">
+  <div class="confirm-box">
     <p id="confirmMsg">Sei sicuro?</p>
     <div class="confirm-actions">
       <button class="btn" id="confirmNo">Annulla</button>
@@ -2369,7 +2283,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 </div>
 
 <div class="confirm-overlay" id="installOverlay">
-  <div class="confirm-box lg">
+  <div class="confirm-box">
     <p style="margin-bottom:10px; font-weight:600;">Installa Palestra come app</p>
     <div class="only-ios">
     <p style="font-size:13px;">Su iPhone (Safari):</p>
@@ -2393,19 +2307,19 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><linearGradient id="flameGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#e8283c"/><stop offset=".55" stop-color="#ff6a2b"/><stop offset="1" stop-color="#ffa53a"/></linearGradient></defs></svg>
 <div class="bottom-stack">
-  <div class="timer-bar lg lg-i" id="timerBar">
+  <div class="timer-bar" id="timerBar">
     <i class="tb-prog" id="tbProg" aria-hidden="true"></i>
     <div class="tb-info">
       <span class="tb-label" id="tbLabel">Timer</span>
       <span class="tb-time mono" id="tbTime">2:00</span>
     </div>
     <div class="tb-controls">
-      <button id="tbPause" class="lg" aria-label="Pausa"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg></button>
-      <button id="tbStop" class="lg" aria-label="Ferma"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <button id="tbPause" aria-label="Pausa"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg></button>
+      <button id="tbStop" aria-label="Ferma"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
   </div>
-  <nav class="bottom lg lg-i">
-    <span class="nav-ind lg" aria-hidden="true"><i class="lq-glow"></i></span>
+  <nav class="bottom">
+    <span class="nav-ind" aria-hidden="true"><i class="lq-glow"></i></span>
     <button class="active" data-tab="workout"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6M6.5 5.5v13M17.5 5.5v13M21 9v6M6.5 12h11"/></svg>Allenamento</button>
     <button data-tab="stats"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Settimana</button>
     <button data-tab="month"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Mese</button>
@@ -3777,7 +3691,7 @@ let dayInd = null;
 /* stessa lente a vetro liquido della barra in basso (liquidMove). Se le giornate scorrono (tante), contro la prima o
    l'ultima non esce dal bordo: si schiaccia un attimo contro la parete */
 function placeDayInd(wrap, animate){
-  if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind lg'; dayInd.setAttribute('aria-hidden', 'true'); dayInd.innerHTML = '<i class="lq-glow"></i>'; }
+  if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); dayInd.innerHTML = '<i class="lq-glow"></i>'; }
   if(dayInd.parentNode!==wrap){ wrap.appendChild(dayInd); animate = false; }
   const a = wrap.querySelector('.day-pill.active');
   if(!a || !a.offsetWidth){ wrap.classList.remove('has-ind'); dayInd._on = false; return; }
@@ -9857,28 +9771,6 @@ async function claudeUndo(){
   put(prev);
   showToast('Scheda rimessa com\'era', 'Rifai', ()=>{ if(!session) put(JSON.parse(JSON.stringify(after)), v.undo ? 'Scheda di nuovo com\'era' : 'Modifiche di Claude rimesse'); });
 }
-/* vetro interattivo (.lg-i): dove tocchi si accende una luce che segue il dito, e si spegne quando lasci.
-   Solo transform e opacità; niente con le animazioni spente, «Riduci movimento» o il risparmio energetico */
-(function(){
-  function light(host){
-    let box = host.querySelector(':scope > .lg-lights');
-    if(!box){ box = document.createElement('span'); box.className = 'lg-lights'; box.setAttribute('aria-hidden', 'true');
-      box.innerHTML = '<i class="lg-light"></i>'; host.appendChild(box); }
-    return box;
-  }
-  document.addEventListener('pointerdown', e=>{
-    const host = e.target.closest && e.target.closest('.lg-i');
-    if(!host || !motionOK() || document.documentElement.classList.contains('eco')) return;
-    const box = light(host), dot = box.firstElementChild;
-    let raf = 0, x = e.clientX, y = e.clientY;
-    const place = ()=>{ raf = 0; const r = host.getBoundingClientRect(); dot.style.transform = 'translate3d('+(x - r.left)+'px,'+(y - r.top)+'px,0)'; };
-    place(); box.classList.add('on');
-    const move = ev=>{ if(ev.pointerId!==e.pointerId) return; x = ev.clientX; y = ev.clientY; if(!raf) raf = requestAnimationFrame(place); };
-    const end = ev=>{ if(ev.pointerId!==e.pointerId) return; box.classList.remove('on');
-      removeEventListener('pointermove', move); removeEventListener('pointerup', end); removeEventListener('pointercancel', end); };
-    addEventListener('pointermove', move, { passive:true }); addEventListener('pointerup', end); addEventListener('pointercancel', end);
-  }, { passive:true });
-})();
 window.addEventListener('online', ()=>{ if(sync.code) syncSoon(500); });
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && sync.code && Date.now()-syncLastTry > 60000) syncSoon(300); });
 swInit();
