@@ -514,3 +514,30 @@ test("lavoro risparmiato: carta della pianta senza ridisposizioni a catena, pian
   assert.deepEqual(piano, [true, false], "ricalcolo solo se cambia ciò che il calcolo legge");
   assert.deepEqual(errori, []);
 });
+
+test("barra delle schede come nell'app Palestra: lente di vetro che scivola con rimbalzo e si può trascinare", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const ctx = await contesto(browser), page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  const lente = () => page.evaluate(() => { const i = document.querySelector("nav.tabs .nav-ind"), s = document.querySelector("nav.tabs .tab[aria-selected=true]"), a = i.getBoundingClientRect(), b = s.getBoundingClientRect();
+    const m = (x) => (Math.abs(x) <= 1 ? 0 : Math.round(x));   // offsetWidth è intero: fino a 1 px è arrotondamento
+    return { scheda: s.dataset.view, dx: m(a.left - b.left), dw: m(a.width - b.width), anim: i.getAnimations().length }; });
+  assert.deepEqual(await lente(), { scheda: "oggi", dx: 0, dw: 0, anim: 0 }, "all'apertura la lente è sotto Oggi");
+  await page.click("#tab-diario");
+  const durante = await lente();
+  assert.equal(durante.scheda, "diario"); assert.equal(durante.anim, 1, "la lente scivola con un'animazione");
+  const kf = await page.evaluate(() => document.querySelector("nav.tabs .nav-ind").getAnimations()[0].effect.getKeyframes().map((k) => k.transform));
+  assert.ok(kf.length >= 5 && kf.some((x) => /scale\(1\.[2-9]/.test(x)), "si allunga a metà strada: " + kf.join(" | "));
+  await page.waitForTimeout(700);
+  assert.deepEqual(await lente(), { scheda: "diario", dx: 0, dw: 0, anim: 0 }, "arrivata sotto Diario, senza deformazioni");
+  // trascinata col dito (qui col mouse) da Diario fin sopra Piante: al rilascio si sceglie Piante
+  const box = async (id) => page.locator(id).boundingBox();
+  const d = await box("#tab-diario"), p = await box("#tab-piante");
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(d.x + d.width / 2 - (d.x - p.x) * i / 8, d.y + d.height / 2); await page.waitForTimeout(30); }
+  assert.ok(await page.evaluate(() => document.querySelector("nav.tabs").classList.contains("lq-drag") && document.querySelector("#tab-piante").classList.contains("lq-over")), "trascinando si colora la scheda sotto la lente");
+  await page.mouse.up(); await page.waitForTimeout(800);
+  assert.deepEqual(await lente(), { scheda: "piante", dx: 0, dw: 0, anim: 0 }, "rilasciata: Piante");
+  assert.ok(await page.isVisible("#view-piante"));
+  assert.deepEqual(errori, []);
+});

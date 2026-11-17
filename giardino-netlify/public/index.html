@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="764fc63a34f2">
+<meta name="giardino-build" content="15fe9d7c7741">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -529,13 +529,18 @@ nav.tabs .tab:active{transform:scale(.94)}
    che si riempiono, riquadri che compaiono scorrendo, piante che ondeggiano piano. */
 nav.tabs .in{position:relative}
 nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
-.tab-pill{position:absolute;top:0;bottom:0;left:0;width:25%;border-radius:25px;background:var(--glass-pill);box-shadow:inset 0 1px 0 var(--glass-hi-soft);
-  z-index:-1;transform:translateX(calc(var(--i,0)*100%));pointer-events:none}
-.in:has(#tab-piante[aria-selected="true"]) .tab-pill{--i:1}
-.in:has(#tab-diario[aria-selected="true"]) .tab-pill{--i:2}
-.in:has(#tab-impostazioni[aria-selected="true"]) .tab-pill{--i:3}
-@supports selector(:has(a)){ nav.tabs .tab[aria-selected="true"]::before{background:transparent;box-shadow:none} }
-@supports not selector(:has(a)){ .tab-pill{display:none} }
+/* lente di vetro liquido (come nella barra dell'app Palestra e di WhatsApp su iOS 26): una sola lente sotto la scheda
+   scelta; cambiando scheda si solleva, si allunga verso la destinazione col bordo davanti che parte per primo, va appena
+   oltre e torna con un rimbalzo. Tenendola premuta si può trascinare: segue il dito e si allunga con la velocità.
+   Si muove solo con transform (niente ricalcoli della pagina); l'alone è un livello sopra di cui cambia l'opacità. */
+.nav-ind{position:absolute;top:0;left:0;width:25%;height:100%;border-radius:25px;background:var(--glass-pill);box-shadow:inset 0 1px 0 var(--glass-hi-soft);
+  pointer-events:none;z-index:-1;will-change:transform;transform-origin:50% 50%;backface-visibility:hidden;
+  --lq-glow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px rgba(0,0,0,.22)}
+.lq-glow{position:absolute;inset:-1px;border-radius:inherit;box-shadow:var(--lq-glow);opacity:0;pointer-events:none;will-change:opacity}
+nav.tabs .tab[aria-selected="true"]::before,nav.tabs .tab::before{background:transparent;box-shadow:none}
+/* trascinando la lente si colora la scheda su cui si trova (non più quella di partenza) */
+nav.tabs.lq-drag .tab[aria-selected="true"]:not(.lq-over){color:var(--muted)}
+nav.tabs.lq-drag .tab.lq-over{color:var(--water)}
 .spruzzo{position:fixed;width:0;height:0;z-index:60;pointer-events:none}
 .spruzzo i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50% 50% 50% 0;background:var(--water);opacity:0;
   transform:rotate(var(--a)) translateY(0) rotate(-45deg);animation:schizzo .8s cubic-bezier(.15,.7,.3,1) forwards}
@@ -548,7 +553,6 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 @keyframes onda{0%{opacity:.7;transform:scale(.3)}100%{opacity:0;transform:scale(2.2)}}
 @media (prefers-reduced-motion: no-preference){
   /* barra: la pillola scivola da una scheda all'altra, l'icona scelta fa un saltello */
-  .tab-pill{transition:transform .5s cubic-bezier(.3,1.35,.45,1)}
   nav.tabs .tab[aria-selected="true"] svg{animation:saltello .5s cubic-bezier(.3,1.6,.5,1)}
   /* titolo: la goccia cade all'apertura e oscilla mentre aggiorna */
   .brand .goccia{transform-origin:50% 100%;animation:cade .9s cubic-bezier(.3,1.4,.5,1) both}
@@ -1009,7 +1013,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 
 <nav class="tabs" role="tablist" aria-label="Sezioni">
   <div class="in">
-    <i class="tab-pill" aria-hidden="true"></i>
+    <span class="nav-ind" aria-hidden="true"><i class="lq-glow"></i></span>
     <button class="tab" role="tab" id="tab-oggi" data-view="oggi" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c4 5 6.5 8.4 6.5 11.5a6.5 6.5 0 1 1-13 0C5.5 11.4 8 8 12 3z"/></svg><span>Oggi</span></button>
     <button class="tab" role="tab" id="tab-piante" data-view="piante" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-9"/><path d="M12 12C12 7 8.5 4 4 4c0 5 3.5 8 8 8z"/><path d="M12 14c0-4 3-6.5 8-6.5 0 4-3 6.5-8 6.5z"/></svg><span>Piante</span></button>
     <button class="tab" role="tab" id="tab-diario" data-view="diario" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M16 3v4M8 3v4M3.5 10h17"/></svg><span>Diario</span></button>
@@ -3828,10 +3832,156 @@ function entra(el, appenaMostrato){
   el.classList.add('entra'); clearTimeout(el._entra); el._entra=setTimeout(()=>el.classList.remove('entra'),700);
   if(el.matches('section.view')) conta(el);
 }
+/* ================= Barra delle schede: lente di vetro liquido =================
+   Come nell'app Palestra (e nella barra di WhatsApp su iOS 26). liquidMove porta la lente sulla scheda scelta: si
+   solleva (un po' più grande del pulsante), si allunga verso la destinazione col bordo davanti che parte per primo, va
+   oltre e torna con un rimbalzo morbido, partendo sempre da dove si trova davvero (anche a metà di un'altra animazione o
+   di un trascinamento). Ogni fotogramma cambia solo il transform della lente. */
+const muoviLente=()=>muovi()&&typeof Element.prototype.animate==='function';
+// dove si vede adesso la lente, nelle coordinate di left/top
+function liquidBox(el){
+  const p=el.offsetParent||el.parentNode, r=el.getBoundingClientRect(), q=p.getBoundingClientRect();
+  return {l:r.left-q.left-p.clientLeft+p.scrollLeft, t:r.top-q.top-p.clientTop+p.scrollTop, w:r.width, h:r.height};
+}
+// la lente al suo posto: misure vere (cambiano solo all'arrivo), niente trasformazioni
+function liquidSet(el,g){ el.style.transform=''; el.style.left=g.l+'px'; el.style.top=g.t+'px'; el.style.width=g.w+'px'; el.style.height=g.h+'px'; }
+// una forma g disegnata trasformando la lente che sta in «to»: spostamento del centro e scala
+function liquidTf(g,to){
+  return 'translate('+(g.l+g.w/2-to.l-to.w/2).toFixed(2)+'px,'+(g.t+g.h/2-to.t-to.h/2).toFixed(2)+'px) scale('+(Math.max(8,g.w)/to.w).toFixed(4)+','+(Math.max(8,g.h)/to.h).toFixed(4)+')';
+}
+function liquidMove(el,to,opt){
+  opt=opt||{};
+  const from=liquidBox(el), glow=el.firstElementChild?.classList.contains('lq-glow')?el.firstElementChild:null;
+  const glowFrom=glow?+getComputedStyle(glow).opacity||0:0;
+  [el,glow].forEach(x=>{ if(x&&x._liq){ try{ x._liq.cancel(); }catch(e){} x._liq=null; } });
+  liquidSet(el,to); if(glow) glow.style.opacity='';
+  const d=to.l-from.l, dist=Math.abs(d), grow=Math.abs(from.h-to.h)>1||Math.abs(from.w-to.w)>1;
+  if(!opt.animate||!muoviLente()||(dist<1&&!grow)) return;
+  const s=d>=0?1:-1, lift=opt.lift==null?4:opt.lift;
+  const up=g=>({l:g.l-lift*0.6, t:g.t-lift, w:g.w+lift*1.2, h:g.h+lift*2});   // sollevata: un po' più grande
+  const A=from.h>to.h+1?from:up(from), B=up(to);
+  // allungata a metà strada: il bordo davanti al 78%, quello dietro al 32%; al massimo 1,7 volte
+  const lead=s>0?A.l+A.w+(B.l+B.w-A.l-A.w)*0.78:A.l+(B.l-A.l)*0.78;
+  const tail=s>0?A.l+(B.l-A.l)*0.32:A.l+A.w+(B.l+B.w-A.l-A.w)*0.32;
+  let mid=s>0?{l:tail,t:B.t,w:lead-tail,h:B.h}:{l:lead,t:B.t,w:tail-lead,h:B.h};
+  const maxW=B.w*1.7; if(mid.w>maxW){ const c=mid.l+mid.w/2; mid={l:c-maxW/2,t:mid.t,w:maxW,h:mid.h}; }
+  const ov=Math.min(9,Math.max(3,dist*0.05));
+  const past=dist<1?to:{l:to.l+s*ov, t:to.t-1, w:to.w-ov*0.4, h:to.h+2};
+  const back=dist<1?to:{l:to.l-s*ov*0.22, t:to.t, w:to.w, h:to.h};
+  const T=g=>({transform:liquidTf(g,to)});
+  const kf=[Object.assign(T(from),{easing:'cubic-bezier(.3,0,.4,1)'})];
+  if(A!==from) kf.push(Object.assign(T(A),{offset:.12, easing:'cubic-bezier(.4,0,.5,1)'}));
+  kf.push(Object.assign(T(mid),{offset:.44, easing:'cubic-bezier(.2,.7,.3,1)'}));
+  kf.push(Object.assign(T(past),{offset:.72, easing:'cubic-bezier(.4,0,.4,1)'}));
+  kf.push(Object.assign(T(back),{offset:.88, easing:'ease-out'}));
+  kf.push({transform:'none'});
+  const duration=Math.min(580,400+dist*0.45);
+  try{
+    el._liq=el.animate(kf,{duration}); el._liq.onfinish=()=>{ el._liq=null; };
+    if(glow){ glow._liq=glow.animate([{opacity:glowFrom},{opacity:1,offset:.12},{opacity:1,offset:.5},{opacity:0}],{duration}); glow._liq.onfinish=()=>{ glow._liq=null; }; }
+  }catch(e){}
+}
+function lenteSu(btn,animate){
+  const ind=$('nav.tabs .nav-ind'); if(!ind||!btn||!btn.offsetWidth) return;
+  liquidMove(ind,{l:btn.offsetLeft, t:btn.offsetTop, w:btn.offsetWidth, h:btn.offsetHeight},{animate, lift:5});
+}
+const schedaScelta=()=>$('nav.tabs .tab[aria-selected="true"]');
+/* Tocchi sulla barra. Le schede cambiano al tocco, anche mentre la pagina scorre per inerzia o c'è un'animazione (su
+   iPhone il tocco che ferma lo scorrimento non diventa un «click»). LENTE AFFERRATA: tenendo premuto sulla scheda scelta
+   la lente si solleva; trascinando segue il dito con un filo di ritardo a molla e si allunga quanto più vai veloce; al
+   rilascio va sulla scheda più vicina. Con mouse e tastiera resta il click. */
+function barraSchede(){
+  const nav=$('nav.tabs'), ind=nav.querySelector('.nav-ind'), glow=ind?.firstElementChild, btns=()=>[...nav.querySelectorAll('.tab')];
+  let inizio=null, alTocco=0, trascinata=false;
+  const scegli=b=>{ alTocco=Date.now(); switchView(b.dataset.view); };
+  const vicina=x=>btns().reduce((p,q)=>Math.abs(q.offsetLeft+q.offsetWidth/2-x)<Math.abs(p.offsetLeft+p.offsetWidth/2-x)?q:p);
+  const LIFT=5; let g=null;
+  function afferra(){
+    if(!g||g.presa||!ind) return;
+    const act=schedaScelta()||g.b, bs=btns(), box=liquidBox(ind), pr=ind.offsetParent.getBoundingClientRect();
+    [ind,glow].forEach(x=>{ if(x&&x._liq){ try{ x._liq.cancel(); }catch(err){} x._liq=null; } });
+    const casa={l:act.offsetLeft, t:act.offsetTop, w:act.offsetWidth, h:act.offsetHeight};
+    liquidSet(ind,casa); ind.style.transform=liquidTf(box,casa);
+    Object.assign(g,{presa:true, casa, sx:pr.left+ind.offsetParent.clientLeft, cx:box.l+box.w/2, v:0, t:performance.now(), moto:muoviLente(),
+      su:Math.max(0,Math.min(1,(box.h-casa.h)/(2*LIFT))),
+      minC:bs[0].offsetLeft+bs[0].offsetWidth/2, maxC:bs[bs.length-1].offsetLeft+bs[bs.length-1].offsetWidth/2});
+    if(g.tx==null) g.tx=g.cx;
+    if(!g.raf) g.raf=requestAnimationFrame(fotogramma);
+  }
+  function fotogramma(now){
+    if(!g||!g.presa) return;
+    g.raf=0;
+    const dt=Math.max(1,Math.min(50,now-g.t)); g.t=now;
+    const f=r=>g.moto?1-Math.pow(1-r,dt/16.7):1;   // stessa morbidezza a 60 e a 120 Hz
+    const prima=g.cx; g.cx+=(g.tx-g.cx)*f(0.3);
+    const v=(g.cx-prima)/dt*16.7; g.v+=(v-g.v)*f(0.45);
+    g.su+=((g.moto?1:0)-g.su)*f(0.28);
+    const st=g.moto?Math.min(0.42,Math.abs(g.v)*0.024):0;   // più veloce, più lunga
+    const L=LIFT*g.su, w=(g.casa.w+L*1.2)*(1+st), h=(g.casa.h+L*2)*(1-st*0.28);
+    ind.style.transform=liquidTf({l:g.cx-w/2, t:g.casa.t+g.casa.h/2-h/2, w, h},g.casa);
+    if(glow) glow.style.opacity=g.su.toFixed(2);
+    if(g.mossa){ const o=vicina(g.cx); if(o!==g.sopra){ g.sopra?.classList.remove('lq-over'); o.classList.add('lq-over'); g.sopra=o; nav.classList.add('lq-drag'); } }
+    if(Math.abs(g.tx-g.cx)<0.15&&Math.abs(g.v)<0.05&&g.su>(g.moto?0.995:-1)) return;   // ferma e già sollevata
+    g.raf=requestAnimationFrame(fotogramma);
+  }
+  function lascia(){
+    const era=g; g=null;
+    if(era){ if(era.raf) cancelAnimationFrame(era.raf); era.sopra?.classList.remove('lq-over'); }
+    nav.classList.remove('lq-drag');
+    return era;
+  }
+  nav.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse'&&e.button!==0) return;
+    const b=e.target.closest('.tab'); lascia(); if(!b) return;
+    g={id:e.pointerId, b, x0:e.clientX, y0:e.clientY, mossa:false, presa:false, tx:null, raf:0};
+    if(b.getAttribute('aria-selected')==='true'&&e.pointerType!=='mouse') afferra();   // tenuta sulla scheda scelta: si solleva subito
+  });
+  nav.addEventListener('pointermove',e=>{
+    if(!g||e.pointerId!==g.id) return;
+    const dx=e.clientX-g.x0, dy=e.clientY-g.y0;
+    if(!g.mossa){
+      if(Math.abs(dx)<6||Math.abs(dx)<Math.abs(dy)*0.6) return;
+      g.mossa=true;
+      if(e.pointerType==='mouse') try{ nav.setPointerCapture(e.pointerId); }catch(err){}
+      afferra();
+    }
+    g.tx=Math.min(g.maxC,Math.max(g.minC,e.clientX-g.sx));
+    if(!g.raf){ g.t=performance.now(); g.raf=requestAnimationFrame(fotogramma); }
+  });
+  const fine=(e,annullato)=>{
+    if(!g||e.pointerId!==g.id) return;
+    const era=lascia();
+    try{ if(nav.hasPointerCapture(e.pointerId)) nav.releasePointerCapture(e.pointerId); }catch(err){}
+    if(!era.presa) return;                                   // tocco normale: ci pensa il tocco o il click
+    const act=schedaScelta();
+    if(era.mossa&&!annullato){
+      trascinata=true; alTocco=Date.now();
+      const b=vicina(Math.min(era.maxC,Math.max(era.minC,e.clientX-era.sx)));
+      if(b===act) lenteSu(b,true); else scegli(b);           // la lente si posa (con il suo rimbalzo) sulla scheda
+    } else lenteSu(act,true);                                // tenuta e lasciata lì: si riposa
+  };
+  nav.addEventListener('pointerup',e=>fine(e,false));
+  nav.addEventListener('pointercancel',e=>fine(e,true));
+  nav.addEventListener('touchstart',e=>{ const t=e.target.closest('.tab'), p=e.changedTouches[0]; inizio=t&&p?{t,x:p.clientX,y:p.clientY}:null; },{passive:true});
+  nav.addEventListener('touchmove',e=>{ if(g&&g.mossa&&e.cancelable) e.preventDefault(); },{passive:false});
+  nav.addEventListener('touchend',e=>{
+    const a=inizio; inizio=null; const p=e.changedTouches[0];
+    if(trascinata){ trascinata=false; if(e.cancelable) e.preventDefault(); return; }   // trascinamento già gestito
+    if(!a||!p) return;
+    const t=document.elementFromPoint(p.clientX,p.clientY)?.closest('.tab');
+    if(t===a.t&&Math.hypot(p.clientX-a.x,p.clientY-a.y)<30){ if(e.cancelable) e.preventDefault(); scegli(t); }
+  },{passive:false});
+  nav.addEventListener('touchcancel',()=>{ inizio=null; });
+  nav.addEventListener('click',e=>{ const t=e.target.closest('.tab'); if(t&&Date.now()-alTocco>700) switchView(t.dataset.view); });
+  lenteSu(schedaScelta(),false);
+  try{ new ResizeObserver(()=>{ if(!g) lenteSu(schedaScelta(),false); }).observe(nav); }catch(e){}
+}
 function switchView(v){
   // in cima prima di cambiare vista: chiederlo dopo costringeva a ricalcolare subito tutta la pagina nuova
   if(window.scrollY) window.scrollTo({top:0});
+  const prima=schedaScelta();
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.view===v)));
+  if(schedaScelta()!==prima) lenteSu(schedaScelta(),true);
   document.querySelectorAll('section.view').forEach(s=>s.hidden=s.id!=='view-'+v);
   // il Diario dice «oggi», «ieri»: aprendolo si ridisegna anche se è cambiato il giorno (prima: sempre, anche senza novità)
   if(daRifare.has(v)||(v==='diario'&&diarioDel!==today())) renderVista(v);
@@ -3892,19 +4042,7 @@ function wire(){
   $('#pf-plist').addEventListener('click',e=>{ const b=e.target.closest('[data-sp]'); if(b) scegliSpecie(b.dataset.sp); });
   $('#pf-zona').addEventListener('input',renderZoneQuick);
   $('#pf-zona-q').addEventListener('click',e=>{ const b=e.target.closest('[data-zona]'); if(!b) return; const z=$('#pf-zona'); z.value=z.value.trim().toLowerCase()===b.dataset.zona.toLowerCase()?'':b.dataset.zona; renderZoneQuick(); });
-  // Schede: cambiano al tocco, anche mentre la pagina scorre per inerzia o c'è un'animazione (su iPhone il tocco che ferma
-  // lo scorrimento non diventa un «click»: prima andava a vuoto). Con mouse e tastiera resta il click.
-  (function(){
-    const nav=$('nav.tabs'); let inizio=null, alTocco=0;
-    nav.addEventListener('touchstart',e=>{ const t=e.target.closest('.tab'), p=e.changedTouches[0]; inizio=t&&p?{t,x:p.clientX,y:p.clientY}:null; },{passive:true});
-    nav.addEventListener('touchend',e=>{
-      const a=inizio; inizio=null; const p=e.changedTouches[0]; if(!a||!p) return;
-      const t=document.elementFromPoint(p.clientX,p.clientY)?.closest('.tab');
-      if(t===a.t && Math.hypot(p.clientX-a.x,p.clientY-a.y)<30){ e.preventDefault(); alTocco=Date.now(); switchView(t.dataset.view); }
-    },{passive:false});
-    nav.addEventListener('touchcancel',()=>{ inizio=null; });
-    nav.addEventListener('click',e=>{ const t=e.target.closest('.tab'); if(t && Date.now()-alTocco>700) switchView(t.dataset.view); });
-  })();
+  barraSchede();
   document.addEventListener('click',e=>{
     const b=e.target.closest('[data-ev]'); if(b){ if((b.dataset.ev==='fatto'||b.dataset.ev==='secco')&&!S.eventi_app.some(x=>x.plantId===b.dataset.pid&&x.data===today()&&x.tipo===b.dataset.ev)) spruzzo(b,e); onEvent(b.dataset.pid,b.dataset.ev); return; }
     const u=e.target.closest('[data-undo]'); if(u){ undoOggi(u.dataset.undo); return; }
