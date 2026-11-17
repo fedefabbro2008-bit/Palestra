@@ -1407,6 +1407,10 @@ nav.bottom button.active::before{background:transparent; box-shadow:none;}
 nav.bottom button:active::before{background:transparent;}
 nav.bottom button{transition:color .2s ease, transform .12s ease;}
 nav.bottom button:active{transform:scale(.94);}
+/* trascinando la lente si colora la sezione su cui si trova (non più quella di partenza) */
+nav.bottom.lq-drag button.active:not(.lq-over){color:var(--text-faint);}
+nav.bottom.lq-drag button.lq-over{color:var(--accent-hi);}
+body.dark nav.bottom.lq-drag button.lq-over{color:#ff7d8f;}
 @media (prefers-reduced-motion: no-preference){
   nav.bottom button.active .ic{animation:navSaltello .5s cubic-bezier(.3,1.6,.5,1);}
 }
@@ -3307,49 +3311,97 @@ document.addEventListener('touchstart', ()=>{}, { passive:true });
    non diventa un «click» e andava a vuoto (come nel giardino). Con mouse e tastiera resta il click. */
 (()=>{
   const nav = document.querySelector('nav.bottom'); if(!nav) return;
-  let start = null, tapAt = 0, synth = false, drag = false, dragX = 0, dragRaf = 0, dragBase = null;
-  const ind = nav.querySelector('.nav-ind'), btns = ()=> [...nav.querySelectorAll('button')];
-  // la lente segue il dito: solo transform rispetto al suo posto, al più una volta per fotogramma
-  const dragPaint = ()=>{
-    dragRaf = 0; if(!drag || !dragBase) return;
-    const b = dragBase, lift = motionOK() ? 5 : 0;
-    const x = Math.min(b.maxC, Math.max(b.minC, dragX - b.navL));
-    ind.style.transform = liquidTf({ l:x - b.w/2 - lift*0.6, t:b.t - lift, w:b.w + lift*1.2, h:b.h + lift*2 }, b.home);
+  const ind = nav.querySelector('.nav-ind'), glow = ind && ind.firstElementChild, btns = ()=> [...nav.querySelectorAll('button')];
+  let start = null, tapAt = 0, synth = false, dragDone = false;
+  const press = b=>{ tapAt = Date.now(); synth = true; try{ b.click(); }finally{ synth = false; } };
+  const nearest = x=> btns().reduce((p, q)=> Math.abs(q.offsetLeft + q.offsetWidth/2 - x) < Math.abs(p.offsetLeft + p.offsetWidth/2 - x) ? q : p);
+  /* LENTE AFFERRATA, come su WhatsApp: tenendo premuto sulla sezione scelta si solleva subito; trascinando segue il dito
+     con un leggero ritardo a molla e si allunga nella direzione del moto quanto più vai veloce, poi si ricompone quando
+     ti fermi. Al rilascio va sulla sezione più vicina. Pointer events (dito, penna, mouse): su iPhone arrivano anche
+     quando il tocco è lungo. Ogni fotogramma cambia solo il transform della lente (niente layout). */
+  const LIFT = 5;
+  let g = null;
+  function grabLens(){
+    if(!g || g.grabbed || !ind) return;
+    const act = nav.querySelector('button.active') || g.b, bs = btns(), nr = nav.getBoundingClientRect(), box = liquidBox(ind);
+    [ind, glow].forEach(x=>{ if(x && x._liq){ try{ x._liq.cancel(); }catch(err){} x._liq = null; } });
+    const home = { l:act.offsetLeft, t:act.offsetTop, w:act.offsetWidth, h:act.offsetHeight };
+    liquidSet(ind, home); ind.style.transform = liquidTf(box, home);
+    Object.assign(g, { grabbed:true, home, navL:nr.left + nav.clientLeft, cx:box.l + box.w/2, v:0, t:performance.now(), motion:motionOK(),
+      lift: Math.max(0, Math.min(1, (box.h - home.h) / (2*LIFT))),
+      minC: bs[0].offsetLeft + bs[0].offsetWidth/2, maxC: bs[bs.length-1].offsetLeft + bs[bs.length-1].offsetWidth/2 });
+    if(g.tx==null) g.tx = g.cx;
+    if(!g.raf) g.raf = requestAnimationFrame(frame);
+  }
+  function frame(now){
+    if(!g || !g.grabbed) return;
+    g.raf = 0;
+    const dt = Math.max(1, Math.min(50, now - g.t)); g.t = now;
+    const f = (r)=> g.motion ? 1 - Math.pow(1 - r, dt/16.7) : 1;     // stessa morbidezza a 60 e a 120 Hz
+    const prev = g.cx; g.cx += (g.tx - g.cx) * f(0.3);                  // insegue il dito, con un filo di ritardo
+    const v = (g.cx - prev) / dt * 16.7;                                // px per fotogramma
+    g.v += (v - g.v) * f(0.45);
+    g.lift += ((g.motion ? 1 : 0) - g.lift) * f(0.28);
+    const st = g.motion ? Math.min(0.42, Math.abs(g.v) * 0.024) : 0;    // allungamento: più veloce, più lunga
+    const L = LIFT * g.lift, w = (g.home.w + L*1.2) * (1 + st), h = (g.home.h + L*2) * (1 - st*0.28);
+    ind.style.transform = liquidTf({ l:g.cx - w/2, t:g.home.t + g.home.h/2 - h/2, w, h }, g.home);
+    if(glow) glow.style.opacity = g.lift.toFixed(2);
+    if(g.moved){ const o = nearest(g.cx); if(o!==g.over){ if(g.over) g.over.classList.remove('lq-over'); o.classList.add('lq-over'); g.over = o; nav.classList.add('lq-drag'); } }
+    // ferma sotto il dito e già sollevata: niente più da disegnare finché il dito non si muove
+    if(Math.abs(g.tx - g.cx) < 0.15 && Math.abs(g.v) < 0.05 && g.lift > (g.motion ? 0.995 : -1)) return;
+    g.raf = requestAnimationFrame(frame);
+  }
+  function letGo(){
+    const was = g; g = null;
+    if(was){ if(was.raf) cancelAnimationFrame(was.raf); if(was.over) was.over.classList.remove('lq-over'); }
+    nav.classList.remove('lq-drag');
+    return was;
+  }
+  nav.addEventListener('pointerdown', e=>{
+    if(e.pointerType==='mouse' && e.button!==0) return;
+    const b = e.target.closest('button'); if(!b){ letGo(); return; }
+    letGo();
+    g = { id:e.pointerId, b, x0:e.clientX, y0:e.clientY, moved:false, grabbed:false, tx:null, raf:0 };
+    if(b.classList.contains('active') && e.pointerType!=='mouse') grabLens();   // tenuta sulla sezione scelta: si solleva subito
+  });
+  nav.addEventListener('pointermove', e=>{
+    if(!g || e.pointerId!==g.id) return;
+    const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
+    if(!g.moved){
+      if(Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy) * 0.6) return;
+      g.moved = true;
+      // col mouse la barra trattiene il puntatore anche se esce; il dito è già trattenuto dal browser (dal pulsante toccato)
+      if(e.pointerType==='mouse') try{ nav.setPointerCapture(e.pointerId); }catch(err){}
+      grabLens();
+    }
+    g.tx = Math.min(g.maxC, Math.max(g.minC, e.clientX - g.navL));
+    if(!g.raf){ g.t = performance.now(); g.raf = requestAnimationFrame(frame); }
+  });
+  const end = (e, cancel)=>{
+    if(!g || e.pointerId!==g.id) return;
+    const was = letGo();
+    try{ if(nav.hasPointerCapture(e.pointerId)) nav.releasePointerCapture(e.pointerId); }catch(err){}
+    if(!was.grabbed) return;                                      // tocco normale: ci pensa il click
+    const act = nav.querySelector('button.active');
+    if(was.moved && !cancel){
+      dragDone = true; tapAt = Date.now();
+      const b = nearest(Math.min(was.maxC, Math.max(was.minC, e.clientX - was.navL)));
+      if(b===act) navIndTo(b, true); else press(b);               // la lente si posa (con il suo rimbalzo) sulla sezione
+    } else navIndTo(act, true);                                   // tenuta e lasciata lì, o tocco annullato: si riposa
   };
-  nav.addEventListener('touchstart', e=>{ const b = e.target.closest('button'), t = e.changedTouches[0]; start = b && t ? { b, x:t.clientX, y:t.clientY } : null; drag = false; }, { passive:true });
-  // trascinando il dito sulla barra la lente lo segue, sollevata (come su iPhone)
-  nav.addEventListener('touchmove', e=>{
-    const a = start, t = e.changedTouches[0]; if(!a || !t || !ind) return;
-    if(!drag){
-      if(Math.abs(t.clientX - a.x) < 10 || Math.abs(t.clientX - a.x) < Math.abs(t.clientY - a.y)) return;
-      drag = true;
-      // misure lette una volta all'inizio del trascinamento: poi a ogni movimento solo un transform
-      const box = liquidBox(ind), act = nav.querySelector('button.active') || a.b, bs = btns(), nr = nav.getBoundingClientRect();
-      [ind, ind.firstElementChild].forEach(x=>{ if(x && x._liq){ try{ x._liq.cancel(); }catch(err){} x._liq = null; } });
-      const home = { l:act.offsetLeft, t:act.offsetTop, w:act.offsetWidth, h:act.offsetHeight };
-      liquidSet(ind, home); ind.style.transform = liquidTf(box, home);
-      dragBase = { home, w:a.b.offsetWidth, h:a.b.offsetHeight, t:a.b.offsetTop, navL:nr.left + nav.clientLeft,
-        minC: bs[0].offsetLeft + bs[0].offsetWidth/2, maxC: bs[bs.length-1].offsetLeft + bs[bs.length-1].offsetWidth/2 };
-      if(motionOK()) liquidGlow(ind, true);
-    }
-    e.preventDefault();
-    dragX = t.clientX;
-    if(!dragRaf) dragRaf = requestAnimationFrame(dragPaint);
-  }, { passive:false });
+  nav.addEventListener('pointerup', e=> end(e, false));
+  nav.addEventListener('pointercancel', e=> end(e, true));
+  // tocco semplice (anche mentre la pagina scorre per inerzia): cambia sezione al rilascio
+  nav.addEventListener('touchstart', e=>{ const b = e.target.closest('button'), t = e.changedTouches[0]; start = b && t ? { b, x:t.clientX, y:t.clientY } : null; }, { passive:true });
+  nav.addEventListener('touchmove', e=>{ if(g && g.moved && e.cancelable) e.preventDefault(); }, { passive:false });
   nav.addEventListener('touchend', e=>{
-    const a = start; start = null; const t = e.changedTouches[0]; if(!a || !t) return;
-    if(drag){
-      drag = false; dragBase = null; if(dragRaf){ cancelAnimationFrame(dragRaf); dragRaf = 0; } e.preventDefault(); tapAt = Date.now();
-      const nr = nav.getBoundingClientRect(), x = t.clientX - nr.left - nav.clientLeft;
-      const b = btns().reduce((p, q)=> Math.abs(q.offsetLeft + q.offsetWidth/2 - x) < Math.abs(p.offsetLeft + p.offsetWidth/2 - x) ? q : p);
-      if(b.classList.contains('active')) navIndTo(b, true);   // tornata sulla sezione di partenza: la lente si riposa lì
-      else { synth = true; try{ b.click(); }finally{ synth = false; } }
-      return;
-    }
+    const a = start; start = null; const t = e.changedTouches[0];
+    if(dragDone){ dragDone = false; if(e.cancelable) e.preventDefault(); return; }   // trascinamento già gestito
+    if(!a || !t) return;
     const el = document.elementFromPoint(t.clientX, t.clientY), b = el && el.closest ? el.closest('nav.bottom button') : null;
-    if(b===a.b && Math.hypot(t.clientX-a.x, t.clientY-a.y) < 30){ e.preventDefault(); tapAt = Date.now(); synth = true; try{ b.click(); }finally{ synth = false; } }
+    if(b===a.b && Math.hypot(t.clientX-a.x, t.clientY-a.y) < 30){ if(e.cancelable) e.preventDefault(); press(b); }
   }, { passive:false });
-  nav.addEventListener('touchcancel', ()=>{ start = null; if(drag){ drag = false; dragBase = null; navIndTo(nav.querySelector('button.active'), true); } });
+  nav.addEventListener('touchcancel', ()=>{ start = null; });
   // il click "vero" che il browser manda dopo un tocco già gestito: ignorato, se no la sezione cambierebbe due volte
   nav.addEventListener('click', e=>{ if(!synth && Date.now()-tapAt < 700){ e.stopImmediatePropagation(); e.preventDefault(); } }, true);
 })();
