@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="e33e0a0d1b85">
+<meta name="giardino-build" content="ca1c6c4070ab">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1101,7 +1101,15 @@ let code=LS('code'); if(!/^[A-Z0-9-]{16,64}$/.test(code||'')){ code=nuovoCodice(
    con quante modifiche aspettano di partire (evento «giardino-rete»). Torna online alla prima richiesta riuscita. */
 let offline=navigator.onLine===false;
 const SENZA_RETE='Senza rete: riprova quando torna la connessione.';
-function segnaRete(off){ off=!!off; if(off===offline) { avvisaRete(); return; } offline=off; avvisaRete(); }
+// Senza rete e niente da inviare (che riprova da sé ogni 30 s): si richiede al server dopo 25 s, così l'indicatore non
+// resta acceso fino al controllo dei 5 minuti dopo una sola richiesta andata a vuoto.
+let riprova=null;
+function segnaRete(off){
+  off=!!off; const cambia=off!==offline; offline=off; avvisaRete();
+  if(!off){ clearTimeout(riprova); riprova=null; return; }
+  if(!riprova) riprova=setTimeout(()=>{ riprova=null; if(offline&&document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },25000);
+  return cambia;
+}
 function avvisaRete(){ try{ window.dispatchEvent(new CustomEvent('giardino-rete',{detail:{offline, inAttesa:contaInAttesa()}})); }catch(e){} }
 const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) el.textContent=msg; if(err&&typeof window.showNote==='function') window.showNote('err',msg); };
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null,orti:[]};
@@ -1181,7 +1189,7 @@ function scarica(){
       if(server&&server.rev!==revPrima&&j&&typeof j.rev==='number'&&j.rev<=server.rev){ stato(ora); return false; }
       // sopra i dati del server restano le modifiche fatte qui e non ancora arrivate (in attesa o in viaggio)
       server=j; for(const b of inInvio) applicaLocale(b); if(inAttesa) applicaLocale(inAttesa); LSset('cache',JSON.stringify(j)); dalServer(); stato(ora); return true; })
-    .catch(e=>{ dalServer(); stato('Server non raggiungibile ('+e.message+'): uso i dati salvati su questo dispositivo.'); return false; });
+    .catch(e=>{ dalServer(); stato(e.offline?'Senza rete: uso i dati salvati su questo telefono.':'Server non raggiungibile ('+e.message+'): uso i dati salvati su questo telefono.'); return false; });
 }
 // dati del server con sopra le modifiche locali non ancora inviate
 // piante cambiate pianta per pianta, come le unisce il server (unisciPiante in dati.mjs): le altre restano
@@ -3036,10 +3044,11 @@ function renderWeather(){
   setHTML($('#wxStrip'),days.map(d=>`<div class="wx-day${d.date===t?' today':''}" title="${esc(d.cond||'')}" role="button" tabindex="0" data-wxd="${esc(d.date)}" aria-label="${esc(dayLabel(d.date)+': '+(d.cond||'')+', dettagli')}"><span class="d">${esc(dayShort(d.date))}</span>${wxIcon(d.cond)}<span class="t">${d.tmax!=null?fmt(d.tmax,0)+'°':'–'}</span><span class="tm">${d.tmin!=null?fmt(d.tmin,0)+'°':''}</span><span class="r">${(d.rain||0)>=0.2?fmt(d.rain)+' mm':''}</span></div>`).join(''));
   const vecchio=!fresco(w), riserva=/MET/.test(w?.fonte||''), ore=w?.updatedAt?(Date.now()-Date.parse(w.updatedAt))/36e5:0;
   // previsioni scaricate da più di 6 ore (senza rete non si aggiornano): si dice di quando sono
-  const datate=!vecchio&&ore>6, quando=w?.updatedAt?(isoDate(new Date(w.updatedAt))===t?'delle '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'del '+dataBreve(isoDate(new Date(w.updatedAt)))):'';
+  // solo senza rete: online le previsioni vecchie si vedono un attimo all'apertura e subito arrivano le nuove
+  const datate=!vecchio&&ore>6&&senzaRete(), quando=w?.updatedAt?(isoDate(new Date(w.updatedAt))===t?'delle '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'del '+dataBreve(isoDate(new Date(w.updatedAt)))):'';
   $('#wxNote').hidden=!vecchio&&!riserva&&!datate;
   if(vecchio) $('#wxNote').textContent='Previsioni non aggiornate: il piano usa gli ultimi dati.';
-  else if(datate) $('#wxNote').textContent='Previsioni '+quando+(senzaRete()?': senza rete non si aggiornano.':'.')+' Il piano usa queste.';
+  else if(datate) $('#wxNote').textContent='Previsioni '+quando+': senza rete non si aggiornano. Il piano usa queste.';
   else if(riserva) $('#wxNote').textContent='Open-Meteo non risponde: previsioni di riserva da MET Norway (senza probabilità di pioggia).';
 }
 function renderAlerts(AP){

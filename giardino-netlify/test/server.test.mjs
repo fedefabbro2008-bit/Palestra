@@ -524,6 +524,23 @@ function regolaSemplice(eventi, pid, oggi) {
   return Math.max(0.4, Math.min(2.5, f));
 }
 
+test("piante pianta per pianta: aggiunte, cambiate, tolte, ordine; le altre restano; l'elenco intero delle app vecchie vale ancora", async () => {
+  const C3 = "GRD-PIANTE-PERPIANTA-ABCDEFGH", H3 = { "x-giardino-code": C3 }, nomi = async () => (await call(dati, "/api/dati", { headers: H3 })).body.data.plants.map((p) => p.id + (p.note ? ":" + p.note : ""));
+  const P = (id, extra = {}) => ({ id, nome: id, specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "aperto", ...extra });
+  await call(dati, "/api/dati", { method: "POST", headers: H3, body: { changes: { plants: [P("a"), P("b"), P("c")] } } });
+  // intanto Claude aggiunge «z» (l'app non lo sa)
+  await (await import("../netlify/lib/core.mjs")).aggiorna(getStore({ name: "giardino" }), C3, (d) => { d.plants.push(P("z")); });
+  // l'app: cambia «a», toglie «b», aggiunge «n», mette «c» per prima
+  await call(dati, "/api/dati", { method: "POST", headers: H3, body: { changes: {}, add: [], remove: [], piante: { set: [P("a", { note: "nuova" }), P("n")], del: ["b"], ordine: ["c", "a", "n"] } } });
+  assert.deepEqual(await nomi(), ["c", "a:nuova", "n", "z"], "tolta b, cambiata a, aggiunta n, ordine dell'app; z di Claude resta in fondo");
+  // una pianta che nello stesso gruppo è sia cambiata sia tolta: resta tolta
+  await call(dati, "/api/dati", { method: "POST", headers: H3, body: { piante: { set: [P("n", { note: "x" })], del: ["n"] } } });
+  assert.deepEqual(await nomi(), ["c", "a:nuova", "z"]);
+  // app vecchia: l'elenco intero sostituisce ancora tutto
+  await call(dati, "/api/dati", { method: "POST", headers: H3, body: { changes: { plants: [P("a")] } } });
+  assert.deepEqual(await nomi(), ["a"]);
+});
+
 test("richieste insieme invece che in fila: il meteo di più orti, e su Telegram la conferma con i pulsanti nuovi", async () => {
   const C = await import("../netlify/lib/core.mjs"), vero = globalThis.fetch;
   // quante richieste sono aperte nello stesso momento (ognuna dura 40 ms)

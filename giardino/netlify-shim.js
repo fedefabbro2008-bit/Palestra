@@ -18,7 +18,15 @@ let code=LS('code'); if(!/^[A-Z0-9-]{16,64}$/.test(code||'')){ code=nuovoCodice(
    con quante modifiche aspettano di partire (evento «giardino-rete»). Torna online alla prima richiesta riuscita. */
 let offline=navigator.onLine===false;
 const SENZA_RETE='Senza rete: riprova quando torna la connessione.';
-function segnaRete(off){ off=!!off; if(off===offline) { avvisaRete(); return; } offline=off; avvisaRete(); }
+// Senza rete e niente da inviare (che riprova da sé ogni 30 s): si richiede al server dopo 25 s, così l'indicatore non
+// resta acceso fino al controllo dei 5 minuti dopo una sola richiesta andata a vuoto.
+let riprova=null;
+function segnaRete(off){
+  off=!!off; const cambia=off!==offline; offline=off; avvisaRete();
+  if(!off){ clearTimeout(riprova); riprova=null; return; }
+  if(!riprova) riprova=setTimeout(()=>{ riprova=null; if(offline&&document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },25000);
+  return cambia;
+}
 function avvisaRete(){ try{ window.dispatchEvent(new CustomEvent('giardino-rete',{detail:{offline, inAttesa:contaInAttesa()}})); }catch(e){} }
 const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) el.textContent=msg; if(err&&typeof window.showNote==='function') window.showNote('err',msg); };
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null,orti:[]};
@@ -98,7 +106,7 @@ function scarica(){
       if(server&&server.rev!==revPrima&&j&&typeof j.rev==='number'&&j.rev<=server.rev){ stato(ora); return false; }
       // sopra i dati del server restano le modifiche fatte qui e non ancora arrivate (in attesa o in viaggio)
       server=j; for(const b of inInvio) applicaLocale(b); if(inAttesa) applicaLocale(inAttesa); LSset('cache',JSON.stringify(j)); dalServer(); stato(ora); return true; })
-    .catch(e=>{ dalServer(); stato('Server non raggiungibile ('+e.message+'): uso i dati salvati su questo dispositivo.'); return false; });
+    .catch(e=>{ dalServer(); stato(e.offline?'Senza rete: uso i dati salvati su questo telefono.':'Server non raggiungibile ('+e.message+'): uso i dati salvati su questo telefono.'); return false; });
 }
 // dati del server con sopra le modifiche locali non ancora inviate
 // piante cambiate pianta per pianta, come le unisce il server (unisciPiante in dati.mjs): le altre restano

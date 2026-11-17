@@ -440,7 +440,7 @@ test("apertura dalla copia sul telefono: piante, meteo e piano subito, senza asp
 
   // intanto Claude cambia il vaso dell'Aloe e aggiunge una pianta; il meteo salvato sul telefono invecchia di due ore
   await posta({ changes: { plants: [{ ...aloe, vaso: 5 }, { id: "ba", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "aperto" }] } });
-  await page.evaluate((k) => { const m = JSON.parse(localStorage.getItem(k)); m.updatedAt = new Date(Date.now() - 2 * 3600e3).toISOString(); localStorage.setItem(k, JSON.stringify(m)); }, KM);
+  await page.evaluate((k) => { const m = JSON.parse(localStorage.getItem(k)); m.updatedAt = new Date(Date.now() - 10 * 3600e3).toISOString(); localStorage.setItem(k, JSON.stringify(m)); }, KM);   // la sera prima, riaperta al mattino
   // server e Open-Meteo lenti (2,5 secondi)
   const arrivate = { dati: 0, meteo: 0 }, lento = (cosa) => async (r) => { await new Promise((ok) => setTimeout(ok, 2500)); arrivate[cosa]++; return r.fallback(); };
   await ctx.route(SITO + "api/dati**", lento("dati")); await ctx.route("https://api.open-meteo.com/**", lento("meteo"));
@@ -449,7 +449,8 @@ test("apertura dalla copia sul telefono: piante, meteo e piano subito, senza asp
   await quando(page, () => document.querySelector("#restList .lrow") && document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5 && document.querySelector("#weekList > *"));
   assert.deepEqual(arrivate, { dati: 0, meteo: 0 }, "piante, meteo e prossimi giorni sullo schermo prima che server e meteo rispondano");
   assert.deepEqual(await page.evaluate(() => S.plants.map((p) => p.nome + " " + p.vaso)), ["Aloe 2"], "dalla copia dell'ultima volta");
-  assert.ok(!(await page.isVisible("#wxNote")), "il meteo salvato ha le previsioni di oggi: nessun avviso");
+  assert.ok(!(await page.isVisible("#wxNote")), "il meteo salvato ha le previsioni di oggi e la rete c'è: nessun avviso (niente scatti all'apertura)");
+  assert.ok(!(await page.isVisible("#rete")), "con la rete lenta non dice «senza rete»");
 
   // un tocco prima che il server risponda: l'innaffiatura parte da sola, senza riportare indietro le modifiche di Claude
   await page.click('#restList [data-ev="fatto"]');
@@ -523,10 +524,10 @@ test("barra delle schede come nell'app Palestra: lente di vetro che scivola con 
     const m = (x) => (Math.abs(x) <= 1 ? 0 : Math.round(x));   // offsetWidth è intero: fino a 1 px è arrotondamento
     return { scheda: s.dataset.view, dx: m(a.left - b.left), dw: m(a.width - b.width), anim: i.getAnimations().length }; });
   assert.deepEqual(await lente(), { scheda: "oggi", dx: 0, dw: 0, anim: 0 }, "all'apertura la lente è sotto Oggi");
-  await page.click("#tab-diario");
-  const durante = await lente();
+  // clic e lettura nello stesso momento: su un computer lento l'animazione potrebbe essere già finita
+  const { durante, kf } = await page.evaluate(() => { document.querySelector("#tab-diario").click(); const a = document.querySelector("nav.tabs .nav-ind").getAnimations();
+    return { durante: { scheda: document.querySelector("nav.tabs .tab[aria-selected=true]").dataset.view, anim: a.length }, kf: a[0] ? a[0].effect.getKeyframes().map((k) => k.transform) : [] }; });
   assert.equal(durante.scheda, "diario"); assert.equal(durante.anim, 1, "la lente scivola con un'animazione");
-  const kf = await page.evaluate(() => document.querySelector("nav.tabs .nav-ind").getAnimations()[0].effect.getKeyframes().map((k) => k.transform));
   assert.ok(kf.length >= 5 && kf.some((x) => /scale\(1\.[2-9]/.test(x)), "si allunga a metà strada: " + kf.join(" | "));
   await page.waitForTimeout(700);
   assert.deepEqual(await lente(), { scheda: "diario", dx: 0, dw: 0, anim: 0 }, "arrivata sotto Diario, senza deformazioni");

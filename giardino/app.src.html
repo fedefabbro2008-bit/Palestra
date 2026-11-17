@@ -1415,10 +1415,11 @@ function renderWeather(){
   setHTML($('#wxStrip'),days.map(d=>`<div class="wx-day${d.date===t?' today':''}" title="${esc(d.cond||'')}" role="button" tabindex="0" data-wxd="${esc(d.date)}" aria-label="${esc(dayLabel(d.date)+': '+(d.cond||'')+', dettagli')}"><span class="d">${esc(dayShort(d.date))}</span>${wxIcon(d.cond)}<span class="t">${d.tmax!=null?fmt(d.tmax,0)+'°':'–'}</span><span class="tm">${d.tmin!=null?fmt(d.tmin,0)+'°':''}</span><span class="r">${(d.rain||0)>=0.2?fmt(d.rain)+' mm':''}</span></div>`).join(''));
   const vecchio=!fresco(w), riserva=/MET/.test(w?.fonte||''), ore=w?.updatedAt?(Date.now()-Date.parse(w.updatedAt))/36e5:0;
   // previsioni scaricate da più di 6 ore (senza rete non si aggiornano): si dice di quando sono
-  const datate=!vecchio&&ore>6, quando=w?.updatedAt?(isoDate(new Date(w.updatedAt))===t?'delle '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'del '+dataBreve(isoDate(new Date(w.updatedAt)))):'';
+  // solo senza rete: online le previsioni vecchie si vedono un attimo all'apertura e subito arrivano le nuove
+  const datate=!vecchio&&ore>6&&senzaRete(), quando=w?.updatedAt?(isoDate(new Date(w.updatedAt))===t?'delle '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'del '+dataBreve(isoDate(new Date(w.updatedAt)))):'';
   $('#wxNote').hidden=!vecchio&&!riserva&&!datate;
   if(vecchio) $('#wxNote').textContent='Previsioni non aggiornate: il piano usa gli ultimi dati.';
-  else if(datate) $('#wxNote').textContent='Previsioni '+quando+(senzaRete()?': senza rete non si aggiornano.':'.')+' Il piano usa queste.';
+  else if(datate) $('#wxNote').textContent='Previsioni '+quando+': senza rete non si aggiornano. Il piano usa queste.';
   else if(riserva) $('#wxNote').textContent='Open-Meteo non risponde: previsioni di riserva da MET Norway (senza probabilità di pioggia).';
 }
 function renderAlerts(AP){
