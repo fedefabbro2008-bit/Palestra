@@ -856,7 +856,9 @@ body.dark nav.bottom button.active{color:#ff7d8f;}   /* sulla pillola di vetro i
 .cta-eta{font-weight:500; opacity:.88; margin-left:4px; white-space:nowrap;}   /* .88: resta sopra 4.5:1 sul rosso */
 #startSessionBtn{white-space:nowrap;}
 @media (max-width:379px){ #startSessionBtn{font-size:14.5px; gap:7px; padding-left:10px; padding-right:10px;} .cta-eta{font-size:13px; margin-left:2px;} }
-.st-progress > div{height:100%; background:var(--accent); border-radius:2px; transition:width .3s ease;}
+/* la barra piena scorre da sinistra (translateX) invece di allargarsi: stesso disegno, ma la muove la scheda grafica
+   (cambiare la larghezza ricalcolava e ridisegnava la barra in alto a ogni fotogramma, a ogni spunta) */
+.st-progress > div{height:100%; width:100%; background:var(--accent); border-radius:2px; transform:translateX(-100%); transition:transform .3s ease;}
 
 .sess-ex{
   background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
@@ -1436,7 +1438,7 @@ body.dark nav.bottom.lq-drag button.lq-over{color:#ff7d8f;}
 .timer-bar{position:relative; overflow:hidden;}
 .timer-bar .tb-prog{position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(255,255,255,.6); transform-origin:0 50%; transform:scaleX(0); pointer-events:none;}
 .timer-bar.ended .tb-prog, .timer-bar.paused .tb-prog{opacity:.55;}
-@keyframes nextGlow{0%{background-color:transparent;} 30%{background-color:color-mix(in srgb, var(--accent-hi) 22%, transparent);} 100%{background-color:transparent;}}
+@keyframes nextGlow{0%{opacity:0;} 30%{opacity:1;} 100%{opacity:0;}}   /* sul velo colorato qui sotto: solo opacità, niente ridisegno a ogni fotogramma */
 .day-pills{position:relative;}
 .day-pills .dp-ind{position:absolute; left:0; top:0; width:0; height:0; border-radius:var(--r-box, 12px); pointer-events:none; z-index:2; opacity:0;
   background:color-mix(in srgb, var(--accent) 11%, transparent); border:1px solid color-mix(in srgb, var(--accent) 85%, transparent);
@@ -1452,7 +1454,11 @@ body.dark nav.bottom.lq-drag button.lq-over{color:#ff7d8f;}
 .flame{display:inline-block; width:1.05em; height:1.05em; vertical-align:-.17em; margin-right:2px; overflow:visible;}
 .flame .fo{fill:url(#flameGrad);} .flame .fi{fill:#ffd54a;}
 @media (prefers-reduced-motion: no-preference){
-  .sess-set-row.next-glow{animation:nextGlow 1s ease;}
+  /* stesso aspetto di prima (lo sfondo che si accende al 22% e si spegne), fatto con un velo che cambia solo opacità:
+     lo muove la scheda grafica, mentre animare il colore di sfondo ridisegnava la riga per 1 s a ogni spunta */
+  .sess-set-row.next-glow{position:relative; isolation:isolate;}
+  .sess-set-row.next-glow::after{content:''; position:absolute; inset:0; border-radius:inherit; z-index:-1; pointer-events:none;
+    background:color-mix(in srgb, var(--accent-hi) 22%, transparent); opacity:0; animation:nextGlow 1s ease;}
   .switch .knob{transition:transform .4s cubic-bezier(.3,1.45,.5,1), width .2s ease, background .2s ease;}
   .switch input:active:not(:disabled) ~ .knob{width:25px;}
   .switch input:checked:active:not(:disabled) ~ .knob{transform:translateX(13px);}
@@ -1788,7 +1794,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
             <button class="btn primary" id="sessFinishBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>Termina</button>
           </div>
         </div>
-        <div class="st-progress"><div id="sessProgress" style="width:0%"></div></div>
+        <div class="st-progress"><div id="sessProgress"></div></div>
         <button class="st-eta" id="sessEta" type="button" aria-expanded="false" aria-controls="sessEtaDet"></button>
         <div class="st-eta-det" id="sessEtaDet" hidden></div>
       </div>
@@ -4971,8 +4977,8 @@ function updateSessionElapsed(){
   // peso sollevato sotto le serie (a capo): sulla stessa riga allargava il blocco e schiacciava il nome dell'esercizio
   countTo(document.getElementById('sessMeta'), ton, v=> done+'/'+tot+' serie' + (ton>0 ? '\n'+fmtTon(v) : ''), { key:session.id });
   const bar = document.getElementById('sessProgress');
-  const w = (tot ? (done/tot*100) : 0).toFixed(1)+'%';
-  if(bar && bar.style.width!==w) bar.style.width = w;
+  const w = 'translateX('+((tot ? (done/tot*100) : 0) - 100).toFixed(1)+'%)';
+  if(bar && bar.style.transform!==w) bar.style.transform = w;
   try{ renderEta(); }catch(e){ console.error('renderEta', e); }
 }
 /* ============================================================
@@ -8792,7 +8798,10 @@ function nextSetGlow(exx, set){
   let row = chk ? chk.closest('.sess-set-row') : null;
   // esercizio richiuso (serie nascoste): si mostra il suo riquadro
   if(!row || !row.offsetHeight){ const card = document.querySelector(`#sessList .sess-ex[data-k="${sk(session.exercises[nx.ei])}"]`); if(card) nextSetScroll(card); return; }
-  if(motionOK()){ row.classList.remove('next-glow'); void row.offsetWidth; row.classList.add('next-glow'); row.addEventListener('animationend', ()=> row.classList.remove('next-glow'), { once:true }); }
+  if(motionOK()){
+    if(row.classList.contains('next-glow')){ row.classList.remove('next-glow'); void row.offsetWidth; }   // ripartire da capo (raro): solo qui serve il ricalcolo
+    row.classList.add('next-glow'); row.addEventListener('animationend', ()=> row.classList.remove('next-glow'), { once:true });
+  }
   nextSetScroll(row);
 }
 function nextSetScroll(row){
