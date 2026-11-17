@@ -1397,7 +1397,12 @@ nav.bottom button:active{background:none;}
    (oltrepassa appena la sezione e torna); l'icona scelta fa un saltello; premendo il pulsante si rimpicciolisce */
 nav.bottom{touch-action:none; -webkit-user-select:none; user-select:none;}
 .nav-ind{position:absolute; top:5px; left:5px; width:calc((100% - 10px) / 4); height:calc(100% - 10px); border-radius:25px; background:var(--glass-pill);
-  box-shadow:inset 0 1px 0 var(--glass-hi-soft); pointer-events:none; z-index:-1;}
+  box-shadow:inset 0 1px 0 var(--glass-hi-soft); pointer-events:none; z-index:-1;
+  --lq-glow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px rgba(0,0,0,.28);}
+/* lenti a vetro liquido: si muovono solo con transform (lo fa la scheda grafica, senza ricalcolare la pagina) e
+   l'alone è un livello sopra di cui cambia solo l'opacità */
+.nav-ind, .day-pills .dp-ind{will-change:transform; transform-origin:50% 50%; backface-visibility:hidden;}
+.lq-glow{position:absolute; inset:-1px; border-radius:inherit; box-shadow:var(--lq-glow); opacity:0; pointer-events:none; will-change:opacity;}
 nav.bottom button.active::before{background:transparent; box-shadow:none;}
 nav.bottom button:active::before{background:transparent;}
 nav.bottom button{transition:color .2s ease, transform .12s ease;}
@@ -1417,7 +1422,8 @@ nav.bottom button:active{transform:scale(.94);}
 .day-pills{position:relative;}
 .day-pills .dp-ind{position:absolute; left:0; top:0; width:0; height:0; border-radius:var(--r-box, 12px); pointer-events:none; z-index:2; opacity:0;
   background:color-mix(in srgb, var(--accent) 11%, transparent); border:1px solid color-mix(in srgb, var(--accent) 85%, transparent);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 0 14px rgba(184,25,58,.14);}   /* velo leggero: le giornate sotto si vedono */
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 0 14px rgba(184,25,58,.14);   /* velo leggero: le giornate sotto si vedono */
+  --lq-glow:inset 0 1px 0 rgba(255,255,255,.2), 0 0 16px rgba(184,25,58,.22), 0 6px 16px rgba(0,0,0,.25);}
 .day-pills.has-ind .day-pill{position:relative; z-index:1;}
 .day-pills.has-ind .day-pill.active{background-color:var(--glass-fill); border-color:var(--border-input); box-shadow:inset 0 1px 0 var(--glass-hi-soft);}   /* uguale alle altre: il colore lo dà il riquadro che scivola */
 .day-pills.has-ind .dp-ind{opacity:1;}
@@ -1437,12 +1443,12 @@ nav.bottom button:active{transform:scale(.94);}
   .day-pill{transition:transform .12s ease;}
   .day-pill .dp-key, .day-pill .dp-focus, .day-pill .last{transition:color .3s ease;}
   .day-pill:active{transform:scale(.97);}
-  .flame{transform-origin:50% 90%; animation:flameFlick 1.8s ease-in-out infinite;}
-  .flame .fi{transform-origin:50% 95%; animation:flameCore 1.1s ease-in-out infinite;}
+  .flame{transform-origin:50% 90%; animation:flameFlick 1.8s ease-in-out infinite; will-change:transform;}
   .flame.lit{animation:flameLit .7s cubic-bezier(.3,1.6,.5,1), flameFlick 1.8s ease-in-out .7s infinite;}
 }
-@keyframes flameFlick{0%,100%{transform:scale(1,1) rotate(-2deg);} 30%{transform:scale(.96,1.06) rotate(2deg);} 60%{transform:scale(1.03,.97) rotate(-1deg);}}
-@keyframes flameCore{0%,100%{transform:scale(1);} 50%{transform:scale(.85,1.12);}}
+/* solo transform e opacità della fiamma intera: le fa la scheda grafica. Animare il tracciato interno (il cuore giallo)
+   obbligava il browser a ricalcolare il layout a ogni fotogramma, per tutto il tempo in cui la fiamma era sullo schermo */
+@keyframes flameFlick{0%,100%{transform:scale(1,1) rotate(-2deg); opacity:1;} 30%{transform:scale(.95,1.08) rotate(2deg); opacity:.9;} 60%{transform:scale(1.04,.96) rotate(-1deg); opacity:1;} 80%{transform:scale(.98,1.03) rotate(1deg); opacity:.94;}}
 @keyframes flameLit{0%{transform:scale(.2); opacity:0;} 60%{transform:scale(1.35); opacity:1;} 100%{transform:scale(1);}}
 /* timer di recupero: capsula di vetro color accento sopra la barra */
 .timer-bar{border-radius:24px; border:1px solid rgba(255,255,255,.22);
@@ -2264,7 +2270,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
     </div>
   </div>
   <nav class="bottom">
-    <span class="nav-ind" aria-hidden="true"></span>
+    <span class="nav-ind" aria-hidden="true"><i class="lq-glow"></i></span>
     <button class="active" data-tab="workout"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6M6.5 5.5v13M17.5 5.5v13M21 9v6M6.5 12h11"/></svg>Allenamento</button>
     <button data-tab="stats"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Settimana</button>
     <button data-tab="month"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Mese</button>
@@ -3239,37 +3245,54 @@ function statsFirstFx(tab){
    rimbalzo morbido. el: la lente (position:absolute); to: {l,t,w,h} in px; opt.wall: 'l'|'r' se lì c'è un bordo da non
    superare (si schiaccia contro). Parte sempre da dove si trova davvero, anche a metà di un'altra animazione o di un
    trascinamento. */
-function liquidGeo(el){ const c = getComputedStyle(el); return { l:parseFloat(c.left)||0, t:parseFloat(c.top)||0, w:parseFloat(c.width)||0, h:parseFloat(c.height)||0 }; }
-function liquidSet(el, g){ el.style.left = g.l+'px'; el.style.top = g.t+'px'; el.style.width = g.w+'px'; el.style.height = g.h+'px'; }
+/* dove si vede adesso la lente (anche a metà di un'animazione o di un trascinamento), nelle coordinate di left/top */
+function liquidBox(el){
+  const p = el.offsetParent || el.parentNode, r = el.getBoundingClientRect(), q = p.getBoundingClientRect();
+  return { l:r.left - q.left - p.clientLeft + p.scrollLeft, t:r.top - q.top - p.clientTop + p.scrollTop, w:r.width, h:r.height };
+}
+/* la lente nel suo posto: misure vere (cambiano solo all'arrivo, una volta), niente trasformazioni */
+function liquidSet(el, g){ el.style.transform = ''; el.style.left = g.l+'px'; el.style.top = g.t+'px'; el.style.width = g.w+'px'; el.style.height = g.h+'px'; }
+/* una forma g disegnata trasformando la lente che sta in "to": spostamento del centro e scala */
+function liquidTf(g, to){
+  return 'translate('+(g.l + g.w/2 - to.l - to.w/2).toFixed(2)+'px,'+(g.t + g.h/2 - to.t - to.h/2).toFixed(2)+'px) scale('+(Math.max(8, g.w)/to.w).toFixed(4)+','+(Math.max(8, g.h)/to.h).toFixed(4)+')';
+}
+function liquidGlow(el, on){ const g = el.firstElementChild; if(g && g.classList.contains('lq-glow')) g.style.opacity = on ? '1' : ''; }
 function liquidMove(el, to, opt){
   opt = opt || {};
-  const from = liquidGeo(el);
-  if(el._liq){ try{ el._liq.cancel(); }catch(e){} el._liq = null; }
-  liquidSet(el, to);
+  const from = liquidBox(el), glow = el.firstElementChild && el.firstElementChild.classList.contains('lq-glow') ? el.firstElementChild : null;
+  const glowFrom = glow ? +getComputedStyle(glow).opacity || 0 : 0;
+  [el, glow].forEach(x=>{ if(x && x._liq){ try{ x._liq.cancel(); }catch(e){} x._liq = null; } });
+  liquidSet(el, to); liquidGlow(el, false);
   const d = to.l - from.l, dist = Math.abs(d), grow = Math.abs(from.h - to.h) > 1 || Math.abs(from.w - to.w) > 1;
   if(!opt.animate || !motionOK() || !el.animate || (dist < 1 && !grow)) return;
   const s = d >= 0 ? 1 : -1, lift = opt.lift==null ? 4 : opt.lift;
   const up = g=> ({ l:g.l - lift*0.6, t:g.t - lift, w:g.w + lift*1.2, h:g.h + lift*2 });   // sollevata: un po' più grande
   const A = from.h > to.h + 1 ? from : up(from), B = up(to);
-  // allungata a metà strada: il bordo davanti al 78%, quello dietro al 32%
+  // allungata a metà strada: il bordo davanti al 78%, quello dietro al 32%; al massimo 1,7 volte (con la scala gli angoli
+  // tondi si deformano: oltre si vedrebbe)
   const lead = s > 0 ? A.l + A.w + (B.l + B.w - A.l - A.w)*0.78 : A.l + (B.l - A.l)*0.78;
   const tail = s > 0 ? A.l + (B.l - A.l)*0.32 : A.l + A.w + (B.l + B.w - A.l - A.w)*0.32;
-  const mid = s > 0 ? { l:tail, t:B.t, w:lead - tail, h:B.h } : { l:lead, t:B.t, w:tail - lead, h:B.h };
+  let mid = s > 0 ? { l:tail, t:B.t, w:lead - tail, h:B.h } : { l:lead, t:B.t, w:tail - lead, h:B.h };
+  const maxW = B.w * 1.7;
+  if(mid.w > maxW){ const c = mid.l + mid.w/2; mid = { l:c - maxW/2, t:mid.t, w:maxW, h:mid.h }; }
   const ov = Math.min(9, Math.max(3, dist * 0.05));
   const wall = (s > 0 && opt.wall==='r') || (s < 0 && opt.wall==='l');
   const past = dist < 1 ? to
     : wall ? (s > 0 ? { l:to.l + ov, t:to.t - 1, w:to.w - ov, h:to.h + 2 } : { l:to.l, t:to.t - 1, w:to.w - ov, h:to.h + 2 })   // contro il bordo: schiacciata
     : { l:to.l + s*ov, t:to.t - 1, w:to.w - ov*0.4, h:to.h + 2 };
   const back = dist < 1 || wall ? to : { l:to.l - s*ov*0.22, t:to.t, w:to.w, h:to.h };
-  const px = g=> ({ left:g.l.toFixed(1)+'px', top:g.t.toFixed(1)+'px', width:Math.max(8, g.w).toFixed(1)+'px', height:Math.max(8, g.h).toFixed(1)+'px' });
-  const glow = opt.glow || 'inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px rgba(0,0,0,.28)', rest = getComputedStyle(el).boxShadow;
-  const kf = [ Object.assign(px(from), { boxShadow:rest, easing:'cubic-bezier(.3,0,.4,1)' }) ];
-  if(A!==from) kf.push(Object.assign(px(A), { offset:.12, boxShadow:glow, easing:'cubic-bezier(.4,0,.5,1)' }));
-  kf.push(Object.assign(px(mid), { offset:.44, boxShadow:glow, easing:'cubic-bezier(.2,.7,.3,1)' }));
-  kf.push(Object.assign(px(past), { offset:.72, easing:'cubic-bezier(.4,0,.4,1)' }));
-  kf.push(Object.assign(px(back), { offset:.88, easing:'ease-out' }));
-  kf.push(Object.assign(px(to), { boxShadow:rest }));
-  try{ el._liq = el.animate(kf, { duration: Math.min(720, 500 + dist*0.55) }); el._liq.onfinish = ()=>{ el._liq = null; }; }catch(e){}
+  const T = g=> ({ transform: liquidTf(g, to) });
+  const kf = [ Object.assign(T(from), { easing:'cubic-bezier(.3,0,.4,1)' }) ];
+  if(A!==from) kf.push(Object.assign(T(A), { offset:.12, easing:'cubic-bezier(.4,0,.5,1)' }));
+  kf.push(Object.assign(T(mid), { offset:.44, easing:'cubic-bezier(.2,.7,.3,1)' }));
+  kf.push(Object.assign(T(past), { offset:.72, easing:'cubic-bezier(.4,0,.4,1)' }));
+  kf.push(Object.assign(T(back), { offset:.88, easing:'ease-out' }));
+  kf.push({ transform:'none' });
+  const duration = Math.min(720, 500 + dist*0.55);
+  try{
+    el._liq = el.animate(kf, { duration }); el._liq.onfinish = ()=>{ el._liq = null; };
+    if(glow){ glow._liq = glow.animate([{ opacity:glowFrom }, { opacity:1, offset:.12 }, { opacity:1, offset:.5 }, { opacity:0 }], { duration }); glow._liq.onfinish = ()=>{ glow._liq = null; }; }
+  }catch(e){}
 }
 /* lente della barra in basso */
 function navIndTo(btn, animate){
@@ -3284,22 +3307,39 @@ document.addEventListener('touchstart', ()=>{}, { passive:true });
    non diventa un «click» e andava a vuoto (come nel giardino). Con mouse e tastiera resta il click. */
 (()=>{
   const nav = document.querySelector('nav.bottom'); if(!nav) return;
-  let start = null, tapAt = 0, synth = false, drag = false;
+  let start = null, tapAt = 0, synth = false, drag = false, dragX = 0, dragRaf = 0, dragBase = null;
   const ind = nav.querySelector('.nav-ind'), btns = ()=> [...nav.querySelectorAll('button')];
+  // la lente segue il dito: solo transform rispetto al suo posto, al più una volta per fotogramma
+  const dragPaint = ()=>{
+    dragRaf = 0; if(!drag || !dragBase) return;
+    const b = dragBase, lift = motionOK() ? 5 : 0;
+    const x = Math.min(b.maxC, Math.max(b.minC, dragX - b.navL));
+    ind.style.transform = liquidTf({ l:x - b.w/2 - lift*0.6, t:b.t - lift, w:b.w + lift*1.2, h:b.h + lift*2 }, b.home);
+  };
   nav.addEventListener('touchstart', e=>{ const b = e.target.closest('button'), t = e.changedTouches[0]; start = b && t ? { b, x:t.clientX, y:t.clientY } : null; drag = false; }, { passive:true });
   // trascinando il dito sulla barra la lente lo segue, sollevata (come su iPhone)
   nav.addEventListener('touchmove', e=>{
     const a = start, t = e.changedTouches[0]; if(!a || !t || !ind) return;
-    if(!drag){ if(Math.abs(t.clientX - a.x) < 10 || Math.abs(t.clientX - a.x) < Math.abs(t.clientY - a.y)) return; drag = true; if(ind._liq){ try{ ind._liq.cancel(); }catch(err){} ind._liq = null; } }
+    if(!drag){
+      if(Math.abs(t.clientX - a.x) < 10 || Math.abs(t.clientX - a.x) < Math.abs(t.clientY - a.y)) return;
+      drag = true;
+      // misure lette una volta all'inizio del trascinamento: poi a ogni movimento solo un transform
+      const box = liquidBox(ind), act = nav.querySelector('button.active') || a.b, bs = btns(), nr = nav.getBoundingClientRect();
+      [ind, ind.firstElementChild].forEach(x=>{ if(x && x._liq){ try{ x._liq.cancel(); }catch(err){} x._liq = null; } });
+      const home = { l:act.offsetLeft, t:act.offsetTop, w:act.offsetWidth, h:act.offsetHeight };
+      liquidSet(ind, home); ind.style.transform = liquidTf(box, home);
+      dragBase = { home, w:a.b.offsetWidth, h:a.b.offsetHeight, t:a.b.offsetTop, navL:nr.left + nav.clientLeft,
+        minC: bs[0].offsetLeft + bs[0].offsetWidth/2, maxC: bs[bs.length-1].offsetLeft + bs[bs.length-1].offsetWidth/2 };
+      if(motionOK()) liquidGlow(ind, true);
+    }
     e.preventDefault();
-    const nr = nav.getBoundingClientRect(), b0 = btns()[0], bl = btns()[btns().length-1], w = a.b.offsetWidth, h = a.b.offsetHeight, lift = motionOK() ? 5 : 0;
-    const x = Math.min(bl.offsetLeft + w/2, Math.max(b0.offsetLeft + w/2, t.clientX - nr.left - nav.clientLeft));
-    liquidSet(ind, { l:x - w/2 - lift*0.6, t:a.b.offsetTop - lift, w:w + lift*1.2, h:h + lift*2 });
+    dragX = t.clientX;
+    if(!dragRaf) dragRaf = requestAnimationFrame(dragPaint);
   }, { passive:false });
   nav.addEventListener('touchend', e=>{
     const a = start; start = null; const t = e.changedTouches[0]; if(!a || !t) return;
     if(drag){
-      drag = false; e.preventDefault(); tapAt = Date.now();
+      drag = false; dragBase = null; if(dragRaf){ cancelAnimationFrame(dragRaf); dragRaf = 0; } e.preventDefault(); tapAt = Date.now();
       const nr = nav.getBoundingClientRect(), x = t.clientX - nr.left - nav.clientLeft;
       const b = btns().reduce((p, q)=> Math.abs(q.offsetLeft + q.offsetWidth/2 - x) < Math.abs(p.offsetLeft + p.offsetWidth/2 - x) ? q : p);
       if(b.classList.contains('active')) navIndTo(b, true);   // tornata sulla sezione di partenza: la lente si riposa lì
@@ -3309,7 +3349,7 @@ document.addEventListener('touchstart', ()=>{}, { passive:true });
     const el = document.elementFromPoint(t.clientX, t.clientY), b = el && el.closest ? el.closest('nav.bottom button') : null;
     if(b===a.b && Math.hypot(t.clientX-a.x, t.clientY-a.y) < 30){ e.preventDefault(); tapAt = Date.now(); synth = true; try{ b.click(); }finally{ synth = false; } }
   }, { passive:false });
-  nav.addEventListener('touchcancel', ()=>{ start = null; if(drag){ drag = false; navIndTo(nav.querySelector('button.active'), true); } });
+  nav.addEventListener('touchcancel', ()=>{ start = null; if(drag){ drag = false; dragBase = null; navIndTo(nav.querySelector('button.active'), true); } });
   // il click "vero" che il browser manda dopo un tocco già gestito: ignorato, se no la sezione cambierebbe due volte
   nav.addEventListener('click', e=>{ if(!synth && Date.now()-tapAt < 700){ e.stopImmediatePropagation(); e.preventDefault(); } }, true);
 })();
@@ -3554,7 +3594,7 @@ let dayInd = null;
 /* stessa lente a vetro liquido della barra in basso (liquidMove). Se le giornate scorrono (tante), contro la prima o
    l'ultima non esce dal bordo: si schiaccia un attimo contro la parete */
 function placeDayInd(wrap, animate){
-  if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); }
+  if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); dayInd.innerHTML = '<i class="lq-glow"></i>'; }
   if(dayInd.parentNode!==wrap){ wrap.appendChild(dayInd); animate = false; }
   const a = wrap.querySelector('.day-pill.active');
   if(!a || !a.offsetWidth){ wrap.classList.remove('has-ind'); dayInd._on = false; return; }
@@ -3565,8 +3605,7 @@ function placeDayInd(wrap, animate){
   const fits = pills.length ? pills[pills.length-1].offsetLeft + pills[pills.length-1].offsetWidth <= wrap.clientWidth + 1 : true;
   wrap.classList.toggle('fits', fits);
   const wall = fits ? null : a===pills[0] ? 'l' : a===pills[pills.length-1] ? 'r' : null;
-  liquidMove(dayInd, { l:a.offsetLeft, t:a.offsetTop, w:a.offsetWidth, h:a.offsetHeight }, { animate: animate && was, lift:3, wall,
-    glow:'inset 0 1px 0 rgba(255,255,255,.2), 0 0 16px rgba(184,25,58,.22), 0 6px 16px rgba(0,0,0,.25)' });
+  liquidMove(dayInd, { l:a.offsetLeft, t:a.offsetTop, w:a.offsetWidth, h:a.offsetHeight }, { animate: animate && was, lift:3, wall });
 }
 addEventListener('resize', ()=>{ const w = document.getElementById('dayPills'); if(w && dayInd && dayInd._on) placeDayInd(w, false); });
 /* allenamenti corti: un pulsante discreto sotto le giornate apre la finestra con le riserve */
