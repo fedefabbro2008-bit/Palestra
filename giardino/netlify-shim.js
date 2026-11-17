@@ -7,11 +7,19 @@
 'use strict';
 const API='/api/dati';
 const LS=k=>{ try{ return localStorage.getItem('giardino:net:'+k); }catch(e){ return null; } };
-const LSset=(k,v)=>{ try{ if(v==null) localStorage.removeItem('giardino:net:'+k); else localStorage.setItem('giardino:net:'+k,v); }catch(e){} };
+// true se scritto: se la memoria del telefono è piena le modifiche in attesa non si perdono in silenzio (lo dice l'app)
+const LSset=(k,v)=>{ try{ if(v==null) localStorage.removeItem('giardino:net:'+k); else localStorage.setItem('giardino:net:'+k,v); return true; }catch(e){ return false; } };
 const LSjson=k=>{ try{ return JSON.parse(LS(k)||'null'); }catch(e){ return null; } };
 const ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function nuovoCodice(){ const b=new Uint8Array(24); crypto.getRandomValues(b); const s=Array.from(b,x=>ALPHA[x&31]).join(''); return 'GRD-'+s.match(/.{6}/g).join('-'); }
 let code=LS('code'); if(!/^[A-Z0-9-]{16,64}$/.test(code||'')){ code=nuovoCodice(); LSset('code',code); }
+/* ---------------- senza rete ----------------
+   offline: l'ultima richiesta al server non è arrivata per la rete (o navigator.onLine è falso). L'app lo mostra in alto
+   con quante modifiche aspettano di partire (evento «giardino-rete»). Torna online alla prima richiesta riuscita. */
+let offline=navigator.onLine===false;
+const SENZA_RETE='Senza rete: riprova quando torna la connessione.';
+function segnaRete(off){ off=!!off; if(off===offline) { avvisaRete(); return; } offline=off; avvisaRete(); }
+function avvisaRete(){ try{ window.dispatchEvent(new CustomEvent('giardino-rete',{detail:{offline, inAttesa:contaInAttesa()}})); }catch(e){} }
 const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) el.textContent=msg; if(err&&typeof window.showNote==='function') window.showNote('err',msg); };
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null,orti:[]};
 // orto scelto nell'app (più orti in città diverse): il meteo e la pioggia misurata sono i suoi
@@ -23,12 +31,25 @@ function posizione(){ const g=docs.giardino; if(!g) return null; const id=ortoId
 // della compressione (risposta illeggibile, o due volte di fila) per una settimana le chiede in chiaro: un attimo senza
 // rete non la spegne. Una risposta «ok» senza dati non vale mai: cancellerebbe quelli sul telefono.
 async function api(method, body, op, keepalive, extra){
+  try{ const j=await apiRete(method, body, op, keepalive, extra); segnaRete(false); return j; }
+  catch(e){
+    // rete assente o server che non risponde: un messaggio leggibile (non «Failed to fetch») e l'indicatore in alto
+    if(e instanceof TypeError||e?.name==='AbortError'||e?.name==='TimeoutError'){ segnaRete(true); throw Object.assign(new Error(SENZA_RETE),{offline:true}); }
+    segnaRete(false); throw e;
+  }
+}
+// Una richiesta che il server accetta e non chiude più (rete debolissima, server bloccato) si interrompe: prima teneva
+// ferme per sempre anche le modifiche dopo. 20 secondi; la foto da riconoscere (fino a 1,5 MB) ne ha 45.
+async function apiRete(method, body, op, keepalive, extra){
   const prova=async chiaro=>{
-    const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(chiaro?{'x-giardino-gzip':'no'}:{}),...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
-    const t=await r.text();   // interrotta (rete, o compressione che il browser non decodifica): errore di rete
-    let j=null; try{ j=JSON.parse(t); }catch(e){}
-    if(r.ok&&(j==null||typeof j!=='object')) throw Object.assign(new TypeError('risposta del server illeggibile'),{illeggibile:true});
-    return [r,j];
+    const ac=typeof AbortController==='function'?new AbortController():null, tm=ac&&setTimeout(()=>ac.abort(),op==='riconosci'?45000:(window.GIARDINO_ATTESA_RETE||20000));
+    try{
+      const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(chiaro?{'x-giardino-gzip':'no'}:{}),...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive,signal:ac?.signal});
+      const t=await r.text();   // interrotta (rete, o compressione che il browser non decodifica): errore di rete
+      let j=null; try{ j=JSON.parse(t); }catch(e){}
+      if(r.ok&&(j==null||typeof j!=='object')) throw Object.assign(new TypeError('risposta del server illeggibile'),{illeggibile:true});
+      return [r,j];
+    } finally { if(tm) clearTimeout(tm); }
   };
   const chiaro=Date.now()-(+LS('inChiaro')||0)<7*864e5;
   let r,j;
@@ -80,9 +101,18 @@ function scarica(){
     .catch(e=>{ dalServer(); stato('Server non raggiungibile ('+e.message+'): uso i dati salvati su questo dispositivo.'); return false; });
 }
 // dati del server con sopra le modifiche locali non ancora inviate
+// piante cambiate pianta per pianta, come le unisce il server (unisciPiante in dati.mjs): le altre restano
+function unisciPiante(prima,{set,del,ordine}={}){
+  const via=new Set(del||[]), per=new Map((set||[]).filter(p=>p&&p.id).map(p=>[p.id,p]));
+  let out=(prima||[]).filter(p=>p&&!via.has(p.id)).map(p=>per.get(p.id)||p);
+  const ci=new Set(out.map(p=>p.id)); for(const p of per.values()) if(!ci.has(p.id)&&!via.has(p.id)) out.push(p);
+  if(ordine?.length){ const pos=new Map(ordine.map((id,i)=>[id,i])); out=out.map((p,i)=>[p,pos.get(p.id)??1e6+i]).sort((a,b)=>a[1]-b[1]).map(x=>x[0]); }
+  return out;
+}
 function applicaLocale(b){
   const d=server.data=server.data||{...VUOTO};
   for(const [k,v] of Object.entries(b.changes||{})) d[k]=v;
+  if(b.piante) d.plants=unisciPiante(d.plants,b.piante);
   const via=new Set(b.remove||[]); d.eventi=(d.eventi||[]).filter(e=>!via.has(e.id));
   for(const e of b.add||[]) if(!d.eventi.some(x=>x.id===e.id)) d.eventi.push({...e,fonte:'app'});
 }
@@ -113,25 +143,54 @@ function allinea(){
 let coda=Promise.resolve(), inAttesa=LSjson('pending'), attesaT=null, inInvio=[];   // inInvio: modifiche già partite, risposta non ancora arrivata
 let conCopia=false;
 if(server&&server.data&&typeof server.data==='object'){ try{ if(inAttesa) applicaLocale(inAttesa); dalServer(); applicato=server.rev??null; conCopia=true; }catch(e){ conCopia=false; } }
-const unisci=(a,b)=>a?{changes:{...a.changes,...b.changes},add:[...a.add,...b.add],remove:[...a.remove,...b.remove]}:b;
+// Due gruppi di modifiche in attesa diventano uno. Un evento aggiunto e poi tolto prima di partire (💧 e subito Annulla,
+// senza rete) non parte più: prima il server toglieva prima e aggiungeva dopo, e l'innaffiatura annullata ricompariva.
+// Il «togli» resta (se nel frattempo era arrivato, il server lo toglie; altrimenti non fa niente).
+function unisci(a,b){
+  if(!a) return pulisci(b);
+  const pa=a.piante, pb=b.piante;
+  let piante=pa||pb||null;
+  if(pa&&pb){ const per=new Map([...(pa.set||[]),...(pb.set||[])].map(p=>[p.id,p])), del=[...new Set([...(pa.del||[]),...(pb.del||[])])];
+    for(const id of del) per.delete(id); piante={set:[...per.values()], del, ordine:pb.ordine||pa.ordine}; }
+  const out={changes:{...a.changes,...b.changes},add:[...a.add,...b.add],remove:[...a.remove,...b.remove]};
+  // un elenco intero (app vecchia o pending vecchio) dopo modifiche pianta per pianta: vale l'elenco più recente
+  if(b.changes&&'plants' in b.changes) piante=null; else if(piante&&out.changes&&'plants' in out.changes){ out.changes.plants=unisciPiante(out.changes.plants,piante); piante=null; }
+  if(piante) out.piante=piante;
+  return pulisci(out);
+}
+function pulisci(x){ if(!x) return x; const via=new Set(x.remove||[]); return {...x, add:(x.add||[]).filter(e=>!via.has(e.id))}; }
+function contaInAttesa(){ let n=0; for(const b of [...inInvio, inAttesa]) if(b){ n+=Object.keys(b.changes||{}).length+(b.add||[]).length+(b.remove||[]).length+(b.piante?(b.piante.set||[]).length+(b.piante.del||[]).length:0); } return n; }
 function invia(diff){
-  inAttesa=unisci(inAttesa,diff); LSset('pending',JSON.stringify(inAttesa));
+  inAttesa=unisci(inAttesa,diff);
+  if(!LSset('pending',JSON.stringify(inAttesa))) stato('Memoria del telefono piena: le ultime modifiche non sono salvate sul telefono. Restano finché l\'app è aperta: riapri la rete prima di chiuderla.',true);
+  avvisaRete();
   clearTimeout(attesaT); attesaT=setTimeout(svuota,600);
 }
 function svuota(keepalive){
   const body=inAttesa; inAttesa=null; if(!body) return coda;
   inInvio.push(body); const arrivata=()=>{ inInvio=inInvio.filter(b=>b!==body); };
-  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ arrivata(); server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); allinea(); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
-    .catch(e=>{ arrivata(); inAttesa=unisci(body,inAttesa||{changes:{},add:[],remove:[]}); LSset('pending',JSON.stringify(inAttesa));
-      stato(navigator.onLine===false?'Sei offline: le modifiche restano sul telefono e partono appena torna la rete.':'Non salvato sul server ('+e.message+'): riprovo tra poco.', navigator.onLine!==false);
+  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ arrivata(); avvisaRete(); window.nascondiNota?.('Non salvato'); server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); allinea(); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
+    .catch(e=>{ arrivata(); inAttesa=unisci(body,inAttesa||{changes:{},add:[],remove:[]}); LSset('pending',JSON.stringify(inAttesa)); avvisaRete();
+      // senza rete (anche quando il telefono crede di averla) non è un errore: le modifiche aspettano sul telefono
+      if(e.offline||navigator.onLine===false) stato('Sei offline: le modifiche restano sul telefono e partono appena torna la rete.');
+      else stato('Non salvato sul server ('+e.message+'): riprovo tra poco.', true);
       clearTimeout(attesaT); attesaT=setTimeout(svuota,30000); });
   return coda;
 }
 function diffGiardino(nuovo){
   const prima=base||docs.giardino||{}, changes={};
-  for(const f of ['location','plants','impostazioni','vacanza','orti']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
+  for(const f of ['location','impostazioni','vacanza','orti']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
+  // piante: solo quelle aggiunte, cambiate o tolte, e l'ordine (prima l'intero elenco, che cancellava quelle aggiunte
+  // da Claude o da un altro telefono mentre questo era senza rete)
+  let piante=null;
+  const pp=new Map((prima.plants||[]).map(p=>[p.id,JSON.stringify(p)])), np=nuovo.plants||[];
+  const set=np.filter(p=>pp.get(p.id)!==JSON.stringify(p)), del=[...pp.keys()].filter(id=>!np.some(p=>p.id===id));
+  const ordine=np.map(p=>p.id), ordineCambiato=ordine.join('|')!==(prima.plants||[]).map(p=>p.id).join('|');
+  if(set.length||del.length||ordineCambiato) piante={set,del,ordine};
   const pr=new Map((prima.eventi_app||[]).map(e=>[e.id,e])), nu=new Map((nuovo.eventi_app||[]).map(e=>[e.id,e]));
-  return {changes, add:[...nu.values()].filter(e=>!pr.has(e.id)), remove:[...pr.keys()].filter(id=>!nu.has(id))};
+  const d={changes, add:[...nu.values()].filter(e=>!pr.has(e.id)), remove:[...pr.keys()].filter(id=>!nu.has(id))};
+  if(piante) d.piante=piante;
+  return d;
 }
 
 /* ---------------- meteo ---------------- */
@@ -204,7 +263,7 @@ function doc(path){
       if(n==='giardino'){
         const prima=posizione(), d=diffGiardino(data);
         docs.giardino=base={...data};
-        if(Object.keys(d.changes).length||d.add.length||d.remove.length) invia(d);
+        if(Object.keys(d.changes).length||d.add.length||d.remove.length||d.piante) invia(d);
         const l=posizione(); if(l&&(!prima||prima.lat!==l.lat||prima.lon!==l.lon)) caricaMeteo(true).then(()=>emit('meteo_bot'));
       } else if(n==='meteo'){ docs.meteo=data&&data.days?data:null; invia({changes:{meteo_manual:docs.meteo},add:[],remove:[]}); }
       else if(n==='piano'){ docs.piano=data&&data.data?data:null; invia({changes:{piano_claude:docs.piano},add:[],remove:[]}); }
@@ -230,6 +289,7 @@ async function dopoScarica(dati, forza){
   allinea();
 }
 window.GiardinoNet={
+  rete:()=>({offline, inAttesa:contaInAttesa()}),
   codice:()=>code,
   usaCodice(c){ c=String(c||'').trim().toUpperCase(); if(!/^[A-Z0-9-]{16,64}$/.test(c)) return false; LSset('code',c); LSset('cache',null); location.reload(); return true; },
   mcp:(action,extra)=>action?api('POST',{action,...(extra||{})},'mcp'):api('GET',null,'mcp'),
@@ -253,7 +313,9 @@ window.GiardinoNet={
 function salvaPrimaDiUscire(){ Promise.resolve(window.salvaSubito?.()).then(()=>{ if(inAttesa&&navigator.onLine!==false) svuota(true); }).catch(()=>{}); }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') salvaPrimaDiUscire(); else aggiorna(false).catch(()=>{}); });
 setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },300000);
-window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
+// torna la rete: partono le modifiche in attesa e arrivano le novità (prima solo le modifiche: le novità al prossimo controllo)
+window.addEventListener('online',()=>{ aggiorna(false).catch(()=>{}); });
+window.addEventListener('offline',()=>segnaRete(true));
 window.addEventListener('pagehide',salvaPrimaDiUscire);
 // versione nuova: il service worker apre subito la copia salvata e intanto scarica quella del sito; se è cambiata lo dice qui.
 // Appena aperta (meno di 3 secondi, niente tocchi) l'app si ricarica subito; altrimenti la prossima volta che ci torni,

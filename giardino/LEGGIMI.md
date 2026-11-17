@@ -116,6 +116,15 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Meno ridisposizioni della pagina** (misurate in Chromium con telefono simulato 4 volte più lento, 16 piante e 864 eventi): la carta della pianta che si allarga legge tutte le misure prima di animare (ridisposizioni da 18 a 3 aprendo, da 19 a 4 chiudendo); il Diario aprendolo si rifà solo se è cambiato qualcosa o il giorno; la chiave della memoria del piano usa della scheda di Claude solo quello che il calcolo legge (specie, semina, mesi di raccolta).
 - **Prove della rete vera** (`test/sw.test.mjs`): server su localhost e Chromium: apertura dalla copia, versioni nuove, senza rete, compressione e ripiego in chiaro.
 
+## Senza rete
+- **Si usa tutto**: l'app si apre dalla copia sul telefono (service worker), con piante, diario, piano e l'ultimo meteo salvato; innaffiature, controlli, piante nuove o cambiate restano sul telefono (`giardino:net:pending`) e partono al ritorno della rete, che porta anche le novità (`online` → `aggiorna`).
+- **Indicatore** sotto il titolo (`#rete`): «Senza rete · N modifiche da inviare». Si accende quando una richiesta non arriva per la rete (anche se il telefono crede di averla) e si spegne alla prima riuscita; senza rete non c'è più l'avviso rosso, e i messaggi dicono «senza rete» invece di «Failed to fetch».
+- **Richieste con un tempo massimo** (20 s, foto 45 s): un server che accetta e non risponde non blocca più le modifiche dopo.
+- **Annullato prima di partire**: 💧 e subito Annulla senza rete non manda più l'innaffiatura (prima il server la rimetteva).
+- **Piante pianta per pianta** (`piante: {set, del, ordine}`, `unisciPiante` in `dati.mjs`): prima l'app mandava tutto l'elenco e una pianta aggiunta da Claude o da un altro telefono nel frattempo spariva. L'elenco intero (`changes.plants`) vale ancora per le copie vecchie dell'app.
+- **Meteo datato**: oltre 6 ore l'app dice di quando sono le previsioni («Previsioni del 14 nov: senza rete non si aggiornano»); quando sono finite dice «Senza rete e senza previsioni» invece di «Aspetto il meteo». In Impostazioni l'ora del meteo ha anche la data.
+- **Serve la rete** per: meteo nuovo, pioggia misurata ARPAE («Sotto la pioggia»), riconoscimento da foto, ricerca del comune, Telegram e Claude (lato server funzionano lo stesso).
+
 ## Più orti (città diverse)
 - `data.location` è l'orto principale (id `p`); gli altri in `data.orti = [{id, nome, location}]` (una voce `p` porta solo il nome del principale); ogni pianta ha `orto` (assente = principale). La pioggia ARPAE degli altri orti la scrive il bot in `data.pioggia_orti[id]` (l'app non può scriverla).
 - `vistaOrto(data, id)` (modello) dà un orto come se fosse l'unico: posizione, piante, eventi e pioggia misurata; piano, messaggi, riepilogo e connettore lavorano sulle viste. `vistePiene` = orti con posizione e piante.

@@ -41,6 +41,11 @@ p{margin:0}
 .loc{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:58%;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:.86rem;font-weight:600;cursor:pointer}
 .loc svg{flex:none;width:16px;height:16px;color:var(--water)}
 .loc span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* senza rete: una riga sotto il titolo, con quante modifiche aspettano di partire */
+.rete{display:flex;align-items:center;gap:8px;margin:-6px 0 12px;padding:7px 12px;border-radius:999px;font-size:.84rem;font-weight:600;
+  background:var(--surface-2);color:var(--muted);border:1px solid var(--line);width:fit-content;max-width:100%}
+.rete::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.rete span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 section.view{display:flex;flex-direction:column;gap:14px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
 .stack{display:flex;flex-direction:column;gap:10px}
@@ -668,6 +673,7 @@ nav.tabs.lq-drag .tab.lq-over{color:var(--water)}
       <span id="locName">Imposta il comune</span>
     </button>
   </header>
+  <div id="rete" class="rete" role="status" hidden></div>
   <div id="saveNote" class="alert info" hidden style="margin-bottom:14px"></div>
 
   <!-- OGGI -->
@@ -1187,6 +1193,17 @@ function scrittureInSospeso(){ return Object.values(writers).some(w=>w.t); }
 const saveMain = () => persist('giardino', ()=>({...pieno(), updatedAt:new Date().toISOString()}));
 const saveMeteo = () => persist('meteo', ()=>W.manual||{});
 const savePiano = () => persist('piano', ()=>P.claude||{});
+// toglie l'avviso in alto se è quello indicato (es. «Non salvato…» quando poi il salvataggio riesce)
+window.nascondiNota=inizio=>{ const n=$('#saveNote'); if(n && !n.hidden && n.textContent.startsWith(inizio)) n.hidden=true; };
+function renderRete(r){
+  const el=$('#rete'); if(!el) return;
+  r=r||window.GiardinoNet?.rete?.()||{offline:false,inAttesa:0};
+  el.hidden=!r.offline;
+  if(r.offline) el.innerHTML='<span>'+esc('Senza rete'+(r.inAttesa?' · '+(r.inAttesa===1?'1 modifica da inviare':r.inAttesa+' modifiche da inviare'):' · dati sul telefono'))+'</span>';
+}
+const senzaRete=()=>!!window.GiardinoNet?.rete?.().offline;
+let reteDi=null;
+window.addEventListener('giardino-rete',e=>{ renderRete(e.detail); if(e.detail.offline!==reteDi){ reteDi=e.detail.offline; if(ready) renderPresto(); } });
 function showNote(kind,msg){ const n=$('#saveNote'); n.className='alert '+(kind==='err'?'err':'info'); n.innerHTML=(kind==='err'?ICON.warn:ICON.info)+'<div>'+esc(msg)+'</div>'; n.hidden=false; }
 
 function applyMain(d){
@@ -1240,7 +1257,7 @@ async function boot(){
     }catch(e){}
     showNote('info','Salvataggio solo su questo dispositivo: il server non risponde.');
   }
-  ready=true; renderAll(); entra($('#view-'+vistaAttiva())); entra($('#wxStrip')); luce();
+  ready=true; renderRete(); renderAll(); entra($('#view-'+vistaAttiva())); entra($('#wxStrip')); luce();
 }
 /* ================= Eventi (diario) ================= */
 // Eventi dell'app + quelli di Telegram/Claude, uniti una volta sola finché non cambiano, e divisi per pianta.
@@ -1393,10 +1410,15 @@ function renderHeader(){
 function renderWeather(){
   const t=today(), days=wxDays().filter(d=>d.date>=t).slice(0,7), w=activeWeather();
   $('#wxBox').hidden=!S.location;
+  if(!days.length && w && senzaRete()){ setHTML($('#wxStrip'),''); $('#wxNote').hidden=false; $('#wxNote').textContent='Senza rete: le ultime previsioni salvate ('+dataBreve(isoDate(new Date(w.updatedAt)))+') sono finite. Tornano appena c\'è connessione.'; return; }
   if(!days.length){ setHTML($('#wxStrip'),Array.from({length:7},()=>'<div class="wx-day sk" aria-hidden="true"><span></span><span class="sk-c"></span><span></span><span class="sk-s"></span></div>').join('')); $('#wxNote').hidden=false; $('#wxNote').textContent=ready?'Meteo in arrivo…':'Caricamento…'; return; }
   setHTML($('#wxStrip'),days.map(d=>`<div class="wx-day${d.date===t?' today':''}" title="${esc(d.cond||'')}" role="button" tabindex="0" data-wxd="${esc(d.date)}" aria-label="${esc(dayLabel(d.date)+': '+(d.cond||'')+', dettagli')}"><span class="d">${esc(dayShort(d.date))}</span>${wxIcon(d.cond)}<span class="t">${d.tmax!=null?fmt(d.tmax,0)+'°':'–'}</span><span class="tm">${d.tmin!=null?fmt(d.tmin,0)+'°':''}</span><span class="r">${(d.rain||0)>=0.2?fmt(d.rain)+' mm':''}</span></div>`).join(''));
-  const vecchio=!fresco(w), riserva=/MET/.test(w?.fonte||'');
-  $('#wxNote').hidden=!vecchio&&!riserva; if(vecchio) $('#wxNote').textContent='Previsioni non aggiornate: il piano usa gli ultimi dati.';
+  const vecchio=!fresco(w), riserva=/MET/.test(w?.fonte||''), ore=w?.updatedAt?(Date.now()-Date.parse(w.updatedAt))/36e5:0;
+  // previsioni scaricate da più di 6 ore (senza rete non si aggiornano): si dice di quando sono
+  const datate=!vecchio&&ore>6, quando=w?.updatedAt?(isoDate(new Date(w.updatedAt))===t?'delle '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'del '+dataBreve(isoDate(new Date(w.updatedAt)))):'';
+  $('#wxNote').hidden=!vecchio&&!riserva&&!datate;
+  if(vecchio) $('#wxNote').textContent='Previsioni non aggiornate: il piano usa gli ultimi dati.';
+  else if(datate) $('#wxNote').textContent='Previsioni '+quando+(senzaRete()?': senza rete non si aggiornano.':'.')+' Il piano usa queste.';
   else if(riserva) $('#wxNote').textContent='Open-Meteo non risponde: previsioni di riserva da MET Norway (senza probabilità di pioggia).';
 }
 function renderAlerts(AP){
@@ -1442,8 +1464,8 @@ function renderOggi(AP){
   if(!ready){ head.textContent='Caricamento…'; sub.textContent=''; setHTML(list,''); $('#weekBox').hidden=true; renderConcime(); return; }
   if(!S.plants.length){ $('#weekBox').hidden=true; renderConcime(); return; }
   if(!AP){
-    head.textContent=S.location?'Aspetto il meteo':'Manca il comune';
-    sub.textContent=S.location?'Il piano compare appena arrivano le previsioni.':'Serve per il meteo: impostalo qui sopra o in Impostazioni.';
+    head.textContent=S.location?(senzaRete()?'Senza rete e senza previsioni':'Aspetto il meteo'):'Manca il comune';
+    sub.textContent=S.location?(senzaRete()?'Il piano torna appena c\'è connessione. Intanto puoi segnare innaffiature e controlli: partono dopo.':'Il piano compare appena arrivano le previsioni.'):'Serve per il meteo: impostalo qui sopra o in Impostazioni.';
     setHTML(list,''); $('#weekBox').hidden=true; renderConcime(); return;
   }
   const items=piante().map(p=>{ const pp=AP.data.piante.find(x=>x.id===p.id); return {p, pp, g:pp?.giorni.find(x=>x.data===t), st:statoOggi(p)}; });
@@ -1592,7 +1614,7 @@ function apriPioggia(pid){
   pgImposta({d:t,t:prima.getDate()===ora.getDate()?oraHHMM(prima):'00:00'}, {d:t,t:oraHHMM(ora)});
   apriFinestra($('#pioggiaSheet'),$('#pioggiaBg')); aggiornaPioggia();
   window.GiardinoNet?.pioggia?.().then(m=>{ if(pgPianta!==pid) return; if(m?.disponibile) pgMisure=m; else pgMotivo=m?.motivo||'Misure non disponibili.'; aggiornaPioggia(); })
-    .catch(e=>{ if(pgPianta!==pid) return; pgMotivo='Misure ARPAE non raggiungibili ('+e.message+'): riprova tra poco.'; aggiornaPioggia(); });
+    .catch(e=>{ if(pgPianta!==pid) return; pgMotivo=e?.offline?'Senza rete: servono le misure della stazione ARPAE. Riprova quando torna la connessione.':'Misure ARPAE non raggiungibili ('+e.message+'): riprova tra poco.'; aggiornaPioggia(); });
 }
 // Dettaglio di un giorno del meteo: numeri del giorno, cosa vogliono dire e cosa fare alle piante quel giorno
 function apriMeteo(data){
@@ -1816,7 +1838,7 @@ function renderPiante(AP){
 }
 function renderMeteoSet(){
   const w=activeWeather();
-  $('#wxVal').textContent=!w?'nessun dato':w.source==='open-meteo'?(/MET/.test(w.fonte||'')?'MET Norway (riserva)':'Open-Meteo')+(w.updatedAt?' · '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):''):'corretto a mano';
+  $('#wxVal').textContent=!w?'nessun dato':w.source==='open-meteo'?(/MET/.test(w.fonte||'')?'MET Norway (riserva)':'Open-Meteo')+(w.updatedAt?' · '+(isoDate(new Date(w.updatedAt))===today()?'':dataBreve(isoDate(new Date(w.updatedAt)))+' ')+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):''):'corretto a mano';
   $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.misurata?'; pioggia dei giorni passati misurata dalla stazione ARPAE di '+w.misurata.stazione+' ('+fmt(w.misurata.km,1)+' km)':'')+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.';
   const ed=$('#wxEdit'); if(ed.contains(document.activeElement)) return;
   const map={}; wxDays().forEach(d=>map[d.date]=d);
@@ -2698,7 +2720,7 @@ function wireNetlify(){
   $('#netCode').textContent=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
   // si mostrano i crediti RIMASTI (quelli che contano: a zero il sito va in pausa); la tacca è all'avviso di Telegram (80% usati)
-  const mostraCrediti=c=>{ if(!c){ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; return; }
+  const mostraCrediti=(c,e)=>{ if(!c){ $('#credTesto').textContent=e?.offline?'Senza rete: la stima arriva quando torna la connessione.':'Stima non disponibile: controlla su Netlify.'; return; }
       const rim=Math.max(0,c.limite-c.stima), pct=Math.max(0,Math.min(100,Math.round(rim/c.limite*100))), alto=c.stima>=240;
       $('#credChip').textContent='~'+rim+' rimasti'; $('#credChip').className='sv'+(alto?'':' ok');
       $('#credBarra').innerHTML=`<div class="lev${alto?' basso':''}" role="img" aria-label="Crediti rimasti circa ${pct}%"><i style="width:${pct}%"></i><b style="left:20%"></b></div>`;
@@ -2712,7 +2734,7 @@ function wireNetlify(){
   caricaStato=(forza)=>{ if(!forza&&Date.now()-statoAt<60000) return; statoAt=Date.now();
     ['#mcpChip','#tgChip','#credChip'].forEach(id=>{ if(!$(id).textContent) $(id).textContent='…'; });
     N.stato().then(x=>{ renderMcp(x.mcp); renderTg(x.telegram); mostraCrediti(x.crediti); })
-      .catch(()=>{ statoAt=0; $('#mcpChip').textContent='non raggiungibile'; $('#tgChip').textContent='non raggiungibile'; mostraCrediti(null); }); };
+      .catch(e=>{ statoAt=0; const t=e?.offline?'senza rete':'non raggiungibile'; $('#mcpChip').textContent=t; $('#tgChip').textContent=t; if($('#credChip').textContent==='…') $('#credChip').textContent=t; mostraCrediti(null,e); }); };
   $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) N.crediti().then(mostraCrediti).catch(()=>mostraCrediti(null)); });
   $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });
   $('#prompts').innerHTML=PROMPTS.map((t,i)=>`<button class="prompt" type="button" data-prompt="${i}"><span>“${esc(t)}”</span><span class="pc">Copia</span></button>`).join('');
