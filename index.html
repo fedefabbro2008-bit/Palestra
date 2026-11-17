@@ -876,6 +876,11 @@ body.kb-open nav.bottom{display:none;}
 /* e quella della seduta non resta ferma in alto: con la stima aperta copriva quasi tutto lo spazio sopra la tastiera */
 body.kb-open .session-topbar{position:relative;}
 /* il browser (campo toccato, elemento portato a vista) lascia libere la barra in alto e quella in basso */
+/* altezze delle barre (scritte da JS solo su main, l'unico che le usa): non ereditate, così quando cambiano (timer che
+   compare a ogni serie, inizio e fine dell'allenamento) si ricalcola solo main e non lo stile di tutta la pagina */
+@property --stack-h{ syntax:'*'; inherits:false; }
+@property --head-h{ syntax:'*'; inherits:false; }
+@property --sess-h{ syntax:'*'; inherits:false; }
 main{scroll-padding-top:calc(var(--head-h, 0px) + var(--sess-h, 0px) + 12px); scroll-padding-bottom:calc(var(--stack-h, 92px) + 12px);}
 body.kb-open main{scroll-padding-top:calc(var(--head-h, 0px) + 12px);}
 .sess-ex-head .sess-summary{font-size:11px; color:var(--text-faint); font-family:'JetBrains Mono',ui-monospace,monospace;
@@ -4594,7 +4599,7 @@ function setupDragReorder(list, day){
       // dito vicino al bordo alto o basso: la lista scorre da sola (esercizio portato dal primo all'ultimo posto in un gesto)
       function autoScroll(){
         if(!dragging) return;
-        const cs = getComputedStyle(document.documentElement);
+        const cs = getComputedStyle(document.querySelector('main'));   // le altezze delle barre stanno su main
         const topEdge = (parseFloat(cs.getPropertyValue('--head-h'))||0) + 10;
         const botEdge = window.innerHeight - (parseFloat(cs.getPropertyValue('--stack-h'))||0) - 10;
         const zone = 70;
@@ -7715,7 +7720,7 @@ document.getElementById('exTable').addEventListener('click', ev=>{
   renderProgChart(k, idx, cfg);
   // porta il grafico sotto la barra in alto (che è sopra al contenuto)
   const card = chart.closest('.card'), m = document.querySelector('main');
-  const headH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--head-h')) || 0;
+  const headH = parseFloat(getComputedStyle(m).getPropertyValue('--head-h')) || 0;   // l'altezza della barra sta su main
   const top = card.getBoundingClientRect().top - m.getBoundingClientRect().top + m.scrollTop - headH - 10;
   try{ m.scrollTo({ top, behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){ m.scrollTop = top; }
   playChart(chart);
@@ -9036,12 +9041,12 @@ else if(staleSessionSaved) renderAll();
   const st = document.querySelector('.bottom-stack'); if(!st) return;
   const hd = document.querySelector('header'), sb = document.querySelector('#sessionView .session-topbar');
   // --sess-h: altezza della barra della seduta (0 fuori dall'allenamento), per il margine di scorrimento di main
-  // prima si leggono tutte le altezze, poi si scrive solo quella cambiata: scrivere una variabile sulla radice invalida
-  // lo stile di tutta la pagina e la lettura successiva forzava ogni volta un nuovo calcolo (a ogni spunta, ogni timer)
-  const last = {};
+  // prima si leggono tutte le altezze, poi si scrive solo quella cambiata, e solo su main (variabili non ereditate,
+  // vedi @property): scritte sulla radice facevano ricalcolare lo stile di tutta la pagina a ogni spunta e a ogni timer
+  const last = {}, mainEl = document.querySelector('main');
   const set = ()=>{
     const v = [['--stack-h', st.offsetHeight], hd && ['--head-h', hd.offsetHeight], sb && ['--sess-h', sb.offsetHeight]];
-    const ds = document.documentElement.style;
+    const ds = mainEl.style;
     v.forEach(x=>{ if(x && last[x[0]]!==x[1]){ last[x[0]] = x[1]; ds.setProperty(x[0], x[1]+'px'); } });
   };
   set();
