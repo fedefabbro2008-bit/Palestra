@@ -47,4 +47,11 @@ Regole:
 - Testi dell'interfaccia e commenti in italiano semplice.
 - Le animazioni rispettano «Riduci movimento», le animazioni spente e il risparmio energetico (`motionOK()`).
 - Animazioni continue solo con `transform` e `opacity`.
+- Leggerezza (controllata dalla prova `leggerezza`):
+  - a riposo la pagina è ferma: niente animazioni che girano a vuoto (es. l'anello del timer solo a finestra aperta);
+  - le animazioni che partono a ogni tocco usano solo `transform` e `opacity` (un velo che si accende, non il colore
+    di sfondo; una barra che scorre, non la larghezza);
+  - mai variabili CSS scritte sulla radice durante l'uso (ricalcolano tutta la pagina): sull'elemento che le usa,
+    registrate non ereditate con `@property` (es. `--stack-h` su `main`);
+  - niente `:has()` su `html` o `body`: una classe messa da JS.
 - Lo zip per Netlify contiene `index.html`, `sw.js`, `fonts/`, `netlify.toml`, `package.json`, `netlify/` (non `tests/`).

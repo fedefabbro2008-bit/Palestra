@@ -45,6 +45,7 @@ export const TESTS = [
   { nome: 'due-finestre', file: 'ui/due-finestre.test.js', cosa: 'app aperta in due finestre' },
   { nome: 'sicurezza-testi-malevoli', file: 'ui/sicurezza-testi-malevoli.test.js', cosa: 'testi malevoli mostrati come testo, CSV senza formule' },
   { nome: 'sicurezza-dati-server', file: 'ui/sicurezza-dati-server.test.js', cosa: 'dati malevoli dal server' },
+  { nome: 'leggerezza', file: 'ui/leggerezza.test.js', cosa: 'conteggi: recupero fermo, timer senza ricalcolo totale, avvio, spunta, niente :has sulla radice' },
   { nome: 'prestazioni-3-anni', file: 'ui/prestazioni-3-anni.test.js', cosa: '3 anni di storico con processore lento', minuti: 6 },
   // sincronizzazione, Telegram, Claude
   { nome: 'sync-due-telefoni', file: 'ui/sync-due-telefoni.test.js', cosa: 'due telefoni: unione, cancellazione, stesso istante, server giù' },
