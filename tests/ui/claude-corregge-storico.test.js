@@ -76,8 +76,9 @@ const SDK = path.join(__dirname, '../node_modules/@modelcontextprotocol/sdk/dist
   await p.waitForTimeout(4000);   // la sincronizzazione parte da sola dopo la modifica
   const b2 = await blob();
   check(b2.logs[iso][0].entries[ei].detail.length === e0.detail.length, 'e arriva anche sul server');
+  const revU = (await blob()).rev;
   r = await call('annulla_correzione_storico');
-  check(r.err && /cambiato dopo/.test(r.t), 'annulla dal connettore dopo il ripristino nell\'app: rifiutato (' + r.t.slice(0, 60) + ')');
+  check(!r.err && /già stata annullata/.test(r.t) && (await blob()).rev === revU, 'annulla dal connettore dopo il ripristino nell\'app: «era già stata annullata», niente salvato (' + r.t.slice(0, 60) + ')');
   // correzione e annulla dal connettore
   r = await call('correggi_storico', fix);
   check(!r.err, 'nuova correzione');

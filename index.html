@@ -9247,7 +9247,7 @@ function stableStr(v){
   return '{'+Object.keys(v).filter(k=> v[k]!==undefined).sort().map(k=> JSON.stringify(k)+':'+stableStr(v[k])).join(',')+'}';
 }
 function hsh(str){ let h = 0x811c9dc5; for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h>>>0).toString(36)+'.'+str.length.toString(36); }
-const sessHash = s=> hsh(stableStr(compactSession(s)));
+function sessHash(s){ return hsh(stableStr(compactSession(s))); }   // function: serve anche all'avvio (avviso di Claude ancora aperto), prima di questa riga
 /* impostazioni intere per il backup su Telegram: cambiano spesso solo giornata di turno ed esportazione, che non contano */
 function fullSetHash(st){ const o = Object.assign({}, st); delete o.lastDay; delete o.lastExportAt; return hsh(stableStr(o)); }
 function syncSetPick(st){ const o = {}; SYNC_SET_KEYS.forEach(k=>{ if(st[k]!==undefined) o[k] = st[k]; }); return o; }
@@ -9293,7 +9293,7 @@ function syncMerge(remote, opts){
   const L = flatLogs(state.logs), R = flatLogs(rLogs);
   const out = {}; let pull = false, push = false; const removed = [];
   const put = (x)=> (out[x.iso] = out[x.iso] || []).push(x.s);
-  const pulledIds = new Set(), keptIds = new Set();   // allenamenti arrivati dal server / rimasti come qui
+  const pulledIds = new Set(), keptIds = new Set(), removedIds = new Set(), addedIds = new Set();   // arrivati dal server / rimasti come qui / tolti / nuovi
   new Set([...Object.keys(L), ...Object.keys(R)]).forEach(id=>{
     const l = L[id], r = R[id], b = bl[id];
     if(l && r){
@@ -9301,11 +9301,11 @@ function syncMerge(remote, opts){
       else if(r.h!==b && l.h===b){ put(r); pull = true; pulledIds.add(id); }          // cambiato solo sull'altro dispositivo
       else { put(l); push = true; keptIds.add(id); }                                // cambiato qui (o da tutte e due: vince questo)
     } else if(l){
-      if(b && l.h===b && !opts.keepDeleted){ removed.push(l); pull = true; }   // cancellato sull'altro dispositivo
-      else { put(l); push = true; }                                // nuovo qui (o corretto qui e cancellato là: si tiene)
+      if(b && l.h===b && !opts.keepDeleted){ removed.push(l); pull = true; removedIds.add(id); }   // cancellato sull'altro dispositivo
+      else { put(l); push = true; if(b) keptIds.add(id); }         // nuovo qui (o corretto qui e cancellato là: si tiene)
     } else {
       if(b && r.h===b) push = true;                                // cancellato qui
-      else { put(r); pull = true; }                                // nuovo sull'altro dispositivo
+      else { put(r); pull = true; addedIds.add(id); }              // nuovo sull'altro dispositivo
     }
   });
   Object.keys(out).forEach(iso=> out[iso].sort((a,b)=> num(a.startedAt)-num(b.startedAt) || String(a.id).localeCompare(String(b.id))));
@@ -9332,11 +9332,20 @@ function syncMerge(remote, opts){
     else push = true;
   }
   // lo storico l'ha corretto Claude (connettore, mcp.mjs) e qui non è ancora stato visto: quali allenamenti sono arrivati e quali no
+  // il server tiene anche le ultime modifiche di prima (items): se l'app non si è aperta fra due modifiche di Claude
+  // (es. elimina e poi sposta) si mostrano tutte insieme e «Rimetti com'era» le annulla tutte
   const cl = remote && remote.claudeLog;
   let claudeLog = null;
-  if(!opts.join && cl && typeof cl==='object' && !Array.isArray(cl) && Array.isArray(cl.ids) && num(cl.at) > num(sync.claudeLogSeen)){
-    const ids = cl.ids.map(String);
-    claudeLog = { cl, applied: ids.filter(id=> pulledIds.has(id)), lost: ids.filter(id=> keptIds.has(id)) };
+  if(!opts.join && cl && typeof cl==='object' && !Array.isArray(cl)){
+    const seen = num(sync.claudeLogSeen);
+    const items = (Array.isArray(cl.items) && cl.items.length ? cl.items : [cl])
+      .filter(x=> x && typeof x==='object' && !Array.isArray(x) && Array.isArray(x.ids) && num(x.at) > seen).sort((a,b)=> num(a.at)-num(b.at));
+    if(items.length){
+      const ids = [...new Set(items.flatMap(x=> x.ids.map(String)))];
+      const whys = [...new Set(items.map(x=> String(x.why==null ? '' : x.why).trim()).filter(Boolean))];
+      const comb = { at: Math.max(...items.map(x=> num(x.at))), why: whys.join(' · '), lines: items.flatMap(x=> Array.isArray(x.lines) ? x.lines : []), ids, undo: items.every(x=> x.undo===true) };
+      claudeLog = { cl: comb, applied: ids.filter(id=> pulledIds.has(id) || removedIds.has(id) || addedIds.has(id)), lost: ids.filter(id=> keptIds.has(id)) };
+    }
   }
   return { logs: pull ? out : null, days, settings, push, pull, removed, claude: fresh && days ? cm : null, claudeLost: fresh && !days && lh!==rh, claudeLog };
 }
@@ -9348,7 +9357,11 @@ function syncApply(m){
     let logBefore = null;
     if(m.logs){
       // gli allenamenti corretti da Claude: com'erano qui un attimo prima, per «Rimetti com'era»
-      if(m.claudeLog && m.claudeLog.applied.length){ const L = flatLogs(state.logs); logBefore = m.claudeLog.applied.filter(id=> L[id]).map(id=> ({ iso:L[id].iso, session: JSON.parse(JSON.stringify(L[id].s)) })); }
+      // (un allenamento che qui non c'era, rimesso da Claude, ha session null: «Rimetti com'era» lo toglie di nuovo)
+      if(m.claudeLog && m.claudeLog.applied.length){
+        const L = flatLogs(state.logs), N = flatLogs(m.logs);
+        logBefore = m.claudeLog.applied.filter(id=> L[id] || N[id]).map(id=> L[id] ? { iso:L[id].iso, session: JSON.parse(JSON.stringify(L[id].s)) } : { iso:N[id].iso, id, session:null });
+      }
       state.logs = m.logs; persist('logs');
       if(logBefore && logBefore.length) claudeLogNoteFrom(m.claudeLog.cl, logBefore);
     }
@@ -9748,11 +9761,15 @@ function claudeLogGet(){
 }
 function claudeLogSave(v){ claudeLogNote = v || null; try{ if(v) localStorage.setItem(claudeLogKey(), JSON.stringify(v)); else localStorage.removeItem(claudeLogKey()); }catch(e){} }
 function logSessById(id){ for(const iso of Object.keys(state.logs)){ const i = state.logs[iso].findIndex(x=> String(x.id)===String(id)); if(i>=0) return { iso, i, s:state.logs[iso][i] }; } return null; }
-function claudeLogStale(v){ return v.before.some(b=>{ const f = logSessById(b.session.id); return !f || sessHash(f.s)!==v.after[String(b.session.id)]; }); }
+/* id di una voce di «before»: la sessione com'era, o null se prima non c'era (allora id a parte) */
+function logBId(b){ return String(b && b.session ? b.session.id : b && b.id); }   // function: letta anche all'avvio, prima di questa riga
+/* dopo Claude: l'impronta di com'era ogni allenamento, null se Claude l'ha eliminato. Non vale più se qualcuno l'ha
+   cambiato, tolto o (eliminato da Claude) rimesso */
+function claudeLogStale(v){ return v.before.some(b=>{ const id = logBId(b), f = logSessById(id), exp = v.after[id]; return exp===null ? !!f : (!f || sessHash(f.s)!==exp); }); }
 function claudeLogNoteFrom(cl, before){
-  const after = {}; before.forEach(b=>{ const f = logSessById(b.session.id); if(f) after[String(b.session.id)] = sessHash(f.s); });
-  const lines = (Array.isArray(cl.lines) ? cl.lines : []).slice(0, 60).map(x=> String(x).slice(0, 300));
-  claudeLogSave({ at: num(cl.at) || Date.now(), why: String(cl.why==null ? '' : cl.why).slice(0, 300), undo: cl.undo===true, lines, before, after });
+  const after = {}; before.forEach(b=>{ const id = logBId(b), f = logSessById(id); after[id] = f ? sessHash(f.s) : null; });
+  const lines = (Array.isArray(cl.lines) ? cl.lines : []).slice(0, 160).map(x=> String(x).slice(0, 300));
+  claudeLogSave({ at: num(cl.at) || Date.now(), why: String(cl.why==null ? '' : cl.why).slice(0, 600), undo: cl.undo===true, lines, before, after });
   claudeLogOpen = false;
   try{ writeBackup('logs-backup-vclaude', JSON.stringify(before)); }catch(e){}
 }
@@ -9785,7 +9802,17 @@ function claudeLogCheck(){ const v = claudeLogNote; if(v && claudeLogStale(v)){ 
 /* mette al posto degli allenamenti di list (iso + session) le versioni date; ritorna le versioni che c'erano */
 function logSwap(list){
   const prev = [];
-  list.forEach(b=>{ const f = logSessById(b.session.id); if(!f) return; prev.push({ iso:f.iso, session: JSON.parse(JSON.stringify(f.s)) }); state.logs[f.iso][f.i] = JSON.parse(JSON.stringify(b.session)); });
+  list.forEach(b=>{
+    const id = logBId(b), f = logSessById(id);
+    prev.push(f ? { iso:f.iso, session: JSON.parse(JSON.stringify(f.s)) } : { iso:b.iso, id, session:null });
+    if(f) state.logs[f.iso].splice(f.i, 1);   // tolto (o sostituito qui sotto)
+    if(f && !state.logs[f.iso].length) delete state.logs[f.iso];
+    if(!b.session) return;                    // prima non c'era: resta tolto
+    const iso = f ? f.iso : b.iso; if(!validIso(iso)) return;
+    const a = state.logs[iso] = state.logs[iso] || [];
+    if(f && f.iso===iso) a.splice(Math.min(f.i, a.length), 0, JSON.parse(JSON.stringify(b.session)));
+    else { a.push(JSON.parse(JSON.stringify(b.session))); a.sort((x,y)=> num(x.startedAt)-num(y.startedAt) || String(x.id).localeCompare(String(y.id))); }
+  });
   return prev;
 }
 async function claudeLogUndo(){

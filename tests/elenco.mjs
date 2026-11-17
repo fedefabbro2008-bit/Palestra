@@ -59,6 +59,7 @@ export const TESTS = [
   { nome: 'claude-riquadro-chiaro', file: 'ui/claude-riquadro-chiaro.test.js', cosa: 'riquadro di Claude in tema chiaro' },
   { nome: 'claude-modifica-scheda-app', file: 'ui/claude-modifica-scheda-app.test.js', cosa: 'Claude cambia la scheda: avviso, Rimetti com\'era' },
   { nome: 'claude-corregge-storico', file: 'ui/claude-corregge-storico.test.js', cosa: 'Claude corregge lo storico: permesso, avviso, annulla, conflitto' },
+  { nome: 'claude-sposta-storico', file: 'ui/claude-sposta-storico.test.js', cosa: 'sposta ed elimina nello storico: avviso unito, ricalcoli, Rimetti com\'era, annulli, backup' },
   { nome: 'mcp-chiave', file: 'mcp/chiave.test.mjs', args: c => [c.code], serveCodice: true, cosa: 'connettore: chiave, intestazione, revoca' },
   { nome: 'mcp-storico-sposta-elimina', file: 'mcp/storico-sposta-elimina.test.mjs', args: c => [c.code], serveCodice: true, cosa: 'connettore: sposta_storico, elimina_storico_esercizio, annulli in pila, rifiuti, ricalcoli' },
   { nome: 'mcp-modifica-scheda', file: 'mcp/modifica-scheda.test.mjs', args: c => [c.code], serveCodice: true, cosa: 'connettore: modifica_scheda, errori, annulla, concorrenza' },
