@@ -15,6 +15,9 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   check(!badHash.length, 'ogni file esiste e l\'impronta nel nome corrisponde al contenuto ' + badHash.map(f => f.url).join(' '));
   const listed = (sw.match(/const FONTS = \[([^\]]*)\]/) || [, ''])[1].match(/fonts\/[^']+/g) || [];
   check(listed.length === faces.length && faces.every(f => listed.includes(f.url)), 'sw.js elenca esattamente i caratteri della pagina');
+  // chiesti subito con <link rel="preload">: gli stessi file delle @font-face (un nome vecchio scaricherebbe un file in più)
+  const pre = [...html.matchAll(/<link rel="preload" href="([^"]+)" as="font" type="font\/woff2" crossorigin>/g)].map(m => m[1]);
+  check(pre.length === faces.length && faces.every(f => pre.includes(f.url)), `caratteri chiesti subito (preload): gli stessi ${pre.length} file delle @font-face`);
   const onDisk = fs.readdirSync(path.join(ROOT, 'fonts'));
   check(onDisk.length === faces.length, `in fonts/ nessun file avanzato (${onDisk.length})`);
   // il server li manda come woff2
@@ -24,6 +27,14 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   // nel browser: salvati all'installazione, poi tutti disponibili senza rete
   const A = await open({ ls: {}, sw: true, wait: 1500 }), p = A.page;
   await p.evaluate(async () => { await navigator.serviceWorker.ready; });
+  // pronti al primo disegno anche alla prima apertura (niente in memoria): prima arrivavano dopo e la pagina si ridisegnava tutta
+  const { chromium } = require('playwright');
+  const b2 = await chromium.launch(), c2 = await b2.newContext({ serviceWorkers: 'block' });
+  await c2.addInitScript(() => requestAnimationFrame(() => { window.__ff = [...document.fonts].filter(f => f.status === 'loaded').length; }));
+  const p2 = await c2.newPage(); await p2.goto(BASE, { waitUntil: 'load' }); await p2.waitForTimeout(300);
+  const ready = await p2.evaluate(() => window.__ff);
+  check(ready === faces.length, `prima apertura: caratteri pronti al primo disegno (${ready}/${faces.length})`);
+  await b2.close();
   const cached = await p.evaluate(async list => { const c = await caches.open('palestra-v1'); const r = []; for (const u of list) r.push(!!(await c.match(u))); return r; }, faces.map(f => BASE + f.url));
   check(cached.every(Boolean), `tutti salvati dal service worker all'installazione (${cached.filter(Boolean).length}/${faces.length})`);
   await p.reload(); await p.waitForTimeout(600);
