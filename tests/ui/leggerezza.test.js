@@ -29,6 +29,19 @@ async function trace(browser, p, fn) {
   const css = await p.evaluate(() => [...document.styleSheets].map(s => { try { return [...s.cssRules].map(r => r.cssText).join('\n'); } catch (e) { return ''; } }).join('\n'));
   check(!/html:has\(/.test(css), 'nessun html:has(...) nello stile');
 
+  // 1b. barra: al tocco la lente parte subito e la sezione nuova si prepara nel fotogramma dopo (il lavoro pesante non
+  // fa partire la lente in ritardo); un cambio chiesto dal codice resta immediato
+  await p.evaluate(() => { window.__o = null; const ind = document.querySelector('nav.bottom .nav-ind');
+    document.querySelector('nav.bottom').addEventListener('touchstart', () => { const poll = () => { const a = ind.getAnimations()[0];
+      if (a && window.__o == null) window.__o = document.getElementById('tab-stats').classList.contains('active') ? 'sezione prima della lente' : 'lente prima della sezione';
+      if (window.__o == null) setTimeout(poll, 0); }; setTimeout(poll, 0); }, { once: true, capture: true }); });
+  await p.tap('nav.bottom button[data-tab="stats"]'); await p.waitForTimeout(700);
+  const ord = await p.evaluate(() => window.__o), statsOn = await p.evaluate(() => document.getElementById('tab-stats').classList.contains('active'));
+  check(ord === 'lente prima della sezione' && statsOn, 'tocco sulla barra: la lente parte prima che la sezione si prepari, poi la sezione c\'è (' + ord + ')');
+  const direct = await p.evaluate(() => { document.querySelector('nav.bottom button[data-tab="workout"]').click(); return document.getElementById('tab-workout').classList.contains('active'); });
+  check(direct, 'cambio di sezione dal codice: immediato');
+  await p.waitForTimeout(600);
+
   // 2. altezze delle barre solo su main, non ereditate
   const vars = await p.evaluate(() => { const m = document.querySelector('main'), c = m.querySelector('.card') || m.firstElementChild; return { main: getComputedStyle(m).getPropertyValue('--head-h'), root: getComputedStyle(document.documentElement).getPropertyValue('--head-h'), child: getComputedStyle(c).getPropertyValue('--head-h') }; });
   check(/px/.test(vars.main) && !vars.root && !vars.child, `altezze delle barre solo su main (${JSON.stringify(vars)})`);

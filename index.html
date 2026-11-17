@@ -1414,7 +1414,11 @@ nav.bottom button:active{background:none;}
 nav.bottom{touch-action:none; -webkit-user-select:none; user-select:none;}
 .nav-ind{position:absolute; top:5px; left:5px; width:calc((100% - 10px) / 4); height:calc(100% - 10px); border-radius:25px; background:var(--glass-pill);
   box-shadow:inset 0 1px 0 var(--glass-hi-soft); pointer-events:none; z-index:-1;
-  --lq-glow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px rgba(0,0,0,.28);}
+  --lq-glow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px rgba(0,0,0,.22);}
+/* come nella barra del giardino: la lente ha il colore dell'app (lì l'azzurro dell'acqua, qui il rosso), appena accennato */
+.nav-ind{background:color-mix(in srgb, var(--accent-hi) 16%, transparent);}
+body.light .nav-ind{background:color-mix(in srgb, var(--accent) 10%, transparent);}
+html.eco .nav-ind{background:#1c1c1c;}
 /* lenti a vetro liquido: si muovono solo con transform (lo fa la scheda grafica, senza ricalcolare la pagina) e
    l'alone è un livello sopra di cui cambia solo l'opacità */
 .nav-ind, .day-pills .dp-ind{will-change:transform; transform-origin:50% 50%; backface-visibility:hidden;}
@@ -3390,7 +3394,7 @@ document.addEventListener('touchstart', ()=>{}, { passive:true });
   const nav = document.querySelector('nav.bottom'); if(!nav) return;
   const ind = nav.querySelector('.nav-ind'), glow = ind && ind.firstElementChild, btns = ()=> [...nav.querySelectorAll('button')];
   let start = null, tapAt = 0, synth = false, dragDone = false;
-  const press = b=>{ tapAt = Date.now(); synth = true; try{ b.click(); }finally{ synth = false; } };
+  const press = b=>{ tapAt = Date.now(); synth = true; navUserTap = true; try{ b.click(); }finally{ synth = false; navUserTap = false; } };
   const nearest = x=> btns().reduce((p, q)=> Math.abs(q.offsetLeft + q.offsetWidth/2 - x) < Math.abs(p.offsetLeft + p.offsetWidth/2 - x) ? q : p);
   /* LENTE AFFERRATA, come su WhatsApp: tenendo premuto sulla sezione scelta si solleva subito; trascinando segue il dito
      con un leggero ritardo a molla e si allunga nella direzione del moto quanto più vai veloce, poi si ricompone quando
@@ -3482,8 +3486,33 @@ document.addEventListener('touchstart', ()=>{}, { passive:true });
   // il click "vero" che il browser manda dopo un tocco già gestito: ignorato, se no la sezione cambierebbe due volte
   nav.addEventListener('click', e=>{ if(!synth && Date.now()-tapAt < 700){ e.stopImmediatePropagation(); e.preventDefault(); } }, true);
 })();
+/* FLUIDITÀ: a un tocco vero la lente parte subito (solo transform: poi scorre da sola sulla scheda grafica) e la sezione
+   nuova si prepara nel fotogramma dopo, così il lavoro pesante (stili, impaginazione, grafici) non la fa partire in
+   ritardo. I cambi di sezione chiesti dal codice (click() da altre funzioni) restano immediati: chi li chiede trova
+   subito la sezione a schermo */
+var navUserTap = false, navSeq = 0, navPending = null;
 document.querySelectorAll('nav.bottom button').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
+  btn.addEventListener('click', e=>{
+    const user = navUserTap || (e && e.isTrusted);
+    const target = btn.dataset.tab;
+    if(navPending){
+      // tocco mentre un cambio aspetta il fotogramma dopo: vale l'ultimo
+      if(target===navPending){ return; }
+      navSeq++; navPending = null;
+      if(target===currentTab){ document.querySelectorAll('nav.bottom button').forEach(b=>b.classList.toggle('active', b===btn)); navIndTo(btn, true); return; }
+    }
+    if(user && target!==currentTab && motionOK()){
+      const seq = ++navSeq; navPending = target;
+      document.querySelectorAll('nav.bottom button').forEach(b=>b.classList.toggle('active', b===btn));
+      navIndTo(btn, true);
+      requestAnimationFrame(()=> setTimeout(()=>{ if(seq!==navSeq) return; navPending = null; showTab(btn); }, 0));
+      return;
+    }
+    showTab(btn);
+  });
+});
+function showTab(btn){
+  {
     try{ checkNewDay(); }catch(e){}   // app rimasta aperta oltre la mezzanotte
     const main = document.querySelector('main');
     const target = btn.dataset.tab;
@@ -3498,8 +3527,7 @@ document.querySelectorAll('nav.bottom button').forEach(btn=>{
     // 6. la sezione nuova entra dal lato in cui si trova nella barra
     const tabEl = document.getElementById('tab-'+target);
     currentTab = target;
-    document.querySelectorAll('nav.bottom button').forEach(b=>b.classList.toggle('active', b===btn));
-    navIndTo(btn, true);
+    if(!btn.classList.contains('active')){ document.querySelectorAll('nav.bottom button').forEach(b=>b.classList.toggle('active', b===btn)); navIndTo(btn, true); }
     document.querySelectorAll('.tab').forEach(s=>s.classList.remove('active'));
     document.getElementById('tab-'+currentTab).classList.add('active');
     if(isStatsTab(currentTab)) try{ reobserveCharts(); }catch(e){}
@@ -3517,8 +3545,8 @@ document.querySelectorAll('nav.bottom button').forEach(btn=>{
     if(want !== prevTop) main.scrollTop = want;
     // 6. la sezione si apre come un'app dell'iPhone: cresce dall'icona che hai toccato nella barra
     popIn(tabEl, tapPoint(btn.querySelector('svg') || btn), { from:0.08, ms:440 });
-  });
-});
+  }
+}
 
 /* PWA / dark / RPE */
 document.getElementById('installInfoBtn').addEventListener('click', ()=>{
