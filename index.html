@@ -2939,7 +2939,8 @@ function findPrevEntry(exId, name, warmOnly){
 let storageFull = false;
 let logsLocked = false;       // true solo se l'avvio è fallito prima di leggere lo storico
 let logsUnreadable = false;   // storico salvato illeggibile: la copia automatica (buona) non va sovrascritta finché non ripristini
-let dataVersion = 0;          // cresce a ogni salvataggio: dice a Stats se c'è da ricalcolare
+let dataVersion = 0;          // cresce a ogni salvataggio che cambia i dati: dice a Stats (e alle copie in memoria) se c'è da ricalcolare
+let logsChecks = 0;           // confronti dello storico con il testo salvato (vedi persistLogsSoon)
 /* testo già salvato (o letto all'avvio) per scheda, storico e impostazioni: se non è cambiato niente
    non si riscrive. Scrivere lo storico costa (con anni di allenamenti decine di ms e batteria) */
 const savedText = {};
@@ -2995,14 +2996,15 @@ function compactEntry(e){
 function persist(key){
   if(key==='logs' && logsLocked) return false;
   try{
+    if(key==='logs') logsChecks++;
     const txt = storedText(key);
     if(savedText[key]!==txt){
       localStorage.setItem(LS_PREFIX+key, txt); savedText[key] = txt; try{ syncNoteChange(key); }catch(e){}
       if(key==='logs' && claudeLogNote && !syncApplying) try{ claudeLogCheck(); }catch(e){}   // storico cambiato dopo Claude
       if(key==='days' && claudeNote) try{ claudeNoteCheck(); }catch(e){}   // scheda cambiata dopo Claude: l'avviso non vale più
+      dataVersion++;   // solo se i dati sono cambiati: un salvataggio identico non fa ricalcolare statistiche e stime
     }
     storageFull = false;
-    dataVersion++;
     if(key==='settings') settingsBackupSoon();
     return true;
   }catch(e){
@@ -3012,6 +3014,11 @@ function persist(key){
               'Esporta backup', ()=>document.getElementById('exportAllBtn').click(), 9000, 'err');
     return false;
   }
+}
+function persistLogsSoon(){
+  const at = logsChecks;
+  const go = ()=>{ if(logsChecks===at) persist('logs'); };   // se intanto lo storico è già stato salvato, non serve
+  setTimeout(()=>{ if(window.requestIdleCallback) requestIdleCallback(go, { timeout:2000 }); else go(); }, 1500);
 }
 function loadAll(){
   let hadStoredDays=false, rawLogs=null, storedSchema=null;
@@ -3050,7 +3057,11 @@ function loadAll(){
     schemaMigrated = true;
   }
   state.settings.schemaVersion = SCHEMA_VERSION;
-  persist('logs');
+  // il testo salvato si riconfronta con lo storico letto (e si riscrive solo se diverso, es. formato vecchio): con anni
+  // di allenamenti costa decine di ms, quindi si fa subito dopo l'apertura e non prima del primo disegno. Subito solo
+  // se c'era da riparare o da aggiornare il formato: lì il testo salvato va riscritto di sicuro
+  if(!rawLogs || res.repaired || schemaMigrated) persist('logs');
+  else persistLogsSoon();
 
   // --- scheda: validazione + eventuale aggiornamento di contenuto (con backup) ---
   if(!state.days || typeof state.days!=='object' || !Object.keys(state.days).length){
