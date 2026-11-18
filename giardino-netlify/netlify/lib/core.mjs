@@ -316,9 +316,10 @@ export const notaPioggia = (p, giorno) => (giorno?.rain || 0) >= 1 && POSTO[p.do
 // Litri se al controllo la terra è asciutta (come nell'app): l'acqua che si consuma prima di innaffiare, più il 10%.
 // Serve quando il piano di oggi non ha una dose (pianta da controllare, piano del mattino spento).
 export const doseControllo = (p, oggi, lat) => +(M.params(p, { oggi, lat }).rawL * 1.1).toFixed(2);
-export function pulsantiAcqua(p, oggi, { conNome = true, salto = true, secca = false } = {}) {
-  const n = conNome ? " · " + corto(p.nome) : "";
-  const r1 = [{ text: (secca ? "🏜 Era secca: annaffiato" : "✅ Annaffiato") + n, callback_data: `g|${oggi}|${p.id}|${secca ? "a" : "f"}` }];
+// litri = la dose scritta nel messaggio: viaggia nel pulsante «Annaffiato», così si registra quella che hai letto
+export function pulsantiAcqua(p, oggi, { conNome = true, salto = true, secca = false, litri = null } = {}) {
+  const n = conNome ? " · " + corto(p.nome) : "", l = !secca && +litri > 0 ? "|" + +(+litri).toFixed(2) : "";
+  const r1 = [{ text: (secca ? "🏜 Era secca: annaffiato" : "✅ Annaffiato") + n, callback_data: `g|${oggi}|${p.id}|${secca ? "a" : "f"}${l}` }];
   const r2 = [{ text: "💦 Terreno ancora umido", callback_data: `g|${oggi}|${p.id}|u` }];
   if (salto && !secca) r2.push({ text: "⏭ Salto", callback_data: `g|${oggi}|${p.id}|s` });
   return [r1, r2];
@@ -334,7 +335,7 @@ export function messaggioMattina(data, ap, oggi, { prova = false } = {}) {
     if (g?.azione === "innaffia") {
       const np = notaPioggia(p, d0);
       righe.innaffia.push(`💧 <b>${esc(p.nome)}</b>${conZona(p)}: ${fmt(g.litri, g.litri < 2 ? 2 : 1)} L (${esc(M.dose(g.litri, imp))}), ${esc(g.momento)}\n      <i>${esc(g.motivo)}${np ? " — " + esc(np) : ""}</i>`);
-      tastiera.push(...pulsantiAcqua(p, oggi, { conNome }));
+      tastiera.push(...pulsantiAcqua(p, oggi, { conNome, litri: g.litri }));
     } else if (g?.azione === "controlla") {
       righe.controlla.push(`👆 <b>${esc(p.nome)}</b>${conZona(p)}: ${esc(g.motivo)}`);
       tastiera.push(...pulsantiAcqua(p, oggi, { conNome, secca: true }));

@@ -118,7 +118,7 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvis
       if (mancano.length && !M.inVacanza(v.vacanza, oggi)) {
         const m = await meteoDi(v), d0 = m.days.find((d) => d.date === oggi);
         await invia(titolo(v, "🔔 <b>Ancora da innaffiare oggi</b>\n") + mancano.map((n) => { const np = notaPioggia(n.p, d0); return `💧 ${esc(n.p.nome)}: ${String(n.litri).replace(".", ",")} L (${esc(M.dose(n.litri, imp))})${np ? " <i>(" + esc(np) + ")</i>" : ""}`; }).join("\n") + "\n<i>Premi Annaffiato oppure Terreno ancora umido. Se non premi nulla, domani la conto come annaffiata.</i>",
-          { reply_markup: { inline_keyboard: mancano.flatMap((n) => pulsantiAcqua(n.p, oggi, { conNome: mancano.length > 1, salto: false })) } });
+          { reply_markup: { inline_keyboard: mancano.flatMap((n) => pulsantiAcqua(n.p, oggi, { conNome: mancano.length > 1, salto: false, litri: n.litri })) } });
       }
       // 2. controlli col dito: le piante che il piano di adesso dice di controllare oggi, ancora senza risposta.
       //    Dal piano della sera, mai in notificati: lì domani diventerebbero innaffiature presunte.

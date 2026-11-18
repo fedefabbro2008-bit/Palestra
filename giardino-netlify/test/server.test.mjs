@@ -688,3 +688,22 @@ test("acqua di tutta la vita sul server: inizio scritto una volta, diario potato
   assert.ok(!(await leggiDati()).eventi.some((e) => e.plantId === "vec"));
 });
 const oraLocaleRoma = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(new Date());
+
+test("Telegram: «Annaffiato» registra i litri scritti nel messaggio, e «Annulla» rimette il pulsante uguale", async () => {
+  const { pulsantiAcqua } = await import("../netlify/lib/core.mjs");
+  const d0 = await leggiDati(), tlp = { id: "tlp", nome: "Prova litri", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 5, num: 1, luce: 6, dove: "aperto" };
+  const kb = pulsantiAcqua(tlp, OGGI, { conNome: false, litri: 0.734 });
+  assert.equal(kb[0][0].callback_data, `g|${OGGI}|tlp|f|0.73`, "la dose del messaggio viaggia nel pulsante");
+  assert.ok(!pulsantiAcqua(tlp, OGGI, { secca: true, litri: 0.7 })[0][0].callback_data.includes("0.7"), "«Era secca» no: la dose la calcola il server");
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: [...d0.plants, tlp] } } });
+  inviati.length = 0;
+  await webhook({ callback_query: { id: "cbl", data: kb[0][0].callback_data, message: { message_id: 13, chat: { id: 77 }, reply_markup: { inline_keyboard: kb } } } });
+  assert.equal((await leggiDati()).eventi.find((e) => e.id === "tg-cbl")?.litri, 0.73, "registrati i litri che hai letto (prima: la dose ricalcolata)");
+  const annullaB = inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard.flat().find((b) => b.text === "↩️ Annulla");
+  assert.ok(annullaB.callback_data.length <= 64);
+  inviati.length = 0;
+  await webhook({ callback_query: { id: "cbl2", data: annullaB.callback_data, message: { message_id: 13, chat: { id: 77 }, reply_markup: { inline_keyboard: [[{ text: "x", callback_data: annullaB.callback_data }]] } } } });
+  assert.ok(!(await leggiDati()).eventi.some((e) => e.id === "tg-cbl"), "risposta tolta");
+  assert.deepEqual(inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard, kb, "pulsanti di prima, con i litri");
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants } } });
+});
