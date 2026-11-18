@@ -1326,11 +1326,14 @@ const futDays = () => { const t=today(); return wxDays().filter(d=>d.date>=t && 
 // scritto a mano), con la pioggia misurata dalla stazione ARPAE dove c'è
 // (n = ARCHIVIO_GIORNI per l'acqua di tutta la vita: 400 giorni, ricordati finché meteo, giorno e posizione non cambiano;
 // Piante e Diario li chiedono a ogni ridisegno)
+// La chiave guarda anche i contenuti (giorni dell'archivio, ora della pioggia misurata, previsioni), non solo gli oggetti:
+// se la pioggia misurata cambiasse dentro lo stesso meteo il riquadro non resterebbe indietro fino a domani.
 let vitaMemo={};
-const pastDays = n => { const w=activeWeather(), wb=W.bot, t=today(), lat=S.location?.lat;
-  if(n===ARCHIVIO_GIORNI && vitaMemo.w===w && vitaMemo.wb===wb && vitaMemo.t===t && vitaMemo.lat===lat) return vitaMemo.v;
-  const v=giorniPassati({archivio:w?.archivio||wb?.archivio||null, days:wxDays().filter(d=>d.tmax!=null), lat}, w?.misurata||wb?.misurata||null, t, n);
-  if(n===ARCHIVIO_GIORNI) vitaMemo={w, wb, t, lat, v};
+const pastDays = n => { const w=activeWeather(), wb=W.bot, t=today(), lat=S.location?.lat, arch=w?.archivio||wb?.archivio||null, mis=w?.misurata||wb?.misurata||null;
+  const k=n===ARCHIVIO_GIORNI ? [t, lat, w?.updatedAt, wb?.updatedAt, arch?Object.keys(arch).length:0, mis?.aggiornato, mis?.giorni?Object.keys(mis.giorni).length:0].join('|') : null;
+  if(k && vitaMemo.k===k && vitaMemo.w===w && vitaMemo.wb===wb) return vitaMemo.v;
+  const v=giorniPassati({archivio:arch, days:wxDays().filter(d=>d.tmax!=null), lat}, mis, t, n);
+  if(k) vitaMemo={k, w, wb, v};
   return v; };
 
 const giornoVita = d => dataBreve(d)+(d.slice(0,4)!==today().slice(0,4)?' '+d.slice(0,4):'');
