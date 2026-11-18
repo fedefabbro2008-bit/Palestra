@@ -37,7 +37,7 @@ export const siteUrl = (req) => (globalThis.Netlify?.env?.get("URL")) || new URL
 export const IMP_DEF = { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 19 };
 // Notifiche Telegram che si spengono dall'app (Impostazioni → Notifiche): impostazioni.notifiche = { tipo: false }, accese se
 // mancano. Le risposte ai comandi (/oggi, pulsanti) arrivano sempre, e così il messaggio di riserva da GitHub (sito fermo).
-export const NOTIFICHE = ["mattina", "sera", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"];
+export const NOTIFICHE = ["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"];
 export const notifica = (imp, tipo) => imp?.notifiche?.[tipo] !== false;
 export const vuoto = () => ({ location: null, plants: [], impostazioni: { ...IMP_DEF }, vacanza: null, eventi: [], piano_claude: null, meteo_manual: null, orti: [] });
 // campi che l'app può scrivere (pioggia_misurata e pioggia_orti li scrive solo il bot)
@@ -272,6 +272,9 @@ const POSTO = { interno: "in casa", serra: "in veranda/serra", riparato: "al rip
 export const notaPioggia = (p, giorno) => (giorno?.rain || 0) >= 1 && POSTO[p.dove] ? `${POSTO[p.dove]}: la pioggia non la raggiunge` : "";
 // Pulsanti per una pianta: “Annaffiato” e “Terreno ancora umido” su righe intere (si leggono bene sul telefono);
 // il nome serve solo se nel messaggio ci sono più piante; “Salto” solo nel messaggio del mattino.
+// Litri se al controllo la terra è asciutta (come nell'app): l'acqua che si consuma prima di innaffiare, più il 10%.
+// Serve quando il piano di oggi non ha una dose (pianta da controllare, piano del mattino spento).
+export const doseControllo = (p, oggi, lat) => +(M.params(p, { oggi, lat }).rawL * 1.1).toFixed(2);
 export function pulsantiAcqua(p, oggi, { conNome = true, salto = true, secca = false } = {}) {
   const n = conNome ? " · " + corto(p.nome) : "";
   const r1 = [{ text: (secca ? "🏜 Era secca: annaffiato" : "✅ Annaffiato") + n, callback_data: `g|${oggi}|${p.id}|${secca ? "a" : "f"}` }];

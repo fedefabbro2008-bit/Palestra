@@ -354,7 +354,7 @@ test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della
   assert.ok(tutte.mattino && tutte.sera, "con tutto acceso: mattino e sera");
   const senzaMattino = await giro({ mattina: false, backup: false });
   assert.ok(!senzaMattino.mattino, "mattino spento"); assert.ok(senzaMattino.sera, "la sera arriva lo stesso, con le piante di oggi"); assert.ok(!senzaMattino.backup, "backup spento");
-  const nessuna = await giro(Object.fromEntries(["mattina", "sera", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"].map((k) => [k, false])));
+  const nessuna = await giro(Object.fromEntries(["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"].map((k) => [k, false])));
   assert.equal(nessuna.n, 0, "tutto spento: nessun messaggio"); assert.ok(!nessuna.backup);
   const t = await st.get("t-" + CODE, { type: "json" }), oggi = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
   assert.equal(t.ultimo_invio, oggi); assert.equal(t.ultimo_avviso_sera, oggi); assert.deepEqual(t.notificati, {}, "nessuna pianta segnata: domani niente innaffiature presunte");
@@ -367,6 +367,46 @@ test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della
   assert.ok((await strumento("impostazioni", { notifiche: { boh: false } })).isError, "tipo sconosciuto");
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
   await st.setJSON("t-" + CODE, { ...t0 });
+});
+
+test("controlli del terreno: la sera le piante da toccare col dito ancora senza risposta, coi pulsanti; mai innaffiature presunte", async () => {
+  const st = getStore({ name: "giardino" }), t0 = await st.get("t-" + CODE, { type: "json" }), d0 = await leggiDati();
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
+  const fic = { id: "fic", nome: "Ficus", specie: "tropicale", fase: "vegetativa", colt: "vaso", vaso: 3, diametro: 17, num: 1, luce: 2, dove: "interno" };
+  const giorno = (azione) => ({ data: OGGI, azione, litri: azione === "innaffia" ? 0.5 : 0, momento: "mattina presto", motivo: "prova" });
+  const piano = { createdAt: new Date().toISOString(), source: "claude", data: { sintesi: "prova", avvisi: [], piante: [{ id: "fic", giorni: [giorno("controlla")] }, { id: "zuc", giorni: [giorno("innaffia")] }] } };
+  const imp = (notifiche) => ({ bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12, ...(notifiche ? { notifiche } : {}) });
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: [...d0.plants, fic], piano_claude: piano, vacanza: null, impostazioni: imp({ controllo: false }) } } });
+  const giro = async () => {
+    const t = await st.get("t-" + CODE, { type: "json" });
+    await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: new Date().toISOString().slice(0, 7), notificati: {} });
+    inviati.length = 0; await bot();
+    return inviati.filter((x) => x[0] === "sendMessage" && x[1].text.includes("Da controllare oggi"));
+  };
+  assert.equal((await giro()).length, 0, "spenti in Impostazioni: niente");
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: imp() } } });
+  const [m] = await giro();
+  assert.ok(m, "promemoria dei controlli");
+  assert.match(m[1].text, /Ficus: infila un dito nel terriccio per \d\u00a0cm.*\. Se è asciutto, innaffia: \d+(,\d+)? L \(/);
+  assert.ok(!m[1].text.includes("Zucchine"), "la pianta da innaffiare sta nell'altro promemoria");
+  assert.ok(!/la conto come annaffiata/.test(m[1].text), "un controllo non diventa mai un'innaffiatura data per fatta");
+  const kb = m[1].reply_markup.inline_keyboard, suoi = kb.filter((r) => r.some((b) => b.callback_data.includes("|fic|")));
+  assert.deepEqual(suoi.flat().map((b) => b.text.replace(/ · .*/, "")), ["🏜 Era secca: annaffiato", "💦 Terreno ancora umido"]);
+  assert.ok(kb.every((r) => r.length === 1) && !kb.flat().some((b) => b.text.includes("Salto")), "a tutta riga, senza «Salto»");
+  const t = await st.get("t-" + CODE, { type: "json" });
+  assert.ok(!(t.notificati?.[OGGI] || []).some((n) => n.id === "fic"), "mai tra le innaffiature notificate: domani non diventa «data per fatta»");
+  // «Era secca: annaffiato» con la dose (prima, senza un piano con i litri, l'innaffiatura restava senza quantità)
+  inviati.length = 0;
+  await webhook({ callback_query: { id: "cbc", data: suoi[0][0].callback_data, message: { message_id: 11, chat: { id: 77 }, reply_markup: { inline_keyboard: kb } } } });
+  const e = (await leggiDati()).eventi.find((x) => x.plantId === "fic" && x.tipo === "secco");
+  assert.ok(e && e.litri > 0 && e.previsto === "controlla", "registrata con litri e con quello che diceva il piano");
+  const annullaB = inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard.flat().find((b) => b.text === "↩️ Annulla");
+  assert.ok(!(await giro()).some((x) => x[1].text.includes("Ficus")), "con una risposta non si ripete");
+  // pulizia: via la risposta, la pianta e il piano di prova
+  await webhook({ callback_query: { id: "cbz", data: annullaB.callback_data, message: { message_id: 11, chat: { id: 77 }, reply_markup: { inline_keyboard: [] } } } });
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants, piano_claude: d0.piano_claude, vacanza: d0.vacanza, impostazioni: d0.impostazioni } } });
+  await st.setJSON("t-" + CODE, { ...t0 });
+  assert.ok(!(await leggiDati()).eventi.some((x) => x.plantId === "fic"));
 });
 
 test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calcolo automatico", async () => {

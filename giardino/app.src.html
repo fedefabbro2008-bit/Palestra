@@ -1886,8 +1886,9 @@ function renderImpostazioni(){
 }
 // notifiche Telegram: impostazioni.notifiche = {tipo:false} per quelle spente (le altre accese, anche quelle che arriveranno)
 const NOTIF=[
-  ['mattina','Piano del mattino',i=>'Cosa innaffiare oggi, con i pulsanti · alle '+i.ora_mattina],
-  ['sera','Promemoria della sera',i=>'Le piante di oggi ancora senza risposta · alle '+i.ora_sera],
+  ['mattina','Piano del mattino',i=>'Cosa innaffiare e controllare oggi, con i pulsanti · alle '+i.ora_mattina],
+  ['sera','Promemoria della sera',i=>'Le piante da innaffiare oggi ancora senza risposta · alle '+i.ora_sera],
+  ['controllo','Controlli del terreno',i=>'Le piante da toccare con il dito oggi ancora senza risposta · alle '+i.ora_sera],
   ['avvisi','Avvisi per domani',()=>'Gelo, caldo, vento, temporali e grandine · la sera'],
   ['verifica','Controllo del sabato',()=>"Una pianta da toccare con il dito: così l'app impara quanto beve"],
   ['riepilogo','Riepilogo della domenica',()=>'Acqua data e piante della settimana'],
@@ -1899,7 +1900,7 @@ function chipNotifiche(){
   const n=NOTIF.filter(([k])=>notAttiva(k)).length, h=$('#notHint');
   $('#notVal').textContent=n===NOTIF.length?'tutte':n?n+' su '+NOTIF.length:'nessuna';
   const cp=$('#set-not .campana'); if(cp) cp.textContent=n?'🔔':'🔕';
-  const t=!n?'Nessuna notifica: il bot risponde solo ai tuoi comandi.':!notAttiva('mattina')&&notAttiva('sera')?'Senza il piano del mattino, la sera ti scrive lo stesso le piante da innaffiare ancora senza risposta.':'';
+  const t=!n?'Nessuna notifica: il bot risponde solo ai tuoi comandi.':!notAttiva('mattina')&&(notAttiva('sera')||notAttiva('controllo'))?'Senza il piano del mattino, la sera ti scrive lo stesso le piante '+(notAttiva('sera')&&notAttiva('controllo')?'da innaffiare o da controllare':notAttiva('sera')?'da innaffiare':'da controllare')+' ancora senza risposta.':'';
   h.textContent=t; h.hidden=!t;
 }
 function renderNotifiche(){

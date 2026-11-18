@@ -1,10 +1,11 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, aggiornaPioggiaMisurata, esc, IMP_DEF, ESITI, notifica, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, doseControllo, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, aggiornaPioggiaMisurata, esc, IMP_DEF, ESITI, notifica, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Per ogni bot Telegram collegato, all'ora locale:
    - mattino (default dalle 7): una volta al giorno il piano, solo se c'è qualcosa da fare;
    - sera (default dalle 19), una volta al giorno:
        · promemoria delle piante da innaffiare oggi ancora senza risposta;
+       · le piante da controllare col dito oggi (dal piano della sera) ancora senza risposta;
        · avvisi per domani (gelo con le temperature ora per ora della notte, caldo, vento e raffiche, temporale, grandine);
        · la domenica, il riepilogo della settimana;
        · il primo giorno utile di ogni mese, il file di backup;
@@ -117,20 +118,32 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvis
         await invia(titolo(v, "🔔 <b>Ancora da innaffiare oggi</b>\n") + mancano.map((n) => { const np = notaPioggia(n.p, d0); return `💧 ${esc(n.p.nome)}: ${String(n.litri).replace(".", ",")} L (${esc(M.dose(n.litri, imp))})${np ? " <i>(" + esc(np) + ")</i>" : ""}`; }).join("\n") + "\n<i>Premi Annaffiato oppure Terreno ancora umido. Se non premi nulla, domani la conto come annaffiata.</i>",
           { reply_markup: { inline_keyboard: mancano.flatMap((n) => pulsantiAcqua(n.p, oggi, { conNome: mancano.length > 1, salto: false })) } });
       }
-      // 2. avvisi per domani
+      // 2. controlli col dito: le piante che il piano di adesso dice di controllare oggi, ancora senza risposta.
+      //    Dal piano della sera, mai in notificati: lì domani diventerebbero innaffiature presunte.
+      if (on("controllo") && !M.inVacanza(v.vacanza, oggi)) {
+        const pa = await pianoDi(v), lat = v.location?.lat, giaSera = new Set((next.notificati?.[oggi] || []).map((n) => n.id));
+        const ctrl = M.pianteOrdinate(v.plants).filter((x) => !giaSera.has(x.id)
+          && pa.piano.piante.find((y) => y.id === x.id)?.giorni?.find((g) => g.data === oggi)?.azione === "controlla"
+          && !v.eventi.some((e) => e.plantId === x.id && e.data === oggi && (ESITI.includes(e.tipo) || e.tipo === "verifica")));
+        if (ctrl.length) await invia(titolo(v, "👆 <b>Da controllare oggi</b>\n") + ctrl.map((x) => { const l = doseControllo(x, oggi, lat);
+          return `👆 ${esc(x.nome)}: ${esc(M.testoDito(M.profonditaDito(x, oggi, lat)))}. Se è asciutto, innaffia: ${String(l).replace(".", ",")} L (${esc(M.dose(l, imp))})`; }).join("\n")
+          + "\n<i>Premi com'era la terra: così l'app impara quanto beve.</i>",
+          { reply_markup: { inline_keyboard: ctrl.flatMap((x) => pulsantiAcqua(x, oggi, { conNome: ctrl.length > 1, salto: false, secca: true })) } });
+      }
+      // 3. avvisi per domani
       if (on("avvisi")) {
         const m = await meteoDi(v), avv = M.avvisiDomani(v.plants, m.days.find((d) => d.date === M.addDays(oggi, 1)), m.notte);
         if (avv.length) { const ic = { gelo: "🥶", caldo: "🔥", vento: "💨", temporale: "⛈", grandine: "🧊" }; await invia(titolo(v, "🌙 <b>Per domani</b>\n") + avv.map((a) => `${ic[a.tipo]} ${esc(a.testo)}`).join("\n")); }
       }
-      // 3. la domenica, il riepilogo della settimana (uno per orto)
+      // 4. la domenica, il riepilogo della settimana (uno per orto)
       if (on("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0) await invia(riepilogoSettimana(v, oggi, await meteoDi(v)));
     }
-    // 4. una volta al mese, il backup (tutti gli orti insieme)
+    // 5. una volta al mese, il backup (tutti gli orti insieme)
     if (on("backup") && (t.ultimo_backup || "").slice(0, 7) !== oggi.slice(0, 7)) {
       try { await inviaFile(t.token, t.chat_id, `giardino-backup-${oggi}.json`, JSON.stringify(backup(data), null, 2), "🗂 Backup mensile del Giardino: in caso di bisogno importalo dall'app (Impostazioni → Backup)."); next.ultimo_backup = oggi; }
       catch (e) { console.error("backup", e?.message); }
     }
-    // 5. il piano di Claude sta per finire: lo dico una volta per piano, la sera prima dell'ultimo giorno (o appena me ne accorgo)
+    // 6. il piano di Claude sta per finire: lo dico una volta per piano, la sera prima dell'ultimo giorno (o appena me ne accorgo)
     const pc = data.piano_claude, fine = finePiano(pc), idPiano = pc?.createdAt || fine;
     if (on("piano") && fine && fine <= M.addDays(oggi, 1) && t.avviso_piano !== idPiano) {
       const m = messaggioFinePiano(fine, oggi);

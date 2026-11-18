@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, pianiOrti, pianoUnito, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, pianiOrti, pianoUnito, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, doseControllo, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · webhook di Telegram (/api/telegram/<segreto>).
    - /start dalla chat dell'utente: collega il bot a quella chat (solo la prima volta).
@@ -104,7 +104,11 @@ async function pulsante(st, t, code, cq) {
     const g = d.piano_claude?.data?.piante?.find((y) => y.id === pid)?.giorni?.find((y) => y.data === data);
     // cosa diceva il piano: le piante da innaffiare sono in notificati, le altre coi pulsanti erano da controllare
     const previsto = tipo === "umido" || tipo === "secco" ? ((t.notificati?.[data] || []).some((n) => n.id === pid) ? "innaffia" : "controlla") : null;
-    d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo, data, fonte: "telegram", ts: new Date().toISOString(), ...(previsto ? { previsto } : {}), ...(tipo === "fatto" || tipo === "secco" ? { litri: g?.litri ?? (t.notificati?.[data] || []).find((n) => n.id === pid)?.litri ?? null } : {}) });
+    // litri: la dose del piano di Claude o del messaggio del mattino; senza una dose (pianta da controllare, piano del mattino
+    // spento) la stessa dell'app. Prima un «controlla» di Claude registrava 0 litri e un controllo del calcolo automatico nessuno.
+    const notif = (t.notificati?.[data] || []).find((n) => n.id === pid)?.litri, lat = (M.orti(d).find((o) => o.id === (p.orto || "p"))?.location || d.location)?.lat;
+    const litri = tipo !== "fatto" && tipo !== "secco" ? null : g?.azione === "innaffia" && g.litri > 0 ? g.litri : notif > 0 ? notif : doseControllo(p, data, lat);
+    d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo, data, fonte: "telegram", ts: new Date().toISOString(), ...(previsto ? { previsto } : {}), ...(litri != null ? { litri } : {}) });
   });
   // la conferma e i pulsanti nuovi partono insieme (prima una richiesta a Telegram dopo l'altra: il doppio dell'attesa)
   const conferma = rispondi(`Registrato: ${nome} — ${ETICHETTE[tipo]}`);
