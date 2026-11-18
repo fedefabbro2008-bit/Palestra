@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="c1242f4ca9a0">
+<meta name="giardino-build" content="6d6a6506e85a">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2080,12 +2080,15 @@ function esitoVerifica(risposta, acqua, soglia, acquaSecco){
   if(risposta==='umido' && acqua<soglia) return 'meno';
   return 'ok';
 }
-/* Precisione misurata: quante volte il calcolo aveva ragione ai controlli col dito, giudicato quando hai risposto
-   (valutazione salvata nel controllo: «ok» = il calcolo era giusto; «piu»/«meno» = sbagliava). Non si rifanno i conti
-   dei controlli vecchi con la correzione di oggi: verrebbe una precisione migliore del vero. */
+/* Risposte d'accordo col calcolo, giudicate quando hai risposto (non rifatte con la correzione di oggi, che darebbe un
+   risultato migliore del vero): controlli col dito («ok» = d'accordo), «Era umida» il giorno in cui il piano diceva di
+   innaffiare (non d'accordo) ed «Era secca» quando diceva di controllare (d'accordo). Il dito vede solo errori grandi:
+   «d'accordo» non vuol dire preciso al litro. */
 function precisione(eventi, pid, oggi, giorni=90){
-  const v=eventiValidi(eventi,pid).filter(e=>e.tipo==='verifica'&&['ok','piu','meno'].includes(e.valutazione)&&giorniTra(e.data,oggi)>=0&&giorniTra(e.data,oggi)<=giorni).sort((a,b)=>a.data<b.data?-1:1);
-  return {giusti:v.filter(e=>e.valutazione==='ok').length, totale:v.length, ultimi:v.slice(-5).map(e=>e.valutazione==='ok')};
+  const giudizio=e=>e.tipo==='verifica'&&['ok','piu','meno'].includes(e.valutazione)?e.valutazione==='ok'
+    : e.tipo==='umido'&&e.previsto==='innaffia'?false : e.tipo==='secco'&&e.previsto==='controlla'?true : null;
+  const v=eventiValidi(eventi,pid).filter(e=>giorniTra(e.data,oggi)>=0&&giorniTra(e.data,oggi)<=giorni).map(e=>({d:e.data,g:giudizio(e)})).filter(x=>x.g!=null).sort((a,b)=>a.d<b.d?-1:1);
+  return {giusti:v.filter(x=>x.g).length, totale:v.length, ultimi:v.slice(-5).map(x=>x.g)};
 }
 function testoPrecisione(pr){
   if(!pr?.totale) return 'ancora nessun controllo col dito';
@@ -2313,11 +2316,12 @@ function germinazione(p, k, oggi, lat){
   return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,k.faseEta))/Math.max(0.2, k.faseRitmo||1)));   // giorni che restano
 }
 const evapSuperficie = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra) : (d?.et0||0)*fattoreVaso(k,d);
-// Prima e ultima data plausibile per la prossima innaffiatura: consumo ± u (u = 35% senza controlli, poi cala con i
-// controlli fatti dopo un'innaffiatura: 25% con 1, 20% con 2, 12% con 8), applicato anche all'acqua già consumata
+// Prima e ultima data plausibile per la prossima innaffiatura: consumo ± u, applicato anche all'acqua già consumata
 // dall'ultima innaffiatura; all'aperto la pioggia del modello più asciutto e di quello più bagnato. Oltre l'ultimo
 // giorno di previsioni: «a» = null (più avanti).
-function incertezza(n){ return 0.35/Math.sqrt(1+Math.max(0,n||0)); }
+// ±45% fisso: in simulazione (piante che bevono fino al 50% in più o in meno del calcolo) contiene il giorno vero circa 7
+// volte su 10. Non si stringe con i controlli: il dito vede solo errori grandi, e restringerlo faceva sbagliare più spesso.
+function incertezza(){ return 0.45; }
 function finestraAcqua(p,k,b,dep0,fut,oggi){
   const u=incertezza(b.n), fatte=b.fatte;
   const corri=(s,piove)=>{ let dep=Math.min(k.tawL,dep0*s);
@@ -2396,7 +2400,8 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     const prima=giorni.find(g=>g.azione==='innaffia'), ctrl=giorni.find(g=>g.azione==='controlla');
     // Quando, più o meno: il calcolo può sbagliare il consumo (meno, dopo controlli col dito coerenti) e, all'aperto, la
     // pioggia (i modelli non sono d'accordo). Solo da mostrare: le azioni di oggi e i promemoria usano il giorno centrale.
-    const fin=prima&&prima.data!==oggi&&!/germinazione/i.test(prima.motivo||'')?finestraAcqua(p,k,b,statoMattina,fut,oggi):null;
+    let fin=prima&&prima.data!==oggi&&!/germinazione/i.test(prima.motivo||'')?finestraAcqua(p,k,b,statoMattina,fut,oggi):null;
+    if(fin){ fin={...fin, da:fin.da<prima.data?fin.da:prima.data, a:fin.a&&fin.a<prima.data?prima.data:fin.a}; }   // il giorno del calcolo sta sempre dentro
     const quando=d=>d===oggi?'oggi':giornoBreve(d);
     const tra=!fin||(fin.da===prima.data&&fin.a===prima.data)?'':fin.a?' (tra '+quando(fin.da)+' e '+quando(fin.a)+')':' (da '+quando(fin.da)+' in poi)';
     const valutazione=prima ? 'Prossima innaffiatura: '+quando(prima.data)+tra+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'
@@ -3542,7 +3547,7 @@ function renderPiante(AP){
     if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
-    facts.push(['Calcolo giusto ai controlli',testoPrecisione(precisione(eventsOf(p.id),p.id,today()))]);
+    facts.push(['Risposte d\'accordo col calcolo',testoPrecisione(precisione(eventsOf(p.id),p.id,today()))]);
     if(pp && 'dal' in pp) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
     const rc=daRaccogliere(p)?totaleRaccolto(eventsOf(p.id),p.id,today().slice(0,4)+'-01-01'):null;
     if(rc?.volte) facts.push(['Raccolto nel '+today().slice(0,4),testoRaccolto(rc)+' ('+rc.volte+(rc.volte===1?' volta':' volte')+', l\'ultima '+dataBreve(rc.ultimo)+')']);
@@ -3640,7 +3645,7 @@ function renderDiario(){
   setHTML($('#statList'),S.plants.length?piante().map(p=>{
     const e=eventiValidi(ev,p.id).filter(x=>x.data>=lim), f=e.filter(x=>x.tipo==='fatto'||x.tipo==='secco'), cal=calibrazione(ev,p.id,t), um=e.filter(x=>x.tipo==='umido').length;
     const pr=precisione(ev,p.id,t);
-    const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%', pr.totale?'calcolo giusto '+pr.giusti+'/'+pr.totale:''].filter(Boolean).join(' · ');
+    const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%', pr.totale?'d\'accordo col calcolo '+pr.giusti+'/'+pr.totale:''].filter(Boolean).join(' · ');
     return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(det)}</span></span></div>`;
   }).join(''):'<div class="empty">Nessuna pianta.</div>');
   const nomi=Object.fromEntries(S.plants.map(p=>[p.id,p.nome]));
@@ -4210,6 +4215,8 @@ function onEvent(pid,tipo){
   // un solo esito di innaffiatura al giorno
   if(ESITI.includes(tipo)) S.eventi_app=S.eventi_app.filter(e=>!(e.plantId===pid&&e.data===t&&ESITI.includes(e.tipo)));
   const extra={};
+  // cosa diceva il piano quando hai risposto (per le risposte d'accordo col calcolo)
+  if(tipo==='umido'||tipo==='secco'){ const g=activePlan()?.data?.piante.find(x=>x.id===pid)?.giorni.find(x=>x.data===t); if(g?.azione) extra.previsto=g.azione; }
   if(tipo==='fatto'||tipo==='secco'){ const g=activePlan()?.data?.piante.find(x=>x.id===pid)?.giorni.find(x=>x.data===t); extra.litri=g?.azione==='innaffia'&&g.litri?g.litri:+(params(p,ctx()).rawL*1.1).toFixed(2); }
   if(ESITI.includes(tipo)||tipo==='secco'){ appena=pid; clearTimeout(onEvent._t); onEvent._t=setTimeout(()=>{ appena=null; },1500); }
   addEvent(pid,tipo,extra); renderAll();

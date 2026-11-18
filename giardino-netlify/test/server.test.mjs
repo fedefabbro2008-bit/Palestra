@@ -593,6 +593,7 @@ test("richieste insieme invece che in fila: il meteo di più orti, e su Telegram
     assert.deepEqual(viste, ["answerCallbackQuery", "editMessageReplyMarkup"], "prima parte la conferma, poi i pulsanti");
     assert.equal(massimo, 2, "senza aspettare la risposta alla prima");
     assert.match(inviati.find((x) => x[0] === "answerCallbackQuery")[1].text, /Registrato: Pomodoro/);
+    assert.ok(["innaffia", "controlla"].includes((await leggiDati()).eventi.find((e) => e.id === "tg-cbpar").previsto), "la risposta ricorda cosa diceva il piano");
     assert.match(JSON.stringify(inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup), /Annulla/);
     // annullo, per lasciare i dati com'erano
     await webhook({ callback_query: { id: "cbpar2", data: `g|${OGGI}|pom|zn`, message: { message_id: 21, chat: { id: 77 }, reply_markup: { inline_keyboard: inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard } } } });

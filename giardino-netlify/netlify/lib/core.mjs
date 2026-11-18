@@ -195,10 +195,10 @@ export async function aggiornaPioggiaMisurata(st) {
 export async function previsioniPioggia(st, code, o, l) {
   const key = `c-prev-${(+l.lat).toFixed(2)},${(+l.lon).toFixed(2)}`, prima = (await st.get(key, { type: "json" }).catch(() => null)) || { log: {} };
   let log = prima.log || {};
-  const met = await meteo(l.lat, l.lon), { oggi } = oraLocale(met.tz || "Europe/Rome");
-  if (prima.giorno !== oggi && Array.isArray(met.days) && met.days.some((d) => d.ensemble)) {
-    log = M.registraPrevisioni(log, met.days, oggi); await st.setJSON(key, { giorno: oggi, log }).catch(() => {});
-  }
+  const { oggi } = oraLocale("Europe/Rome");   // gli orti con le stazioni ARPAE sono tutti in Emilia-Romagna
+  // il meteo si chiede solo alla prima corsa del giorno (le altre corse delle 3 ore non lo riscaricano)
+  if (prima.giorno !== oggi) { const met = await meteo(l.lat, l.lon);
+    if (Array.isArray(met.days) && met.days.some((d) => d.ensemble)) { log = M.registraPrevisioni(log, met.days, oggi); await st.setJSON(key, { giorno: oggi, log }).catch(() => {}); } }
   const cur = await leggi(st, code); if (!cur?.data) return;
   const mis = M.vistaOrto(cur.data, o.id).pioggia_misurata?.giorni || {};
   const pp = M.pesiPioggia(log, mis), att = cur.data.pesi_pioggia?.[o.id] || null;
@@ -364,7 +364,7 @@ export function riepilogoSettimana(data, oggi, met) {
     const litri = f.reduce((s, x) => s + (+x.litri || 0), 0); tot += litri;
     const um = e.filter((x) => x.tipo === "umido").length, se = e.filter((x) => x.tipo === "secco").length, cal = calibrazioneVera(data, met, p.id, oggi);
     const pr = M.precisione(data.eventi, p.id, oggi);
-    let nota = ""; if (um) nota += ` · ${um}× era umida`; if (pr.totale) nota += ` · calcolo giusto ${pr.giusti}/${pr.totale} controlli`; if (se) nota += ` · ${se}× era secca`; if (Math.abs(cal - 1) > 0.01) nota += ` · ora conto il ${Math.round(Math.abs(cal - 1) * 100)}% ${cal < 1 ? "in meno" : "in più"}`;
+    let nota = ""; if (um) nota += ` · ${um}× era umida`; if (pr.totale) nota += ` · d'accordo col calcolo ${pr.giusti}/${pr.totale}`; if (se) nota += ` · ${se}× era secca`; if (Math.abs(cal - 1) > 0.01) nota += ` · ora conto il ${Math.round(Math.abs(cal - 1) * 100)}% ${cal < 1 ? "in meno" : "in più"}`;
     L.push(`• <b>${esc(p.nome)}</b>: ${f.length} ${f.length === 1 ? "volta" : "volte"}, ${fmt(litri)} L${nota}`);
   }
   L.push(`\nTotale: <b>${fmt(tot)} L</b>`);

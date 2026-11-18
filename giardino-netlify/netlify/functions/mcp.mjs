@@ -48,7 +48,7 @@ function descrivi(p, data, oggi, met, ap) {
     `  calcolo: trattiene ${fmt(k.tawL, 2)} L, innaffiare dopo ${fmt(k.rawL, 2)} L consumati, consumo oggi ${fmt(M.consumoL(k, d0), 2)} L/giorno${Math.abs(k.calib - 1) > 0.01 ? `, correzione appresa ×${fmt(k.calib, 2)}` : ""}`,
     `  ultima innaffiatura: ${M.ultimaInnaffiatura(p, data.eventi) || "non indicata"}; ${c.inStagione ? c.testo.toLowerCase() : c.testo.toLowerCase()}${rv.length ? "; " + rv.join(" ") : ""}${k.faseNota ? "; fase: " + k.faseNota : ""}`];
   const pb = ap?.base?.piante.find((x) => x.id === p.id);
-  L.push(`  precisione misurata (controlli col dito degli ultimi 90 giorni, giudicati quando l'utente ha risposto): ${M.testoPrecisione(M.precisione(data.eventi, p.id, oggi))}`);
+  L.push(`  risposte d'accordo col calcolo (ultimi 90 giorni, giudicate quando l'utente ha risposto; il dito vede solo errori grandi, oltre un quarto circa): ${M.testoPrecisione(M.precisione(data.eventi, p.id, oggi))}`);
   if (pb) L.push(`  calcolo automatico: acqua nel terriccio a fine giornata ~${fmt(pb.acqua * 100, 0)}% (si innaffia sotto ${fmt(pb.soglia * 100, 0)}%); ${pb.valutazione}`);
   const cons = M.consigliPianta(p);
   if (cons.length) L.push(`  consigli dell'app per questa pianta: ${cons.join(" ")}`);
@@ -93,7 +93,7 @@ function sezioneOrto(data, met, ap, oggi, imp, piuOrti) {
   const pp = data.pesi_pioggia_orto;
   if (pp) L.push(pp.pronti ? `Pioggia prevista pesata con i pesi imparati qui confrontando previsioni e misure (${pp.giorni} giorni di pioggia; errore medio del giorno dopo: ${Object.entries(pp.errori || {}).sort((a, b) => a[1] - b[1]).map(([m, e]) => m + " ±" + fmt(e) + " mm").join(", ")}).`
     : `Confronto tra pioggia prevista e misurata in corso: ${pp.giorni} giorni di pioggia su ${M.PIOGGIA_MIN_GIORNI} (finché non bastano valgono i pesi di partenza).`);
-  for (const d of M.conPioggiaMisurata(met.days, data.pioggia_misurata, oggi).filter((x) => x.date >= M.addDays(oggi, -3))) L.push(`${d.date === oggi ? "**oggi** " : ""}${dl(d.date)} | ${d.cond}${d.code === 96 || d.code === 99 ? " con grandine" : ""} | ${fmt(d.tmin, 0)}–${fmt(d.tmax, 0)} | ${fmt(d.rain)}${d.prob != null ? " (" + d.prob + "%)" : ""}${d.misurata ? " misurata (modello " + fmt(d.rain_modello) + ")" : ""} | ${fmt(d.et0)} | ${fmt(d.wind, 0)}${d.raffiche != null ? " (" + fmt(d.raffiche, 0) + ")" : ""}`);
+  for (const d of M.ripesaPioggia(M.conPioggiaMisurata(met.days, data.pioggia_misurata, oggi), data.pesi_pioggia_orto, oggi).filter((x) => x.date >= M.addDays(oggi, -3))) L.push(`${d.date === oggi ? "**oggi** " : ""}${dl(d.date)} | ${d.cond}${d.code === 96 || d.code === 99 ? " con grandine" : ""} | ${fmt(d.tmin, 0)}–${fmt(d.tmax, 0)} | ${fmt(d.rain)}${d.prob != null ? " (" + d.prob + "%)" : ""}${d.misurata ? " misurata (modello " + fmt(d.rain_modello) + ")" : ""} | ${fmt(d.et0)} | ${fmt(d.wind, 0)}${d.raffiche != null ? " (" + fmt(d.raffiche, 0) + ")" : ""}`);
   const piante = M.pianteOrdinate(data.plants);
   L.push("", `${h} Piante (${piante.length})`);
   for (const p of piante) L.push(descrivi(p, data, oggi, met, ap));

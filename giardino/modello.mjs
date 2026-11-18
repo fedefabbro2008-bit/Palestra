@@ -642,12 +642,15 @@ export function esitoVerifica(risposta, acqua, soglia, acquaSecco){
   if(risposta==='umido' && acqua<soglia) return 'meno';
   return 'ok';
 }
-/* Precisione misurata: quante volte il calcolo aveva ragione ai controlli col dito, giudicato quando hai risposto
-   (valutazione salvata nel controllo: «ok» = il calcolo era giusto; «piu»/«meno» = sbagliava). Non si rifanno i conti
-   dei controlli vecchi con la correzione di oggi: verrebbe una precisione migliore del vero. */
+/* Risposte d'accordo col calcolo, giudicate quando hai risposto (non rifatte con la correzione di oggi, che darebbe un
+   risultato migliore del vero): controlli col dito («ok» = d'accordo), «Era umida» il giorno in cui il piano diceva di
+   innaffiare (non d'accordo) ed «Era secca» quando diceva di controllare (d'accordo). Il dito vede solo errori grandi:
+   «d'accordo» non vuol dire preciso al litro. */
 export function precisione(eventi, pid, oggi, giorni=90){
-  const v=eventiValidi(eventi,pid).filter(e=>e.tipo==='verifica'&&['ok','piu','meno'].includes(e.valutazione)&&giorniTra(e.data,oggi)>=0&&giorniTra(e.data,oggi)<=giorni).sort((a,b)=>a.data<b.data?-1:1);
-  return {giusti:v.filter(e=>e.valutazione==='ok').length, totale:v.length, ultimi:v.slice(-5).map(e=>e.valutazione==='ok')};
+  const giudizio=e=>e.tipo==='verifica'&&['ok','piu','meno'].includes(e.valutazione)?e.valutazione==='ok'
+    : e.tipo==='umido'&&e.previsto==='innaffia'?false : e.tipo==='secco'&&e.previsto==='controlla'?true : null;
+  const v=eventiValidi(eventi,pid).filter(e=>giorniTra(e.data,oggi)>=0&&giorniTra(e.data,oggi)<=giorni).map(e=>({d:e.data,g:giudizio(e)})).filter(x=>x.g!=null).sort((a,b)=>a.d<b.d?-1:1);
+  return {giusti:v.filter(x=>x.g).length, totale:v.length, ultimi:v.slice(-5).map(x=>x.g)};
 }
 export function testoPrecisione(pr){
   if(!pr?.totale) return 'ancora nessun controllo col dito';
@@ -875,11 +878,12 @@ function germinazione(p, k, oggi, lat){
   return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,k.faseEta))/Math.max(0.2, k.faseRitmo||1)));   // giorni che restano
 }
 const evapSuperficie = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra) : (d?.et0||0)*fattoreVaso(k,d);
-// Prima e ultima data plausibile per la prossima innaffiatura: consumo ± u (u = 35% senza controlli, poi cala con i
-// controlli fatti dopo un'innaffiatura: 25% con 1, 20% con 2, 12% con 8), applicato anche all'acqua già consumata
+// Prima e ultima data plausibile per la prossima innaffiatura: consumo ± u, applicato anche all'acqua già consumata
 // dall'ultima innaffiatura; all'aperto la pioggia del modello più asciutto e di quello più bagnato. Oltre l'ultimo
 // giorno di previsioni: «a» = null (più avanti).
-export function incertezza(n){ return 0.35/Math.sqrt(1+Math.max(0,n||0)); }
+// ±45% fisso: in simulazione (piante che bevono fino al 50% in più o in meno del calcolo) contiene il giorno vero circa 7
+// volte su 10. Non si stringe con i controlli: il dito vede solo errori grandi, e restringerlo faceva sbagliare più spesso.
+export function incertezza(){ return 0.45; }
 function finestraAcqua(p,k,b,dep0,fut,oggi){
   const u=incertezza(b.n), fatte=b.fatte;
   const corri=(s,piove)=>{ let dep=Math.min(k.tawL,dep0*s);
@@ -958,7 +962,8 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     const prima=giorni.find(g=>g.azione==='innaffia'), ctrl=giorni.find(g=>g.azione==='controlla');
     // Quando, più o meno: il calcolo può sbagliare il consumo (meno, dopo controlli col dito coerenti) e, all'aperto, la
     // pioggia (i modelli non sono d'accordo). Solo da mostrare: le azioni di oggi e i promemoria usano il giorno centrale.
-    const fin=prima&&prima.data!==oggi&&!/germinazione/i.test(prima.motivo||'')?finestraAcqua(p,k,b,statoMattina,fut,oggi):null;
+    let fin=prima&&prima.data!==oggi&&!/germinazione/i.test(prima.motivo||'')?finestraAcqua(p,k,b,statoMattina,fut,oggi):null;
+    if(fin){ fin={...fin, da:fin.da<prima.data?fin.da:prima.data, a:fin.a&&fin.a<prima.data?prima.data:fin.a}; }   // il giorno del calcolo sta sempre dentro
     const quando=d=>d===oggi?'oggi':giornoBreve(d);
     const tra=!fin||(fin.da===prima.data&&fin.a===prima.data)?'':fin.a?' (tra '+quando(fin.da)+' e '+quando(fin.a)+')':' (da '+quando(fin.da)+' in poi)';
     const valutazione=prima ? 'Prossima innaffiatura: '+quando(prima.data)+tra+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'

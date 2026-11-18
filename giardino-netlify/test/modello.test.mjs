@@ -487,10 +487,12 @@ test("raccolto: totali dell'anno, grammi e chili insieme, pezzi e mazzi a parte"
   assert.equal(M.ultimaInnaffiatura({ id: "c" }, ev), "");
 });
 
-test("precisione misurata: i controlli giudicati quando hai risposto; pochi controlli = solo il conto", () => {
+test("risposte d'accordo col calcolo: giudicate quando hai risposto; poche = solo il conto", () => {
   const v = (d, val) => ({ id: d + val, plantId: "a", tipo: "verifica", data: d, esito: "secco", valutazione: val });
   const ev = [v("2026-10-01", "ok"), v("2026-10-08", "piu"), { id: "u", plantId: "a", tipo: "umido", data: "2026-10-09" }, { id: "f", plantId: "a", tipo: "fatto", data: "2026-10-10" }];
-  assert.deepEqual(M.precisione(ev, "a", "2026-10-20"), { giusti: 1, totale: 2, ultimi: [true, false] }, "contano solo i controlli giudicati, non «Fatto» né «Era umida»");
+  assert.deepEqual(M.precisione(ev, "a", "2026-10-20"), { giusti: 1, totale: 2, ultimi: [true, false] }, "contano i controlli giudicati, non «Fatto» né un «Era umida» senza piano");
+  const conPiano = [...ev, { id: "u2", plantId: "a", tipo: "umido", data: "2026-10-11", previsto: "innaffia" }, { id: "s2", plantId: "a", tipo: "secco", data: "2026-10-13", previsto: "controlla" }];
+  assert.deepEqual(M.precisione(conPiano, "a", "2026-10-20"), { giusti: 2, totale: 4, ultimi: [true, false, false, true] }, "«Era umida» quando diceva di innaffiare: non d'accordo; «Era secca» quando diceva di controllare: d'accordo");
   assert.equal(M.testoPrecisione(M.precisione(ev, "a", "2026-10-20")), "1 su 2 (ancora pochi)");
   const molti = [...ev, v("2026-10-12", "ok"), v("2026-10-15", "ok"), v("2026-10-18", "ok")];
   assert.equal(M.testoPrecisione(M.precisione(molti, "a", "2026-10-20")), "4 su 5 (80%)");
@@ -521,7 +523,7 @@ test("pioggia prevista contro misurata: pesi imparati solo con abbastanza giorni
   assert.deepEqual(b[oggi]["0"], { [MOD[0]]: 1, [MOD[1]]: 2, [MOD[2]]: 3 });
 });
 
-test("prossima innaffiatura come intervallo: si stringe con i controlli coerenti; oltre le previsioni «in poi»", () => {
+test("prossima innaffiatura come intervallo: contiene il giorno del calcolo, non si stringe con i controlli; oltre le previsioni «in poi»", () => {
   const oggi = "2026-07-10", serie = (da, n) => [...Array(n)].map((_, i) => ({ date: M.addDays(da, i), tmax: 26, tmin: 16, et0: 3, rain: 0, prob: 0, wind: 5 }));
   const p = { id: "ba", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 10, luce: 6, dove: "riparato" };
   const past = serie(M.addDays(oggi, -40), 40), fut = serie(oggi, 7);
@@ -535,7 +537,8 @@ test("prossima innaffiatura come intervallo: si stringe con i controlli coerenti
   const ctrl = []; for (let i = 0; i < 6; i++) { const w = M.addDays(oggi, -28 + i * 4); ctrl.push({ id: "w" + i, plantId: "ba", tipo: "fatto", data: w, fonte: "app" }, { id: "c" + i, plantId: "ba", tipo: "verifica", data: M.addDays(w, 1), esito: "umido", valutazione: "ok" }); }
   const con = piano([...base, ...ctrl, { id: "f", plantId: "ba", tipo: "fatto", data: M.addDays(oggi, -2), fonte: "app" }]);
   assert.ok(con.controlli > senza.controlli);
-  assert.ok(con.finestra.u < senza.finestra.u, "incertezza " + con.finestra.u + " < " + senza.finestra.u);
+  assert.equal(con.finestra.u, senza.finestra.u, "non si stringe con i controlli: il dito vede solo errori grandi (in simulazione stringerlo faceva sbagliare più spesso)");
+  assert.ok(con.finestra.da <= con.giorni.find((g) => g.azione === "innaffia").data, "il giorno del calcolo sta dentro");
   // oggi è già il giorno: niente intervallo
   const ora = piano([...base]); if (ora.giorni[0].azione === "innaffia") assert.equal(ora.finestra, null);
 });
