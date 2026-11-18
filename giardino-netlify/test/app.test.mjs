@@ -311,14 +311,27 @@ test("schede: cambiano al tocco anche subito dopo un'altra (animazione in corso)
   await page.goto(SITO); await pronta(page);
   await page.evaluate(() => { window.__cambi = 0; const o = window.switchView; window.switchView = (v) => { window.__cambi++; return o(v); }; });
   const visibile = (v) => page.evaluate((v) => !document.getElementById("view-" + v).hidden, v);
+  // al tocco la lente e la scheda scelta cambiano subito; la vista nuova si disegna nel fotogramma dopo (come la Palestra)
+  const scelta = () => page.evaluate(() => document.querySelector("nav.tabs .tab[aria-selected=true]").dataset.view);
   await page.tap("#tab-piante");
-  assert.ok(await visibile("piante")); assert.equal(await page.evaluate(() => window.__cambi), 1, "tocco: un cambio solo (il click che segue non conta)");
+  assert.equal(await scelta(), "piante", "scheda scelta subito");
+  await page.waitForFunction(() => !document.getElementById("view-piante").hidden, null, { timeout: 2000 });
+  assert.equal(await page.evaluate(() => window.__cambi), 1, "tocco: un cambio solo (il click che segue non conta)");
   await page.tap("#tab-diario");   // la vista di prima sta ancora entrando
-  assert.ok(await visibile("diario"), "secondo tocco durante l'animazione");
+  await page.waitForFunction(() => !document.getElementById("view-diario").hidden, null, { timeout: 2000 });
   await page.waitForTimeout(800);
   assert.equal(await page.evaluate(() => window.__cambi), 2);
-  await page.click("#tab-oggi");   // mouse o tastiera: il click
-  assert.ok(await visibile("oggi")); assert.equal(await page.evaluate(() => window.__cambi), 3);
+  // due tocchi nello stesso fotogramma: si disegna solo l'ultima scheda
+  await page.evaluate(() => { const tocca = (id) => { const el = document.getElementById(id), r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const t = new Touch({ identifier: Date.now() + Math.random(), target: el, clientX: x, clientY: y });
+    el.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [t], changedTouches: [t] }));
+    el.dispatchEvent(new TouchEvent("touchend", { bubbles: true, cancelable: true, touches: [], changedTouches: [t] })); };
+    tocca("tab-impostazioni"); tocca("tab-piante"); });
+  await page.waitForFunction(() => !document.getElementById("view-piante").hidden, null, { timeout: 2000 }); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__cambi), 3, "Impostazioni toccata e superata subito: non si disegna");
+  await page.waitForTimeout(800);   // il click «finto» che segue un tocco si ignora per 0,7 s
+  await page.click("#tab-oggi");   // mouse o tastiera: il click, subito
+  assert.ok(await visibile("oggi")); assert.equal(await page.evaluate(() => window.__cambi), 4);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("nav.tabs")).touchAction), "none", "la barra non fa scorrere né zoomare");
   assert.deepEqual(errori, []);
 });
