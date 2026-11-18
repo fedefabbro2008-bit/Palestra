@@ -640,3 +640,45 @@ test("richieste insieme invece che in fila: il meteo di più orti, e su Telegram
     assert.equal(massimo, 2);
   } finally { globalThis.fetch = vero; }
 });
+
+test("acqua di tutta la vita sul server: inizio scritto una volta, diario potato riportato nella pianta, un'app vecchia non toglie niente, bot e connettore", async () => {
+  const { rinnovaPioggia } = await import("../netlify/lib/core.mjs");
+  const st = getStore({ name: "giardino" }), d0 = await leggiDati(), g = (n) => M.addDays(OGGI, n);
+  const posta = (body) => call(dati, "/api/dati", { method: "POST", headers: H, body });
+  // le piante di prima ricevono l'inizio al primo salvataggio (la prima traccia nel diario o nella pianta)
+  assert.ok(d0.plants.every((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.aggiunta)), "ogni pianta ha il suo inizio");
+  const vec = { id: "vec", nome: "Rosa vecchia", specie: "rosa", fase: "auto", colt: "vaso", vaso: 20, diametro: 35, num: 1, luce: 6, dove: "aperto", aggiunta: g(-500) };
+  await posta({ changes: { plants: [...d0.plants, vec] }, add: [{ id: "v1", plantId: "vec", tipo: "fatto", data: g(-450), litri: 2 }, { id: "v2", plantId: "vec", tipo: "fatto", data: g(-10), litri: 1 }] });
+  const d1 = await leggiDati(), p1 = d1.plants.find((p) => p.id === "vec");
+  assert.ok(!d1.eventi.some((e) => e.id === "v1") && d1.eventi.some((e) => e.id === "v2"), "oltre 400 giorni: fuori dal diario");
+  assert.deepEqual(p1.vita_vecchia, { litri: 2, volte: 1, senzaLitri: 0, presa: 0 }, "ma resta contata nella pianta");
+  assert.equal(M.acquaVita(p1, d1.eventi, [], OGGI, 44).innaffiature.litri, 3);
+  // il bot: la pioggia dei giorni che stanno per uscire dall'archivio del meteo resta contata nella pianta
+  const archivio = {}; for (let i = 400; i >= 1; i--) archivio[g(-i)] = [5, 15, i === 380 ? 12 : 0, 1, 0.5, 5];
+  const data = await rinnovaPioggia(st, CODE, d1, OGGI, async () => ({ days: [], archivio, lat: 44.176 }));
+  const pv = data.plants.find((p) => p.id === "vec").pioggia_vita;
+  assert.equal(pv.fino, g(-300)); assert.ok(pv.litri > 0 && pv.dal === g(-500), JSON.stringify(pv));
+  assert.equal((await rinnovaPioggia(st, CODE, await leggiDati(), OGGI, async () => { throw new Error("non serve"); })).plants.length, data.plants.length, "fatto: per altri 50 giorni non richiede il meteo");
+  // un'app rimasta indietro manda la pianta senza questi campi: restano quelli del server
+  await posta({ changes: { plants: [...d0.plants, { ...vec, aggiunta: g(-2), note: "x" }] } });
+  const p2 = (await leggiDati()).plants.find((p) => p.id === "vec");
+  assert.equal(p2.note, "x"); assert.equal(p2.aggiunta, g(-500), "l'inizio resta il più vecchio");
+  assert.deepEqual([p2.vita_vecchia, p2.pioggia_vita], [p1.vita_vecchia, pv]);
+  // connettore: la riga dell'acqua di tutta la vita; al riparo, la pioggia fino a ieri resta quella di prima
+  const totale = async () => { const t = (await strumento("pianta", { pianta: "vec" })).content[0].text;
+    assert.match(t, /acqua ricevuta in tutta la vita \(da quando è nell'app, dal \d{4}-\d{2}-\d{2}\): [\d,]+ L, di cui innaffiature 3 L \(2 volte\) e pioggia [\d,]+ L arrivata al terriccio/);
+    return t.match(/in tutta la vita [^:]+: ([\d,]+) L/)[1]; };
+  const prima = await totale();
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  assert.equal((await strumento("modifica_pianta", { azione: "modifica", pianta: "vec", campi: { dove: "riparato" } })).isError, false);
+  const p3 = (await leggiDati()).plants.find((p) => p.id === "vec");
+  assert.equal(p3.dove, "riparato"); assert.equal(p3.pioggia_vita.fino, g(-1)); assert.ok(p3.pioggia_vita.litri >= pv.litri);
+  assert.equal(await totale(), prima, "al riparo il totale non cambia: la pioggia di prima resta");
+  // pianta nuova dal connettore: inizio oggi
+  assert.equal((await strumento("modifica_pianta", { azione: "aggiungi", campi: { nome: "Prova nuova" } })).isError, false);
+  assert.equal((await leggiDati()).plants.find((p) => p.nome === "Prova nuova").aggiunta, oraLocaleRoma());
+  // pulizia
+  await posta({ changes: { plants: d0.plants }, remove: ["v2"] });
+  assert.ok(!(await leggiDati()).eventi.some((e) => e.plantId === "vec"));
+});
+const oraLocaleRoma = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(new Date());

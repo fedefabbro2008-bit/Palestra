@@ -55,17 +55,52 @@ export async function aggiorna(st, code, fn) {
     const data = cur ? structuredClone(cur.data) : vuoto();
     const r = await fn(data);
     if (r === false) return cur;
-    data.eventi = pota(data.eventi);
+    segnaInizi(data);
+    data.eventi = pota(data.eventi, data.plants);
     const next = { rev: (cur?.rev || 0) + 1, updatedAt: Date.now(), data };
     const res = await st.setJSON("d-" + code, next, cur?.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
     if (!res || res.modified !== false) return { ...next, etag: res?.etag };
   }
   throw new Error("Troppe modifiche nello stesso momento: riprova.");
 }
-export function pota(ev) {
-  const lim = M.addDays(M.isoDate(new Date()), -400);
+// Diario del server: 400 giorni e al massimo 3000 eventi. Quello che esce resta contato nell'acqua di tutta la vita della
+// pianta (vita_vecchia: innaffiature e pioggia presa), così il totale non torna indietro.
+export function pota(ev, piante) {
+  const oggi = M.isoDate(new Date()), lim = M.addDays(oggi, -M.ARCHIVIO_GIORNI);
   const visti = new Set();
-  return (Array.isArray(ev) ? ev : []).filter((e) => e && e.id && e.plantId && /^\d{4}-\d{2}-\d{2}$/.test(e.data || "") && e.data >= lim && !visti.has(e.id) && visti.add(e.id)).slice(-3000);
+  const validi = (Array.isArray(ev) ? ev : []).filter((e) => e && e.id && e.plantId && /^\d{4}-\d{2}-\d{2}$/.test(e.data || "") && !visti.has(e.id) && visti.add(e.id));
+  let tenuti = validi.filter((e) => e.data >= lim).slice(-3000);
+  if (tenuti.length < validi.length) {
+    let resta = new Set(tenuti.map((e) => e.id));
+    // una «data per fatta» che resterebbe senza la risposta vera del suo giorno (tolta qui) tornerebbe a valere: via anche lei
+    const viaVere = new Set(validi.filter((e) => !resta.has(e.id) && e.fonte !== "presunto").map((e) => e.plantId + "|" + e.data));
+    if (viaVere.size) { tenuti = tenuti.filter((e) => !(e.fonte === "presunto" && viaVere.has(e.plantId + "|" + e.data))); resta = new Set(tenuti.map((e) => e.id)); }
+    const tolti = validi.filter((e) => !resta.has(e.id));
+    if (Array.isArray(piante)) for (const p of piante) if (p && p.id) { const vv = M.riportaVita(p, tolti, validi, oggi); if (vv) p.vita_vecchia = vv; }
+  }
+  return tenuti;
+}
+// Inizio dell'acqua di tutta la vita per le piante che non l'hanno (create prima che esistesse, o da un'app vecchia): la
+// prima traccia nel diario o nella pianta. Si scrive una volta sola, dentro un salvataggio che c'è comunque (dal telefono
+// avrebbe potuto rimandare al server una copia vecchia delle piante).
+export function segnaInizi(d) {
+  const oggi = oraLocale("Europe/Rome").oggi;
+  for (const p of Array.isArray(d?.plants) ? d.plants : []) if (p && typeof p === "object" && !p.example && !/^\d{4}-\d{2}-\d{2}$/.test(p.aggiunta || "")) p.aggiunta = M.stimaAggiunta(p, d.eventi) || oggi;
+}
+// La pioggia dei giorni che stanno per uscire dall'archivio del meteo (400 giorni) resta contata nella pianta
+// (pioggia_vita, fino a 300 giorni fa): dal bot, al mattino, una volta ogni ~50 giorni per pianta all'aperto.
+export async function rinnovaPioggia(st, code, data, oggi, meteoDi) {
+  const lim = M.addDays(oggi, -350), fino = M.addDays(oggi, -300);
+  for (const o of M.orti(data)) {
+    const v = M.vistaOrto(data, o.id);
+    if (!v.location) continue;
+    const vecchie = v.plants.filter((p) => { if (p.dove !== "aperto") return false; const dal = M.inizioVita(p, v.eventi, oggi).data; return (p.pioggia_vita?.dal === dal ? p.pioggia_vita.fino : dal) < lim; });
+    if (!vecchie.length) continue;
+    const met = await meteoDi(v), past = M.giorniPassati({ ...met, lat: met.lat ?? v.location.lat }, v.pioggia_misurata, oggi, M.ARCHIVIO_GIORNI);
+    const nuovi = new Map(vecchie.map((p) => [p.id, M.congelaPioggia(p, v.eventi, past, oggi, v.location.lat, fino)]).filter(([, x]) => x));
+    if (nuovi.size) data = (await aggiorna(st, code, (d) => { let n = 0; for (const p of d.plants) { const x = nuovi.get(p.id); if (x && !(p.pioggia_vita?.fino > fino)) { p.pioggia_vita = x; n++; } } return n ? undefined : false; }))?.data || data;
+  }
+  return data;
 }
 
 /* ---------------- Meteo (Open-Meteo) ----------------
@@ -179,7 +214,9 @@ export async function aggiornaPioggiaMisurata(st) {
       const c = await misureArpae(st, l.lat, l.lon, testo);
       if (!c?.stazione) continue;
       await previsioniPioggia(st, code, o, l).catch((e) => console.warn("previsioni della pioggia:", e?.message));
-      const att = o.pioggia_misurata, limite = M.addDays(M.isoDate(new Date()), -60), letto = c;
+      // i giorni misurati restano quanto l'archivio del meteo (400): dopo 60 giorni l'acqua di tutta la vita passava dalla
+      // pioggia misurata a quella del modello e il totale cambiava da solo
+      const att = o.pioggia_misurata, limite = M.addDays(M.isoDate(new Date()), -M.ARCHIVIO_GIORNI), letto = c;
       const giorni = { ...Object.fromEntries(Object.entries(att?.stazione === letto.stazione.nome ? att.giorni || {} : {}).filter(([d]) => d >= limite)), ...giorniMisurati(c.ore, "Europe/Rome") };
       if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome) {
         const v = { stazione: letto.stazione.nome, km: letto.stazione.km, giorni, aggiornato: new Date().toISOString() };

@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, doseControllo, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, aggiornaPioggiaMisurata, esc, IMP_DEF, ESITI, notifica, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, doseControllo, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, aggiornaPioggiaMisurata, rinnovaPioggia, esc, IMP_DEF, ESITI, notifica, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Per ogni bot Telegram collegato, all'ora locale:
@@ -77,6 +77,8 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvis
   if (mattina) {
     const pres = presunti(t, data, oggi);
     if (pres.length) data = (await aggiorna(st, code, (d) => { for (const e of pres) if (!d.eventi.some((x) => x.id === e.id)) d.eventi.push(e); })).data;
+    // acqua di tutta la vita: la pioggia che sta per uscire dall'archivio del meteo resta contata (di rado: ogni ~50 giorni)
+    try { data = await rinnovaPioggia(st, code, data, oggi, meteoDi); } catch (e) { console.warn("pioggia di tutta la vita:", e?.message); }
     next.notificati = Object.fromEntries(Object.entries(t.notificati || {}).filter(([d]) => d >= oggi));
     const oggiN = [];
     const sabato = new Date(oggi + "T12:00:00Z").getUTCDay() === 6 && t.ultima_verifica !== oggi;

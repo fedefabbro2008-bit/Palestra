@@ -657,6 +657,90 @@ export function testoPrecisione(pr){
   if(pr.totale<3) return pr.giusti+' su '+pr.totale+' (ancora pochi)';
   return pr.giusti+' su '+pr.totale+' ('+Math.round(pr.giusti/pr.totale*100)+'%)';
 }
+/* ---------------- Acqua di tutta la vita ----------------
+   Quanta acqua ha ricevuto una pianta da quando la segui (o dalla semina/trapianto, se è dopo): innaffiature segnate nel
+   diario (come nel Diario: «innaffiata» ed «era secca, innaffiata», con i litri; quelle senza litri si contano a parte, non
+   si stimano) e pioggia arrivata al terriccio, come nel calcolo: solo all'aperto, sull'area del vaso, meno 1,5 mm al giorno
+   che bagnano foglie e superficie; più la pioggia presa quando l'hai messa fuori. Giorni passati: pioggia misurata ARPAE
+   dove c'è, altrimenti l'archivio di Open-Meteo (400 giorni). «Ricevuta», non «bevuta»: in un vaso già pieno la pioggia
+   in più esce dal foro.
+   Perché il totale non torni mai indietro:
+   - l'inizio (aggiunta) si scrive una volta sola (il server, al primo salvataggio, per le piante di prima: la prima traccia
+     nel diario o nella pianta);
+   - se cambi posto, vaso o orto, la pioggia fino a ieri resta quella contata con i dati di prima (pioggia_vita);
+   - il diario sul server tiene 400 giorni: le innaffiature e la pioggia presa degli eventi più vecchi restano contate nella
+     pianta (vita_vecchia), e la pioggia dei giorni che escono dall'archivio del meteo pure (pioggia_vita, dal bot). */
+export const ARCHIVIO_GIORNI = 400;
+const ISO_GIORNO = /^\d{4}-\d{2}-\d{2}$/;
+export function stimaAggiunta(p, eventi){
+  let m='';
+  const prendi=d=>{ if(typeof d==='string' && ISO_GIORNO.test(d) && (!m || d<m)) m=d; };
+  for(const e of eventi||[]) if(e && e.plantId===p.id) prendi(e.data);
+  prendi(p.ultima); prendi(p.luce_data);
+  return m||null;
+}
+export function inizioVita(p, eventi, oggi){
+  const app=(ISO_GIORNO.test(p.aggiunta||'')?p.aggiunta:null)||stimaAggiunta(p, eventi)||oggi;
+  const sem=ISO_GIORNO.test(p.data_semina||'')?p.data_semina:'';
+  return sem && sem>=app ? {data:sem, perche:p.tipo_data==='trapianto'?'trapianto':'semina'} : {data:app, perche:'app'};
+}
+const r2=x=>+(+x||0).toFixed(2);
+// pioggia del meteo dal giorno dopo quella già contata (pioggia_vita) o dall'inizio, fino a «fino» compreso
+function pioggiaMeteo(p, dal, past, fino, lat, oggi){
+  const pv=p.pioggia_vita, base=pv && pv.dal===dal && ISO_GIORNO.test(pv.fino||'') && pv.fino>=dal ? pv : null;
+  const da=base?addDays(base.fino,1):dal, aperto=p.dove==='aperto';
+  let litri=0, giorni=0, primo=null;
+  if(aperto && da<=fino){
+    const k=params(p, {oggi, lat});
+    for(const d of past||[]){ if(d.date<da || d.date>fino) continue; if(!primo || d.date<primo) primo=d.date; const l=pioggiaL(p,k,d); if(l>0){ litri+=l; giorni++; } }
+  }
+  const out={litri:(+base?.litri||0)+litri, giorni:giorni+(+base?.giorni||0)};
+  // all'aperto senza archivio del meteo (prima apertura senza rete): la pioggia non si sa ancora
+  if(aperto && da<=fino && !primo) out.sconosciuta=true;
+  else if(aperto && primo && primo>da) out.dal=primo;   // l'archivio comincia dopo: pioggia contata da lì
+  return out;
+}
+// past = giorni passati (giorniPassati con n = ARCHIVIO_GIORNI); la pioggia fino a ieri (quella di oggi si conta domani)
+export function acquaVita(p, eventi, past, oggi, lat){
+  const ini=inizioVita(p, eventi, oggi), dal=ini.data, vv=p.vita_vecchia||{};
+  const mie=eventiValidi(eventi, p.id).filter(e=>e.data>=dal && e.data<=oggi);
+  const inn=mie.filter(e=>e.tipo==='fatto'||e.tipo==='secco');
+  let volte=inn.length+(+vv.volte||0), senza=inn.filter(e=>!(+e.litri>0)).length+(+vv.senzaLitri||0);
+  // l'ultima innaffiatura scritta nella pianta, se il diario non ce l'ha: una volta senza litri
+  if(ISO_GIORNO.test(p.ultima||'') && p.ultima>=dal && p.ultima<=oggi && p.ultima>=addDays(oggi,-ARCHIVIO_GIORNI) && !inn.some(e=>e.data===p.ultima)){ volte++; senza++; }
+  const litriI=inn.reduce((a,e)=>a+(+e.litri>0?+e.litri:0),0)+(+vv.litri||0);
+  const presa=mie.filter(e=>e.tipo==='pioggia').reduce((a,e)=>a+(+e.litri>0?+e.litri:0),0)+(+vv.presa||0);
+  const m=pioggiaMeteo(p, dal, past, addDays(oggi,-1), lat, oggi);
+  const pioggia={litri:r2(m.litri+presa), giorni:m.giorni, presa:r2(presa), ...(m.sconosciuta?{sconosciuta:true}:{}), ...(m.dal?{dal:m.dal}:{})};
+  return {dal, perche:ini.perche, innaffiature:{litri:r2(litriI), volte, senzaLitri:senza}, pioggia, totale:r2(litriI+pioggia.litri)};
+}
+// La pioggia si conterebbe in un altro modo dopo la modifica (posto, vaso, area, orto)?
+export function cambiaPioggia(prima, dopo, oggi, lat){
+  const a=prima.dove==='aperto', b=dopo.dove==='aperto';
+  if(a!==b) return true;
+  if(!a) return false;
+  if((prima.orto||'p')!==(dopo.orto||'p')) return true;
+  return Math.abs(params(prima,{oggi,lat}).pioggiaArea-params(dopo,{oggi,lat}).pioggiaArea)>1e-6;
+}
+// La pioggia del meteo fino a «fino» (di solito ieri) con i dati di adesso, da salvare nella pianta (pioggia_vita) prima di
+// cambiarli o prima che quei giorni escano dall'archivio. null se non si sa (all'aperto senza archivio del meteo).
+export function congelaPioggia(p, eventi, past, oggi, lat, fino=addDays(oggi,-1)){
+  const dal=inizioVita(p, eventi, oggi).data, m=pioggiaMeteo(p, dal, past, fino, lat, oggi);
+  if(m.sconosciuta || fino<dal) return null;
+  return {dal, fino, litri:r2(m.litri), giorni:m.giorni};
+}
+// Eventi che escono dal diario del server (più vecchi di 400 giorni, o oltre i 3000): innaffiature e pioggia presa
+// restano contate nella pianta. tolti = eventi tolti, tutti = gli eventi di prima (per sapere quali valevano).
+export function riportaVita(p, tolti, tutti, oggi){
+  const via=new Set(tolti.filter(e=>e&&e.plantId===p.id).map(e=>e.id)); if(!via.size) return p.vita_vecchia||null;
+  const dal=inizioVita(p, tutti, oggi).data, vv={litri:0, volte:0, senzaLitri:0, presa:0, ...(p.vita_vecchia||{})};
+  for(const e of eventiValidi(tutti, p.id)){
+    if(!via.has(e.id) || e.data<dal) continue;
+    if(e.tipo==='fatto'||e.tipo==='secco'){ vv.volte++; if(+e.litri>0) vv.litri=r2(vv.litri+(+e.litri)); else vv.senzaLitri++; }
+    else if(e.tipo==='pioggia' && +e.litri>0) vv.presa=r2(vv.presa+(+e.litri));
+  }
+  return vv;
+}
 export const TESTO_VERIFICA = {ok:'Il calcolo era giusto: non cambia niente.', piu:'Asciuga prima del previsto: da ora conto che beve di più.', meno:'Il calcolo la dava già asciutta: da ora conto che beve di meno.'};
 // testo dopo «asciutta»: è ora di innaffiare, è normale per la pianta (il calcolo non cambia) o asciuga troppo presto
 // ora = dal piano (seccoOra): con «asciutta» oggi si innaffia

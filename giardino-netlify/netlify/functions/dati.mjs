@@ -104,14 +104,20 @@ export function unisciPiante(server, { set, del, ordine } = {}) {
   return out;
 }
 // La scheda di ogni pianta la scrive Claude sul server: se l'app manda le piante senza scheda, o con una più vecchia,
-// resta quella più recente (l'app può essere rimasta indietro di qualche minuto).
+// resta quella più recente (l'app può essere rimasta indietro di qualche minuto). Lo stesso per l'acqua di tutta la vita:
+// l'inizio (aggiunta) resta il più vecchio, la pioggia già contata (pioggia_vita) la più recente e il riporto del diario
+// potato (vita_vecchia) quello del server, così un'app rimasta indietro non li toglie e il totale non torna indietro.
+const GIORNO = /^\d{4}-\d{2}-\d{2}$/;
 function conSchede(nuove, vecchie) {
   if (!Array.isArray(nuove)) return nuove;
-  const prima = new Map((Array.isArray(vecchie) ? vecchie : []).map((p) => [p?.id, p?.scheda]));
+  const prima = new Map((Array.isArray(vecchie) ? vecchie : []).map((p) => [p?.id, p]));
   return nuove.map((p) => {
     if (!p || typeof p !== "object") return p;
-    const a = p.scheda, b = prima.get(p.id), s = !a ? b : !b ? a : String(a.aggiornata || "") >= String(b.aggiornata || "") ? a : b;
-    return s ? { ...p, scheda: s } : p;
+    const o = prima.get(p.id) || {}, a = p.scheda, b = o.scheda, s = !a ? b : !b ? a : String(a.aggiornata || "") >= String(b.aggiornata || "") ? a : b;
+    const ag = [p.aggiunta, o.aggiunta].filter((x) => GIORNO.test(x || "")).sort()[0];
+    const pv = [p.pioggia_vita, o.pioggia_vita].filter((x) => x && typeof x === "object" && GIORNO.test(x.fino || "")).sort((x, y) => (x.fino < y.fino ? 1 : -1))[0];
+    const vv = o.vita_vecchia || p.vita_vecchia;   // la scrive solo il server
+    return s || ag || pv || vv ? { ...p, ...(s ? { scheda: s } : {}), ...(ag ? { aggiunta: ag } : {}), ...(pv ? { pioggia_vita: pv } : {}), ...(vv ? { vita_vecchia: vv } : {}) } : p;
   });
 }
 

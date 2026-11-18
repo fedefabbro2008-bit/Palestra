@@ -111,6 +111,7 @@ test("flusso completo a 390 px", async (t) => {
   await page.click("button[type=submit]"); await page.waitForTimeout(200);
   const nuove = await page.evaluate(() => S.plants.slice(-2).map((p) => [p.nome, p.zona, p.specie, p.vaso, p.consociate.length]));
   assert.deepEqual(nuove, [["Aglio", "orto", "aglio", 12, 0], ["Zucchine", "orto", "zucchina", 30, 1]]);
+  assert.deepEqual(await page.evaluate(() => S.plants.slice(-2).map((p) => p.aggiunta)), [OGGI, OGGI], "le piante nuove sanno da quando ci sono (acqua di tutta la vita)");
   assert.deepEqual(await page.locator("#plantList .zhead span").allTextContents(), ["orto", "Senza zona"]);
 
   // pianta in casa: temperature per stagione (solo per chi è in casa), uguali per tutte se richiesto
@@ -169,6 +170,12 @@ test("flusso completo a 390 px", async (t) => {
 
   // Diario a calendario: oggi ha l'icona dell'acqua (Pothos segnata più su)
   await page.click("#tab-diario");
+  // acqua di tutta la vita: una riga per pianta con innaffiature e pioggia; la Pothos (in casa, annaffiata oggi) senza pioggia
+  const vita = await page.locator("#vitaList .lrow").allTextContents();
+  assert.equal(vita.length, await page.evaluate(() => S.plants.length));
+  const pothos = vita.find((t) => t.includes("Pothos"));
+  assert.match(pothos, /di innaffiature \(1 volta\)/); assert.match(pothos, /niente pioggia \(al coperto\)/); assert.match(pothos, /da quando è nell'app/);
+  assert.ok(vita.some((t) => /di pioggia|pioggia in attesa del meteo/.test(t)), "le piante all'aperto con la pioggia");
   assert.equal(await page.locator("#cal [data-giorno]").count(), new Date(+OGGI.slice(0, 4), +OGGI.slice(5, 7), 0).getDate());
   assert.match(await page.textContent(`#cal [data-giorno="${OGGI}"]`), /💧/);
   await page.click(`#cal [data-giorno="${OGGI}"]`);

@@ -49,6 +49,8 @@ function descrivi(p, data, oggi, met, ap) {
     `  ultima innaffiatura: ${M.ultimaInnaffiatura(p, data.eventi) || "non indicata"}; ${c.inStagione ? c.testo.toLowerCase() : c.testo.toLowerCase()}${rv.length ? "; " + rv.join(" ") : ""}${k.faseNota ? "; fase: " + k.faseNota : ""}`];
   const pb = ap?.base?.piante.find((x) => x.id === p.id);
   L.push(`  risposte d'accordo col calcolo (ultimi 90 giorni, giudicate quando l'utente ha risposto; il dito vede solo errori grandi, oltre un quarto circa): ${M.testoPrecisione(M.precisione(data.eventi, p.id, oggi))}`);
+  { const a = M.acquaVita(p, data.eventi, M.giorniPassati({ ...met, lat: met.lat ?? lat }, data.pioggia_misurata, oggi, M.ARCHIVIO_GIORNI), oggi, lat), i = a.innaffiature, g = a.pioggia;
+    L.push(`  acqua ricevuta in tutta la vita (${a.perche === "app" ? "da quando è nell'app" : a.perche === "trapianto" ? "dal trapianto" : "dalla semina"}, dal ${a.dal}): ${fmt(a.totale, 2)} L, di cui innaffiature ${fmt(i.litri, 2)} L (${i.volte} ${i.volte === 1 ? "volta" : "volte"}${i.senzaLitri ? `, ${i.senzaLitri} senza litri` : ""}) e pioggia ${g.sconosciuta ? "non ancora calcolata (manca l'archivio del meteo)" : `${fmt(g.litri, 2)} L arrivata al terriccio${g.presa > 0 ? ` (${fmt(g.presa, 2)} L quando era fuori)` : ""}${g.dal ? ` (contata dal ${g.dal})` : ""}`} — acqua ricevuta, non bevuta`); }
   if (pb) L.push(`  calcolo automatico: acqua nel terriccio a fine giornata ~${fmt(pb.acqua * 100, 0)}% (si innaffia sotto ${fmt(pb.soglia * 100, 0)}%); ${pb.valutazione}`);
   const cons = M.consigliPianta(p);
   if (cons.length) L.push(`  consigli dell'app per questa pianta: ${cons.join(" ")}`);
@@ -239,15 +241,24 @@ function ortoValido(d, p) {
   if (p.orto == null || p.orto === "" || p.orto === "p") { delete p.orto; return; }
   if (!M.orti(d).some((o) => o.id === p.orto)) throw new Error("orto sconosciuto: " + p.orto + ". Orti: " + M.orti(d).map((o) => o.id + " (" + M.nomeOrto(o) + ")").join(", "));
 }
+// campi che cambiano la pioggia che arriva alla pianta (posto, vaso, area, orto)
+const CAMPI_PIOGGIA = ["dove", "colt", "vaso", "diametro", "area", "num", "orto", "specie", "consociate"];
 async function toolModificaPianta(ctx, a) {
   const campi = valida(a.campi);
   let msg = "";
+  // posto, vaso o orto cambiati: la pioggia ricevuta fino a ieri resta quella contata con i dati di prima (meteo dell'orto di adesso)
+  let pioggia = null;
+  if (a.azione === "modifica" && CAMPI_PIOGGIA.some((x) => x in campi)) {
+    const cur = await leggi(ctx.store, ctx.code), p0 = cur && trovaPianta(cur.data, a.pianta), v = p0 && M.vistaOrto(cur.data, p0.orto || "p");
+    if (v?.location) { const met = await meteo(v.location.lat, v.location.lon), oggi = oraLocale(met.tz).oggi;
+      pioggia = { oggi, lat: v.location.lat, past: M.giorniPassati({ ...met, lat: met.lat ?? v.location.lat }, v.pioggia_misurata, oggi, M.ARCHIVIO_GIORNI) }; }
+  }
   const out = await aggiorna(ctx.store, ctx.code, (d) => {
     if (a.azione === "aggiungi") {
       if (!campi.nome) throw new Error("Per aggiungere serve almeno il nome.");
       if (!campi.specie) campi.specie = M.specieDaNome(campi.nome) || "altro";
       const { scheda, ...resto } = campi;
-      const p = { id: Math.random().toString(36).slice(2, 9), fase: "auto", colt: "vaso", vaso: 10, num: 1, luce: 6, dove: "aperto", consociate: [], ...resto };
+      const p = { id: Math.random().toString(36).slice(2, 9), fase: "auto", colt: "vaso", vaso: 10, num: 1, luce: 6, dove: "aperto", consociate: [], ...resto, aggiunta: oraLocale("Europe/Rome").oggi };
       ortoValido(d, p);
       if (scheda) p.scheda = conScheda(p, scheda);
       d.plants.push(p); msg = `Aggiunta «${p.nome}» [id ${p.id}], specie ${M.SPECIE[p.specie].nome}${a.campi?.specie ? "" : " (riconosciuta dal nome)"}${scheda ? ", con la scheda" : ""}.`;
@@ -255,7 +266,9 @@ async function toolModificaPianta(ctx, a) {
       const p = trovaPianta(d, a.pianta); if (!p) throw new Error("Pianta non trovata.");
       if (campi.tcasa) campi.tcasa = { ...(p.tcasa || {}), ...campi.tcasa };
       const { scheda, ...resto } = campi;
+      const pv = pioggia && M.cambiaPioggia(p, { ...p, ...resto }, pioggia.oggi, pioggia.lat) ? M.congelaPioggia({ ...p }, d.eventi, pioggia.past, pioggia.oggi, pioggia.lat) : null;
       Object.assign(p, resto); delete p.example; ortoValido(d, p);
+      if (pv) p.pioggia_vita = pv;
       if (scheda) p.scheda = conScheda(p, scheda);
       msg = `Aggiornata «${p.nome}»: ${Object.keys(campi).join(", ")}.` + (scheda ? " L'app mostra la scheda in Piante → " + p.nome + " → Scheda." : "");
     } else throw new Error("azione: aggiungi o modifica");
