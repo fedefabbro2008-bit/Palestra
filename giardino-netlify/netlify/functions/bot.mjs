@@ -128,7 +128,7 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvis
           && pa.piano.piante.find((y) => y.id === x.id)?.giorni?.find((g) => g.data === oggi)?.azione === "controlla"
           && !v.eventi.some((e) => e.plantId === x.id && e.data === oggi && (ESITI.includes(e.tipo) || e.tipo === "verifica")));
         if (ctrl.length) await invia(titolo(v, "👆 <b>Da controllare oggi</b>\n") + ctrl.map((x) => { const l = doseControllo(x, oggi, lat);
-          return `👆 ${esc(x.nome)}: ${esc(M.testoDito(M.profonditaDito(x, oggi, lat)))}. Se è asciutto, innaffia: ${String(l).replace(".", ",")} L (${esc(M.dose(l, imp))})`; }).join("\n")
+          return `${esc(String(x.emoji || (M.SPECIE[x.specie] || M.SPECIE.altro).ico).slice(0, 8))} <b>${esc(x.nome)}</b>: ${esc(M.testoDito(M.profonditaDito(x, oggi, lat)))}. Se è asciutto, innaffia: ${String(l).replace(".", ",")} L (${esc(M.dose(l, imp))})`; }).join("\n")
           + "\n<i>Premi com'era la terra: così l'app impara quanto beve.</i>",
           { reply_markup: { inline_keyboard: ctrl.flatMap((x) => pulsantiAcqua(x, oggi, { conNome: ctrl.length > 1, salto: false, secca: true })) } });
       }

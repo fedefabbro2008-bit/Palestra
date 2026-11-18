@@ -387,7 +387,7 @@ test("controlli del terreno: la sera le piante da toccare col dito ancora senza 
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: imp() } } });
   const [m] = await giro();
   assert.ok(m, "promemoria dei controlli");
-  assert.match(m[1].text, /Ficus: infila un dito nel terriccio per \d\u00a0cm.*\. Se è asciutto, innaffia: \d+(,\d+)? L \(/);
+  assert.match(m[1].text, /Ficus<\/b>: infila un dito nel terriccio per \d\u00a0cm.*\. Se è asciutto, innaffia: \d+(,\d+)? L \(/);
   assert.ok(!m[1].text.includes("Zucchine"), "la pianta da innaffiare sta nell'altro promemoria");
   assert.ok(!/la conto come annaffiata/.test(m[1].text), "un controllo non diventa mai un'innaffiatura data per fatta");
   const kb = m[1].reply_markup.inline_keyboard, suoi = kb.filter((r) => r.some((b) => b.callback_data.includes("|fic|")));

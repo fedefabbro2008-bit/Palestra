@@ -174,8 +174,8 @@ test("flusso completo a 390 px", async (t) => {
   const vita = await page.locator("#vitaList .lrow").allTextContents();
   assert.equal(vita.length, await page.evaluate(() => S.plants.length));
   const pothos = vita.find((t) => t.includes("Pothos"));
-  assert.match(pothos, /di innaffiature \(1 volta\)/); assert.match(pothos, /niente pioggia \(al coperto\)/); assert.match(pothos, /da quando è nell'app/);
-  assert.ok(vita.some((t) => /di pioggia|pioggia in attesa del meteo/.test(t)), "le piante all'aperto con la pioggia");
+  assert.match(pothos, /Innaffiature [\d,]+ L \(1 volta\)/); assert.match(pothos, /Pioggia: niente \(al coperto\)/); assert.match(pothos, /Da quando è nell'app/);
+  assert.ok(vita.some((t) => /Pioggia [\d,]+ L|Pioggia: in attesa del meteo/.test(t)), "le piante all'aperto con la pioggia");
   assert.equal(await page.locator("#cal [data-giorno]").count(), new Date(+OGGI.slice(0, 4), +OGGI.slice(5, 7), 0).getDate());
   assert.match(await page.textContent(`#cal [data-giorno="${OGGI}"]`), /💧/);
   await page.click(`#cal [data-giorno="${OGGI}"]`);
