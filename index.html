@@ -3354,11 +3354,12 @@ function liquidMove(el, to, opt){
   const up = g=> ({ l:g.l - lift*0.6, t:g.t - lift, w:g.w + lift*1.2, h:g.h + lift*2 });   // sollevata: un po' più grande
   const A = from.h > to.h + 1 ? from : up(from), B = up(to);
   // allungata a metà strada: il bordo davanti al 78%, quello dietro al 32%; al massimo 1,7 volte (con la scala gli angoli
-  // tondi si deformano: oltre si vedrebbe)
-  const lead = s > 0 ? A.l + A.w + (B.l + B.w - A.l - A.w)*0.78 : A.l + (B.l - A.l)*0.78;
-  const tail = s > 0 ? A.l + (B.l - A.l)*0.32 : A.l + A.w + (B.l + B.w - A.l - A.w)*0.32;
+  // tondi si deformano: oltre si vedrebbe). opt.stretch (0..1) la allunga meno: 0,75 → 71%, 36%, al massimo 1,5 volte
+  const k = opt.stretch==null ? 1 : opt.stretch, fL = 0.5 + 0.28*k, fT = 0.5 - 0.18*k;
+  const lead = s > 0 ? A.l + A.w + (B.l + B.w - A.l - A.w)*fL : A.l + (B.l - A.l)*fL;
+  const tail = s > 0 ? A.l + (B.l - A.l)*fT : A.l + A.w + (B.l + B.w - A.l - A.w)*fT;
   let mid = s > 0 ? { l:tail, t:B.t, w:lead - tail, h:B.h } : { l:lead, t:B.t, w:tail - lead, h:B.h };
-  const maxW = B.w * 1.7;
+  const maxW = B.w * (1 + 0.7*k);
   if(mid.w > maxW){ const c = mid.l + mid.w/2; mid = { l:c - maxW/2, t:mid.t, w:maxW, h:mid.h }; }
   const ov = Math.min(9, Math.max(3, dist * 0.05));
   const wall = (s > 0 && opt.wall==='r') || (s < 0 && opt.wall==='l');
@@ -3382,7 +3383,7 @@ function liquidMove(el, to, opt){
 /* lente della barra in basso */
 function navIndTo(btn, animate){
   const nav = document.querySelector('nav.bottom'), ind = nav && nav.querySelector('.nav-ind'); if(!ind || !btn || !btn.offsetWidth) return;
-  liquidMove(ind, { l:btn.offsetLeft, t:btn.offsetTop, w:btn.offsetWidth, h:btn.offsetHeight }, { animate, lift:5 });
+  liquidMove(ind, { l:btn.offsetLeft, t:btn.offsetTop, w:btn.offsetWidth, h:btn.offsetHeight }, { animate, lift:5, stretch:0.75 });   // un po' meno allungata della pillola delle giornate
 }
 navIndTo(document.querySelector('nav.bottom button.active'), false);
 try{ new ResizeObserver(()=> navIndTo(document.querySelector('nav.bottom button.active'), false)).observe(document.querySelector('nav.bottom')); }catch(e){}
@@ -3423,7 +3424,7 @@ document.addEventListener('touchstart', ()=>{}, { passive:true });
     const v = (g.cx - prev) / dt * 16.7;                                // px per fotogramma
     g.v += (v - g.v) * f(0.45);
     g.lift += ((g.motion ? 1 : 0) - g.lift) * f(0.28);
-    const st = g.motion ? Math.min(0.42, Math.abs(g.v) * 0.024) : 0;    // allungamento: più veloce, più lunga
+    const st = g.motion ? Math.min(0.32, Math.abs(g.v) * 0.018) : 0;    // allungamento: più veloce, più lunga (con misura)
     const L = LIFT * g.lift, w = (g.home.w + L*1.2) * (1 + st), h = (g.home.h + L*2) * (1 - st*0.28);
     ind.style.transform = liquidTf({ l:g.cx - w/2, t:g.home.t + g.home.h/2 - h/2, w, h }, g.home);
     if(glow) glow.style.opacity = g.lift.toFixed(2);
@@ -3465,7 +3466,7 @@ document.addEventListener('touchstart', ()=>{}, { passive:true });
     if(!was.grabbed) return;                                      // tocco normale: ci pensa il click
     const act = nav.querySelector('button.active');
     if(was.moved && !cancel){
-      dragDone = true; tapAt = Date.now();
+      dragDone = e.pointerType==='touch'; tapAt = Date.now();   // solo il dito manda poi un touchend da ignorare (col mouse restava acceso)
       const b = nearest(Math.min(was.maxC, Math.max(was.minC, e.clientX - was.navL)));
       if(b===act) navIndTo(b, true); else press(b);               // la lente si posa (con il suo rimbalzo) sulla sezione
     } else navIndTo(act, true);                                   // tenuta e lasciata lì, o tocco annullato: si riposa

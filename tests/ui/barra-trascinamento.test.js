@@ -1,5 +1,5 @@
 // barra in basso, lente afferrata come su WhatsApp: tenuta si solleva; trascinata segue il dito con ritardo elastico e si
-// allunga con la velocità; al rilascio va sulla sezione più vicina (un solo cambio); tocco e click normali invariati
+// allunga con la velocità (con misura: al massimo 1,32 volte; al tocco lontano 1,5); al rilascio va sulla sezione più vicina (un solo cambio); tocco e click normali invariati
 const { open } = require('./lib');
 const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
 (async () => {
@@ -29,7 +29,7 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   for (let i = 1; i <= 6; i++) { await touch('touchMove', m.x + (pl.x - m.x) * i / 6, a.y); await p.waitForTimeout(12); maxW = Math.max(maxW, (await lens()).w); }
   for (let i = 5; i >= 0; i--) { await touch('touchMove', m.x + (pl.x - m.x) * i / 6, a.y); await p.waitForTimeout(12); maxW = Math.max(maxW, (await lens()).w); }
   await p.waitForTimeout(400); l = await lens();
-  check(maxW > (a.w + 6) * 1.1 && l.w < (a.w + 6) * 1.04, 'veloce si allunga (larga fino a ' + Math.round(maxW) + '), ferma si ricompone (' + Math.round(l.w) + ')');
+  check(maxW > (a.w + 6) * 1.1 && maxW <= (a.w + 6) * 1.33 && l.w < (a.w + 6) * 1.04, 'veloce si allunga ma con misura (larga fino a ' + Math.round(maxW) + ', al massimo ' + Math.round((a.w + 6) * 1.33) + '), ferma si ricompone (' + Math.round(l.w) + ')');
   // 4. rilascio su Mese
   await touch('touchEnd'); await p.waitForTimeout(800);
   l = await lens();
@@ -51,6 +51,12 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   check(await active() === 'stats' && await sw() === 4, 'click col mouse: Settimana');
   await p.mouse.move(s.x, s.y); await p.mouse.down(); for (let i = 1; i <= 10; i++) { await p.mouse.move(s.x + (pl.x - s.x) * i / 10, s.y); await p.waitForTimeout(16); } await p.waitForTimeout(300); await p.mouse.up(); await p.waitForTimeout(800);
   check(await active() === 'plan' && await sw() === 5, 'trascinamento col mouse: Progressi, un cambio');
+  // 9. tocco lontano (Progressi → Allenamento): a metà strada la lente si allunga, ma al massimo 1,5 volte la sua misura sollevata
+  await p.evaluate(() => { const ind = document.querySelector('nav.bottom .nav-ind'); window.__mw = 0; let n = 0;
+    const f = () => { window.__mw = Math.max(window.__mw, ind.getBoundingClientRect().width); if (++n < 60) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+  await p.waitForTimeout(300); await touch('touchStart', a.x, a.y); await touch('touchEnd'); await p.waitForTimeout(1100);
+  const tw = await p.evaluate(() => window.__mw);
+  check(await active() === 'workout' && tw > (a.w + 6) * 1.15 && tw <= (a.w + 6) * 1.53, 'dopo il mouse il dito funziona; tocco lontano: si allunga a metà strada ma con misura (larga fino a ' + Math.round(tw) + ', al massimo ' + Math.round((a.w + 6) * 1.53) + ')');
   check(!A.errors.filter(x => !/Service Worker|404/.test(x)).length, 'nessun errore ' + A.errors.filter(x => !/Service Worker|404/.test(x)).join('|'));
   await A.browser.close();
 })();
