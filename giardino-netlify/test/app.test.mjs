@@ -311,14 +311,27 @@ test("schede: cambiano al tocco anche subito dopo un'altra (animazione in corso)
   await page.goto(SITO); await pronta(page);
   await page.evaluate(() => { window.__cambi = 0; const o = window.switchView; window.switchView = (v) => { window.__cambi++; return o(v); }; });
   const visibile = (v) => page.evaluate((v) => !document.getElementById("view-" + v).hidden, v);
+  // al tocco la lente e la scheda scelta cambiano subito; la vista nuova si disegna nel fotogramma dopo (come la Palestra)
+  const scelta = () => page.evaluate(() => document.querySelector("nav.tabs .tab[aria-selected=true]").dataset.view);
   await page.tap("#tab-piante");
-  assert.ok(await visibile("piante")); assert.equal(await page.evaluate(() => window.__cambi), 1, "tocco: un cambio solo (il click che segue non conta)");
+  assert.equal(await scelta(), "piante", "scheda scelta subito");
+  await page.waitForFunction(() => !document.getElementById("view-piante").hidden, null, { timeout: 2000 });
+  assert.equal(await page.evaluate(() => window.__cambi), 1, "tocco: un cambio solo (il click che segue non conta)");
   await page.tap("#tab-diario");   // la vista di prima sta ancora entrando
-  assert.ok(await visibile("diario"), "secondo tocco durante l'animazione");
+  await page.waitForFunction(() => !document.getElementById("view-diario").hidden, null, { timeout: 2000 });
   await page.waitForTimeout(800);
   assert.equal(await page.evaluate(() => window.__cambi), 2);
-  await page.click("#tab-oggi");   // mouse o tastiera: il click
-  assert.ok(await visibile("oggi")); assert.equal(await page.evaluate(() => window.__cambi), 3);
+  // due tocchi nello stesso fotogramma: si disegna solo l'ultima scheda
+  await page.evaluate(() => { const tocca = (id) => { const el = document.getElementById(id), r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const t = new Touch({ identifier: Date.now() + Math.random(), target: el, clientX: x, clientY: y });
+    el.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [t], changedTouches: [t] }));
+    el.dispatchEvent(new TouchEvent("touchend", { bubbles: true, cancelable: true, touches: [], changedTouches: [t] })); };
+    tocca("tab-impostazioni"); tocca("tab-piante"); });
+  await page.waitForFunction(() => !document.getElementById("view-piante").hidden, null, { timeout: 2000 }); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__cambi), 3, "Impostazioni toccata e superata subito: non si disegna");
+  await page.waitForTimeout(800);   // il click «finto» che segue un tocco si ignora per 0,7 s
+  await page.click("#tab-oggi");   // mouse o tastiera: il click, subito
+  assert.ok(await visibile("oggi")); assert.equal(await page.evaluate(() => window.__cambi), 4);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("nav.tabs")).touchAction), "none", "la barra non fa scorrere né zoomare");
   assert.deepEqual(errori, []);
 });
@@ -440,7 +453,7 @@ test("apertura dalla copia sul telefono: piante, meteo e piano subito, senza asp
 
   // intanto Claude cambia il vaso dell'Aloe e aggiunge una pianta; il meteo salvato sul telefono invecchia di due ore
   await posta({ changes: { plants: [{ ...aloe, vaso: 5 }, { id: "ba", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "aperto" }] } });
-  await page.evaluate((k) => { const m = JSON.parse(localStorage.getItem(k)); m.updatedAt = new Date(Date.now() - 2 * 3600e3).toISOString(); localStorage.setItem(k, JSON.stringify(m)); }, KM);
+  await page.evaluate((k) => { const m = JSON.parse(localStorage.getItem(k)); m.updatedAt = new Date(Date.now() - 10 * 3600e3).toISOString(); localStorage.setItem(k, JSON.stringify(m)); }, KM);   // la sera prima, riaperta al mattino
   // server e Open-Meteo lenti (2,5 secondi)
   const arrivate = { dati: 0, meteo: 0 }, lento = (cosa) => async (r) => { await new Promise((ok) => setTimeout(ok, 2500)); arrivate[cosa]++; return r.fallback(); };
   await ctx.route(SITO + "api/dati**", lento("dati")); await ctx.route("https://api.open-meteo.com/**", lento("meteo"));
@@ -449,7 +462,8 @@ test("apertura dalla copia sul telefono: piante, meteo e piano subito, senza asp
   await quando(page, () => document.querySelector("#restList .lrow") && document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5 && document.querySelector("#weekList > *"));
   assert.deepEqual(arrivate, { dati: 0, meteo: 0 }, "piante, meteo e prossimi giorni sullo schermo prima che server e meteo rispondano");
   assert.deepEqual(await page.evaluate(() => S.plants.map((p) => p.nome + " " + p.vaso)), ["Aloe 2"], "dalla copia dell'ultima volta");
-  assert.ok(!(await page.isVisible("#wxNote")), "il meteo salvato ha le previsioni di oggi: nessun avviso");
+  assert.ok(!(await page.isVisible("#wxNote")), "il meteo salvato ha le previsioni di oggi e la rete c'è: nessun avviso (niente scatti all'apertura)");
+  assert.ok(!(await page.isVisible("#rete")), "con la rete lenta non dice «senza rete»");
 
   // un tocco prima che il server risponda: l'innaffiatura parte da sola, senza riportare indietro le modifiche di Claude
   await page.click('#restList [data-ev="fatto"]');
@@ -463,5 +477,111 @@ test("apertura dalla copia sul telefono: piante, meteo e piano subito, senza asp
   assert.equal(d.eventi.filter((e) => e.plantId === "su" && e.tipo === "fatto" && e.fonte === "app").length, 1, "e l'innaffiatura segnata sul telefono");
   assert.deepEqual(RICHIESTE.filter((x) => x.startsWith("GET")), ["GET dati (versione)"], "una sola lettura dal server");
   assert.equal(arrivate.meteo, 2, "meteo: una richiesta di base e una dei modelli, non due volte");
+  assert.deepEqual(errori, []);
+});
+
+const { addDays } = await import("../netlify/lib/modello.mjs");
+test("lavoro risparmiato: carta della pianta senza ridisposizioni a catena, piano e Diario rifatti solo se serve", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-LAVORO-RISPARMIATO-ABCDE", H = { "x-giardino-code": CODE, "content-type": "application/json" };
+  const pianta = (id, nome, extra = {}) => ({ id, nome, specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "aperto", ...extra });
+  const scheda = { specie: "carota", data_semina: addDays(OGGI, -20), aggiornata: new Date().toISOString(), descrizione: "Testo lungo", calendario: [{ mese: addDays(OGGI, 120).slice(0, 7), fase: "raccolta", raccolta: true }] };
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: H, body: JSON.stringify({ changes: { location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 },
+    plants: [pianta("a", "Alfa"), pianta("b", "Beta"), pianta("c", "Gamma"), pianta("d", "Delta"), pianta("ca", "Carote", { specie: "carota", fase: "auto", data_semina: addDays(OGGI, -20), tipo_data: "semina", vaso: 20, scheda })] } }) }));
+  const ctx = await contesto(browser);
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await quando(page, () => document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5 && activePlan());
+
+  // 1. carta che si allarga: prima tutte le misure, poi tutte le animazioni (prima: una ridisposizione per carta)
+  await page.click("#tab-piante"); await page.waitForTimeout(700);
+  const ordine = await page.evaluate(() => {
+    const log = [], gbr = Element.prototype.getBoundingClientRect, an = Element.prototype.animate;
+    Element.prototype.getBoundingClientRect = function () { log.push("misura"); return gbr.call(this); };
+    Element.prototype.animate = function (...a) { log.push("anima"); return an.apply(this, a); };
+    document.querySelector("#plantList details.plant > summary").click();
+    Element.prototype.getBoundingClientRect = gbr; Element.prototype.animate = an;
+    return log.join(" ");
+  });
+  assert.match(ordine, /anima/, "la carta si anima");
+  assert.ok(!/anima.*misura/.test(ordine), "nessuna misura dopo la prima animazione: " + ordine);
+
+  // 3. Diario: riaprendolo senza novità non si rifà; con un evento nuovo sì
+  const rifatti = await page.evaluate(async () => {
+    let n = 0; const vero = renderDiario; renderDiario = () => { n++; vero(); };
+    const vai = async (v) => { document.querySelector("#tab-" + v).click(); await new Promise((r) => setTimeout(r, 250)); };
+    await vai("diario"); n = 0;   // la prima volta si disegna
+    await vai("oggi"); await vai("diario"); await vai("piante"); await vai("diario"); const senza = n;
+    await vai("oggi"); document.querySelector('#restList [data-ev="fatto"]').click(); await new Promise((r) => setTimeout(r, 200)); await vai("diario");
+    renderDiario = vero; return [senza, n];
+  });
+  assert.deepEqual(rifatti, [0, 1], "Diario rifatto solo dopo una novità");
+
+  // 4. piano: la descrizione della scheda non lo fa ricalcolare, i mesi di raccolta sì (le fasi delle carote cambiano)
+  const piano = await page.evaluate(() => {
+    const p0 = localPlan(), car = S.plants.find((p) => p.id === "ca");
+    car.scheda = { ...car.scheda, descrizione: "Un'altra descrizione, molto più lunga" }; const p1 = localPlan();
+    car.scheda = { ...car.scheda, calendario: [{ mese: car.scheda.calendario[0].mese.slice(0, 4) - 0 + 1 + "-01", fase: "raccolta", raccolta: true }] }; const p2 = localPlan();
+    return [p0 === p1, p1 === p2];
+  });
+  assert.deepEqual(piano, [true, false], "ricalcolo solo se cambia ciò che il calcolo legge");
+  assert.deepEqual(errori, []);
+});
+
+test("barra delle schede come nell'app Palestra: lente di vetro che scivola con rimbalzo e si può trascinare", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const ctx = await contesto(browser), page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  const lente = () => page.evaluate(() => { const i = document.querySelector("nav.tabs .nav-ind"), s = document.querySelector("nav.tabs .tab[aria-selected=true]"), a = i.getBoundingClientRect(), b = s.getBoundingClientRect();
+    const m = (x) => (Math.abs(x) <= 1 ? 0 : Math.round(x));   // offsetWidth è intero: fino a 1 px è arrotondamento
+    return { scheda: s.dataset.view, dx: m(a.left - b.left), dw: m(a.width - b.width), anim: i.getAnimations().length }; });
+  assert.deepEqual(await lente(), { scheda: "oggi", dx: 0, dw: 0, anim: 0 }, "all'apertura la lente è sotto Oggi");
+  // clic e lettura nello stesso momento: su un computer lento l'animazione potrebbe essere già finita
+  const { durante, kf } = await page.evaluate(() => { document.querySelector("#tab-diario").click(); const a = document.querySelector("nav.tabs .nav-ind").getAnimations();
+    return { durante: { scheda: document.querySelector("nav.tabs .tab[aria-selected=true]").dataset.view, anim: a.length }, kf: a[0] ? a[0].effect.getKeyframes().map((k) => k.transform) : [] }; });
+  assert.equal(durante.scheda, "diario"); assert.equal(durante.anim, 1, "la lente scivola con un'animazione");
+  assert.ok(kf.length >= 5 && kf.some((x) => /scale\(1\.[2-9]/.test(x)), "si allunga a metà strada: " + kf.join(" | "));
+  await page.waitForTimeout(700);
+  assert.deepEqual(await lente(), { scheda: "diario", dx: 0, dw: 0, anim: 0 }, "arrivata sotto Diario, senza deformazioni");
+  // trascinata col dito (qui col mouse) da Diario fin sopra Piante: al rilascio si sceglie Piante
+  const box = async (id) => page.locator(id).boundingBox();
+  const d = await box("#tab-diario"), p = await box("#tab-piante");
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(d.x + d.width / 2 - (d.x - p.x) * i / 8, d.y + d.height / 2); await page.waitForTimeout(30); }
+  assert.ok(await page.evaluate(() => document.querySelector("nav.tabs").classList.contains("lq-drag") && document.querySelector("#tab-piante").classList.contains("lq-over")), "trascinando si colora la scheda sotto la lente");
+  await page.mouse.up(); await page.waitForTimeout(800);
+  assert.deepEqual(await lente(), { scheda: "piante", dx: 0, dw: 0, anim: 0 }, "rilasciata: Piante");
+  assert.ok(await page.isVisible("#view-piante"));
+  assert.deepEqual(errori, []);
+});
+
+test("quiete: ferma da sola le animazioni decorative dopo un po' senza tocchi, ripartono al primo tocco", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const ctx = await contesto(browser);
+  await ctx.addInitScript(() => { window.GIARDINO_QUIETE = 3000; });   // abbastanza lungo anche per i computer lenti di GitHub
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await page.fill("#obLoc", "castrocaro"); await page.click("#obLocSet");
+  await quando(page, () => document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5);
+  await page.click("#exampleBtn"); await quando(page, () => document.querySelectorAll("#restList .lrow").length > 0);
+  const stato = () => page.evaluate(() => { const c = {}; for (const a of document.getAnimations()) if (a.animationName) { const k = a.animationName + ":" + a.playState; c[k] = (c[k] || 0) + 1; } return { quieto: document.documentElement.classList.contains("quieto"), c }; });
+  assert.equal((await stato()).quieto, false, "appena toccata si muove");
+  const prima = (await stato()).c;
+  assert.ok(prima["ondeggia:running"] > 0, "le piante ondeggiano: " + JSON.stringify(prima));
+  await quando(page, () => document.documentElement.classList.contains("quieto"));
+  const ferma = (await stato()).c;
+  assert.ok(!ferma["ondeggia:running"] && ferma["ondeggia:paused"] > 0, "ferme, non tolte (ripartono da dov'erano): " + JSON.stringify(ferma));
+  assert.ok(!Object.keys(ferma).some((k) => /^(fulmineIco|bagliore|fulmine|luccica):/.test(k)), "lampi e riflessi tornano al loro aspetto fermo");
+  assert.ok(!Object.keys(ferma).some((k) => /^(gira|pulsaSole|deriva|piove|nevica|scorre|respira|goccia|alone|banco|pulsa):running$/.test(k)), "niente decorazioni in moto: " + JSON.stringify(ferma));
+  // al primo tocco ripartono
+  await page.touchscreen.tap(200, 300);
+  const dopo = await stato();
+  assert.equal(dopo.quieto, false); assert.ok(dopo.c["ondeggia:running"] > 0, "ripartono al tocco");
+  // e la quiete torna da sola
+  await quando(page, () => document.documentElement.classList.contains("quieto"));
+  // lo scorrimento sveglia, e le righe che compaiono scorrendo non restano a metà
+  await page.mouse.move(195, 400); await page.mouse.wheel(0, 600); await page.waitForTimeout(500);
+  assert.equal((await stato()).quieto, false, "lo scorrimento la sveglia");
   assert.deepEqual(errori, []);
 });

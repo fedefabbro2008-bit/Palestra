@@ -23,6 +23,7 @@ async function sito(t) {
   const srv = http.createServer(async (req, res) => {
     const u = new URL(req.url, "http://localhost");
     if (s.giu) return req.socket.destroy();
+    if (s.appeso && u.pathname.startsWith("/api/") && req.method === "POST") { s.api.push("appeso"); return; }   // accetta e non risponde mai
     if (u.pathname.startsWith("/api/")) {
       const body = await new Promise((r) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => r(b)); });
       const h = {}; for (const k of ["x-giardino-code", "x-giardino-versione", "x-giardino-gzip", "content-type", "accept-encoding"]) if (req.headers[k]) h[k] = req.headers[k];
@@ -150,3 +151,75 @@ test("risposte compresse lette dall'app; se la compressione non arriva bene ripr
   assert.equal(await nelTelefono(), 306);
   assert.deepEqual(s.errori, []);
 });
+
+test("senza rete: si usa tutto, l'annullato non ricompare, le piante di Claude non si perdono, server appeso, meteo datato", async (t) => {
+  const s = await sito(t), page = s.page;
+  const json = (o) => ({ contentType: "application/json", body: JSON.stringify(o) });
+  const { giorni } = await import("./rete-finta.mjs");
+  let meteoGiu = false;
+  await page.context().unroute(/^https:\/\//);
+  await page.context().route(/^https:\/\//, (r) => { const u = r.request().url();
+    if (meteoGiu) return r.abort("internetdisconnected");
+    if (u.includes("geocoding")) return r.fulfill(json({ results: [{ name: "Castrocaro Terme", admin1: "Emilia-Romagna", country: "Italia", latitude: 44.176, longitude: 11.95, elevation: 68 }] }));
+    if (u.includes("api.open-meteo.com") && !u.includes("models=")) return r.fulfill(json({ timezone: "UTC", daily: { time: giorni, weather_code: giorni.map(() => 3), temperature_2m_max: giorni.map(() => 14), temperature_2m_min: giorni.map(() => 6), precipitation_sum: giorni.map(() => 0), precipitation_probability_max: giorni.map(() => 10), et0_fao_evapotranspiration: giorni.map(() => 1), wind_speed_10m_max: giorni.map(() => 8) }, hourly: { time: [], temperature_2m: [] } }));
+    return r.abort(); });
+  await page.goto(s.url); await s.pronta();
+  await page.fill("#obLoc", "castrocaro"); await page.click("#obLocSet"); await page.waitForTimeout(600); await page.click("#exampleBtn");
+  await page.waitForFunction(() => document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5 && !!navigator.serviceWorker?.controller, null, { timeout: 10000 });
+  await page.waitForFunction(() => !scrittureInSospeso() && !localStorage.getItem("giardino:net:pending"), null, { timeout: 8000 });
+  const codice = await page.evaluate(() => localStorage.getItem("giardino:net:code"));
+  const sul = async () => (await (await dati(new Request("http://x/api/dati", { headers: { "x-giardino-code": codice } }))).json()).data;
+  const rete = () => page.evaluate(() => ({ visibile: !document.querySelector("#rete").hidden, testo: document.querySelector("#rete").textContent, rosso: !document.querySelector("#saveNote").hidden && document.querySelector("#saveNote").classList.contains("err") }));
+  const torna = async () => { s.giu = false; s.appeso = false; meteoGiu = false; await page.context().setOffline(false); await page.evaluate(() => dispatchEvent(new Event("online"))); await page.waitForFunction(() => !localStorage.getItem("giardino:net:pending") && !document.querySelector("#rete").hidden === false, null, { timeout: 8000 }); };
+
+  // senza rete l'app si apre dalla copia e mostra che è senza rete
+  s.giu = true; meteoGiu = true; await page.context().setOffline(true);
+  await page.reload(); await s.pronta(); await page.waitForTimeout(600);
+  assert.equal(await page.locator("#restList .lrow").count(), 3, "piante dalla copia sul telefono");
+  assert.ok((await rete()).visibile, "in alto: senza rete");
+  // 💧 e subito Annulla, senza rete: al ritorno della rete non ricompare
+  const pid = await page.evaluate(() => document.querySelector('#restList [data-ev="fatto"]').dataset.pid);
+  await page.click(`#restList [data-ev="fatto"][data-pid="${pid}"]`); await page.waitForTimeout(800);
+  assert.match((await rete()).testo, /1 modifica da inviare/);
+  await page.click(`#restList [data-ev="fatto"][data-pid="${pid}"]`); await page.waitForTimeout(800);
+  // intanto (senza rete) cambio una pianta, e Claude ne aggiunge un'altra sul server
+  await page.evaluate(() => { S.plants[0].note = "scritta senza rete"; saveMain(); }); await page.waitForTimeout(800);
+  const C = await import("../netlify/lib/core.mjs");
+  await C.aggiorna(C.store(), codice, (d) => { d.plants.push({ id: "cl1", nome: "Rosmarino di Claude", specie: "rosmarino", fase: "auto", colt: "vaso", vaso: 5, luce: 6, dove: "aperto" }); });
+  await torna();
+  const d1 = await sul();
+  assert.equal(d1.eventi.filter((e) => e.plantId === pid && e.tipo === "fatto").length, 0, "l'innaffiatura annullata non ricompare sul server");
+  assert.ok(d1.plants.some((p) => p.id === "cl1"), "la pianta aggiunta da Claude resta");
+  assert.ok(d1.plants.some((p) => p.note === "scritta senza rete"), "e la modifica fatta senza rete arriva");
+  await page.waitForFunction(() => S.plants.some((p) => p.id === "cl1"), null, { timeout: 8000 });
+  assert.equal(await page.evaluate((pid) => S.eventi_app.filter((e) => e.plantId === pid && e.tipo === "fatto").length, pid), 0, "e sul telefono");
+  assert.equal((await rete()).visibile, false, "rete tornata: l'indicatore sparisce");
+
+  // rete morta ma il telefono crede di averla: niente avviso rosso, indicatore e modifiche in attesa
+  s.giu = true;
+  await page.click('#restList [data-ev="fatto"]'); await page.waitForTimeout(1500);
+  assert.deepEqual([(await rete()).visibile, (await rete()).rosso], [true, false], "senza rete non è un errore");
+  await torna();
+  assert.equal((await sul()).eventi.filter((e) => e.tipo === "fatto" && e.fonte === "app").length, 1, "arrivata al ritorno della rete");
+
+  // server che accetta e non risponde: la richiesta si interrompe e le modifiche dopo arrivano (prima: ferme per sempre)
+  await page.evaluate(() => { window.GIARDINO_ATTESA_RETE = 1500; });
+  s.appeso = true; await page.evaluate(() => { S.plants[0].note = "uno"; saveMain(); }); await page.waitForTimeout(2600);
+  s.appeso = false; await page.evaluate(() => { S.plants[0].note = "due"; saveMain(); });
+  await page.waitForFunction(() => !localStorage.getItem("giardino:net:pending"), null, { timeout: 40000 });
+  assert.equal((await sul()).plants.find((p) => p.id === S_ID(d1)).note, "due");
+
+  // giorni dopo, senza rete: previsioni datate (lo dice), poi finite (lo dice, niente «Aspetto il meteo»)
+  s.giu = true; meteoGiu = true; await page.context().setOffline(true);
+  const invecchia = (n) => page.evaluate((n) => { for (const k of Object.keys(localStorage)) if (k.startsWith("giardino:net:meteo@")) { const m = JSON.parse(localStorage[k]);
+    m.days = m.days.map((d) => { const x = new Date(d.date + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() - n); return { ...d, date: x.toISOString().slice(0, 10) }; }); m.updatedAt = new Date(Date.now() - n * 864e5).toISOString(); localStorage[k] = JSON.stringify(m); } }, n);
+  await invecchia(2); await page.reload(); await s.pronta(); await page.waitForTimeout(800);
+  assert.match(await page.textContent("#wxNote"), /^Previsioni del .+: senza rete non si aggiornano/);
+  assert.ok(await page.locator("#weekList > *").count() > 0, "il piano c'è ancora");
+  await invecchia(8); await page.reload(); await s.pronta(); await page.waitForTimeout(800);
+  assert.equal(await page.textContent("#todayHead"), "Senza rete e senza previsioni");
+  assert.match(await page.textContent("#wxNote"), /^Senza rete: le ultime previsioni salvate/);
+  await page.context().setOffline(false); s.giu = false;
+  assert.deepEqual(s.errori, []);
+});
+const S_ID = (d) => d.plants[0].id;

@@ -76,8 +76,10 @@ async function gestisci(request) {
     let body; try { body = JSON.parse(raw); } catch { return reply({ error: "JSON non valido" }, 400); }
     const changes = body && typeof body.changes === "object" && body.changes ? body.changes : {};
     const add = Array.isArray(body?.add) ? body.add : [], remove = new Set(Array.isArray(body?.remove) ? body.remove.map(String) : []);
+    const piante = body && typeof body.piante === "object" && body.piante ? body.piante : null;
     const out = await aggiorna(st, code, (d) => {
       for (const k of CAMPI) if (Object.prototype.hasOwnProperty.call(changes, k)) d[k] = k === "plants" ? conSchede(changes.plants, d.plants) : changes[k];
+      if (piante) d.plants = unisciPiante(d.plants, piante);
       if (remove.size) d.eventi = d.eventi.filter((e) => !(remove.has(String(e.id)) && e.fonte === "app"));
       for (const e of add) if (e && e.id && !d.eventi.some((x) => x.id === e.id)) d.eventi.push({ ...e, fonte: "app" });
     });
@@ -88,6 +90,19 @@ async function gestisci(request) {
   }
 }
 
+// Piante cambiate pianta per pianta (app dalla versione con il lavoro senza rete): {set: piante nuove o cambiate,
+// del: id tolte, ordine: id nell'ordine dell'app}. Le altre restano come sono sul server: una pianta aggiunta da Claude o da
+// un altro telefono mentre questo era senza rete non si perde più (prima l'app mandava tutto l'elenco e lo sostituiva).
+export function unisciPiante(server, { set, del, ordine } = {}) {
+  const via = new Set(Array.isArray(del) ? del.map(String) : []), nuove = (Array.isArray(set) ? set : []).filter((p) => p && typeof p === "object" && p.id);
+  const per = new Map(nuove.map((p) => [String(p.id), p]));
+  let out = (Array.isArray(server) ? server : []).filter((p) => p && !via.has(String(p.id))).map((p) => (per.has(String(p.id)) ? per.get(String(p.id)) : p));
+  const ci = new Set(out.map((p) => String(p.id)));
+  for (const p of nuove) if (!ci.has(String(p.id)) && !via.has(String(p.id))) out.push(p);
+  out = conSchede(out, server);
+  if (Array.isArray(ordine) && ordine.length) { const pos = new Map(ordine.map((id, i) => [String(id), i])); out = out.map((p, i) => [p, pos.get(String(p.id)) ?? 1e6 + i]).sort((a, b) => a[1] - b[1]).map((x) => x[0]); }
+  return out;
+}
 // La scheda di ogni pianta la scrive Claude sul server: se l'app manda le piante senza scheda, o con una più vecchia,
 // resta quella più recente (l'app può essere rimasta indietro di qualche minuto).
 function conSchede(nuove, vecchie) {

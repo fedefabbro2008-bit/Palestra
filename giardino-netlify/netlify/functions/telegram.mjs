@@ -102,7 +102,9 @@ async function pulsante(st, t, code, cq) {
     if (d.eventi.some((e) => e.plantId === pid && e.data === data && e.tipo === tipo && e.fonte === "telegram")) return false;
     if (tipo !== "concime") d.eventi = d.eventi.filter((e) => !(e.plantId === pid && e.data === data && e.fonte === "telegram" && ESITI.includes(e.tipo)));
     const g = d.piano_claude?.data?.piante?.find((y) => y.id === pid)?.giorni?.find((y) => y.data === data);
-    d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo, data, fonte: "telegram", ts: new Date().toISOString(), ...(tipo === "fatto" || tipo === "secco" ? { litri: g?.litri ?? (t.notificati?.[data] || []).find((n) => n.id === pid)?.litri ?? null } : {}) });
+    // cosa diceva il piano: le piante da innaffiare sono in notificati, le altre coi pulsanti erano da controllare
+    const previsto = tipo === "umido" || tipo === "secco" ? ((t.notificati?.[data] || []).some((n) => n.id === pid) ? "innaffia" : "controlla") : null;
+    d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo, data, fonte: "telegram", ts: new Date().toISOString(), ...(previsto ? { previsto } : {}), ...(tipo === "fatto" || tipo === "secco" ? { litri: g?.litri ?? (t.notificati?.[data] || []).find((n) => n.id === pid)?.litri ?? null } : {}) });
   });
   // la conferma e i pulsanti nuovi partono insieme (prima una richiesta a Telegram dopo l'altra: il doppio dell'attesa)
   const conferma = rispondi(`Registrato: ${nome} — ${ETICHETTE[tipo]}`);

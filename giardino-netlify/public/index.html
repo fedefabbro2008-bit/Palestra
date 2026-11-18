@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="02bc58c80346">
+<meta name="giardino-build" content="250275159dec">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -58,6 +58,11 @@ p{margin:0}
 .loc{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:58%;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:.86rem;font-weight:600;cursor:pointer}
 .loc svg{flex:none;width:16px;height:16px;color:var(--water)}
 .loc span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* senza rete: una riga sotto il titolo, con quante modifiche aspettano di partire */
+.rete{display:flex;align-items:center;gap:8px;margin:-6px 0 12px;padding:7px 12px;border-radius:999px;font-size:.84rem;font-weight:600;
+  background:var(--surface-2);color:var(--muted);border:1px solid var(--line);width:fit-content;max-width:100%}
+.rete::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.rete span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 section.view{display:flex;flex-direction:column;gap:14px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
 .stack{display:flex;flex-direction:column;gap:10px}
@@ -529,13 +534,22 @@ nav.tabs .tab:active{transform:scale(.94)}
    che si riempiono, riquadri che compaiono scorrendo, piante che ondeggiano piano. */
 nav.tabs .in{position:relative}
 nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
-.tab-pill{position:absolute;top:0;bottom:0;left:0;width:25%;border-radius:25px;background:var(--glass-pill);box-shadow:inset 0 1px 0 var(--glass-hi-soft);
-  z-index:-1;transform:translateX(calc(var(--i,0)*100%));pointer-events:none}
-.in:has(#tab-piante[aria-selected="true"]) .tab-pill{--i:1}
-.in:has(#tab-diario[aria-selected="true"]) .tab-pill{--i:2}
-.in:has(#tab-impostazioni[aria-selected="true"]) .tab-pill{--i:3}
-@supports selector(:has(a)){ nav.tabs .tab[aria-selected="true"]::before{background:transparent;box-shadow:none} }
-@supports not selector(:has(a)){ .tab-pill{display:none} }
+/* lente di vetro liquido (come nella barra dell'app Palestra e di WhatsApp su iOS 26): una sola lente sotto la scheda
+   scelta; cambiando scheda si solleva, si allunga verso la destinazione col bordo davanti che parte per primo, va appena
+   oltre e torna con un rimbalzo. Tenendola premuta si può trascinare: segue il dito e si allunga con la velocità.
+   Si muove solo con transform (niente ricalcoli della pagina); l'alone è un livello sopra di cui cambia l'opacità. */
+.nav-ind{position:absolute;top:0;left:0;width:25%;height:100%;border-radius:25px;background:var(--glass-pill);box-shadow:inset 0 1px 0 var(--glass-hi-soft);
+  pointer-events:none;z-index:-1;will-change:transform;transform-origin:50% 50%;backface-visibility:hidden;
+  --lq-glow:inset 0 1px 0 rgba(255,255,255,.32), 0 6px 18px rgba(0,0,0,.22)}
+.nav-ind{background:color-mix(in srgb,var(--water) var(--lente-mix,10%),transparent)}   /* col colore dell'app, appena accennato (come la Palestra) */
+:root{--lente-mix:10%}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--lente-mix:16%} }
+:root[data-theme="dark"]{--lente-mix:16%}
+.lq-glow{position:absolute;inset:-1px;border-radius:inherit;box-shadow:var(--lq-glow);opacity:0;pointer-events:none;will-change:opacity}
+nav.tabs .tab[aria-selected="true"]::before,nav.tabs .tab::before{background:transparent;box-shadow:none}
+/* trascinando la lente si colora la scheda su cui si trova (non più quella di partenza) */
+nav.tabs.lq-drag .tab[aria-selected="true"]:not(.lq-over){color:var(--muted)}
+nav.tabs.lq-drag .tab.lq-over{color:var(--water)}
 .spruzzo{position:fixed;width:0;height:0;z-index:60;pointer-events:none}
 .spruzzo i{position:absolute;left:-4px;top:-4px;width:8px;height:8px;border-radius:50% 50% 50% 0;background:var(--water);opacity:0;
   transform:rotate(var(--a)) translateY(0) rotate(-45deg);animation:schizzo .8s cubic-bezier(.15,.7,.3,1) forwards}
@@ -548,7 +562,6 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 @keyframes onda{0%{opacity:.7;transform:scale(.3)}100%{opacity:0;transform:scale(2.2)}}
 @media (prefers-reduced-motion: no-preference){
   /* barra: la pillola scivola da una scheda all'altra, l'icona scelta fa un saltello */
-  .tab-pill{transition:transform .5s cubic-bezier(.3,1.35,.45,1)}
   nav.tabs .tab[aria-selected="true"] svg{animation:saltello .5s cubic-bezier(.3,1.6,.5,1)}
   /* titolo: la goccia cade all'apertura e oscilla mentre aggiorna */
   .brand .goccia{transform-origin:50% 100%;animation:cade .9s cubic-bezier(.3,1.4,.5,1) both}
@@ -661,6 +674,14 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
   .wx-day.sk::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,color-mix(in srgb,var(--surface) 75%,transparent) 50%,transparent 70%);transform:translateX(-100%);animation:luccica 1.5s ease-in-out infinite}
 }
 @media (prefers-reduced-motion: reduce){ .hfx{display:none} }
+/* QUIETE: dopo 20 secondi senza tocchi le animazioni decorative senza fine si fermano (meteo, piante che ondeggiano,
+   pioggia nel riquadro, icone degli avvisi) e ripartono da dove erano al primo tocco, scorrimento o ritorno sull'app.
+   Con l'app ferma il telefono non ridisegna più lo schermo 60 volte al secondo. Lampi, bagliori e riflessi tornano al
+   loro aspetto fermo invece di restare a metà. Non si fermano la comparsa scorrendo, le animazioni d'entrata, lo
+   spinner, la goccia che aggiorna e il caricamento del meteo. */
+html.quieto :is(.wx-raggi,.wx-nucleo,.wx-nuvola,.wx-goccia,.wx-fiocco,.wx-nebbia,.ic,.ring>span,.ri,.alert>svg,.hfx i,.hfx .sole,.hfx .banco,.hfx .nube),
+html.quieto .wx-day.today::after{animation-play-state:paused!important}
+html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{animation:none!important}
 @keyframes goccia{0%{opacity:0;transform:translate(0,0) rotate(14deg)}12%{opacity:1}100%{opacity:.7;transform:translate(-30px,150px) rotate(14deg)}}
 @keyframes fiocco{0%{opacity:0;transform:translate(0,0)}15%{opacity:1}50%{transform:translate(9px,62px)}100%{opacity:.8;transform:translate(-5px,135px)}}
 @keyframes alone{0%,100%{opacity:.7;transform:scale(.92)}50%{opacity:1;transform:scale(1.06)}}
@@ -683,6 +704,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
       <span id="locName">Imposta il comune</span>
     </button>
   </header>
+  <div id="rete" class="rete" role="status" hidden></div>
   <div id="saveNote" class="alert info" hidden style="margin-bottom:14px"></div>
 
   <!-- OGGI -->
@@ -1009,7 +1031,7 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 
 <nav class="tabs" role="tablist" aria-label="Sezioni">
   <div class="in">
-    <i class="tab-pill" aria-hidden="true"></i>
+    <span class="nav-ind" aria-hidden="true"><i class="lq-glow"></i></span>
     <button class="tab" role="tab" id="tab-oggi" data-view="oggi" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c4 5 6.5 8.4 6.5 11.5a6.5 6.5 0 1 1-13 0C5.5 11.4 8 8 12 3z"/></svg><span>Oggi</span></button>
     <button class="tab" role="tab" id="tab-piante" data-view="piante" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-9"/><path d="M12 12C12 7 8.5 4 4 4c0 5 3.5 8 8 8z"/><path d="M12 14c0-4 3-6.5 8-6.5 0 4-3 6.5-8 6.5z"/></svg><span>Piante</span></button>
     <button class="tab" role="tab" id="tab-diario" data-view="diario" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M16 3v4M8 3v4M3.5 10h17"/></svg><span>Diario</span></button>
@@ -1080,11 +1102,27 @@ nav.tabs{touch-action:none;-webkit-user-select:none;user-select:none}
 'use strict';
 const API='/api/dati';
 const LS=k=>{ try{ return localStorage.getItem('giardino:net:'+k); }catch(e){ return null; } };
-const LSset=(k,v)=>{ try{ if(v==null) localStorage.removeItem('giardino:net:'+k); else localStorage.setItem('giardino:net:'+k,v); }catch(e){} };
+// true se scritto: se la memoria del telefono è piena le modifiche in attesa non si perdono in silenzio (lo dice l'app)
+const LSset=(k,v)=>{ try{ if(v==null) localStorage.removeItem('giardino:net:'+k); else localStorage.setItem('giardino:net:'+k,v); return true; }catch(e){ return false; } };
 const LSjson=k=>{ try{ return JSON.parse(LS(k)||'null'); }catch(e){ return null; } };
 const ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function nuovoCodice(){ const b=new Uint8Array(24); crypto.getRandomValues(b); const s=Array.from(b,x=>ALPHA[x&31]).join(''); return 'GRD-'+s.match(/.{6}/g).join('-'); }
 let code=LS('code'); if(!/^[A-Z0-9-]{16,64}$/.test(code||'')){ code=nuovoCodice(); LSset('code',code); }
+/* ---------------- senza rete ----------------
+   offline: l'ultima richiesta al server non è arrivata per la rete (o navigator.onLine è falso). L'app lo mostra in alto
+   con quante modifiche aspettano di partire (evento «giardino-rete»). Torna online alla prima richiesta riuscita. */
+let offline=navigator.onLine===false;
+const SENZA_RETE='Senza rete: riprova quando torna la connessione.';
+// Senza rete e niente da inviare (che riprova da sé ogni 30 s): si richiede al server dopo 25 s, così l'indicatore non
+// resta acceso fino al controllo dei 5 minuti dopo una sola richiesta andata a vuoto.
+let riprova=null;
+function segnaRete(off){
+  off=!!off; const cambia=off!==offline; offline=off; avvisaRete();
+  if(!off){ clearTimeout(riprova); riprova=null; return; }
+  if(!riprova) riprova=setTimeout(()=>{ riprova=null; if(offline&&document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },25000);
+  return cambia;
+}
+function avvisaRete(){ try{ window.dispatchEvent(new CustomEvent('giardino-rete',{detail:{offline, inAttesa:contaInAttesa()}})); }catch(e){} }
 const stato=(msg,err)=>{ const el=document.getElementById('netStatus'); if(el) el.textContent=msg; if(err&&typeof window.showNote==='function') window.showNote('err',msg); };
 const VUOTO={location:null,plants:[],impostazioni:null,vacanza:null,eventi:[],piano_claude:null,meteo_manual:null,orti:[]};
 // orto scelto nell'app (più orti in città diverse): il meteo e la pioggia misurata sono i suoi
@@ -1096,12 +1134,25 @@ function posizione(){ const g=docs.giardino; if(!g) return null; const id=ortoId
 // della compressione (risposta illeggibile, o due volte di fila) per una settimana le chiede in chiaro: un attimo senza
 // rete non la spegne. Una risposta «ok» senza dati non vale mai: cancellerebbe quelli sul telefono.
 async function api(method, body, op, keepalive, extra){
+  try{ const j=await apiRete(method, body, op, keepalive, extra); segnaRete(false); return j; }
+  catch(e){
+    // rete assente o server che non risponde: un messaggio leggibile (non «Failed to fetch») e l'indicatore in alto
+    if(e instanceof TypeError||e?.name==='AbortError'||e?.name==='TimeoutError'){ segnaRete(true); throw Object.assign(new Error(SENZA_RETE),{offline:true}); }
+    segnaRete(false); throw e;
+  }
+}
+// Una richiesta che il server accetta e non chiude più (rete debolissima, server bloccato) si interrompe: prima teneva
+// ferme per sempre anche le modifiche dopo. 20 secondi; la foto da riconoscere (fino a 1,5 MB) ne ha 45.
+async function apiRete(method, body, op, keepalive, extra){
   const prova=async chiaro=>{
-    const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(chiaro?{'x-giardino-gzip':'no'}:{}),...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive});
-    const t=await r.text();   // interrotta (rete, o compressione che il browser non decodifica): errore di rete
-    let j=null; try{ j=JSON.parse(t); }catch(e){}
-    if(r.ok&&(j==null||typeof j!=='object')) throw Object.assign(new TypeError('risposta del server illeggibile'),{illeggibile:true});
-    return [r,j];
+    const ac=typeof AbortController==='function'?new AbortController():null, tm=ac&&setTimeout(()=>ac.abort(),op==='riconosci'?45000:(window.GIARDINO_ATTESA_RETE||20000));
+    try{
+      const r=await fetch(API+(op?'?op='+op:''),{method,headers:{'x-giardino-code':code,...(chiaro?{'x-giardino-gzip':'no'}:{}),...(body?{'content-type':'application/json'}:{}),...(extra||{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!keepalive,signal:ac?.signal});
+      const t=await r.text();   // interrotta (rete, o compressione che il browser non decodifica): errore di rete
+      let j=null; try{ j=JSON.parse(t); }catch(e){}
+      if(r.ok&&(j==null||typeof j!=='object')) throw Object.assign(new TypeError('risposta del server illeggibile'),{illeggibile:true});
+      return [r,j];
+    } finally { if(tm) clearTimeout(tm); }
   };
   const chiaro=Date.now()-(+LS('inChiaro')||0)<7*864e5;
   let r,j;
@@ -1135,7 +1186,9 @@ function conMisurata(m){
   const misurata=misurataOra();
   if(!m||!Array.isArray(m.days)||!misurata) return m;
   const oggi=new Intl.DateTimeFormat('en-CA',{timeZone:m.tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km,giorni:misurata.giorni||{}}};
+  // pioggia dei prossimi giorni con i pesi dei modelli imparati qui (li calcola il server confrontando previsioni e misure)
+  const pesi=(server?.data?.pesi_pioggia||{})[ortoId()]||null;
+  return {...m, days:ripesaPioggia(conPioggiaMisurata(m.days,misurata,oggi),pesi,oggi), pesi_pioggia:pesi, misurata:{stazione:misurata.stazione,km:misurata.km,giorni:misurata.giorni||{}}};
 }
 let primo=null;
 // Scarica i dati solo se sono cambiati: l'app dice quale versione ha già (rev e ora del salvataggio) e, se è la stessa,
@@ -1150,12 +1203,21 @@ function scarica(){
       if(server&&server.rev!==revPrima&&j&&typeof j.rev==='number'&&j.rev<=server.rev){ stato(ora); return false; }
       // sopra i dati del server restano le modifiche fatte qui e non ancora arrivate (in attesa o in viaggio)
       server=j; for(const b of inInvio) applicaLocale(b); if(inAttesa) applicaLocale(inAttesa); LSset('cache',JSON.stringify(j)); dalServer(); stato(ora); return true; })
-    .catch(e=>{ dalServer(); stato('Server non raggiungibile ('+e.message+'): uso i dati salvati su questo dispositivo.'); return false; });
+    .catch(e=>{ dalServer(); stato(e.offline?'Senza rete: uso i dati salvati su questo telefono.':'Server non raggiungibile ('+e.message+'): uso i dati salvati su questo telefono.'); return false; });
 }
 // dati del server con sopra le modifiche locali non ancora inviate
+// piante cambiate pianta per pianta, come le unisce il server (unisciPiante in dati.mjs): le altre restano
+function unisciPiante(prima,{set,del,ordine}={}){
+  const via=new Set(del||[]), per=new Map((set||[]).filter(p=>p&&p.id).map(p=>[p.id,p]));
+  let out=(prima||[]).filter(p=>p&&!via.has(p.id)).map(p=>per.get(p.id)||p);
+  const ci=new Set(out.map(p=>p.id)); for(const p of per.values()) if(!ci.has(p.id)&&!via.has(p.id)) out.push(p);
+  if(ordine?.length){ const pos=new Map(ordine.map((id,i)=>[id,i])); out=out.map((p,i)=>[p,pos.get(p.id)??1e6+i]).sort((a,b)=>a[1]-b[1]).map(x=>x[0]); }
+  return out;
+}
 function applicaLocale(b){
   const d=server.data=server.data||{...VUOTO};
   for(const [k,v] of Object.entries(b.changes||{})) d[k]=v;
+  if(b.piante) d.plants=unisciPiante(d.plants,b.piante);
   const via=new Set(b.remove||[]); d.eventi=(d.eventi||[]).filter(e=>!via.has(e.id));
   for(const e of b.add||[]) if(!d.eventi.some(x=>x.id===e.id)) d.eventi.push({...e,fonte:'app'});
 }
@@ -1186,25 +1248,54 @@ function allinea(){
 let coda=Promise.resolve(), inAttesa=LSjson('pending'), attesaT=null, inInvio=[];   // inInvio: modifiche già partite, risposta non ancora arrivata
 let conCopia=false;
 if(server&&server.data&&typeof server.data==='object'){ try{ if(inAttesa) applicaLocale(inAttesa); dalServer(); applicato=server.rev??null; conCopia=true; }catch(e){ conCopia=false; } }
-const unisci=(a,b)=>a?{changes:{...a.changes,...b.changes},add:[...a.add,...b.add],remove:[...a.remove,...b.remove]}:b;
+// Due gruppi di modifiche in attesa diventano uno. Un evento aggiunto e poi tolto prima di partire (💧 e subito Annulla,
+// senza rete) non parte più: prima il server toglieva prima e aggiungeva dopo, e l'innaffiatura annullata ricompariva.
+// Il «togli» resta (se nel frattempo era arrivato, il server lo toglie; altrimenti non fa niente).
+function unisci(a,b){
+  if(!a) return pulisci(b);
+  const pa=a.piante, pb=b.piante;
+  let piante=pa||pb||null;
+  if(pa&&pb){ const per=new Map([...(pa.set||[]),...(pb.set||[])].map(p=>[p.id,p])), del=[...new Set([...(pa.del||[]),...(pb.del||[])])];
+    for(const id of del) per.delete(id); piante={set:[...per.values()], del, ordine:pb.ordine||pa.ordine}; }
+  const out={changes:{...a.changes,...b.changes},add:[...a.add,...b.add],remove:[...a.remove,...b.remove]};
+  // un elenco intero (app vecchia o pending vecchio) dopo modifiche pianta per pianta: vale l'elenco più recente
+  if(b.changes&&'plants' in b.changes) piante=null; else if(piante&&out.changes&&'plants' in out.changes){ out.changes.plants=unisciPiante(out.changes.plants,piante); piante=null; }
+  if(piante) out.piante=piante;
+  return pulisci(out);
+}
+function pulisci(x){ if(!x) return x; const via=new Set(x.remove||[]); return {...x, add:(x.add||[]).filter(e=>!via.has(e.id))}; }
+function contaInAttesa(){ let n=0; for(const b of [...inInvio, inAttesa]) if(b){ n+=Object.keys(b.changes||{}).length+(b.add||[]).length+(b.remove||[]).length+(b.piante?(b.piante.set||[]).length+(b.piante.del||[]).length:0); } return n; }
 function invia(diff){
-  inAttesa=unisci(inAttesa,diff); LSset('pending',JSON.stringify(inAttesa));
+  inAttesa=unisci(inAttesa,diff);
+  if(!LSset('pending',JSON.stringify(inAttesa))) stato('Memoria del telefono piena: le ultime modifiche non sono salvate sul telefono. Restano finché l\'app è aperta: riapri la rete prima di chiuderla.',true);
+  avvisaRete();
   clearTimeout(attesaT); attesaT=setTimeout(svuota,600);
 }
 function svuota(keepalive){
   const body=inAttesa; inAttesa=null; if(!body) return coda;
   inInvio.push(body); const arrivata=()=>{ inInvio=inInvio.filter(b=>b!==body); };
-  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ arrivata(); server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); allinea(); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
-    .catch(e=>{ arrivata(); inAttesa=unisci(body,inAttesa||{changes:{},add:[],remove:[]}); LSset('pending',JSON.stringify(inAttesa));
-      stato(navigator.onLine===false?'Sei offline: le modifiche restano sul telefono e partono appena torna la rete.':'Non salvato sul server ('+e.message+'): riprovo tra poco.', navigator.onLine!==false);
+  coda=coda.then(()=>api('POST',body,null,keepalive)).then(j=>{ arrivata(); avvisaRete(); window.nascondiNota?.('Non salvato'); server=j; LSset('cache',JSON.stringify(j)); if(!inAttesa) LSset('pending',null); dalServer(); emit('eventi_bot'); emit('piano'); allinea(); stato('Salvato alle '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+': Claude e Telegram vedono già le modifiche.'); })
+    .catch(e=>{ arrivata(); inAttesa=unisci(body,inAttesa||{changes:{},add:[],remove:[]}); LSset('pending',JSON.stringify(inAttesa)); avvisaRete();
+      // senza rete (anche quando il telefono crede di averla) non è un errore: le modifiche aspettano sul telefono
+      if(e.offline||navigator.onLine===false) stato('Sei offline: le modifiche restano sul telefono e partono appena torna la rete.');
+      else stato('Non salvato sul server ('+e.message+'): riprovo tra poco.', true);
       clearTimeout(attesaT); attesaT=setTimeout(svuota,30000); });
   return coda;
 }
 function diffGiardino(nuovo){
   const prima=base||docs.giardino||{}, changes={};
-  for(const f of ['location','plants','impostazioni','vacanza','orti']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
+  for(const f of ['location','impostazioni','vacanza','orti']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
+  // piante: solo quelle aggiunte, cambiate o tolte, e l'ordine (prima l'intero elenco, che cancellava quelle aggiunte
+  // da Claude o da un altro telefono mentre questo era senza rete)
+  let piante=null;
+  const pp=new Map((prima.plants||[]).map(p=>[p.id,JSON.stringify(p)])), np=nuovo.plants||[];
+  const set=np.filter(p=>pp.get(p.id)!==JSON.stringify(p)), del=[...pp.keys()].filter(id=>!np.some(p=>p.id===id));
+  const ordine=np.map(p=>p.id), ordineCambiato=ordine.join('|')!==(prima.plants||[]).map(p=>p.id).join('|');
+  if(set.length||del.length||ordineCambiato) piante={set,del,ordine};
   const pr=new Map((prima.eventi_app||[]).map(e=>[e.id,e])), nu=new Map((nuovo.eventi_app||[]).map(e=>[e.id,e]));
-  return {changes, add:[...nu.values()].filter(e=>!pr.has(e.id)), remove:[...pr.keys()].filter(id=>!nu.has(id))};
+  const d={changes, add:[...nu.values()].filter(e=>!pr.has(e.id)), remove:[...pr.keys()].filter(id=>!nu.has(id))};
+  if(piante) d.piante=piante;
+  return d;
 }
 
 /* ---------------- meteo ---------------- */
@@ -1277,7 +1368,7 @@ function doc(path){
       if(n==='giardino'){
         const prima=posizione(), d=diffGiardino(data);
         docs.giardino=base={...data};
-        if(Object.keys(d.changes).length||d.add.length||d.remove.length) invia(d);
+        if(Object.keys(d.changes).length||d.add.length||d.remove.length||d.piante) invia(d);
         const l=posizione(); if(l&&(!prima||prima.lat!==l.lat||prima.lon!==l.lon)) caricaMeteo(true).then(()=>emit('meteo_bot'));
       } else if(n==='meteo'){ docs.meteo=data&&data.days?data:null; invia({changes:{meteo_manual:docs.meteo},add:[],remove:[]}); }
       else if(n==='piano'){ docs.piano=data&&data.data?data:null; invia({changes:{piano_claude:docs.piano},add:[],remove:[]}); }
@@ -1297,12 +1388,13 @@ async function dopoScarica(dati, forza){
   const met=await caricaMeteo(!!forza);
   // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
   const lp=posizione();
-  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata((lp&&conStorico(LSjson(kPos('meteo',lp.lat,lp.lon))))||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
+  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify([docs.meteo_bot.misurata||null,docs.meteo_bot.pesi_pioggia||null]); docs.meteo_bot=conMisurata((lp&&conStorico(LSjson(kPos('meteo',lp.lat,lp.lon))))||docs.meteo_bot); if(JSON.stringify([docs.meteo_bot.misurata||null,docs.meteo_bot.pesi_pioggia||null])!==prima) emit('meteo_bot'); }
   if(met||forza) emit('meteo_bot');
   if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();
 }
 window.GiardinoNet={
+  rete:()=>({offline, inAttesa:contaInAttesa()}),
   codice:()=>code,
   usaCodice(c){ c=String(c||'').trim().toUpperCase(); if(!/^[A-Z0-9-]{16,64}$/.test(c)) return false; LSset('code',c); LSset('cache',null); location.reload(); return true; },
   mcp:(action,extra)=>action?api('POST',{action,...(extra||{})},'mcp'):api('GET',null,'mcp'),
@@ -1326,7 +1418,9 @@ window.GiardinoNet={
 function salvaPrimaDiUscire(){ Promise.resolve(window.salvaSubito?.()).then(()=>{ if(inAttesa&&navigator.onLine!==false) svuota(true); }).catch(()=>{}); }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') salvaPrimaDiUscire(); else aggiorna(false).catch(()=>{}); });
 setInterval(()=>{ if(document.visibilityState==='visible') aggiorna(false).catch(()=>{}); },300000);
-window.addEventListener('online',()=>{ if(inAttesa) svuota(); });
+// torna la rete: partono le modifiche in attesa e arrivano le novità (prima solo le modifiche: le novità al prossimo controllo)
+window.addEventListener('online',()=>{ aggiorna(false).catch(()=>{}); });
+window.addEventListener('offline',()=>segnaRete(true));
 window.addEventListener('pagehide',salvaPrimaDiUscire);
 // versione nuova: il service worker apre subito la copia salvata e intanto scarica quella del sito; se è cambiata lo dice qui.
 // Appena aperta (meno di 3 secondi, niente tocchi) l'app si ricarica subito; altrimenti la prossima volta che ci torni,
@@ -1613,8 +1707,9 @@ const zonaDi = p => String(p?.zona||'').trim().replace(/\s+/g,' ');
 const ORTO_PRINCIPALE = 'p';
 function orti(data){
   const o=Array.isArray(data?.orti)?data.orti.filter(x=>x&&typeof x==='object'&&x.id):[], p=o.find(x=>x.id==='p');
-  return [{id:'p', nome:String(p?.nome||'').trim(), location:data?.location||null, pioggia_misurata:data?.pioggia_misurata||null},
-    ...o.filter(x=>x.id!=='p').map(x=>({id:String(x.id), nome:String(x.nome||'').trim(), location:x.location||null, pioggia_misurata:data?.pioggia_orti?.[x.id]||null}))];
+  const pp=data?.pesi_pioggia||{};
+  return [{id:'p', nome:String(p?.nome||'').trim(), location:data?.location||null, pioggia_misurata:data?.pioggia_misurata||null, pesi_pioggia:pp.p||null},
+    ...o.filter(x=>x.id!=='p').map(x=>({id:String(x.id), nome:String(x.nome||'').trim(), location:x.location||null, pioggia_misurata:data?.pioggia_orti?.[x.id]||null, pesi_pioggia:pp[x.id]||null}))];
 }
 const nomeOrto = o => o?.nome || o?.location?.name || 'Giardino';
 // orto di una pianta: quello scritto, se esiste ancora; altrimenti il principale
@@ -1622,7 +1717,7 @@ function ortoDi(p, data){ const id=p?.orto; return id && id!=='p' && orti(data).
 function vistaOrto(data, id='p'){
   const tutti=orti(data), o=tutti.find(x=>x.id===id)||tutti[0], ids=new Set(tutti.map(x=>x.id));
   const plants=(data?.plants||[]).filter(p=>(p?.orto&&ids.has(p.orto)?p.orto:'p')===o.id), pid=new Set(plants.map(p=>p.id));
-  return {...data, location:o.location, pioggia_misurata:o.pioggia_misurata, plants, eventi:(data?.eventi||[]).filter(e=>!e?.plantId||pid.has(e.plantId)), orto:o, piuOrti:tutti.length>1};
+  return {...data, location:o.location, pioggia_misurata:o.pioggia_misurata, pesi_pioggia_orto:o.pesi_pioggia, plants, eventi:(data?.eventi||[]).filter(e=>!e?.plantId||pid.has(e.plantId)), orto:o, piuOrti:tutti.length>1};
 }
 // le viste degli orti con posizione e piante (quelle su cui bot e connettore lavorano)
 const vistePiene = data => orti(data).map(o=>vistaOrto(data,o.id)).filter(v=>v.location&&v.plants.length);
@@ -1997,6 +2092,21 @@ function esitoVerifica(risposta, acqua, soglia, acquaSecco){
   if(risposta==='umido' && acqua<soglia) return 'meno';
   return 'ok';
 }
+/* Risposte d'accordo col calcolo, giudicate quando hai risposto (non rifatte con la correzione di oggi, che darebbe un
+   risultato migliore del vero): controlli col dito («ok» = d'accordo), «Era umida» il giorno in cui il piano diceva di
+   innaffiare (non d'accordo) ed «Era secca» quando diceva di controllare (d'accordo). Il dito vede solo errori grandi:
+   «d'accordo» non vuol dire preciso al litro. */
+function precisione(eventi, pid, oggi, giorni=90){
+  const giudizio=e=>e.tipo==='verifica'&&['ok','piu','meno'].includes(e.valutazione)?e.valutazione==='ok'
+    : e.tipo==='umido'&&e.previsto==='innaffia'?false : e.tipo==='secco'&&e.previsto==='controlla'?true : null;
+  const v=eventiValidi(eventi,pid).filter(e=>giorniTra(e.data,oggi)>=0&&giorniTra(e.data,oggi)<=giorni).map(e=>({d:e.data,g:giudizio(e)})).filter(x=>x.g!=null).sort((a,b)=>a.d<b.d?-1:1);
+  return {giusti:v.filter(x=>x.g).length, totale:v.length, ultimi:v.slice(-5).map(x=>x.g)};
+}
+function testoPrecisione(pr){
+  if(!pr?.totale) return 'ancora nessun controllo col dito';
+  if(pr.totale<3) return pr.giusti+' su '+pr.totale+' (ancora pochi)';
+  return pr.giusti+' su '+pr.totale+' ('+Math.round(pr.giusti/pr.totale*100)+'%)';
+}
 const TESTO_VERIFICA = {ok:'Il calcolo era giusto: non cambia niente.', piu:'Asciuga prima del previsto: da ora conto che beve di più.', meno:'Il calcolo la dava già asciutta: da ora conto che beve di meno.'};
 // testo dopo «asciutta»: è ora di innaffiare, è normale per la pianta (il calcolo non cambia) o asciuga troppo presto
 // ora = dal piano (seccoOra): con «asciutta» oggi si innaffia
@@ -2218,6 +2328,25 @@ function germinazione(p, k, oggi, lat){
   return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,k.faseEta))/Math.max(0.2, k.faseRitmo||1)));   // giorni che restano
 }
 const evapSuperficie = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra) : (d?.et0||0)*fattoreVaso(k,d);
+// Prima e ultima data plausibile per la prossima innaffiatura: consumo ± u, applicato anche all'acqua già consumata
+// dall'ultima innaffiatura; all'aperto la pioggia del modello più asciutto e di quello più bagnato. Oltre l'ultimo
+// giorno di previsioni: «a» = null (più avanti).
+// ±45% fisso: in simulazione (piante che bevono fino al 50% in più o in meno del calcolo) contiene il giorno vero circa 7
+// volte su 10. Non si stringe con i controlli: il dito vede solo errori grandi, e restringerlo faceva sbagliare più spesso.
+function incertezza(){ return 0.45; }
+function finestraAcqua(p,k,b,dep0,fut,oggi){
+  const u=incertezza(b.n), fatte=b.fatte;
+  const corri=(s,piove)=>{ let dep=Math.min(k.tawL,dep0*s);
+    for(const d of fut){
+      if(fatte.has(d.date)&&d.date!==oggi){ dep=0; continue; }
+      const r=Array.isArray(d.rain_modelli)&&d.rain_modelli.length&&d.date>=oggi?(piove>0?Math.max(...d.rain_modelli):Math.min(...d.rain_modelli)):pioggiaAttesa(d).rain;
+      dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)*s-pioggiaL(p,k,{...d,rain:r})));
+      if(dep>=k.rawL) return d.date;
+    }
+    return null; };
+  const da=corri(1+u,-1), a=corri(1-u,1);
+  return da?{da, a, u:+u.toFixed(2)}:null;
+}
 function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
   const out={avvisi:[], piante:[]}, chiusiBagnati=new Set();
   if(!fut.length) return out;
@@ -2233,6 +2362,7 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
     if(oss[oggi]==='umido') dep=Math.min(dep,0.6*k.rawL); else if(oss[oggi]==='secco' && !fatte.has(oggi)) dep=ancoraSecco(dep,k);
     if(fatte.has(oggi)) dep=0;
     dep=Math.max(0, dep-(presa[oggi]||0));
+    const statoMattina=dep;
     // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
     let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
@@ -2280,10 +2410,16 @@ function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, su
       giorni.push(g); dep=end;
     });
     const prima=giorni.find(g=>g.azione==='innaffia'), ctrl=giorni.find(g=>g.azione==='controlla');
-    const valutazione=prima ? 'Prossima innaffiatura: '+(prima.data===oggi?'oggi':giornoBreve(prima.data))+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'
+    // Quando, più o meno: il calcolo può sbagliare il consumo (meno, dopo controlli col dito coerenti) e, all'aperto, la
+    // pioggia (i modelli non sono d'accordo). Solo da mostrare: le azioni di oggi e i promemoria usano il giorno centrale.
+    let fin=prima&&prima.data!==oggi&&!/germinazione/i.test(prima.motivo||'')?finestraAcqua(p,k,b,statoMattina,fut,oggi):null;
+    if(fin){ fin={...fin, da:fin.da<prima.data?fin.da:prima.data, a:fin.a&&fin.a<prima.data?prima.data:fin.a}; }   // il giorno del calcolo sta sempre dentro
+    const quando=d=>d===oggi?'oggi':giornoBreve(d);
+    const tra=!fin||(fin.da===prima.data&&fin.a===prima.data)?'':fin.a?' (tra '+quando(fin.da)+' e '+quando(fin.a)+')':' (da '+quando(fin.da)+' in poi)';
+    const valutazione=prima ? 'Prossima innaffiatura: '+quando(prima.data)+tra+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'
       : ctrl ? 'Nei prossimi giorni basta la riserva; '+giornoBreve(ctrl.data)+' tocca il terriccio.' : 'Nei prossimi '+giorni.length+' giorni non serve acqua.';
     out.piante.push({id:p.id, acqua, soglia, valutazione, fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:consigliPianta(p),
-      calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da, acquaSecco:+Math.max(0,1-Math.min(k.rawL,k.dSecco)/k.tawL).toFixed(2), seccoOra});
+      finestra:fin||null, calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da, acquaSecco:+Math.max(0,1-Math.min(k.rawL,k.dSecco)/k.tawL).toFixed(2), seccoOra});
   }
   const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax)), gMin=fut.find(d=>d.tmin===minT)?.date;
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
@@ -2554,6 +2690,63 @@ function urlMeteo(lat, lon){
 const MODELLI = ['italia_meteo_arpae_icon_2i','icon_seamless','meteofrance_seamless','ecmwf_ifs','ukmo_seamless','gfs_seamless'];
 const MODELLI_PARAMS='precipitation_sum,temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration';
 const PESI = {italia_meteo_arpae_icon_2i:[2,2,1.5,1], icon_seamless:[1.5,1.5,1.25,1.25], meteofrance_seamless:[1.5,1.5,1,1], ecmwf_ifs:[1.5,1.5,1.5,2], ukmo_seamless:[1,1,1,1], gfs_seamless:[0.75,0.75,0.75,1]};
+/* Pesi della pioggia imparati: ogni giorno il server salva la pioggia prevista da ogni modello per oggi e i 3 giorni
+   dopo (log = {giorno: {anticipo: {modello: mm}}}) e la confronta con quella misurata dalla stazione ARPAE (misurati =
+   {giorno: mm}). Per ogni anticipo, un modello che sbaglia meno della media pesa di più (al massimo il doppio, al minimo
+   la metà del peso di partenza), con prudenza finché i giorni di pioggia sono pochi. Si usano solo se, sui giorni più
+   recenti tenuti da parte, sbagliano meno dei pesi di partenza. Servono almeno 8 giorni con pioggia (prevista o caduta). */
+const PIOGGIA_MIN_GIORNI = 8;
+function pesiPioggia(log, misurati){
+  const out={pronti:false, giorni:0, errori:{}, pesi:null};
+  const giorni=Object.keys(log||{}).filter(d=>misurati?.[d]!=null).sort();
+  // giorno di pioggia: caduta (almeno 1 mm) o prevista da almeno metà dei modelli; i giorni asciutti per tutti non dicono
+  // chi sbaglia meno
+  const bagnato=d=>(+misurati[d]>=1)||Object.values(log[d]||{}).some(x=>{ const v=Object.values(x||{}).filter(y=>y!=null); return v.length&&v.filter(y=>+y>=1).length*2>=v.length; });
+  const umidi=giorni.filter(bagnato); out.giorni=umidi.length;
+  if(umidi.length<PIOGGIA_MIN_GIORNI) return out;
+  const pesi={}, conta=(dd,L,w)=>{ let e=0,n=0; for(const d of dd){ const x=log[d]?.[L]; if(!x) continue; let s=0,t=0; for(const [m,v] of Object.entries(x)) if(v!=null&&isFinite(v)){ const p=(w?.[m]??PESI[m]?.[L]??1); s+=p*v; t+=p; } if(t){ e+=Math.abs(s/t-(+misurati[d])); n++; } } return n?e/n:null; };
+  const taglio=Math.floor(umidi.length*2/3), stima=umidi.slice(0,taglio), prova=umidi.slice(taglio);
+  let meglio=0, provati=0;
+  for(const L of ['0','1','2','3']){
+    const err={}, n={};
+    for(const d of stima){ const x=log[d]?.[L]; if(!x) continue; for(const [m,v] of Object.entries(x)) if(v!=null&&isFinite(v)){ err[m]=(err[m]||0)+Math.abs(v-(+misurati[d])); n[m]=(n[m]||0)+1; } }
+    const mm=Object.keys(err).filter(m=>n[m]>=3); if(mm.length<2) continue;
+    const mae=Object.fromEntries(mm.map(m=>[m,err[m]/n[m]])), media=mm.reduce((a,m)=>a+mae[m],0)/mm.length;
+    const w={}; for(const m of mm){ const k=Math.max(0.5,Math.min(2,media/Math.max(0.3,mae[m]))), fid=n[m]/(n[m]+10); w[m]=+((PESI[m]?.[+L]??1)*(1+(k-1)*fid)).toFixed(3); }
+    const a=conta(prova,L,null), b=conta(prova,L,Object.fromEntries(mm.map(m=>[m,w[m]])));
+    if(a!=null&&b!=null){ provati++; if(b<=a+1e-9){ pesi[L]=w; meglio++; } }
+    if(L==='1') out.errori=Object.fromEntries(mm.map(m=>[m,+mae[m].toFixed(2)]));
+  }
+  if(meglio&&Object.keys(pesi).length){ out.pronti=true; out.pesi=pesi; }
+  out.provati=provati;
+  return out;
+}
+// La pioggia di ogni giorno ricalcolata dalle piogge dei singoli modelli con i pesi imparati (sempre dalle stesse
+// piogge dei modelli: rifarlo due volte dà lo stesso risultato). La probabilità resta quella di prima.
+function ripesaPioggia(days, pp, oggi){
+  if(!pp?.pronti||!pp.pesi||!Array.isArray(days)) return days;
+  return days.map(d=>{
+    if(!d?.ensemble||d.date<oggi||!Array.isArray(d.modelli)||!Array.isArray(d.rain_modelli)) return d;
+    const L=String(Math.min(3,Math.max(0,giorniTra(oggi,d.date)))), w=pp.pesi[L]; if(!w) return d;
+    let s=0,t=0; d.modelli.forEach((m,i)=>{ const v=d.rain_modelli[i]; if(v==null||!isFinite(v)) return; const p=w[m]??PESI[m]?.[+L]??1; s+=p*v; t+=p; });
+    if(!t) return d;
+    return {...d, rain:+(s/t).toFixed(1), rain_pesi_base:d.rain_pesi_base??d.rain, ripesata:true};
+  });
+}
+// registro delle previsioni del giorno (per pesiPioggia): {giorno: {anticipo: {modello: mm}}}; non sovrascrive mai un
+// (giorno, anticipo) già salvato, così resta la previsione della prima corsa del giorno e non quella della sera
+function registraPrevisioni(log, days, oggi, tieni=60){
+  const out={...(log||{})};
+  for(const d of days||[]){
+    if(!d?.ensemble||d.date<oggi||!Array.isArray(d.modelli)) continue;
+    const L=giorniTra(oggi,d.date); if(L>3) continue;
+    const g=out[d.date]={...(out[d.date]||{})};
+    if(g[L]) continue;
+    g[L]=Object.fromEntries(d.modelli.map((m,i)=>[m,d.rain_modelli?.[i]]).filter(([,v])=>v!=null&&isFinite(v)));
+  }
+  const lim=addDays(oggi,-tieni); for(const k of Object.keys(out)) if(k<lim) delete out[k];
+  return out;
+}
 function ensembleGiorni(days, jm, oggi){
   const d=jm?.daily; if(!Array.isArray(d?.time) || !Array.isArray(days)) return days;
   const idx=new Map(d.time.map((t,i)=>[t,i])), ok=x=>x!=null && isFinite(x);
@@ -2742,6 +2935,17 @@ function scrittureInSospeso(){ return Object.values(writers).some(w=>w.t); }
 const saveMain = () => persist('giardino', ()=>({...pieno(), updatedAt:new Date().toISOString()}));
 const saveMeteo = () => persist('meteo', ()=>W.manual||{});
 const savePiano = () => persist('piano', ()=>P.claude||{});
+// toglie l'avviso in alto se è quello indicato (es. «Non salvato…» quando poi il salvataggio riesce)
+window.nascondiNota=inizio=>{ const n=$('#saveNote'); if(n && !n.hidden && n.textContent.startsWith(inizio)) n.hidden=true; };
+function renderRete(r){
+  const el=$('#rete'); if(!el) return;
+  r=r||window.GiardinoNet?.rete?.()||{offline:false,inAttesa:0};
+  el.hidden=!r.offline;
+  if(r.offline) el.innerHTML='<span>'+esc('Senza rete'+(r.inAttesa?' · '+(r.inAttesa===1?'1 modifica da inviare':r.inAttesa+' modifiche da inviare'):' · dati sul telefono'))+'</span>';
+}
+const senzaRete=()=>!!window.GiardinoNet?.rete?.().offline;
+let reteDi=null;
+window.addEventListener('giardino-rete',e=>{ renderRete(e.detail); if(e.detail.offline!==reteDi){ reteDi=e.detail.offline; if(ready) renderPresto(); } });
 function showNote(kind,msg){ const n=$('#saveNote'); n.className='alert '+(kind==='err'?'err':'info'); n.innerHTML=(kind==='err'?ICON.warn:ICON.info)+'<div>'+esc(msg)+'</div>'; n.hidden=false; }
 
 function applyMain(d){
@@ -2795,7 +2999,7 @@ async function boot(){
     }catch(e){}
     showNote('info','Salvataggio solo su questo dispositivo: il server non risponde.');
   }
-  ready=true; renderAll(); entra($('#view-'+vistaAttiva())); entra($('#wxStrip')); luce();
+  ready=true; renderRete(); renderAll(); entra($('#view-'+vistaAttiva())); entra($('#wxStrip')); luce();
 }
 /* ================= Eventi (diario) ================= */
 // Eventi dell'app + quelli di Telegram/Claude, uniti una volta sola finché non cambiano, e divisi per pianta.
@@ -2845,11 +3049,15 @@ const pastDays = () => { const w=activeWeather(), wb=W.bot;
 const ctx = () => ({oggi:today(), lat:S.location?.lat, eventi:allEvents()});
 // il piano si ricalcola solo se cambia qualcosa che conta (prima: a ogni ridisegno, più volte per ridisegno)
 let pianoMemo={k:'',v:null};
+// nella chiave della memoria la scheda di Claude conta solo per quello che il calcolo ne legge (raccoltaDi: specie, semina e
+// mesi di raccolta); il resto (descrizione, consigli…) è testo lungo che rendeva la chiave grande da scrivere a ogni domanda
+// (16 piante con schede: ~13 µs invece di ~64 per chiave)
+const chiavePiante=()=>JSON.stringify(S.plants.map(p=>{ const v=p?.scheda; return v&&typeof v==='object'?{...p,scheda:[v.specie,v.data_semina,(v.calendario||[]).filter(x=>x&&x.raccolta).map(x=>x.mese)]}:p; }));
 function localPlan(){
   const fut=futDays(); if(!fut.length||!S.plants.length) return null;
   const w=activeWeather(), ev=S.eventi_app, suolo=w?.source==='open-meteo'?w.suolo??null:null;
   const k=[today(), w?.updatedAt, JSON.stringify(fut), w?.archivio?Object.keys(w.archivio).length:0, JSON.stringify(w?.misurata?.giorni||null), suolo, S.location?.lat,
-    JSON.stringify(S.plants), ev.length, ev[0]?.id, ev.at(-1)?.id, EB.eventi.length, EB.aggiornato, JSON.stringify(S.vacanza||null)].join('|');
+    chiavePiante(), ev.length, ev[0]?.id, ev.at(-1)?.id, EB.eventi.length, EB.aggiornato, JSON.stringify(S.vacanza||null)].join('|');
   if(pianoMemo.k===k) return pianoMemo.v;
   const pl=pianoLocale({piante:S.plants, past:pastDays(), fut, eventi:allEvents(), oggi:today(), lat:S.location?.lat, vacanza:S.vacanza, suolo});
   pianoMemo={k, v:pl}; return pl;
@@ -2944,10 +3152,16 @@ function renderHeader(){
 function renderWeather(){
   const t=today(), days=wxDays().filter(d=>d.date>=t).slice(0,7), w=activeWeather();
   $('#wxBox').hidden=!S.location;
+  if(!days.length && w && senzaRete()){ setHTML($('#wxStrip'),''); $('#wxNote').hidden=false; $('#wxNote').textContent='Senza rete: le ultime previsioni salvate ('+dataBreve(isoDate(new Date(w.updatedAt)))+') sono finite. Tornano appena c\'è connessione.'; return; }
   if(!days.length){ setHTML($('#wxStrip'),Array.from({length:7},()=>'<div class="wx-day sk" aria-hidden="true"><span></span><span class="sk-c"></span><span></span><span class="sk-s"></span></div>').join('')); $('#wxNote').hidden=false; $('#wxNote').textContent=ready?'Meteo in arrivo…':'Caricamento…'; return; }
   setHTML($('#wxStrip'),days.map(d=>`<div class="wx-day${d.date===t?' today':''}" title="${esc(d.cond||'')}" role="button" tabindex="0" data-wxd="${esc(d.date)}" aria-label="${esc(dayLabel(d.date)+': '+(d.cond||'')+', dettagli')}"><span class="d">${esc(dayShort(d.date))}</span>${wxIcon(d.cond)}<span class="t">${d.tmax!=null?fmt(d.tmax,0)+'°':'–'}</span><span class="tm">${d.tmin!=null?fmt(d.tmin,0)+'°':''}</span><span class="r">${(d.rain||0)>=0.2?fmt(d.rain)+' mm':''}</span></div>`).join(''));
-  const vecchio=!fresco(w), riserva=/MET/.test(w?.fonte||'');
-  $('#wxNote').hidden=!vecchio&&!riserva; if(vecchio) $('#wxNote').textContent='Previsioni non aggiornate: il piano usa gli ultimi dati.';
+  const vecchio=!fresco(w), riserva=/MET/.test(w?.fonte||''), ore=w?.updatedAt?(Date.now()-Date.parse(w.updatedAt))/36e5:0;
+  // previsioni scaricate da più di 6 ore (senza rete non si aggiornano): si dice di quando sono
+  // solo senza rete: online le previsioni vecchie si vedono un attimo all'apertura e subito arrivano le nuove
+  const datate=!vecchio&&ore>6&&senzaRete(), quando=w?.updatedAt?(isoDate(new Date(w.updatedAt))===t?'delle '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'del '+dataBreve(isoDate(new Date(w.updatedAt)))):'';
+  $('#wxNote').hidden=!vecchio&&!riserva&&!datate;
+  if(vecchio) $('#wxNote').textContent='Previsioni non aggiornate: il piano usa gli ultimi dati.';
+  else if(datate) $('#wxNote').textContent='Previsioni '+quando+': senza rete non si aggiornano. Il piano usa queste.';
   else if(riserva) $('#wxNote').textContent='Open-Meteo non risponde: previsioni di riserva da MET Norway (senza probabilità di pioggia).';
 }
 function renderAlerts(AP){
@@ -2993,8 +3207,8 @@ function renderOggi(AP){
   if(!ready){ head.textContent='Caricamento…'; sub.textContent=''; setHTML(list,''); $('#weekBox').hidden=true; renderConcime(); return; }
   if(!S.plants.length){ $('#weekBox').hidden=true; renderConcime(); return; }
   if(!AP){
-    head.textContent=S.location?'Aspetto il meteo':'Manca il comune';
-    sub.textContent=S.location?'Il piano compare appena arrivano le previsioni.':'Serve per il meteo: impostalo qui sopra o in Impostazioni.';
+    head.textContent=S.location?(senzaRete()?'Senza rete e senza previsioni':'Aspetto il meteo'):'Manca il comune';
+    sub.textContent=S.location?(senzaRete()?'Il piano torna appena c\'è connessione. Intanto puoi segnare innaffiature e controlli: partono dopo.':'Il piano compare appena arrivano le previsioni.'):'Serve per il meteo: impostalo qui sopra o in Impostazioni.';
     setHTML(list,''); $('#weekBox').hidden=true; renderConcime(); return;
   }
   const items=piante().map(p=>{ const pp=AP.data.piante.find(x=>x.id===p.id); return {p, pp, g:pp?.giorni.find(x=>x.data===t), st:statoOggi(p)}; });
@@ -3143,7 +3357,7 @@ function apriPioggia(pid){
   pgImposta({d:t,t:prima.getDate()===ora.getDate()?oraHHMM(prima):'00:00'}, {d:t,t:oraHHMM(ora)});
   apriFinestra($('#pioggiaSheet'),$('#pioggiaBg')); aggiornaPioggia();
   window.GiardinoNet?.pioggia?.().then(m=>{ if(pgPianta!==pid) return; if(m?.disponibile) pgMisure=m; else pgMotivo=m?.motivo||'Misure non disponibili.'; aggiornaPioggia(); })
-    .catch(e=>{ if(pgPianta!==pid) return; pgMotivo='Misure ARPAE non raggiungibili ('+e.message+'): riprova tra poco.'; aggiornaPioggia(); });
+    .catch(e=>{ if(pgPianta!==pid) return; pgMotivo=e?.offline?'Senza rete: servono le misure della stazione ARPAE. Riprova quando torna la connessione.':'Misure ARPAE non raggiungibili ('+e.message+'): riprova tra poco.'; aggiornaPioggia(); });
 }
 // Dettaglio di un giorno del meteo: numeri del giorno, cosa vogliono dire e cosa fare alle piante quel giorno
 function apriMeteo(data){
@@ -3345,6 +3559,7 @@ function renderPiante(AP){
     if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
+    facts.push(['Risposte d\'accordo col calcolo',testoPrecisione(precisione(eventsOf(p.id),p.id,today()))]);
     if(pp && 'dal' in pp) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
     const rc=daRaccogliere(p)?totaleRaccolto(eventsOf(p.id),p.id,today().slice(0,4)+'-01-01'):null;
     if(rc?.volte) facts.push(['Raccolto nel '+today().slice(0,4),testoRaccolto(rc)+' ('+rc.volte+(rc.volte===1?' volta':' volte')+', l\'ultima '+dataBreve(rc.ultimo)+')']);
@@ -3367,12 +3582,22 @@ function renderPiante(AP){
 }
 function renderMeteoSet(){
   const w=activeWeather();
-  $('#wxVal').textContent=!w?'nessun dato':w.source==='open-meteo'?(/MET/.test(w.fonte||'')?'MET Norway (riserva)':'Open-Meteo')+(w.updatedAt?' · '+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):''):'corretto a mano';
-  $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.misurata?'; pioggia dei giorni passati misurata dalla stazione ARPAE di '+w.misurata.stazione+' ('+fmt(w.misurata.km,1)+' km)':'')+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.';
+  $('#wxVal').textContent=!w?'nessun dato':w.source==='open-meteo'?(/MET/.test(w.fonte||'')?'MET Norway (riserva)':'Open-Meteo')+(w.updatedAt?' · '+(isoDate(new Date(w.updatedAt))===today()?'':dataBreve(isoDate(new Date(w.updatedAt)))+' ')+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):''):'corretto a mano';
+  $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.misurata?'; pioggia dei giorni passati misurata dalla stazione ARPAE di '+w.misurata.stazione+' ('+fmt(w.misurata.km,1)+' km)':'')+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.'+testoPesi(w);
   const ed=$('#wxEdit'); if(ed.contains(document.activeElement)) return;
   const map={}; wxDays().forEach(d=>map[d.date]=d);
   setHTML(ed,'<div class="wxe-h"><span></span><span>Max °C</span><span>Min °C</span><span>Pioggia mm</span></div>'+next7().map(dt=>{ const d=map[dt]||{}, l=esc(dayLabel(dt));
     return `<div class="wxe-r" data-date="${dt}"><span class="d">${l}</span><input type="number" step="any" data-f="tmax" value="${d.tmax??''}" aria-label="Massima ${l}"><input type="number" step="any" data-f="tmin" value="${d.tmin??''}" aria-label="Minima ${l}"><input type="text" inputmode="decimal" data-f="rain" value="${esc(numIn(d.rain))}" aria-label="Pioggia ${l}"></div>`; }).join(''));
+}
+// pioggia prevista contro misurata (stazione ARPAE): a che punto è e quali modelli sbagliano meno qui
+const NOMI_MODELLI={italia_meteo_arpae_icon_2i:'ICON-2I',icon_seamless:'ICON',meteofrance_seamless:'Météo-France',ecmwf_ifs:'ECMWF',ukmo_seamless:'UK Met Office',gfs_seamless:'GFS'};
+function testoPesi(w){
+  if(!w?.misurata) return '';
+  const pp=w.pesi_pioggia;
+  if(!pp) return ' Confronto tra pioggia prevista e misurata: comincia da domani.';
+  if(!pp.pronti) return ' Confronto tra pioggia prevista e misurata in corso: '+pp.giorni+' giorni di pioggia su '+PIOGGIA_MIN_GIORNI+' che servono per scegliere i modelli più giusti qui.';
+  const err=Object.entries(pp.errori||{}).sort((a,b)=>a[1]-b[1]).slice(0,3).map(([m,e])=>(NOMI_MODELLI[m]||m)+' ±'+fmt(e,1)+' mm');
+  return ' La pioggia dei prossimi giorni pesa di più i modelli che qui sbagliano meno ('+pp.giorni+' giorni di pioggia confrontati'+(err.length?'; il giorno dopo: '+err.join(', '):'')+').';
 }
 function renderSync(){
   const t=[W.bot?.updatedAt, EB.aggiornato].filter(Boolean).sort().pop();
@@ -3414,7 +3639,9 @@ function renderNotifiche(){
 }
 const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],raccolto:['🧺','raccolta'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito'],pioggia:['🌧','presa la pioggia']};
 const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
+let diarioDel='';
 function renderDiario(){
+  diarioDel=today();
   localPlan();   // la stima del consumo («stima −X%») è quella del bilancio: il piano la calcola (dalla memoria, se non è cambiato niente)
   const ev=allEvents(), t=today(), lim=addDays(t,-29);
   const giorni=Array.from({length:30},(_,i)=>addDays(t,i-29));
@@ -3429,7 +3656,8 @@ function renderDiario(){
   renderCalendario();
   setHTML($('#statList'),S.plants.length?piante().map(p=>{
     const e=eventiValidi(ev,p.id).filter(x=>x.data>=lim), f=e.filter(x=>x.tipo==='fatto'||x.tipo==='secco'), cal=calibrazione(ev,p.id,t), um=e.filter(x=>x.tipo==='umido').length;
-    const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%'].filter(Boolean).join(' · ');
+    const pr=precisione(ev,p.id,t);
+    const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%', pr.totale?'d\'accordo col calcolo '+pr.giusti+'/'+pr.totale:''].filter(Boolean).join(' · ');
     return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(det)}</span></span></div>`;
   }).join(''):'<div class="empty">Nessuna pianta.</div>');
   const nomi=Object.fromEntries(S.plants.map(p=>[p.id,p.nome]));
@@ -3812,6 +4040,18 @@ luce();   // subito, prima del primo disegno; poi ogni 10 minuti e quando torni 
           // animata (4 secondi di ridisegni a tutto schermo ogni volta); la classe luce-pronta la accende solo chi vuole vederla
 setInterval(luce,600000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') luce(); });
+// quiete: vedi il CSS. Un solo timer: ogni tocco o scorrimento segna l'ora, il timer guarda quanto è passato.
+(function(){
+  const radice=document.documentElement; let ultimo=Date.now(), timer=0;
+  const ATTESA=()=>window.GIARDINO_QUIETE||20000;
+  const guarda=()=>{ timer=0; const resta=ATTESA()-(Date.now()-ultimo);
+    if(resta>0){ timer=setTimeout(guarda,resta); return; }
+    if(document.visibilityState==='visible') radice.classList.add('quieto'); };
+  const sveglia=()=>{ ultimo=Date.now(); if(radice.classList.contains('quieto')) radice.classList.remove('quieto'); if(!timer) timer=setTimeout(guarda,ATTESA()); };
+  for(const t of ['pointerdown','touchstart','keydown','wheel','scroll']) addEventListener(t,sveglia,{capture:true,passive:true});
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') sveglia(); });
+  sveglia();
+})();
 function batti(el){ if(!muovi()) return; el.classList.remove('batti'); void el.offsetWidth; el.classList.add('batti'); }
 // animazione d'entrata. Una vista che era nascosta riparte da sola quando si mostra: basta la classe. Solo se l'elemento
 // era già visibile con l'animazione in corso serve farla ripartire (e quel «void offsetWidth» ricalcola tutta la pagina:
@@ -3822,12 +4062,198 @@ function entra(el, appenaMostrato){
   el.classList.add('entra'); clearTimeout(el._entra); el._entra=setTimeout(()=>el.classList.remove('entra'),700);
   if(el.matches('section.view')) conta(el);
 }
+/* ================= Barra delle schede: lente di vetro liquido =================
+   Come nell'app Palestra (e nella barra di WhatsApp su iOS 26). liquidMove porta la lente sulla scheda scelta: si
+   solleva (un po' più grande del pulsante), si allunga verso la destinazione col bordo davanti che parte per primo, va
+   oltre e torna con un rimbalzo morbido, partendo sempre da dove si trova davvero (anche a metà di un'altra animazione o
+   di un trascinamento). Ogni fotogramma cambia solo il transform della lente. */
+const muoviLente=()=>muovi()&&typeof Element.prototype.animate==='function';
+// dove si vede adesso la lente, nelle coordinate di left/top
+function liquidBox(el){
+  const p=el.offsetParent||el.parentNode, r=el.getBoundingClientRect(), q=p.getBoundingClientRect();
+  return {l:r.left-q.left-p.clientLeft+p.scrollLeft, t:r.top-q.top-p.clientTop+p.scrollTop, w:r.width, h:r.height};
+}
+// la lente al suo posto: misure vere (cambiano solo all'arrivo), niente trasformazioni
+function liquidSet(el,g){ el.style.transform=''; el.style.left=g.l+'px'; el.style.top=g.t+'px'; el.style.width=g.w+'px'; el.style.height=g.h+'px'; }
+// una forma g disegnata trasformando la lente che sta in «to»: spostamento del centro e scala
+function liquidTf(g,to){
+  return 'translate('+(g.l+g.w/2-to.l-to.w/2).toFixed(2)+'px,'+(g.t+g.h/2-to.t-to.h/2).toFixed(2)+'px) scale('+(Math.max(8,g.w)/to.w).toFixed(4)+','+(Math.max(8,g.h)/to.h).toFixed(4)+')';
+}
+function liquidMove(el,to,opt){
+  opt=opt||{};
+  const from=liquidBox(el), glow=el.firstElementChild?.classList.contains('lq-glow')?el.firstElementChild:null;
+  const glowFrom=glow?+getComputedStyle(glow).opacity||0:0;
+  [el,glow].forEach(x=>{ if(x&&x._liq){ try{ x._liq.cancel(); }catch(e){} x._liq=null; } });
+  liquidSet(el,to); if(glow) glow.style.opacity='';
+  const d=to.l-from.l, dist=Math.abs(d), grow=Math.abs(from.h-to.h)>1||Math.abs(from.w-to.w)>1;
+  if(!opt.animate||!muoviLente()||(dist<1&&!grow)) return;
+  const s=d>=0?1:-1, lift=opt.lift==null?4:opt.lift;
+  const up=g=>({l:g.l-lift*0.6, t:g.t-lift, w:g.w+lift*1.2, h:g.h+lift*2});   // sollevata: un po' più grande
+  const A=from.h>to.h+1?from:up(from), B=up(to);
+  // allungata a metà strada: il bordo davanti al 78%, quello dietro al 32%; al massimo 1,7 volte
+  const lead=s>0?A.l+A.w+(B.l+B.w-A.l-A.w)*0.78:A.l+(B.l-A.l)*0.78;
+  const tail=s>0?A.l+(B.l-A.l)*0.32:A.l+A.w+(B.l+B.w-A.l-A.w)*0.32;
+  let mid=s>0?{l:tail,t:B.t,w:lead-tail,h:B.h}:{l:lead,t:B.t,w:tail-lead,h:B.h};
+  const maxW=B.w*1.7; if(mid.w>maxW){ const c=mid.l+mid.w/2; mid={l:c-maxW/2,t:mid.t,w:maxW,h:mid.h}; }
+  const ov=Math.min(9,Math.max(3,dist*0.05));
+  const past=dist<1?to:{l:to.l+s*ov, t:to.t-1, w:to.w-ov*0.4, h:to.h+2};
+  const back=dist<1?to:{l:to.l-s*ov*0.22, t:to.t, w:to.w, h:to.h};
+  const T=g=>({transform:liquidTf(g,to)});
+  const kf=[Object.assign(T(from),{easing:'cubic-bezier(.3,0,.4,1)'})];
+  if(A!==from) kf.push(Object.assign(T(A),{offset:.12, easing:'cubic-bezier(.4,0,.5,1)'}));
+  kf.push(Object.assign(T(mid),{offset:.44, easing:'cubic-bezier(.2,.7,.3,1)'}));
+  kf.push(Object.assign(T(past),{offset:.72, easing:'cubic-bezier(.4,0,.4,1)'}));
+  kf.push(Object.assign(T(back),{offset:.88, easing:'ease-out'}));
+  kf.push({transform:'none'});
+  const duration=Math.min(580,400+dist*0.45);
+  if(opt.spring) return liquidSpring(el,glow,glowFrom,from,to,A,lift,dist,duration);
+  try{
+    el._liq=el.animate(kf,{duration}); el._liq.onfinish=()=>{ el._liq=null; };
+    if(glow){ glow._liq=glow.animate([{opacity:glowFrom},{opacity:1,offset:.12},{opacity:1,offset:.5},{opacity:0}],{duration}); glow._liq.onfinish=()=>{ glow._liq=null; }; }
+  }catch(e){}
+}
+/* MOLLA (come nella Palestra): un moto solo dall'inizio alla fine, senza tratti che frenano e ripartono. Il centro segue
+   una molla con un piccolo rimbalzo all'arrivo; la lente si allunga quanto va veloce (al massimo 1,42 volte) e si
+   solleva all'inizio, poi si posa. 41 fotogrammi chiave calcolati una volta, solo transform. */
+function liquidSpring(el,glow,glowFrom,from,to,A,lift,dist,D){
+  const z=0.72, wn=8.4, wd=wn*Math.sqrt(1-z*z);
+  const U=p=>1-Math.exp(-z*wn*p)*(Math.cos(wd*p)+z*wn/wd*Math.sin(wd*p));   // da 0 a 1, supera di circa il 4%
+  const u1=U(1), ss=(a,b,x)=>{ x=Math.min(1,Math.max(0,(x-a)/(b-a))); return x*x*(3-2*x); };
+  const lifted=A===from;                                 // già sollevata (lasciata dopo il trascinamento)
+  const base=lifted?{l:from.l+lift*0.6, t:from.t+lift, w:from.w-lift*1.2, h:from.h-lift*2}:from;
+  const c0=from.l+from.w/2, c1=to.l+to.w/2, sg=c1>=c0?1:-1, y0=base.t+base.h/2, y1=to.t+to.h/2;
+  const pos=p=>U(p)+(1-u1)*ss(0.7,1,p);                  // arriva esatta alla fine
+  const box=p=>{
+    const u=pos(p), uc=Math.min(1,Math.max(0,u));
+    const v=Math.abs(pos(Math.min(1,p+0.005))-pos(Math.max(0,p-0.005)))/0.01*dist/D*16.7;   // px a fotogramma
+    const st=0.42*Math.tanh(v*0.018/0.42);
+    const L=(lifted?1:ss(0,0.14,p))*(1-ss(0.5,0.85,p));
+    const w0=base.w+(to.w-base.w)*uc+lift*1.2*L, w=w0*(1+st), h=(base.h+(to.h-base.h)*uc+lift*2*L)*(1-st*0.28);
+    const cx=c0+(c1-c0)*u+sg*(w-w0)*0.45, cy=y0+(y1-y0)*uc;   // si allunga in avanti: la coda non torna indietro
+    return {l:cx-w/2, t:cy-h/2, w, h};
+  };
+  const b0=box(0), d0={l:from.l-b0.l, t:from.t-b0.t, w:from.w-b0.w, h:from.h-b0.h};   // parte esatta da dov'è
+  const kf=[];
+  for(let i=0;i<40;i++){ const p=i/40, b=box(p), k=1-ss(0,0.2,p); kf.push({transform:liquidTf({l:b.l+d0.l*k, t:b.t+d0.t*k, w:b.w+d0.w*k, h:b.h+d0.h*k},to)}); }
+  kf.push({transform:'none'});
+  try{
+    el._liq=el.animate(kf,{duration:D}); el._liq.onfinish=()=>{ el._liq=null; };
+    if(glow){ glow._liq=glow.animate([{opacity:glowFrom},{opacity:1,offset:.12},{opacity:1,offset:.5},{opacity:0}],{duration:D}); glow._liq.onfinish=()=>{ glow._liq=null; }; }
+  }catch(e){}
+}
+function lenteSu(btn,animate){
+  const ind=$('nav.tabs .nav-ind'); if(!ind||!btn||!btn.offsetWidth) return;
+  liquidMove(ind,{l:btn.offsetLeft, t:btn.offsetTop, w:btn.offsetWidth, h:btn.offsetHeight},{animate, lift:5, spring:true});
+}
+const schedaScelta=()=>$('nav.tabs .tab[aria-selected="true"]');
+/* Tocchi sulla barra. Le schede cambiano al tocco, anche mentre la pagina scorre per inerzia o c'è un'animazione (su
+   iPhone il tocco che ferma lo scorrimento non diventa un «click»). LENTE AFFERRATA: tenendo premuto sulla scheda scelta
+   la lente si solleva; trascinando segue il dito con un filo di ritardo a molla e si allunga quanto più vai veloce; al
+   rilascio va sulla scheda più vicina. Con mouse e tastiera resta il click. */
+function barraSchede(){
+  const nav=$('nav.tabs'), ind=nav.querySelector('.nav-ind'), glow=ind?.firstElementChild, btns=()=>[...nav.querySelectorAll('.tab')];
+  let inizio=null, alTocco=0, trascinata=false;
+  /* FLUIDITÀ (come nella Palestra): a un tocco la lente parte subito (solo transform, poi scorre da sola sulla scheda
+     grafica) e la scheda nuova si disegna nel fotogramma dopo, così il lavoro pesante non la fa partire in ritardo.
+     Più tocchi di fila: vale l'ultimo. */
+  let seq=0;
+  const scegli=b=>{ alTocco=Date.now(); const v=b.dataset.view;
+    if(!muoviLente()||b.getAttribute('aria-selected')==='true'){ switchView(v); return; }
+    const mio=++seq;
+    document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t===b))); lenteSu(b,true);
+    requestAnimationFrame(()=>setTimeout(()=>{ if(mio===seq) switchView(v); },0)); };
+  const vicina=x=>btns().reduce((p,q)=>Math.abs(q.offsetLeft+q.offsetWidth/2-x)<Math.abs(p.offsetLeft+p.offsetWidth/2-x)?q:p);
+  const LIFT=5; let g=null;
+  function afferra(){
+    if(!g||g.presa||!ind) return;
+    const act=schedaScelta()||g.b, bs=btns(), box=liquidBox(ind), pr=ind.offsetParent.getBoundingClientRect();
+    [ind,glow].forEach(x=>{ if(x&&x._liq){ try{ x._liq.cancel(); }catch(err){} x._liq=null; } });
+    const casa={l:act.offsetLeft, t:act.offsetTop, w:act.offsetWidth, h:act.offsetHeight};
+    liquidSet(ind,casa); ind.style.transform=liquidTf(box,casa);
+    Object.assign(g,{presa:true, casa, sx:pr.left+ind.offsetParent.clientLeft, cx:box.l+box.w/2, v:0, t:performance.now(), moto:muoviLente(),
+      su:Math.max(0,Math.min(1,(box.h-casa.h)/(2*LIFT))),
+      minC:bs[0].offsetLeft+bs[0].offsetWidth/2, maxC:bs[bs.length-1].offsetLeft+bs[bs.length-1].offsetWidth/2});
+    if(g.tx==null) g.tx=g.cx;
+    if(!g.raf) g.raf=requestAnimationFrame(fotogramma);
+  }
+  function fotogramma(now){
+    if(!g||!g.presa) return;
+    g.raf=0;
+    const dt=Math.max(1,Math.min(50,now-g.t)); g.t=now;
+    const f=r=>g.moto?1-Math.pow(1-r,dt/16.7):1;   // stessa morbidezza a 60 e a 120 Hz
+    const prima=g.cx; g.cx+=(g.tx-g.cx)*f(0.3);
+    const v=(g.cx-prima)/dt*16.7; g.v+=(v-g.v)*f(0.45);
+    g.su+=((g.moto?1:0)-g.su)*f(0.28);
+    const st=g.moto?Math.min(0.42,Math.abs(g.v)*0.024):0;   // più veloce, più lunga
+    const L=LIFT*g.su, w=(g.casa.w+L*1.2)*(1+st), h=(g.casa.h+L*2)*(1-st*0.28);
+    ind.style.transform=liquidTf({l:g.cx-w/2, t:g.casa.t+g.casa.h/2-h/2, w, h},g.casa);
+    if(glow) glow.style.opacity=g.su.toFixed(2);
+    if(g.mossa){ const o=vicina(g.cx); if(o!==g.sopra){ g.sopra?.classList.remove('lq-over'); o.classList.add('lq-over'); g.sopra=o; nav.classList.add('lq-drag'); } }
+    if(Math.abs(g.tx-g.cx)<0.15&&Math.abs(g.v)<0.05&&g.su>(g.moto?0.995:-1)) return;   // ferma e già sollevata
+    g.raf=requestAnimationFrame(fotogramma);
+  }
+  function lascia(){
+    const era=g; g=null;
+    if(era){ if(era.raf) cancelAnimationFrame(era.raf); era.sopra?.classList.remove('lq-over'); }
+    nav.classList.remove('lq-drag');
+    return era;
+  }
+  nav.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse'&&e.button!==0) return;
+    const b=e.target.closest('.tab'); lascia(); if(!b) return;
+    g={id:e.pointerId, b, x0:e.clientX, y0:e.clientY, mossa:false, presa:false, tx:null, raf:0};
+    if(b.getAttribute('aria-selected')==='true'&&e.pointerType!=='mouse') afferra();   // tenuta sulla scheda scelta: si solleva subito
+  });
+  nav.addEventListener('pointermove',e=>{
+    if(!g||e.pointerId!==g.id) return;
+    const dx=e.clientX-g.x0, dy=e.clientY-g.y0;
+    if(!g.mossa){
+      if(Math.abs(dx)<6||Math.abs(dx)<Math.abs(dy)*0.6) return;
+      g.mossa=true;
+      if(e.pointerType==='mouse') try{ nav.setPointerCapture(e.pointerId); }catch(err){}
+      afferra();
+    }
+    g.tx=Math.min(g.maxC,Math.max(g.minC,e.clientX-g.sx));
+    if(!g.raf){ g.t=performance.now(); g.raf=requestAnimationFrame(fotogramma); }
+  });
+  const fine=(e,annullato)=>{
+    if(!g||e.pointerId!==g.id) return;
+    const era=lascia();
+    try{ if(nav.hasPointerCapture(e.pointerId)) nav.releasePointerCapture(e.pointerId); }catch(err){}
+    if(!era.presa) return;                                   // tocco normale: ci pensa il tocco o il click
+    const act=schedaScelta();
+    if(era.mossa&&!annullato){
+      trascinata=true; alTocco=Date.now();
+      const b=vicina(Math.min(era.maxC,Math.max(era.minC,e.clientX-era.sx)));
+      if(b===act) lenteSu(b,true); else scegli(b);           // la lente si posa (con il suo rimbalzo) sulla scheda
+    } else lenteSu(act,true);                                // tenuta e lasciata lì: si riposa
+  };
+  nav.addEventListener('pointerup',e=>fine(e,false));
+  nav.addEventListener('pointercancel',e=>fine(e,true));
+  nav.addEventListener('touchstart',e=>{ const t=e.target.closest('.tab'), p=e.changedTouches[0]; inizio=t&&p?{t,x:p.clientX,y:p.clientY}:null; },{passive:true});
+  nav.addEventListener('touchmove',e=>{ if(g&&g.mossa&&e.cancelable) e.preventDefault(); },{passive:false});
+  nav.addEventListener('touchend',e=>{
+    const a=inizio; inizio=null; const p=e.changedTouches[0];
+    if(trascinata){ trascinata=false; if(e.cancelable) e.preventDefault(); return; }   // trascinamento già gestito
+    if(!a||!p) return;
+    const t=document.elementFromPoint(p.clientX,p.clientY)?.closest('.tab');
+    if(t===a.t&&Math.hypot(p.clientX-a.x,p.clientY-a.y)<30){ if(e.cancelable) e.preventDefault(); scegli(t); }
+  },{passive:false});
+  nav.addEventListener('touchcancel',()=>{ inizio=null; });
+  // mouse e tastiera: subito (chi usa la tastiera trova la scheda già a schermo)
+  nav.addEventListener('click',e=>{ const t=e.target.closest('.tab'); if(t&&Date.now()-alTocco>700) switchView(t.dataset.view); });
+  lenteSu(schedaScelta(),false);
+  try{ new ResizeObserver(()=>{ if(!g) lenteSu(schedaScelta(),false); }).observe(nav); }catch(e){}
+}
 function switchView(v){
   // in cima prima di cambiare vista: chiederlo dopo costringeva a ricalcolare subito tutta la pagina nuova
   if(window.scrollY) window.scrollTo({top:0});
+  const prima=schedaScelta();
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.view===v)));
+  if(schedaScelta()!==prima) lenteSu(schedaScelta(),true);
   document.querySelectorAll('section.view').forEach(s=>s.hidden=s.id!=='view-'+v);
-  if(v==='diario'||daRifare.has(v)) renderVista(v);
+  // il Diario dice «oggi», «ieri»: aprendolo si ridisegna anche se è cambiato il giorno (prima: sempre, anche senza novità)
+  if(daRifare.has(v)||(v==='diario'&&diarioDel!==today())) renderVista(v);
   entra($('#view-'+v), true);
   if(v==='impostazioni') caricaStato();
 }
@@ -3852,6 +4278,8 @@ function onEvent(pid,tipo){
   // un solo esito di innaffiatura al giorno
   if(ESITI.includes(tipo)) S.eventi_app=S.eventi_app.filter(e=>!(e.plantId===pid&&e.data===t&&ESITI.includes(e.tipo)));
   const extra={};
+  // cosa diceva il piano quando hai risposto (per le risposte d'accordo col calcolo)
+  if(tipo==='umido'||tipo==='secco'){ const g=activePlan()?.data?.piante.find(x=>x.id===pid)?.giorni.find(x=>x.data===t); if(g?.azione) extra.previsto=g.azione; }
   if(tipo==='fatto'||tipo==='secco'){ const g=activePlan()?.data?.piante.find(x=>x.id===pid)?.giorni.find(x=>x.data===t); extra.litri=g?.azione==='innaffia'&&g.litri?g.litri:+(params(p,ctx()).rawL*1.1).toFixed(2); }
   if(ESITI.includes(tipo)||tipo==='secco'){ appena=pid; clearTimeout(onEvent._t); onEvent._t=setTimeout(()=>{ appena=null; },1500); }
   addEvent(pid,tipo,extra); renderAll();
@@ -3885,19 +4313,7 @@ function wire(){
   $('#pf-plist').addEventListener('click',e=>{ const b=e.target.closest('[data-sp]'); if(b) scegliSpecie(b.dataset.sp); });
   $('#pf-zona').addEventListener('input',renderZoneQuick);
   $('#pf-zona-q').addEventListener('click',e=>{ const b=e.target.closest('[data-zona]'); if(!b) return; const z=$('#pf-zona'); z.value=z.value.trim().toLowerCase()===b.dataset.zona.toLowerCase()?'':b.dataset.zona; renderZoneQuick(); });
-  // Schede: cambiano al tocco, anche mentre la pagina scorre per inerzia o c'è un'animazione (su iPhone il tocco che ferma
-  // lo scorrimento non diventa un «click»: prima andava a vuoto). Con mouse e tastiera resta il click.
-  (function(){
-    const nav=$('nav.tabs'); let inizio=null, alTocco=0;
-    nav.addEventListener('touchstart',e=>{ const t=e.target.closest('.tab'), p=e.changedTouches[0]; inizio=t&&p?{t,x:p.clientX,y:p.clientY}:null; },{passive:true});
-    nav.addEventListener('touchend',e=>{
-      const a=inizio; inizio=null; const p=e.changedTouches[0]; if(!a||!p) return;
-      const t=document.elementFromPoint(p.clientX,p.clientY)?.closest('.tab');
-      if(t===a.t && Math.hypot(p.clientX-a.x,p.clientY-a.y)<30){ e.preventDefault(); alTocco=Date.now(); switchView(t.dataset.view); }
-    },{passive:false});
-    nav.addEventListener('touchcancel',()=>{ inizio=null; });
-    nav.addEventListener('click',e=>{ const t=e.target.closest('.tab'); if(t && Date.now()-alTocco>700) switchView(t.dataset.view); });
-  })();
+  barraSchede();
   document.addEventListener('click',e=>{
     const b=e.target.closest('[data-ev]'); if(b){ if((b.dataset.ev==='fatto'||b.dataset.ev==='secco')&&!S.eventi_app.some(x=>x.plantId===b.dataset.pid&&x.data===today()&&x.tipo===b.dataset.ev)) spruzzo(b,e); onEvent(b.dataset.pid,b.dataset.ev); return; }
     const u=e.target.closest('[data-undo]'); if(u){ undoOggi(u.dataset.undo); return; }
@@ -3964,9 +4380,12 @@ function wire(){
     el.forEach(c=>c.getAnimations().forEach(a=>a.cancel()));
     d.open=apre;
     const T={duration:360,easing:'cubic-bezier(.2,.8,.2,1)'};
-    for(const c of el){ const a=A.get(c), b=c.getBoundingClientRect(), dx=a.left-b.left, dy=a.top-b.top;
+    // prima tutte le misure nuove, poi tutte le animazioni: misurare una carta dopo aver animato la precedente faceva
+    // ridisporre la pagina una volta per carta (17 volte con 16 piante)
+    const B=new Map(el.map(c=>[c,c.getBoundingClientRect()])), raggio=getComputedStyle(d).borderRadius||'0';
+    for(const c of el){ const a=A.get(c), b=B.get(c), dx=a.left-b.left, dy=a.top-b.top;
       if(c===d){
-        const r=getComputedStyle(c).borderRadius||'0';
+        const r=raggio;
         const k=[{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}];
         if(apre){ k[0].clipPath=`inset(0 ${Math.max(0,b.width-a.width)}px ${Math.max(0,b.height-a.height)}px 0 round ${r})`; k[1].clipPath=`inset(0 0 0 0 round ${r})`; }
         else { k[0].opacity=.6; k[1].opacity=1; }
@@ -4032,7 +4451,7 @@ function wire(){
   });
   $('#bkSave').addEventListener('click',scaricaBackup);
   $('#bkFile').addEventListener('change',e=>leggiBackup(e.target.files[0]));
-  let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(!$('#view-diario').hidden) renderDiario(); },200); });
+  let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(!$('#view-diario').hidden) renderDiario(); else daRifare.add('diario'); },200); });
 }
 
 /* ================= Backup ================= */
@@ -4109,7 +4528,7 @@ function wireNetlify(){
   $('#netCode').textContent=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
   // si mostrano i crediti RIMASTI (quelli che contano: a zero il sito va in pausa); la tacca è all'avviso di Telegram (80% usati)
-  const mostraCrediti=c=>{ if(!c){ $('#credTesto').textContent='Stima non disponibile: controlla su Netlify.'; return; }
+  const mostraCrediti=(c,e)=>{ if(!c){ $('#credTesto').textContent=e?.offline?'Senza rete: la stima arriva quando torna la connessione.':'Stima non disponibile: controlla su Netlify.'; return; }
       const rim=Math.max(0,c.limite-c.stima), pct=Math.max(0,Math.min(100,Math.round(rim/c.limite*100))), alto=c.stima>=240;
       $('#credChip').textContent='~'+rim+' rimasti'; $('#credChip').className='sv'+(alto?'':' ok');
       $('#credBarra').innerHTML=`<div class="lev${alto?' basso':''}" role="img" aria-label="Crediti rimasti circa ${pct}%"><i style="width:${pct}%"></i><b style="left:20%"></b></div>`;
@@ -4123,7 +4542,7 @@ function wireNetlify(){
   caricaStato=(forza)=>{ if(!forza&&Date.now()-statoAt<60000) return; statoAt=Date.now();
     ['#mcpChip','#tgChip','#credChip'].forEach(id=>{ if(!$(id).textContent) $(id).textContent='…'; });
     N.stato().then(x=>{ renderMcp(x.mcp); renderTg(x.telegram); mostraCrediti(x.crediti); })
-      .catch(()=>{ statoAt=0; $('#mcpChip').textContent='non raggiungibile'; $('#tgChip').textContent='non raggiungibile'; mostraCrediti(null); }); };
+      .catch(e=>{ statoAt=0; const t=e?.offline?'senza rete':'non raggiungibile'; $('#mcpChip').textContent=t; $('#tgChip').textContent=t; if($('#credChip').textContent==='…') $('#credChip').textContent=t; mostraCrediti(null,e); }); };
   $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) N.crediti().then(mostraCrediti).catch(()=>mostraCrediti(null)); });
   $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });
   $('#prompts').innerHTML=PROMPTS.map((t,i)=>`<button class="prompt" type="button" data-prompt="${i}"><span>“${esc(t)}”</span><span class="pc">Copia</span></button>`).join('');
