@@ -555,3 +555,33 @@ test("barra delle schede come nell'app Palestra: lente di vetro che scivola con 
   assert.ok(await page.isVisible("#view-piante"));
   assert.deepEqual(errori, []);
 });
+
+test("quiete: ferma da sola le animazioni decorative dopo un po' senza tocchi, ripartono al primo tocco", async (t) => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const ctx = await contesto(browser);
+  await ctx.addInitScript(() => { window.GIARDINO_QUIETE = 1200; });
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  await page.goto(SITO); await pronta(page);
+  await page.fill("#obLoc", "castrocaro"); await page.click("#obLocSet");
+  await quando(page, () => document.querySelectorAll("#wxStrip .wx-day:not(.sk)").length >= 5);
+  await page.click("#exampleBtn"); await quando(page, () => document.querySelectorAll("#restList .lrow").length > 0);
+  const stato = () => page.evaluate(() => { const c = {}; for (const a of document.getAnimations()) if (a.animationName) { const k = a.animationName + ":" + a.playState; c[k] = (c[k] || 0) + 1; } return { quieto: document.documentElement.classList.contains("quieto"), c }; });
+  assert.equal((await stato()).quieto, false, "appena toccata si muove");
+  const prima = (await stato()).c;
+  assert.ok(prima["ondeggia:running"] > 0, "le piante ondeggiano: " + JSON.stringify(prima));
+  await quando(page, () => document.documentElement.classList.contains("quieto"));
+  const ferma = (await stato()).c;
+  assert.ok(!ferma["ondeggia:running"] && ferma["ondeggia:paused"] > 0, "ferme, non tolte (ripartono da dov'erano): " + JSON.stringify(ferma));
+  assert.ok(!Object.keys(ferma).some((k) => /^(fulmineIco|bagliore|fulmine|luccica):/.test(k)), "lampi e riflessi tornano al loro aspetto fermo");
+  assert.ok(!Object.keys(ferma).some((k) => /^(gira|pulsaSole|deriva|piove|nevica|scorre|respira|goccia|alone|banco|pulsa):running$/.test(k)), "niente decorazioni in moto: " + JSON.stringify(ferma));
+  // al primo tocco ripartono
+  await page.touchscreen.tap(200, 300);
+  const dopo = await stato();
+  assert.equal(dopo.quieto, false); assert.ok(dopo.c["ondeggia:running"] > 0, "ripartono al tocco");
+  // e la quiete torna da sola
+  await quando(page, () => document.documentElement.classList.contains("quieto"));
+  // lo scorrimento sveglia, e le righe che compaiono scorrendo non restano a metà
+  await page.mouse.move(195, 400); await page.mouse.wheel(0, 600); await page.waitForTimeout(500);
+  assert.equal((await stato()).quieto, false, "lo scorrimento la sveglia");
+  assert.deepEqual(errori, []);
+});

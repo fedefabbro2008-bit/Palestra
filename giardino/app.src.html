@@ -657,6 +657,14 @@ nav.tabs.lq-drag .tab.lq-over{color:var(--water)}
   .wx-day.sk::after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,color-mix(in srgb,var(--surface) 75%,transparent) 50%,transparent 70%);transform:translateX(-100%);animation:luccica 1.5s ease-in-out infinite}
 }
 @media (prefers-reduced-motion: reduce){ .hfx{display:none} }
+/* QUIETE: dopo 20 secondi senza tocchi le animazioni decorative senza fine si fermano (meteo, piante che ondeggiano,
+   pioggia nel riquadro, icone degli avvisi) e ripartono da dove erano al primo tocco, scorrimento o ritorno sull'app.
+   Con l'app ferma il telefono non ridisegna più lo schermo 60 volte al secondo. Lampi, bagliori e riflessi tornano al
+   loro aspetto fermo invece di restare a metà. Non si fermano la comparsa scorrendo, le animazioni d'entrata, lo
+   spinner, la goccia che aggiorna e il caricamento del meteo. */
+html.quieto :is(.wx-raggi,.wx-nucleo,.wx-nuvola,.wx-goccia,.wx-fiocco,.wx-nebbia,.ic,.ring>span,.ri,.alert>svg,.hfx i,.hfx .sole,.hfx .banco,.hfx .nube),
+html.quieto .wx-day.today::after{animation-play-state:paused!important}
+html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{animation:none!important}
 @keyframes goccia{0%{opacity:0;transform:translate(0,0) rotate(14deg)}12%{opacity:1}100%{opacity:.7;transform:translate(-30px,150px) rotate(14deg)}}
 @keyframes fiocco{0%{opacity:0;transform:translate(0,0)}15%{opacity:1}50%{transform:translate(9px,62px)}100%{opacity:.8;transform:translate(-5px,135px)}}
 @keyframes alone{0%,100%{opacity:.7;transform:scale(.92)}50%{opacity:1;transform:scale(1.06)}}
@@ -2302,6 +2310,18 @@ luce();   // subito, prima del primo disegno; poi ogni 10 minuti e quando torni 
           // animata (4 secondi di ridisegni a tutto schermo ogni volta); la classe luce-pronta la accende solo chi vuole vederla
 setInterval(luce,600000);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') luce(); });
+// quiete: vedi il CSS. Un solo timer: ogni tocco o scorrimento segna l'ora, il timer guarda quanto è passato.
+(function(){
+  const radice=document.documentElement; let ultimo=Date.now(), timer=0;
+  const ATTESA=()=>window.GIARDINO_QUIETE||20000;
+  const guarda=()=>{ timer=0; const resta=ATTESA()-(Date.now()-ultimo);
+    if(resta>0){ timer=setTimeout(guarda,resta); return; }
+    if(document.visibilityState==='visible') radice.classList.add('quieto'); };
+  const sveglia=()=>{ ultimo=Date.now(); if(radice.classList.contains('quieto')) radice.classList.remove('quieto'); if(!timer) timer=setTimeout(guarda,ATTESA()); };
+  for(const t of ['pointerdown','touchstart','keydown','wheel','scroll']) addEventListener(t,sveglia,{capture:true,passive:true});
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') sveglia(); });
+  sveglia();
+})();
 function batti(el){ if(!muovi()) return; el.classList.remove('batti'); void el.offsetWidth; el.classList.add('batti'); }
 // animazione d'entrata. Una vista che era nascosta riparte da sola quando si mostra: basta la classe. Solo se l'elemento
 // era già visibile con l'animazione in corso serve farla ripartire (e quel «void offsetWidth» ricalcola tutta la pagina:

@@ -93,6 +93,13 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Sfondo che cambia**: in alto la luce della stagione (azzurro d'inverno, rosa in primavera, giallo d'estate, marrone d'autunno, sfumata giorno per giorno; nell'emisfero sud a rovescio), in basso quella dell'ora (alba arancio, verde di giorno, tramonto rosa, blu di notte); è un livello fisso a sé (`#sfondo`), aggiornato ogni 10 minuti senza animazione (`luce()`).
 - **Animazioni (terzo giro)**: numeri che contano da 0 entrando in una scheda (piante da annaffiare, litri, totali del diario); meteo di oggi dentro il riquadro in alto (pioggia, temporale con lampi, neve, nebbia, nuvola, sole o caldo); schede delle piante che si allargano spostando le altre (iOS 18); finestre con la maniglia da trascinare giù per chiuderle; interruttori che si allungano al tocco e campanella che suona (🔕 quando spegni); giorni del meteo «in arrivo» con un riflesso. Tutte spente con «Riduci movimento».
 
+## Quiete (animazioni ferme a riposo)
+- Dopo **20 secondi senza tocchi** (`html.quieto`) si fermano le animazioni decorative senza fine: icone del meteo, piante che ondeggiano, pioggia/neve/sole/nebbia nel riquadro di oggi, icone degli avvisi, anello di oggi. Ripartono **da dove erano** al primo tocco, tasto, rotellina, scorrimento o ritorno sull'app. Lampi, bagliori e il riflesso del livello tornano al loro aspetto fermo invece di restare a metà.
+- Perché: misurato in Chromium, con l'app aperta e ferma su Oggi, Piante o Diario lo schermo si ridisegnava **60 volte al secondo** per sempre; in quiete **0**. Sul telefono vuol dire meno lavoro della grafica (e meno batteria) quando l'app resta aperta e nessuno la guarda.
+- Non si fermano: comparsa delle righe scorrendo, animazioni d'entrata, lente della barra, spinner, goccia che aggiorna, caricamento del meteo. Il primo tocco dopo la quiete non è più lento (lente dopo ~25 ms, scheda dopo ~43 ms, come prima).
+- Per le prove `window.GIARDINO_QUIETE` (millisecondi) accorcia l'attesa.
+- **Provato e scartato**: tenere disposte le schede nascoste (`content-visibility:hidden` invece di `display:none`). Con 16 piante e 864 eventi il ritorno sul Diario migliorava, ma con dati come quelli veri (4 piante) non cambiava niente, e le animazioni delle schede nascoste restavano «in corso».
+
 ## Rete e velocità
 - **Sincronizzazione a costo quasi zero**: l'app manda la versione che ha (`x-giardino-versione: rev-updatedAt`); se sul server non è cambiato niente risponde `{invariato: true}` (~50 byte invece di tutti i dati) e lo schermo non si ridisegna.
 - **Avvio con una richiesta sola**: lo stato di Claude, Telegram e crediti (`/api/dati?op=stato`, una richiesta) si chiede solo quando apri Impostazioni.
