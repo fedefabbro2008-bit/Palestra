@@ -559,7 +559,7 @@ test("barra delle schede come nell'app Palestra: lente di vetro che scivola con 
 test("quiete: ferma da sola le animazioni decorative dopo un po' senza tocchi, ripartono al primo tocco", async (t) => {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const ctx = await contesto(browser);
-  await ctx.addInitScript(() => { window.GIARDINO_QUIETE = 1200; });
+  await ctx.addInitScript(() => { window.GIARDINO_QUIETE = 3000; });   // abbastanza lungo anche per i computer lenti di GitHub
   const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
   await page.goto(SITO); await pronta(page);
   await page.fill("#obLoc", "castrocaro"); await page.click("#obLocSet");
