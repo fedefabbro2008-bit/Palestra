@@ -187,3 +187,7 @@ Ogni pubblicazione costa 15 crediti: si pubblica solo se cambia la cartella `gia
 `build-app.mjs` scrive un'impronta della versione (`netlify/lib/versione.mjs`); il bot conta le impronte nuove del mese, l'app
 mostra la stima in Impostazioni → Crediti Netlify e Telegram avvisa all'80%. Il conto esatto è su app.netlify.com → Usage.
 Uso normale (app, bot ogni ora, Claude): 10-20 crediti al mese misurati, nella stima 15.
+Le anteprime delle PR (deploy preview) secondo la documentazione di Netlify non costano crediti (solo le pubblicazioni in
+produzione); da verificare sul conto vero in Usage. Le prove automatiche su GitHub non aprono più il sito vero a ogni push
+(il controllo informativo del badge di Netlify lo caricava in un browser senza copia: ~27 richieste e ~160 KB ogni volta,
+visto nei log del 18 nov); il controllo «sito online» resta, una volta al giorno e dopo ogni pubblicazione (7 richieste).

@@ -43,8 +43,8 @@ jobs:
       - name: Fonti per gli algoritmi (solo informativo)
         continue-on-error: true
         run: node test/sonda-algoritmi.mjs
-      - name: Fonti di dati e badge di Netlify (solo informativo)
+      # il badge di Netlify sul sito vero non si prova più qui: apriva il sito online in un browser senza copia a ogni
+      # prova (~27 richieste, ~160 KB e 1–3 chiamate alle funzioni a ogni push). A mano: cd giardino-netlify/test && node badge-online.mjs
+      - name: Fonti di dati (solo informativo)
         continue-on-error: true
-        run: |
-          node test/fonti-dati.mjs
-          cd test && node badge-online.mjs
+        run: node test/fonti-dati.mjs
