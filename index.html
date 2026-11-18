@@ -3354,12 +3354,11 @@ function liquidMove(el, to, opt){
   const up = g=> ({ l:g.l - lift*0.6, t:g.t - lift, w:g.w + lift*1.2, h:g.h + lift*2 });   // sollevata: un po' più grande
   const A = from.h > to.h + 1 ? from : up(from), B = up(to);
   // allungata a metà strada: il bordo davanti al 78%, quello dietro al 32%; al massimo 1,7 volte (con la scala gli angoli
-  // tondi si deformano: oltre si vedrebbe). opt.stretch (0..1) la allunga meno: 0,75 → 71%, 36%, al massimo 1,5 volte
-  const k = opt.stretch==null ? 1 : opt.stretch, fL = 0.5 + 0.28*k, fT = 0.5 - 0.18*k;
-  const lead = s > 0 ? A.l + A.w + (B.l + B.w - A.l - A.w)*fL : A.l + (B.l - A.l)*fL;
-  const tail = s > 0 ? A.l + (B.l - A.l)*fT : A.l + A.w + (B.l + B.w - A.l - A.w)*fT;
+  // tondi si deformano: oltre si vedrebbe)
+  const lead = s > 0 ? A.l + A.w + (B.l + B.w - A.l - A.w)*0.78 : A.l + (B.l - A.l)*0.78;
+  const tail = s > 0 ? A.l + (B.l - A.l)*0.32 : A.l + A.w + (B.l + B.w - A.l - A.w)*0.32;
   let mid = s > 0 ? { l:tail, t:B.t, w:lead - tail, h:B.h } : { l:lead, t:B.t, w:tail - lead, h:B.h };
-  const maxW = B.w * (1 + 0.7*k);
+  const maxW = B.w * 1.7;
   if(mid.w > maxW){ const c = mid.l + mid.w/2; mid = { l:c - maxW/2, t:mid.t, w:maxW, h:mid.h }; }
   const ov = Math.min(9, Math.max(3, dist * 0.05));
   const wall = (s > 0 && opt.wall==='r') || (s < 0 && opt.wall==='l');
@@ -3368,22 +3367,56 @@ function liquidMove(el, to, opt){
     : { l:to.l + s*ov, t:to.t - 1, w:to.w - ov*0.4, h:to.h + 2 };
   const back = dist < 1 || wall ? to : { l:to.l - s*ov*0.22, t:to.t, w:to.w, h:to.h };
   const T = g=> ({ transform: liquidTf(g, to) });
+  const duration = Math.min(580, 400 + dist*0.45);   // circa il 20% più veloce di prima (era 500-720 ms)
+  if(opt.spring && !wall) return liquidSpring(el, glow, glowFrom, from, to, A, lift, dist, duration);
   const kf = [ Object.assign(T(from), { easing:'cubic-bezier(.3,0,.4,1)' }) ];
   if(A!==from) kf.push(Object.assign(T(A), { offset:.12, easing:'cubic-bezier(.4,0,.5,1)' }));
   kf.push(Object.assign(T(mid), { offset:.44, easing:'cubic-bezier(.2,.7,.3,1)' }));
   kf.push(Object.assign(T(past), { offset:.72, easing:'cubic-bezier(.4,0,.4,1)' }));
   kf.push(Object.assign(T(back), { offset:.88, easing:'ease-out' }));
   kf.push({ transform:'none' });
-  const duration = Math.min(580, 400 + dist*0.45);   // circa il 20% più veloce di prima (era 500-720 ms)
   try{
     el._liq = el.animate(kf, { duration }); el._liq.onfinish = ()=>{ el._liq = null; };
     if(glow){ glow._liq = glow.animate([{ opacity:glowFrom }, { opacity:1, offset:.12 }, { opacity:1, offset:.5 }, { opacity:0 }], { duration }); glow._liq.onfinish = ()=>{ glow._liq = null; }; }
   }catch(e){}
 }
+/* MOLLA: un moto solo dall'inizio alla fine (niente tratti separati che frenano fino a fermarsi e poi ripartono di
+   colpo a metà strada). Il centro segue una molla con un piccolo rimbalzo all'arrivo; la lente si allunga quanto va
+   veloce (come trascinata col dito: ferma è tonda, al massimo 1,42 volte) e si solleva all'inizio, poi si posa.
+   41 fotogrammi chiave calcolati una volta, solo transform: scorre da sola sulla scheda grafica. */
+function liquidSpring(el, glow, glowFrom, from, to, A, lift, dist, D){
+  const z = 0.72, wn = 8.4, wd = wn*Math.sqrt(1 - z*z);
+  const U = p=> 1 - Math.exp(-z*wn*p)*(Math.cos(wd*p) + z*wn/wd*Math.sin(wd*p));   // da 0 a 1, supera di circa il 4%
+  const u1 = U(1), ss = (a, b, x)=>{ x = Math.min(1, Math.max(0, (x - a)/(b - a))); return x*x*(3 - 2*x); };
+  const lifted = A===from;                          // già sollevata (lasciata dopo il trascinamento)
+  const base = lifted ? { l:from.l + lift*0.6, t:from.t + lift, w:from.w - lift*1.2, h:from.h - lift*2 } : from;
+  const c0 = from.l + from.w/2, c1 = to.l + to.w/2, sg = c1 >= c0 ? 1 : -1, y0 = base.t + base.h/2, y1 = to.t + to.h/2;
+  const pos = p=> U(p) + (1 - u1)*ss(0.7, 1, p);    // arriva esatta alla fine
+  const box = p=>{
+    const u = pos(p), uc = Math.min(1, Math.max(0, u));
+    const v = Math.abs(pos(Math.min(1, p + 0.005)) - pos(Math.max(0, p - 0.005)))/0.01 * dist / D * 16.7;   // px a fotogramma
+    const st = 0.42*Math.tanh(v*0.018/0.42);        // cresce con la velocità e si avvicina dolcemente al massimo
+    const L = (lifted ? 1 : ss(0, 0.14, p)) * (1 - ss(0.5, 0.85, p));
+    const w0 = base.w + (to.w - base.w)*uc + lift*1.2*L, w = w0 * (1 + st), h = (base.h + (to.h - base.h)*uc + lift*2*L) * (1 - st*0.28);
+    const cx = c0 + (c1 - c0)*u + sg*(w - w0)*0.45, cy = y0 + (y1 - y0)*uc;   // si allunga in avanti: la coda non torna indietro
+    return { l:cx - w/2, t:cy - h/2, w, h };
+  };
+  const b0 = box(0), d0 = { l:from.l - b0.l, t:from.t - b0.t, w:from.w - b0.w, h:from.h - b0.h };   // parte esatta da dov'è
+  const kf = [];
+  for(let i = 0; i < 40; i++){
+    const p = i/40, b = box(p), k = 1 - ss(0, 0.2, p);
+    kf.push({ transform: liquidTf({ l:b.l + d0.l*k, t:b.t + d0.t*k, w:b.w + d0.w*k, h:b.h + d0.h*k }, to) });
+  }
+  kf.push({ transform:'none' });
+  try{
+    el._liq = el.animate(kf, { duration:D }); el._liq.onfinish = ()=>{ el._liq = null; };
+    if(glow){ glow._liq = glow.animate([{ opacity:glowFrom }, { opacity:1, offset:.12 }, { opacity:1, offset:.5 }, { opacity:0 }], { duration:D }); glow._liq.onfinish = ()=>{ glow._liq = null; }; }
+  }catch(e){}
+}
 /* lente della barra in basso */
 function navIndTo(btn, animate){
   const nav = document.querySelector('nav.bottom'), ind = nav && nav.querySelector('.nav-ind'); if(!ind || !btn || !btn.offsetWidth) return;
-  liquidMove(ind, { l:btn.offsetLeft, t:btn.offsetTop, w:btn.offsetWidth, h:btn.offsetHeight }, { animate, lift:5, stretch:0.75 });   // un po' meno allungata della pillola delle giornate
+  liquidMove(ind, { l:btn.offsetLeft, t:btn.offsetTop, w:btn.offsetWidth, h:btn.offsetHeight }, { animate, lift:5, spring:true });
 }
 navIndTo(document.querySelector('nav.bottom button.active'), false);
 try{ new ResizeObserver(()=> navIndTo(document.querySelector('nav.bottom button.active'), false)).observe(document.querySelector('nav.bottom')); }catch(e){}

@@ -1,5 +1,5 @@
 // barra in basso, lente afferrata come su WhatsApp: tenuta si solleva; trascinata segue il dito con ritardo elastico e si
-// allunga con la velocità (con misura: al massimo 1,32 volte; al tocco lontano 1,5); al rilascio va sulla sezione più vicina (un solo cambio); tocco e click normali invariati
+// allunga con la velocità (con misura: al massimo 1,32 volte; al tocco lontano 1,42, con un moto solo); al rilascio va sulla sezione più vicina (un solo cambio); tocco e click normali invariati
 const { open } = require('./lib');
 const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
 (async () => {
@@ -51,12 +51,25 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   check(await active() === 'stats' && await sw() === 4, 'click col mouse: Settimana');
   await p.mouse.move(s.x, s.y); await p.mouse.down(); for (let i = 1; i <= 10; i++) { await p.mouse.move(s.x + (pl.x - s.x) * i / 10, s.y); await p.waitForTimeout(16); } await p.waitForTimeout(300); await p.mouse.up(); await p.waitForTimeout(800);
   check(await active() === 'plan' && await sw() === 5, 'trascinamento col mouse: Progressi, un cambio');
-  // 9. tocco lontano (Progressi → Allenamento): a metà strada la lente si allunga, ma al massimo 1,5 volte la sua misura sollevata
-  await p.evaluate(() => { const ind = document.querySelector('nav.bottom .nav-ind'); window.__mw = 0; let n = 0;
-    const f = () => { window.__mw = Math.max(window.__mw, ind.getBoundingClientRect().width); if (++n < 60) requestAnimationFrame(f); }; requestAnimationFrame(f); });
-  await p.waitForTimeout(300); await touch('touchStart', a.x, a.y); await touch('touchEnd'); await p.waitForTimeout(1100);
-  const tw = await p.evaluate(() => window.__mw);
-  check(await active() === 'workout' && tw > (a.w + 6) * 1.15 && tw <= (a.w + 6) * 1.53, 'dopo il mouse il dito funziona; tocco lontano: si allunga a metà strada ma con misura (larga fino a ' + Math.round(tw) + ', al massimo ' + Math.round((a.w + 6) * 1.53) + ')');
+  // 9. tocco lontano (Progressi → Allenamento), dopo il mouse: la lente parte e si ferma all'arrivo con un moto solo.
+  // Fotogramma per fotogramma (animazione messa in pausa): la velocità sale e poi scende, senza frenare a metà strada e
+  // ripartire di scatto; la coda non torna indietro; è più lunga quando corre, al massimo 1,42 volte la misura sollevata
+  await p.waitForTimeout(300); await touch('touchStart', a.x, a.y); await touch('touchEnd');
+  const cv = await p.evaluate(() => { const ind = document.querySelector('nav.bottom .nav-ind'), an = ind.getAnimations()[0]; if (!an) return null;
+    an.pause(); const D = an.effect.getComputedTiming().duration, f = [];
+    for (let i = 0; i <= 60; i++) { an.currentTime = D * i / 60; const q = ind.getBoundingClientRect(); f.push({ c: (q.left + q.right) / 2, r: q.right, w: q.width }); }
+    an.finish(); return f; });
+  await p.waitForTimeout(500);
+  if (!cv) check(false, 'tocco lontano: nessuna animazione della lente');
+  else {
+    const v = cv.slice(1).map((q, i) => cv[i].c - q.c);                   // verso sinistra: positiva
+    const peak = Math.max(...v), ip = v.indexOf(peak), stop = v.findIndex((x, i) => i > ip && x < peak * 0.1);
+    let bumps = 0; for (let i = 1; i < v.length; i++) { if (i <= ip ? v[i] < v[i - 1] - 1.5 : (i <= stop && v[i] > v[i - 1] + 1.5)) bumps++; }
+    const back = Math.max(0, ...cv.slice(1, ip + 1).map((q, i) => q.r - cv[i].r));   // coda (bordo destro) che torna indietro
+    const mw = Math.max(...cv.map(q => q.w)), iw = cv.findIndex(q => q.w === mw), vw = v[Math.min(v.length - 1, Math.max(0, iw - 1))];
+    check(await active() === 'workout' && bumps === 0 && back < 0.5, 'dopo il mouse il dito funziona; tocco lontano: velocità che sale e scende senza scatti (massima ' + peak.toFixed(1) + ' px a fotogramma, sbalzi ' + bumps + '), la coda non torna indietro (' + back.toFixed(1) + ' px)');
+    check(mw > (a.w + 6) * 1.15 && mw <= (a.w + 6) * 1.43 && vw > peak * 0.6, 'tocco lontano: più lunga quando corre (larga fino a ' + Math.round(mw) + ', al massimo ' + Math.round((a.w + 6) * 1.43) + ', con velocità ' + vw.toFixed(1) + ')');
+  }
   check(!A.errors.filter(x => !/Service Worker|404/.test(x)).length, 'nessun errore ' + A.errors.filter(x => !/Service Worker|404/.test(x)).join('|'));
   await A.browser.close();
 })();
