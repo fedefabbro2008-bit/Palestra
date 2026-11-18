@@ -178,6 +178,7 @@ export async function aggiornaPioggiaMisurata(st) {
       if (!testo) return;
       const c = await misureArpae(st, l.lat, l.lon, testo);
       if (!c?.stazione) continue;
+      await previsioniPioggia(st, code, o, l).catch((e) => console.warn("previsioni della pioggia:", e?.message));
       const att = o.pioggia_misurata, limite = M.addDays(M.isoDate(new Date()), -60), letto = c;
       const giorni = { ...Object.fromEntries(Object.entries(att?.stazione === letto.stazione.nome ? att.giorni || {} : {}).filter(([d]) => d >= limite)), ...giorniMisurati(c.ore, "Europe/Rome") };
       if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome) {
@@ -186,6 +187,24 @@ export async function aggiornaPioggiaMisurata(st) {
       }
     }
   }
+}
+/* Pioggia prevista contro pioggia misurata (solo dove ci sono le stazioni ARPAE). Una volta al giorno per posizione si
+   salvano le previsioni dei singoli modelli per oggi e i 3 giorni dopo (archivio c-prev-<lat,lon>, mai nei dati dell'app:
+   ogni scrittura lì farebbe riscaricare tutto ai telefoni); nei dati va solo il risultato (pesi_pioggia[orto]), e solo
+   quando cambia. */
+export async function previsioniPioggia(st, code, o, l) {
+  const key = `c-prev-${(+l.lat).toFixed(2)},${(+l.lon).toFixed(2)}`, prima = (await st.get(key, { type: "json" }).catch(() => null)) || { log: {} };
+  let log = prima.log || {};
+  const met = await meteo(l.lat, l.lon), { oggi } = oraLocale(met.tz || "Europe/Rome");
+  if (prima.giorno !== oggi && Array.isArray(met.days) && met.days.some((d) => d.ensemble)) {
+    log = M.registraPrevisioni(log, met.days, oggi); await st.setJSON(key, { giorno: oggi, log }).catch(() => {});
+  }
+  const cur = await leggi(st, code); if (!cur?.data) return;
+  const mis = M.vistaOrto(cur.data, o.id).pioggia_misurata?.giorni || {};
+  const pp = M.pesiPioggia(log, mis), att = cur.data.pesi_pioggia?.[o.id] || null;
+  const v = { ...pp, aggiornato: att && JSON.stringify({ ...att, aggiornato: 0 }) === JSON.stringify({ ...pp, aggiornato: 0 }) ? att.aggiornato : new Date().toISOString() };
+  if (att && JSON.stringify(att) === JSON.stringify(v)) return;
+  await aggiorna(st, code, (d) => { d.pesi_pioggia = { ...(d.pesi_pioggia || {}), [o.id]: v }; });
 }
 // Storico dei 400 giorni passati: temperature (fasi a gradi-giorno) e pioggia, evaporazione, sole (bilancio dell'acqua).
 // Una richiesta al giorno, poi dall'archivio. Restituisce {temp, arch}.
@@ -209,7 +228,7 @@ export function oraLocale(tz) {
 // ultimo giorno programmato da Claude (le previsioni del meteo arrivano a circa 7 giorni)
 export function finePiano(pc) { let f = ""; for (const x of pc?.data?.piante || []) for (const g of x.giorni || []) if (g?.data > f) f = g.data; return f; }
 export function pianoAttivo(data, met, oggi) {
-  const lat = data.location?.lat, giorni = M.conPioggiaMisurata(met.days, data.pioggia_misurata, oggi);
+  const lat = data.location?.lat, giorni = M.ripesaPioggia(M.conPioggiaMisurata(met.days, data.pioggia_misurata, oggi), data.pesi_pioggia_orto ?? data.pesi_pioggia?.p, oggi);
   // giorni passati fino a 120: il bilancio dell'acqua parte dall'ultima innaffiatura o dall'ultimo controllo
   const past = M.giorniPassati({ ...met, lat: met.lat ?? lat }, data.pioggia_misurata, oggi), fut = giorni.filter((d) => d.date >= oggi).slice(0, 7);
   const base = M.pianoLocale({ piante: data.plants, past, fut, eventi: data.eventi, oggi, lat, vacanza: data.vacanza, suolo: met.suolo });
@@ -344,7 +363,8 @@ export function riepilogoSettimana(data, oggi, met) {
     const e = M.eventiValidi(data.eventi, p.id).filter((x) => x.data >= da && x.data <= oggi), f = e.filter((x) => x.tipo === "fatto" || x.tipo === "secco");
     const litri = f.reduce((s, x) => s + (+x.litri || 0), 0); tot += litri;
     const um = e.filter((x) => x.tipo === "umido").length, se = e.filter((x) => x.tipo === "secco").length, cal = calibrazioneVera(data, met, p.id, oggi);
-    let nota = ""; if (um) nota += ` · ${um}× era umida`; if (se) nota += ` · ${se}× era secca`; if (Math.abs(cal - 1) > 0.01) nota += ` · ora conto il ${Math.round(Math.abs(cal - 1) * 100)}% ${cal < 1 ? "in meno" : "in più"}`;
+    const pr = M.precisione(data.eventi, p.id, oggi);
+    let nota = ""; if (um) nota += ` · ${um}× era umida`; if (pr.totale) nota += ` · calcolo giusto ${pr.giusti}/${pr.totale} controlli`; if (se) nota += ` · ${se}× era secca`; if (Math.abs(cal - 1) > 0.01) nota += ` · ora conto il ${Math.round(Math.abs(cal - 1) * 100)}% ${cal < 1 ? "in meno" : "in più"}`;
     L.push(`• <b>${esc(p.nome)}</b>: ${f.length} ${f.length === 1 ? "volta" : "volte"}, ${fmt(litri)} L${nota}`);
   }
   L.push(`\nTotale: <b>${fmt(tot)} L</b>`);

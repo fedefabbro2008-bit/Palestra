@@ -1817,6 +1817,7 @@ function renderPiante(AP){
     if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
+    facts.push(['Calcolo giusto ai controlli',testoPrecisione(precisione(eventsOf(p.id),p.id,today()))]);
     if(pp && 'dal' in pp) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
     const rc=daRaccogliere(p)?totaleRaccolto(eventsOf(p.id),p.id,today().slice(0,4)+'-01-01'):null;
     if(rc?.volte) facts.push(['Raccolto nel '+today().slice(0,4),testoRaccolto(rc)+' ('+rc.volte+(rc.volte===1?' volta':' volte')+', l\'ultima '+dataBreve(rc.ultimo)+')']);
@@ -1840,11 +1841,21 @@ function renderPiante(AP){
 function renderMeteoSet(){
   const w=activeWeather();
   $('#wxVal').textContent=!w?'nessun dato':w.source==='open-meteo'?(/MET/.test(w.fonte||'')?'MET Norway (riserva)':'Open-Meteo')+(w.updatedAt?' · '+(isoDate(new Date(w.updatedAt))===today()?'':dataBreve(isoDate(new Date(w.updatedAt)))+' ')+new Date(w.updatedAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):''):'corretto a mano';
-  $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.misurata?'; pioggia dei giorni passati misurata dalla stazione ARPAE di '+w.misurata.stazione+' ('+fmt(w.misurata.km,1)+' km)':'')+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.';
+  $('#wxInfo').textContent=!S.location?'Imposta il comune per ricevere le previsioni.':'Previsioni gratuite di Open-Meteo per '+S.location.name+', aggiornate da sole'+(w?.misurata?'; pioggia dei giorni passati misurata dalla stazione ARPAE di '+w.misurata.stazione+' ('+fmt(w.misurata.km,1)+' km)':'')+(w?.suolo!=null?'; umidità del suolo ora: '+Math.round(w.suolo*100)+'%':'')+'.'+testoPesi(w);
   const ed=$('#wxEdit'); if(ed.contains(document.activeElement)) return;
   const map={}; wxDays().forEach(d=>map[d.date]=d);
   setHTML(ed,'<div class="wxe-h"><span></span><span>Max °C</span><span>Min °C</span><span>Pioggia mm</span></div>'+next7().map(dt=>{ const d=map[dt]||{}, l=esc(dayLabel(dt));
     return `<div class="wxe-r" data-date="${dt}"><span class="d">${l}</span><input type="number" step="any" data-f="tmax" value="${d.tmax??''}" aria-label="Massima ${l}"><input type="number" step="any" data-f="tmin" value="${d.tmin??''}" aria-label="Minima ${l}"><input type="text" inputmode="decimal" data-f="rain" value="${esc(numIn(d.rain))}" aria-label="Pioggia ${l}"></div>`; }).join(''));
+}
+// pioggia prevista contro misurata (stazione ARPAE): a che punto è e quali modelli sbagliano meno qui
+const NOMI_MODELLI={italia_meteo_arpae_icon_2i:'ICON-2I',icon_seamless:'ICON',meteofrance_seamless:'Météo-France',ecmwf_ifs:'ECMWF',ukmo_seamless:'UK Met Office',gfs_seamless:'GFS'};
+function testoPesi(w){
+  if(!w?.misurata) return '';
+  const pp=w.pesi_pioggia;
+  if(!pp) return ' Confronto tra pioggia prevista e misurata: comincia da domani.';
+  if(!pp.pronti) return ' Confronto tra pioggia prevista e misurata in corso: '+pp.giorni+' giorni di pioggia su '+PIOGGIA_MIN_GIORNI+' che servono per scegliere i modelli più giusti qui.';
+  const err=Object.entries(pp.errori||{}).sort((a,b)=>a[1]-b[1]).slice(0,3).map(([m,e])=>(NOMI_MODELLI[m]||m)+' ±'+fmt(e,1)+' mm');
+  return ' La pioggia dei prossimi giorni pesa di più i modelli che qui sbagliano meno ('+pp.giorni+' giorni di pioggia confrontati'+(err.length?'; il giorno dopo: '+err.join(', '):'')+').';
 }
 function renderSync(){
   const t=[W.bot?.updatedAt, EB.aggiornato].filter(Boolean).sort().pop();
@@ -1903,7 +1914,8 @@ function renderDiario(){
   renderCalendario();
   setHTML($('#statList'),S.plants.length?piante().map(p=>{
     const e=eventiValidi(ev,p.id).filter(x=>x.data>=lim), f=e.filter(x=>x.tipo==='fatto'||x.tipo==='secco'), cal=calibrazione(ev,p.id,t), um=e.filter(x=>x.tipo==='umido').length;
-    const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%'].filter(Boolean).join(' · ');
+    const pr=precisione(ev,p.id,t);
+    const det=[f.length===1?'1 volta':f.length+' volte', fmt(f.reduce((a,x)=>a+(+x.litri||0),0))+' L', um?(um===1?'1 volta era umida':um+' volte era umida'):'', Math.abs(cal-1)<0.01?'':'stima '+(cal<1?'−':'+')+Math.round(Math.abs(cal-1)*100)+'%', pr.totale?'calcolo giusto '+pr.giusti+'/'+pr.totale:''].filter(Boolean).join(' · ');
     return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(det)}</span></span></div>`;
   }).join(''):'<div class="empty">Nessuna pianta.</div>');
   const nomi=Object.fromEntries(S.plants.map(p=>[p.id,p.nome]));

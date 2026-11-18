@@ -541,6 +541,36 @@ test("piante pianta per pianta: aggiunte, cambiate, tolte, ordine; le altre rest
   assert.deepEqual(await nomi(), ["a"]);
 });
 
+test("pioggia prevista contro misurata sul server: registro una volta al giorno fuori dai dati, pesi nei dati solo quando cambiano", async () => {
+  const C = await import("../netlify/lib/core.mjs"), st = getStore({ name: "giardino" }), C4 = "GRD-PESIPIOGGIA-ABCDEFGHJK", lat = 44.21, lon = 12.04;
+  const MOD = ["italia_meteo_arpae_icon_2i", "gfs_seamless", "ecmwf_ifs"], oggi = C.oraLocale("Europe/Rome").oggi;
+  const log = {}, giorni = {};
+  for (let i = 40; i >= 1; i--) { const d = M.addDays(oggi, -i), vero = i % 2 ? 0 : 5; giorni[d] = vero; log[d] = {}; for (const L of [0, 1, 2, 3]) log[d][L] = { [MOD[0]]: vero, [MOD[1]]: vero ? 14 : 3, [MOD[2]]: vero * 0.7 }; }
+  await st.setJSON(`c-prev-${lat.toFixed(2)},${lon.toFixed(2)}`, { giorno: M.addDays(oggi, -1), log });
+  const days = [0, 1, 2, 3, 4].map((i) => ({ date: M.addDays(oggi, i), ensemble: true, modelli: MOD, rain_modelli: [2, 9, 1.4], rain: 4, prob: 50, tmin: 8, tmax: 15, et0: 1 }));
+  await st.setJSON(`c-meteo-${lat.toFixed(2)},${lon.toFixed(2)}`, { at: Date.now(), met: { tz: "Europe/Rome", lat, days, notte: [], suolo: null } });
+  await call(dati, "/api/dati", { method: "POST", headers: { "x-giardino-code": C4 }, body: { changes: { location: { name: "Forlì", lat, lon }, plants: [PIANTE[0]] } } });
+  await C.aggiorna(st, C4, (d) => { d.pioggia_misurata = { stazione: "Forlì", km: 1, giorni }; });
+  const rev = async () => (await C.leggi(st, C4)).rev;
+  const r0 = await rev();
+  await C.previsioniPioggia(st, C4, { id: "p" }, { lat, lon });
+  const d1 = (await C.leggi(st, C4)).data, r1 = await rev();
+  assert.equal(d1.pesi_pioggia.p.pronti, true, "pesi imparati dai giorni registrati");
+  assert.ok(d1.pesi_pioggia.p.pesi["1"].italia_meteo_arpae_icon_2i > d1.pesi_pioggia.p.pesi["1"].gfs_seamless);
+  assert.equal(r1, r0 + 1, "una scrittura nei dati");
+  const reg = await st.get(`c-prev-${lat.toFixed(2)},${lon.toFixed(2)}`, { type: "json" });
+  assert.equal(reg.giorno, oggi); assert.deepEqual(Object.keys(reg.log[oggi]), ["0"]); assert.ok(reg.log[M.addDays(oggi, 3)]["3"], "oggi e i 3 giorni dopo");
+  assert.ok(!("log" in d1) && !JSON.stringify(d1).includes('"c-prev'), "il registro non è nei dati dell'app");
+  // seconda corsa nello stesso giorno: niente di nuovo, nessuna scrittura (i telefoni non riscaricano)
+  days[0].rain_modelli = [30, 30, 30]; await st.setJSON(`c-meteo-${lat.toFixed(2)},${lon.toFixed(2)}`, { at: Date.now(), met: { tz: "Europe/Rome", lat, days, notte: [], suolo: null } });
+  await C.previsioniPioggia(st, C4, { id: "p" }, { lat, lon });
+  assert.equal(await rev(), r1, "pesi uguali: dati non toccati");
+  assert.equal((await st.get(`c-prev-${lat.toFixed(2)},${lon.toFixed(2)}`, { type: "json" })).log[oggi]["0"].gfs_seamless, 9, "la previsione del mattino non si sovrascrive");
+  // il piano usa la pioggia ripesata
+  const v = M.vistaOrto(d1, "p"), met = await C.meteo(lat, lon), ap = C.pianoAttivo(v, met, oggi);
+  assert.ok(ap.fut[1].ripesata && ap.fut[1].rain < 4, "pioggia di domani dai modelli che qui sbagliano meno: " + ap.fut[1].rain);
+});
+
 test("richieste insieme invece che in fila: il meteo di più orti, e su Telegram la conferma con i pulsanti nuovi", async () => {
   const C = await import("../netlify/lib/core.mjs"), vero = globalThis.fetch;
   // quante richieste sono aperte nello stesso momento (ognuna dura 40 ms)

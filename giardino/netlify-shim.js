@@ -91,7 +91,9 @@ function conMisurata(m){
   const misurata=misurataOra();
   if(!m||!Array.isArray(m.days)||!misurata) return m;
   const oggi=new Intl.DateTimeFormat('en-CA',{timeZone:m.tz||'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  return {...m, days:conPioggiaMisurata(m.days,misurata,oggi), misurata:{stazione:misurata.stazione,km:misurata.km,giorni:misurata.giorni||{}}};
+  // pioggia dei prossimi giorni con i pesi dei modelli imparati qui (li calcola il server confrontando previsioni e misure)
+  const pesi=(server?.data?.pesi_pioggia||{})[ortoId()]||null;
+  return {...m, days:ripesaPioggia(conPioggiaMisurata(m.days,misurata,oggi),pesi,oggi), pesi_pioggia:pesi, misurata:{stazione:misurata.stazione,km:misurata.km,giorni:misurata.giorni||{}}};
 }
 let primo=null;
 // Scarica i dati solo se sono cambiati: l'app dice quale versione ha già (rev e ora del salvataggio) e, se è la stessa,
@@ -291,7 +293,7 @@ async function dopoScarica(dati, forza){
   const met=await caricaMeteo(!!forza);
   // l'app ridisegna solo se è arrivato qualcosa di nuovo (prima: 3 volte a ogni controllo, anche senza novità)
   const lp=posizione();
-  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify(docs.meteo_bot.misurata||null); docs.meteo_bot=conMisurata((lp&&conStorico(LSjson(kPos('meteo',lp.lat,lp.lon))))||docs.meteo_bot); if(JSON.stringify(docs.meteo_bot.misurata||null)!==prima) emit('meteo_bot'); }
+  if(dati&&!met&&docs.meteo_bot){ const prima=JSON.stringify([docs.meteo_bot.misurata||null,docs.meteo_bot.pesi_pioggia||null]); docs.meteo_bot=conMisurata((lp&&conStorico(LSjson(kPos('meteo',lp.lat,lp.lon))))||docs.meteo_bot); if(JSON.stringify([docs.meteo_bot.misurata||null,docs.meteo_bot.pesi_pioggia||null])!==prima) emit('meteo_bot'); }
   if(met||forza) emit('meteo_bot');
   if(dati||forza){ emit('eventi_bot'); emit('piano'); }
   allinea();

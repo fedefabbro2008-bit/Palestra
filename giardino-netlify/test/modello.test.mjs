@@ -486,3 +486,56 @@ test("raccolto: totali dell'anno, grammi e chili insieme, pezzi e mazzi a parte"
   // non conta come acqua
   assert.equal(M.ultimaInnaffiatura({ id: "c" }, ev), "");
 });
+
+test("precisione misurata: i controlli giudicati quando hai risposto; pochi controlli = solo il conto", () => {
+  const v = (d, val) => ({ id: d + val, plantId: "a", tipo: "verifica", data: d, esito: "secco", valutazione: val });
+  const ev = [v("2026-10-01", "ok"), v("2026-10-08", "piu"), { id: "u", plantId: "a", tipo: "umido", data: "2026-10-09" }, { id: "f", plantId: "a", tipo: "fatto", data: "2026-10-10" }];
+  assert.deepEqual(M.precisione(ev, "a", "2026-10-20"), { giusti: 1, totale: 2, ultimi: [true, false] }, "contano solo i controlli giudicati, non «Fatto» né «Era umida»");
+  assert.equal(M.testoPrecisione(M.precisione(ev, "a", "2026-10-20")), "1 su 2 (ancora pochi)");
+  const molti = [...ev, v("2026-10-12", "ok"), v("2026-10-15", "ok"), v("2026-10-18", "ok")];
+  assert.equal(M.testoPrecisione(M.precisione(molti, "a", "2026-10-20")), "4 su 5 (80%)");
+  assert.equal(M.precisione(molti, "a", "2027-03-01").totale, 0, "solo gli ultimi 90 giorni");
+});
+
+test("pioggia prevista contro misurata: pesi imparati solo con abbastanza giorni di pioggia e solo se sbagliano meno", () => {
+  const MOD = ["italia_meteo_arpae_icon_2i", "gfs_seamless", "ecmwf_ifs"];
+  const fai = (n, rumore) => { const log = {}, mis = {};
+    for (let i = 0; i < n; i++) { const d = M.addDays("2026-09-01", i), vero = i % 2 ? 0 : 4 + (i % 5);
+      mis[d] = vero; log[d] = {}; for (const L of [0, 1, 2, 3]) log[d][L] = { [MOD[0]]: vero + 0.3, [MOD[1]]: vero ? vero * 3 + rumore : 3, [MOD[2]]: vero * 0.8 }; }
+    return { log, mis }; };
+  const poco = fai(10, 2), pp0 = M.pesiPioggia(poco.log, poco.mis);
+  assert.equal(pp0.pronti, false, "5 giorni di pioggia non bastano"); assert.equal(pp0.giorni, 5, "un solo modello che prevede pioggia non fa un giorno di pioggia");
+  const tanti = fai(40, 2), pp = M.pesiPioggia(tanti.log, tanti.mis);
+  assert.equal(pp.pronti, true);
+  assert.ok(pp.pesi["1"][MOD[0]] > 2 && pp.pesi["1"][MOD[1]] < 0.75, "ICON-2I pesa di più, GFS di meno: " + JSON.stringify(pp.pesi["1"]));
+  assert.ok(pp.pesi["1"][MOD[0]] <= 4 && pp.pesi["1"][MOD[1]] >= 0.375, "al massimo il doppio, al minimo la metà");
+  assert.ok(pp.errori[MOD[0]] < pp.errori[MOD[1]]);
+  // ripesata: più vicina al modello giusto, e rifarla non cambia niente
+  const days = [{ date: "2026-11-02", ensemble: true, rain: 5, modelli: MOD, rain_modelli: [2, 12, 1.6], prob: 60 }], oggi = "2026-11-01";
+  const r1 = M.ripesaPioggia(days, pp, oggi), r2 = M.ripesaPioggia(r1, pp, oggi);
+  assert.ok(r1[0].rain < 5, "pesa meno il GFS che esagera: " + r1[0].rain); assert.deepEqual(r2, r1, "idempotente"); assert.equal(r1[0].prob, 60, "probabilità invariata");
+  assert.deepEqual(M.ripesaPioggia(days, pp0, oggi), days, "senza pesi pronti resta la previsione di partenza");
+  // registro: la prima previsione del giorno non si sovrascrive
+  const a = M.registraPrevisioni({}, [{ date: oggi, ensemble: true, modelli: MOD, rain_modelli: [1, 2, 3] }], oggi);
+  const b = M.registraPrevisioni(a, [{ date: oggi, ensemble: true, modelli: MOD, rain_modelli: [9, 9, 9] }], oggi);
+  assert.deepEqual(b[oggi]["0"], { [MOD[0]]: 1, [MOD[1]]: 2, [MOD[2]]: 3 });
+});
+
+test("prossima innaffiatura come intervallo: si stringe con i controlli coerenti; oltre le previsioni «in poi»", () => {
+  const oggi = "2026-07-10", serie = (da, n) => [...Array(n)].map((_, i) => ({ date: M.addDays(da, i), tmax: 26, tmin: 16, et0: 3, rain: 0, prob: 0, wind: 5 }));
+  const p = { id: "ba", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 10, luce: 6, dove: "riparato" };
+  const past = serie(M.addDays(oggi, -40), 40), fut = serie(oggi, 7);
+  const base = [{ id: "f0", plantId: "ba", tipo: "fatto", data: M.addDays(oggi, -30), fonte: "app" }];
+  const piano = (ev) => M.pianoLocale({ piante: [p], past, fut, eventi: ev, oggi, lat: 44 }).piante[0];
+  const senza = piano([...base, { id: "f", plantId: "ba", tipo: "fatto", data: M.addDays(oggi, -2), fonte: "app" }]);
+  assert.ok(senza.finestra, "c'è un intervallo"); const centro = senza.giorni.find((g) => g.azione === "innaffia").data;
+  assert.ok(senza.finestra.da <= centro && (!senza.finestra.a || senza.finestra.a >= centro), "il giorno del calcolo è dentro l'intervallo");
+  assert.match(senza.valutazione, /\((tra .+ e .+|da .+ in poi)\)/);
+  // controlli dopo un'innaffiatura, coerenti col calcolo: l'intervallo si stringe
+  const ctrl = []; for (let i = 0; i < 6; i++) { const w = M.addDays(oggi, -28 + i * 4); ctrl.push({ id: "w" + i, plantId: "ba", tipo: "fatto", data: w, fonte: "app" }, { id: "c" + i, plantId: "ba", tipo: "verifica", data: M.addDays(w, 1), esito: "umido", valutazione: "ok" }); }
+  const con = piano([...base, ...ctrl, { id: "f", plantId: "ba", tipo: "fatto", data: M.addDays(oggi, -2), fonte: "app" }]);
+  assert.ok(con.controlli > senza.controlli);
+  assert.ok(con.finestra.u < senza.finestra.u, "incertezza " + con.finestra.u + " < " + senza.finestra.u);
+  // oggi è già il giorno: niente intervallo
+  const ora = piano([...base]); if (ora.giorni[0].azione === "innaffia") assert.equal(ora.finestra, null);
+});

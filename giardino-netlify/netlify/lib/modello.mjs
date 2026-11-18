@@ -257,8 +257,9 @@ export const zonaDi = p => String(p?.zona||'').trim().replace(/\s+/g,' ');
 export const ORTO_PRINCIPALE = 'p';
 export function orti(data){
   const o=Array.isArray(data?.orti)?data.orti.filter(x=>x&&typeof x==='object'&&x.id):[], p=o.find(x=>x.id==='p');
-  return [{id:'p', nome:String(p?.nome||'').trim(), location:data?.location||null, pioggia_misurata:data?.pioggia_misurata||null},
-    ...o.filter(x=>x.id!=='p').map(x=>({id:String(x.id), nome:String(x.nome||'').trim(), location:x.location||null, pioggia_misurata:data?.pioggia_orti?.[x.id]||null}))];
+  const pp=data?.pesi_pioggia||{};
+  return [{id:'p', nome:String(p?.nome||'').trim(), location:data?.location||null, pioggia_misurata:data?.pioggia_misurata||null, pesi_pioggia:pp.p||null},
+    ...o.filter(x=>x.id!=='p').map(x=>({id:String(x.id), nome:String(x.nome||'').trim(), location:x.location||null, pioggia_misurata:data?.pioggia_orti?.[x.id]||null, pesi_pioggia:pp[x.id]||null}))];
 }
 export const nomeOrto = o => o?.nome || o?.location?.name || 'Giardino';
 // orto di una pianta: quello scritto, se esiste ancora; altrimenti il principale
@@ -266,7 +267,7 @@ export function ortoDi(p, data){ const id=p?.orto; return id && id!=='p' && orti
 export function vistaOrto(data, id='p'){
   const tutti=orti(data), o=tutti.find(x=>x.id===id)||tutti[0], ids=new Set(tutti.map(x=>x.id));
   const plants=(data?.plants||[]).filter(p=>(p?.orto&&ids.has(p.orto)?p.orto:'p')===o.id), pid=new Set(plants.map(p=>p.id));
-  return {...data, location:o.location, pioggia_misurata:o.pioggia_misurata, plants, eventi:(data?.eventi||[]).filter(e=>!e?.plantId||pid.has(e.plantId)), orto:o, piuOrti:tutti.length>1};
+  return {...data, location:o.location, pioggia_misurata:o.pioggia_misurata, pesi_pioggia_orto:o.pesi_pioggia, plants, eventi:(data?.eventi||[]).filter(e=>!e?.plantId||pid.has(e.plantId)), orto:o, piuOrti:tutti.length>1};
 }
 // le viste degli orti con posizione e piante (quelle su cui bot e connettore lavorano)
 export const vistePiene = data => orti(data).map(o=>vistaOrto(data,o.id)).filter(v=>v.location&&v.plants.length);
@@ -641,6 +642,18 @@ export function esitoVerifica(risposta, acqua, soglia, acquaSecco){
   if(risposta==='umido' && acqua<soglia) return 'meno';
   return 'ok';
 }
+/* Precisione misurata: quante volte il calcolo aveva ragione ai controlli col dito, giudicato quando hai risposto
+   (valutazione salvata nel controllo: «ok» = il calcolo era giusto; «piu»/«meno» = sbagliava). Non si rifanno i conti
+   dei controlli vecchi con la correzione di oggi: verrebbe una precisione migliore del vero. */
+export function precisione(eventi, pid, oggi, giorni=90){
+  const v=eventiValidi(eventi,pid).filter(e=>e.tipo==='verifica'&&['ok','piu','meno'].includes(e.valutazione)&&giorniTra(e.data,oggi)>=0&&giorniTra(e.data,oggi)<=giorni).sort((a,b)=>a.data<b.data?-1:1);
+  return {giusti:v.filter(e=>e.valutazione==='ok').length, totale:v.length, ultimi:v.slice(-5).map(e=>e.valutazione==='ok')};
+}
+export function testoPrecisione(pr){
+  if(!pr?.totale) return 'ancora nessun controllo col dito';
+  if(pr.totale<3) return pr.giusti+' su '+pr.totale+' (ancora pochi)';
+  return pr.giusti+' su '+pr.totale+' ('+Math.round(pr.giusti/pr.totale*100)+'%)';
+}
 export const TESTO_VERIFICA = {ok:'Il calcolo era giusto: non cambia niente.', piu:'Asciuga prima del previsto: da ora conto che beve di più.', meno:'Il calcolo la dava già asciutta: da ora conto che beve di meno.'};
 // testo dopo «asciutta»: è ora di innaffiare, è normale per la pianta (il calcolo non cambia) o asciuga troppo presto
 // ora = dal piano (seccoOra): con «asciutta» oggi si innaffia
@@ -862,6 +875,24 @@ function germinazione(p, k, oggi, lat){
   return Math.max(1, Math.ceil(Math.max(0, fine-Math.max(0,k.faseEta))/Math.max(0.2, k.faseRitmo||1)));   // giorni che restano
 }
 const evapSuperficie = (k,d) => k.interno ? et0Casa(k.h*fattoreNuvole(d), tempCasaGiorno(k.tcasa, d?.date||k.oggi, k.lat), k.serra) : (d?.et0||0)*fattoreVaso(k,d);
+// Prima e ultima data plausibile per la prossima innaffiatura: consumo ± u (u = 35% senza controlli, poi cala con i
+// controlli fatti dopo un'innaffiatura: 25% con 1, 20% con 2, 12% con 8), applicato anche all'acqua già consumata
+// dall'ultima innaffiatura; all'aperto la pioggia del modello più asciutto e di quello più bagnato. Oltre l'ultimo
+// giorno di previsioni: «a» = null (più avanti).
+export function incertezza(n){ return 0.35/Math.sqrt(1+Math.max(0,n||0)); }
+function finestraAcqua(p,k,b,dep0,fut,oggi){
+  const u=incertezza(b.n), fatte=b.fatte;
+  const corri=(s,piove)=>{ let dep=Math.min(k.tawL,dep0*s);
+    for(const d of fut){
+      if(fatte.has(d.date)&&d.date!==oggi){ dep=0; continue; }
+      const r=Array.isArray(d.rain_modelli)&&d.rain_modelli.length&&d.date>=oggi?(piove>0?Math.max(...d.rain_modelli):Math.min(...d.rain_modelli)):pioggiaAttesa(d).rain;
+      dep=Math.min(k.tawL,Math.max(0,dep+consumoL(k,d)*s-pioggiaL(p,k,{...d,rain:r})));
+      if(dep>=k.rawL) return d.date;
+    }
+    return null; };
+  const da=corri(1+u,-1), a=corri(1-u,1);
+  return da?{da, a, u:+u.toFixed(2)}:null;
+}
 export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vacanza, suolo=null}){
   const out={avvisi:[], piante:[]}, chiusiBagnati=new Set();
   if(!fut.length) return out;
@@ -877,6 +908,7 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
     if(oss[oggi]==='umido') dep=Math.min(dep,0.6*k.rawL); else if(oss[oggi]==='secco' && !fatte.has(oggi)) dep=ancoraSecco(dep,k);
     if(fatte.has(oggi)) dep=0;
     dep=Math.max(0, dep-(presa[oggi]||0));
+    const statoMattina=dep;
     // acqua nel terriccio a fine giornata (0-1, prima di un'eventuale innaffiatura) e tacca sotto la quale si innaffia
     let acqua=+(1-dep/k.tawL).toFixed(2); const soglia=+(1-k.rawL/k.tawL).toFixed(2);
     const giorni=[];
@@ -924,10 +956,15 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
       giorni.push(g); dep=end;
     });
     const prima=giorni.find(g=>g.azione==='innaffia'), ctrl=giorni.find(g=>g.azione==='controlla');
-    const valutazione=prima ? 'Prossima innaffiatura: '+(prima.data===oggi?'oggi':giornoBreve(prima.data))+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'
+    // Quando, più o meno: il calcolo può sbagliare il consumo (meno, dopo controlli col dito coerenti) e, all'aperto, la
+    // pioggia (i modelli non sono d'accordo). Solo da mostrare: le azioni di oggi e i promemoria usano il giorno centrale.
+    const fin=prima&&prima.data!==oggi&&!/germinazione/i.test(prima.motivo||'')?finestraAcqua(p,k,b,statoMattina,fut,oggi):null;
+    const quando=d=>d===oggi?'oggi':giornoBreve(d);
+    const tra=!fin||(fin.da===prima.data&&fin.a===prima.data)?'':fin.a?' (tra '+quando(fin.da)+' e '+quando(fin.a)+')':' (da '+quando(fin.da)+' in poi)';
+    const valutazione=prima ? 'Prossima innaffiatura: '+quando(prima.data)+tra+', '+fmtN(prima.litri,prima.litri<2?2:1)+' L.'
       : ctrl ? 'Nei prossimi giorni basta la riserva; '+giornoBreve(ctrl.data)+' tocca il terriccio.' : 'Nei prossimi '+giorni.length+' giorni non serve acqua.';
     out.piante.push({id:p.id, acqua, soglia, valutazione, fabbisogno_settimanale_litri:+giorni.reduce((a,g)=>a+g.litri,0).toFixed(1), giorni, consigli:consigliPianta(p),
-      calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da, acquaSecco:+Math.max(0,1-Math.min(k.rawL,k.dSecco)/k.tawL).toFixed(2), seccoOra});
+      finestra:fin||null, calibrazione:k.calib, controlli:b.n, dal:usaSuolo?'suolo':b.da, acquaSecco:+Math.max(0,1-Math.min(k.rawL,k.dSecco)/k.tawL).toFixed(2), seccoOra});
   }
   const minT=Math.min(...fut.map(d=>d.tmin)), maxT=Math.max(...fut.map(d=>d.tmax)), gMin=fut.find(d=>d.tmin===minT)?.date;
   const freddo=piante.filter(p=>p.dove!=='interno' && minT<=gelo(p)-(p.dove==='serra'?4:0));
@@ -1198,6 +1235,63 @@ export function urlMeteo(lat, lon){
 export const MODELLI = ['italia_meteo_arpae_icon_2i','icon_seamless','meteofrance_seamless','ecmwf_ifs','ukmo_seamless','gfs_seamless'];
 export const MODELLI_PARAMS='precipitation_sum,temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration';
 const PESI = {italia_meteo_arpae_icon_2i:[2,2,1.5,1], icon_seamless:[1.5,1.5,1.25,1.25], meteofrance_seamless:[1.5,1.5,1,1], ecmwf_ifs:[1.5,1.5,1.5,2], ukmo_seamless:[1,1,1,1], gfs_seamless:[0.75,0.75,0.75,1]};
+/* Pesi della pioggia imparati: ogni giorno il server salva la pioggia prevista da ogni modello per oggi e i 3 giorni
+   dopo (log = {giorno: {anticipo: {modello: mm}}}) e la confronta con quella misurata dalla stazione ARPAE (misurati =
+   {giorno: mm}). Per ogni anticipo, un modello che sbaglia meno della media pesa di più (al massimo il doppio, al minimo
+   la metà del peso di partenza), con prudenza finché i giorni di pioggia sono pochi. Si usano solo se, sui giorni più
+   recenti tenuti da parte, sbagliano meno dei pesi di partenza. Servono almeno 8 giorni con pioggia (prevista o caduta). */
+export const PIOGGIA_MIN_GIORNI = 8;
+export function pesiPioggia(log, misurati){
+  const out={pronti:false, giorni:0, errori:{}, pesi:null};
+  const giorni=Object.keys(log||{}).filter(d=>misurati?.[d]!=null).sort();
+  // giorno di pioggia: caduta (almeno 1 mm) o prevista da almeno metà dei modelli; i giorni asciutti per tutti non dicono
+  // chi sbaglia meno
+  const bagnato=d=>(+misurati[d]>=1)||Object.values(log[d]||{}).some(x=>{ const v=Object.values(x||{}).filter(y=>y!=null); return v.length&&v.filter(y=>+y>=1).length*2>=v.length; });
+  const umidi=giorni.filter(bagnato); out.giorni=umidi.length;
+  if(umidi.length<PIOGGIA_MIN_GIORNI) return out;
+  const pesi={}, conta=(dd,L,w)=>{ let e=0,n=0; for(const d of dd){ const x=log[d]?.[L]; if(!x) continue; let s=0,t=0; for(const [m,v] of Object.entries(x)) if(v!=null&&isFinite(v)){ const p=(w?.[m]??PESI[m]?.[L]??1); s+=p*v; t+=p; } if(t){ e+=Math.abs(s/t-(+misurati[d])); n++; } } return n?e/n:null; };
+  const taglio=Math.floor(umidi.length*2/3), stima=umidi.slice(0,taglio), prova=umidi.slice(taglio);
+  let meglio=0, provati=0;
+  for(const L of ['0','1','2','3']){
+    const err={}, n={};
+    for(const d of stima){ const x=log[d]?.[L]; if(!x) continue; for(const [m,v] of Object.entries(x)) if(v!=null&&isFinite(v)){ err[m]=(err[m]||0)+Math.abs(v-(+misurati[d])); n[m]=(n[m]||0)+1; } }
+    const mm=Object.keys(err).filter(m=>n[m]>=3); if(mm.length<2) continue;
+    const mae=Object.fromEntries(mm.map(m=>[m,err[m]/n[m]])), media=mm.reduce((a,m)=>a+mae[m],0)/mm.length;
+    const w={}; for(const m of mm){ const k=Math.max(0.5,Math.min(2,media/Math.max(0.3,mae[m]))), fid=n[m]/(n[m]+10); w[m]=+((PESI[m]?.[+L]??1)*(1+(k-1)*fid)).toFixed(3); }
+    const a=conta(prova,L,null), b=conta(prova,L,Object.fromEntries(mm.map(m=>[m,w[m]])));
+    if(a!=null&&b!=null){ provati++; if(b<=a+1e-9){ pesi[L]=w; meglio++; } }
+    if(L==='1') out.errori=Object.fromEntries(mm.map(m=>[m,+mae[m].toFixed(2)]));
+  }
+  if(meglio&&Object.keys(pesi).length){ out.pronti=true; out.pesi=pesi; }
+  out.provati=provati;
+  return out;
+}
+// La pioggia di ogni giorno ricalcolata dalle piogge dei singoli modelli con i pesi imparati (sempre dalle stesse
+// piogge dei modelli: rifarlo due volte dà lo stesso risultato). La probabilità resta quella di prima.
+export function ripesaPioggia(days, pp, oggi){
+  if(!pp?.pronti||!pp.pesi||!Array.isArray(days)) return days;
+  return days.map(d=>{
+    if(!d?.ensemble||d.date<oggi||!Array.isArray(d.modelli)||!Array.isArray(d.rain_modelli)) return d;
+    const L=String(Math.min(3,Math.max(0,giorniTra(oggi,d.date)))), w=pp.pesi[L]; if(!w) return d;
+    let s=0,t=0; d.modelli.forEach((m,i)=>{ const v=d.rain_modelli[i]; if(v==null||!isFinite(v)) return; const p=w[m]??PESI[m]?.[+L]??1; s+=p*v; t+=p; });
+    if(!t) return d;
+    return {...d, rain:+(s/t).toFixed(1), rain_pesi_base:d.rain_pesi_base??d.rain, ripesata:true};
+  });
+}
+// registro delle previsioni del giorno (per pesiPioggia): {giorno: {anticipo: {modello: mm}}}; non sovrascrive mai un
+// (giorno, anticipo) già salvato, così resta la previsione della prima corsa del giorno e non quella della sera
+export function registraPrevisioni(log, days, oggi, tieni=60){
+  const out={...(log||{})};
+  for(const d of days||[]){
+    if(!d?.ensemble||d.date<oggi||!Array.isArray(d.modelli)) continue;
+    const L=giorniTra(oggi,d.date); if(L>3) continue;
+    const g=out[d.date]={...(out[d.date]||{})};
+    if(g[L]) continue;
+    g[L]=Object.fromEntries(d.modelli.map((m,i)=>[m,d.rain_modelli?.[i]]).filter(([,v])=>v!=null&&isFinite(v)));
+  }
+  const lim=addDays(oggi,-tieni); for(const k of Object.keys(out)) if(k<lim) delete out[k];
+  return out;
+}
 export function ensembleGiorni(days, jm, oggi){
   const d=jm?.daily; if(!Array.isArray(d?.time) || !Array.isArray(days)) return days;
   const idx=new Map(d.time.map((t,i)=>[t,i])), ok=x=>x!=null && isFinite(x);
