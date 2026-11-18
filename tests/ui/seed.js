@@ -41,6 +41,7 @@ function seedLogs(opts) {
         if (!detail.length) return;
         entries.push({ exId: e.id, name: e.name, muscle: e.muscle, secondary: e.secondary, type: e.type, sets: detail.filter(x => !x.w).length, kg, val: Math.max(...detail.map(x => x.val)), detail });
       });
+      if (t > now.getTime()) return; // la seduta di oggi c'è solo se è già finita (al mattino non ancora)
       const s = { id: 'seed' + (n++), dayKey: key, dayName: day.name, startedAt, endedAt: t, note: rnd() < 0.15 ? 'Buona seduta, un po\' stanco alla fine' : '', entries };
       if (useSpare) s.forDay = due;
       (logs[iso(d)] = logs[iso(d)] || []).push(s);

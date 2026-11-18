@@ -1,4 +1,4 @@
-// «Serie per muscolo» con la figura del corpo scorrendo a destra (Settimana: 7 giorni, Mese: il mese) + costanza 6 mesi
+// «Serie per muscolo»: prima la figura del corpo, scorrendo a destra l'elenco (Settimana: 7 giorni, Mese: il mese) + costanza 6 mesi
 const { open, tab } = require('./lib');
 const { seedLogs } = require('./seed');
 const fs = require('fs');
@@ -17,7 +17,7 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
       const got = {}; mf.querySelectorAll('.mf-figs .bd-m').forEach(el => { got[el.dataset.m] = el.getAttribute('class').replace(/bd-m|sel/g, '').trim(); });
       const rows = {}; mf.querySelectorAll('.m-mrow').forEach(r => { const n = +r.querySelector('.n').firstChild.textContent.trim(); rows[r.dataset.m] = n === 0 ? 'n0' : r.classList.contains('under') ? 'tu' : r.classList.contains('over') ? 'tv' : 'tk'; });
       const pages = mf.querySelector('.mf-pages');
-      return { got, rows, page: Math.round(pages.scrollLeft / (pages.scrollWidth / 2)), tab: mf.querySelector('.mf-tabs .on').dataset.i };
+      return { got, rows, page: Math.round(pages.scrollLeft / (pages.scrollWidth / 2)), tab: mf.querySelector('.mf-tabs .on').dataset.i, names: [...mf.querySelectorAll('.mf-tabs button')].map(x => x.textContent).join('|'), first: !!mf.querySelector('.mf-page:first-child .mf-figs') };
     }, sel);
     const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
     const swipe = async (sel, dir) => { const r = await p.evaluate(sel => { const b = document.querySelector(sel + ' .mf-pages').getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + 60 }; }, sel);
@@ -27,12 +27,9 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
       await tab(p, t); await p.waitForTimeout(500);
       let b = await block(sel);
       if (!b) { check(file && t === 'stats', t + ': nessun blocco (nessun allenamento nel periodo)'); continue; }
-      check(b.page === 0 && b.tab === '0', t + ': si apre sull\'elenco');
-      await p.evaluate(sel => document.querySelector(sel).scrollIntoView({ block: 'start' }), sel); await p.waitForTimeout(200);
-      await swipe(sel, 1);
-      b = await block(sel);
-      check(b.page === 1 && b.tab === '1', t + ': scorrendo a destra col dito compare il corpo, linguetta «Corpo» accesa');
+      check(b.page === 0 && b.tab === '0' && b.first && b.names === 'Corpo|Elenco', t + ': si apre sulla figura del corpo, linguette «Corpo | Elenco», «Corpo» accesa (' + b.names + ')');
       check(Object.keys(b.rows).length >= 8 && same(b), t + ': colori della figura = elenco (' + Object.entries(b.rows).map(([m, c]) => m + ':' + c + (b.got[m] !== c ? '≠' + b.got[m] : '')).join(' ') + ')');
+      await p.evaluate(sel => document.querySelector(sel).scrollIntoView({ block: 'start' }), sel); await p.waitForTimeout(200);
       const m = Object.keys(b.rows).find(k => b.rows[k] !== 'n0');
       if (m) {
         await p.click(`${sel} .mf-figs .bd-m[data-m="${m}"] >> nth=0`); await p.waitForTimeout(400);
@@ -41,16 +38,21 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
         check(det.includes(m) && det.includes(num + ' serie'), t + ': tocco su ' + m + ' → ' + det.slice(0, 90) + ' (elenco: ' + num + ')');
         if (!file) await p.locator(sel).screenshot({ path: `${OUT}/mf-${t}.png` });
       }
+      b = await block(sel);
+      check(b.page === 0, t + ': il tocco sul muscolo non cambia pagina');
+      await swipe(sel, 1);
+      b = await block(sel);
+      check(b.page === 1 && b.tab === '1', t + ': scorrendo a destra col dito compaiono le linee, linguetta «Elenco» accesa');
       await swipe(sel, -1);
       b = await block(sel);
-      check(b.page === 0 && b.tab === '0', t + ': scorrendo a sinistra torna l\'elenco');
+      check(b.page === 0 && b.tab === '0', t + ': scorrendo a sinistra torna il corpo');
       await p.click(sel + ' .mf-tabs button[data-i="1"]'); await p.waitForTimeout(700);
       b = await block(sel);
-      check(b.page === 1 && b.tab === '1', t + ': tocco su «Corpo» porta alla figura');
+      check(b.page === 1 && b.tab === '1', t + ': tocco su «Elenco» porta alle linee');
       if (t === 'month') {
         await p.click('#monthPrev'); await p.waitForTimeout(600);
         b = await block(sel);
-        check(b && b.page === 1 && b.tab === '1', 'mese precedente: resta sul corpo');
+        check(b && b.page === 1 && b.tab === '1', 'mese precedente: resta sull\'elenco');
         await p.click('#monthNext'); await p.waitForTimeout(400);
       }
     }

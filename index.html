@@ -4181,7 +4181,7 @@ document.getElementById('bodyCard').addEventListener('click', ev=>{
    principale 1, secondario ½, media a settimana) e gli stessi colori: rosso sotto l'obiettivo, verde dentro, azzurro
    oltre, grigio nessuna serie. Settimana: ultimi 7 giorni. Mese: il mese che stai guardando.
    ============================================================ */
-const mfPage = {};      // pagina scelta (0 elenco, 1 corpo) per sezione: resta cambiando mese o ridisegnando
+const mfPage = {};      // pagina scelta (0 corpo, 1 elenco) per sezione: resta cambiando mese o ridisegnando
 function trainedLoad(fromI, toI){
   const load = {}, by = {};
   Object.keys(state.logs).forEach(iso=>{
@@ -4204,12 +4204,12 @@ function muscleBlock(title, rows, vol, wk, fromI, toI, key){
   const p = mfPage[key] ? 1 : 0;
   return `<div class="mf" data-mf="${key}" data-from="${fromI}" data-to="${toI}" data-wk="${wk}">
     <div class="mf-head"><div class="m-sec">${title}</div>
-      <div class="mf-tabs" role="tablist"><button type="button" role="tab" data-i="0" class="${p ? '' : 'on'}" aria-selected="${!p}">Elenco</button><button type="button" role="tab" data-i="1" class="${p ? 'on' : ''}" aria-selected="${!!p}">Corpo</button></div></div>
+      <div class="mf-tabs" role="tablist"><button type="button" role="tab" data-i="0" class="${p ? '' : 'on'}" aria-selected="${!p}">Corpo</button><button type="button" role="tab" data-i="1" class="${p ? 'on' : ''}" aria-selected="${!!p}">Elenco</button></div></div>
     <div class="mf-pages">
-      <div class="mf-page">${rows}<div class="mf-swipe">Scorri a destra per vederli sul corpo ›</div></div>
       <div class="mf-page"><div class="bd-figs mf-figs"><div class="bd-col">${bodyFigure('front', lvl, null)}<span>Davanti</span></div><div class="bd-col">${bodyFigure('back', lvl, null)}<span>Dietro</span></div></div>
         <div class="bd-legend"><span><i class="bd-k tu"></i>sotto</span><span><i class="bd-k tk"></i>nell'obiettivo</span><span><i class="bd-k tv"></i>oltre</span><span><i class="bd-k n0"></i>nessuna serie</span></div>
-        <div class="mf-det"><div class="bd-hint">Tocca un muscolo per vedere serie ed esercizi.</div></div></div>
+        <div class="mf-det"><div class="bd-hint">Tocca un muscolo per vedere serie ed esercizi.</div></div><div class="mf-swipe">Scorri a destra per l'elenco ›</div></div>
+      <div class="mf-page">${rows}</div>
     </div></div>`;
 }
 /* dopo aver messo l'HTML: pagina scelta, linguette che seguono lo scorrimento */
