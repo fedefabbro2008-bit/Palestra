@@ -586,3 +586,21 @@ test("acqua di tutta la vita: innaffiature segnate e pioggia arrivata al terricc
   assert.deepEqual(vv, { litri: 1.2, volte: 2, senzaLitri: 1, presa: 0 });
   assert.deepEqual(M.acquaVita({ ...aglio, vita_vecchia: vv }, resto, giorni, oggi, 44), a, "stesso totale dopo la potatura del diario");
 });
+
+test("acqua di tutta la vita: pioggia fermata con l'archivio del meteo corto, i giorni mancanti si riempiono quando arriva", () => {
+  const oggi = "2026-11-18", g = (d) => M.addDays(oggi, d);
+  const tutti = [...Array(30)].map((_, i) => ({ date: g(i - 30), rain: i % 5 === 0 ? 8 : 0, et0: 1, tmin: 5, tmax: 15 }));
+  const p = { id: "r", nome: "Rosa", specie: "rosa", fase: "auto", colt: "vaso", vaso: 20, diametro: 35, num: 1, luce: 6, dove: "aperto", aggiunta: g(-30) };
+  const vero = M.acquaVita(p, [], tutti, oggi, 44).totale, vicino = (a, b) => Math.abs(a - b) < 0.011;
+  // al riparo, quando l'app aveva solo gli ultimi 3 giorni del meteo
+  const pv = M.congelaPioggia(p, [], tutti.slice(-3), oggi, 44);
+  assert.deepEqual(pv.buchi.map((b) => [b.da, b.a]), [[g(-30), g(-4)]], "i giorni senza meteo restano segnati, con l'area di allora");
+  const sotto = { ...p, dove: "riparato", pioggia_vita: pv }, corto = M.acquaVita(sotto, [], tutti.slice(-3), oggi, 44);
+  assert.equal(corto.pioggia.mancano, 27); assert.ok(corto.totale < vero);
+  // arriva l'archivio: quei giorni si contano come se non fossero mai mancati (nell'app subito, nella pianta dal bot)
+  assert.ok(vicino(M.acquaVita(sotto, [], tutti, oggi, 44).totale, vero));
+  const pieno = M.congelaPioggia(sotto, [], tutti, oggi, 44, pv.fino);
+  assert.ok(!pieno.buchi && vicino(M.acquaVita({ ...sotto, pioggia_vita: pieno }, [], [], oggi, 44).totale, vero));
+  // archivio che copre solo una parte: resta la parte prima
+  assert.deepEqual(M.riempiBuchi(pv.buchi, tutti.slice(10)).buchi.map((b) => [b.da, b.a]), [[g(-30), g(-21)]]);
+});

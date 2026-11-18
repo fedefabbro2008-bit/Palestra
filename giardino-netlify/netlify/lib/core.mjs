@@ -88,17 +88,21 @@ export function segnaInizi(d) {
   for (const p of Array.isArray(d?.plants) ? d.plants : []) if (p && typeof p === "object" && !p.example && !/^\d{4}-\d{2}-\d{2}$/.test(p.aggiunta || "")) p.aggiunta = M.stimaAggiunta(p, d.eventi) || oggi;
 }
 // La pioggia dei giorni che stanno per uscire dall'archivio del meteo (400 giorni) resta contata nella pianta
-// (pioggia_vita, fino a 300 giorni fa): dal bot, al mattino, una volta ogni ~50 giorni per pianta all'aperto.
+// (pioggia_vita, fino a 300 giorni fa): dal bot, al mattino, una volta ogni ~50 giorni per pianta all'aperto. Lo stesso
+// giro riempie i giorni fermati senza archivio (buchi) appena l'archivio li copre.
 export async function rinnovaPioggia(st, code, data, oggi, meteoDi) {
   const lim = M.addDays(oggi, -350), fino = M.addDays(oggi, -300);
   for (const o of M.orti(data)) {
     const v = M.vistaOrto(data, o.id);
     if (!v.location) continue;
-    const vecchie = v.plants.filter((p) => { if (p.dove !== "aperto") return false; const dal = M.inizioVita(p, v.eventi, oggi).data; return (p.pioggia_vita?.dal === dal ? p.pioggia_vita.fino : dal) < lim; });
-    if (!vecchie.length) continue;
+    const vecchia = (p) => { if (p.dove !== "aperto") return false; const dal = M.inizioVita(p, v.eventi, oggi).data; return (p.pioggia_vita?.dal === dal ? p.pioggia_vita.fino : dal) < lim; };
+    // buchi che l'archivio può ancora coprire (quelli più vecchi di 400 giorni restano, senza chiedere il meteo ogni mattina)
+    const daFare = v.plants.filter((p) => vecchia(p) || p.pioggia_vita?.buchi?.some((b) => b.a >= M.addDays(oggi, -M.ARCHIVIO_GIORNI)));
+    if (!daFare.length) continue;
     const met = await meteoDi(v), past = M.giorniPassati({ ...met, lat: met.lat ?? v.location.lat }, v.pioggia_misurata, oggi, M.ARCHIVIO_GIORNI);
-    const nuovi = new Map(vecchie.map((p) => [p.id, M.congelaPioggia(p, v.eventi, past, oggi, v.location.lat, fino)]).filter(([, x]) => x));
-    if (nuovi.size) data = (await aggiorna(st, code, (d) => { let n = 0; for (const p of d.plants) { const x = nuovi.get(p.id); if (x && !(p.pioggia_vita?.fino > fino)) { p.pioggia_vita = x; n++; } } return n ? undefined : false; }))?.data || data;
+    const nuovi = new Map(daFare.map((p) => [p.id, M.congelaPioggia(p, v.eventi, past, oggi, v.location.lat, vecchia(p) ? fino : p.pioggia_vita.fino)])
+      .filter(([id, x]) => x && JSON.stringify(x) !== JSON.stringify(v.plants.find((p) => p.id === id)?.pioggia_vita)));
+    if (nuovi.size) data = (await aggiorna(st, code, (d) => { let n = 0; for (const p of d.plants) { const x = nuovi.get(p.id); if (x && !(p.pioggia_vita?.fino > x.fino)) { p.pioggia_vita = x; n++; } } return n ? undefined : false; }))?.data || data;
   }
   return data;
 }

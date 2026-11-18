@@ -674,6 +674,12 @@ test("acqua di tutta la vita sul server: inizio scritto una volta, diario potato
   const p3 = (await leggiDati()).plants.find((p) => p.id === "vec");
   assert.equal(p3.dove, "riparato"); assert.equal(p3.pioggia_vita.fino, g(-1)); assert.ok(p3.pioggia_vita.litri >= pv.litri);
   assert.equal(await totale(), prima, "al riparo il totale non cambia: la pioggia di prima resta");
+  // fermata con l'archivio corto (qui solo gli ultimi giorni): i giorni senza meteo restano segnati e il bot li riempie
+  assert.ok(p3.pioggia_vita.buchi?.some((b) => b.da === g(-299) && b.a === g(-4)), JSON.stringify(p3.pioggia_vita.buchi));
+  archivio[g(-100)][2] = 20;
+  const p4 = (await rinnovaPioggia(st, CODE, await leggiDati(), OGGI, async () => ({ days: [], archivio, lat: 44.176 }))).plants.find((p) => p.id === "vec");
+  assert.ok(p4.pioggia_vita.litri > p3.pioggia_vita.litri && p4.pioggia_vita.fino === p3.pioggia_vita.fino, "riempito con la pioggia di quei giorni");
+  assert.deepEqual(p4.pioggia_vita.buchi.map((b) => [b.da, b.a]), [[g(-500), g(-401)]], "resta solo quello più vecchio dell'archivio");
   // pianta nuova dal connettore: inizio oggi
   assert.equal((await strumento("modifica_pianta", { azione: "aggiungi", campi: { nome: "Prova nuova" } })).isError, false);
   assert.equal((await leggiDati()).plants.find((p) => p.nome === "Prova nuova").aggiunta, oraLocaleRoma());

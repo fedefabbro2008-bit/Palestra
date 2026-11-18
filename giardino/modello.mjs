@@ -685,21 +685,37 @@ export function inizioVita(p, eventi, oggi){
   return sem && sem>=app ? {data:sem, perche:p.tipo_data==='trapianto'?'trapianto':'semina'} : {data:app, perche:'app'};
 }
 const r2=x=>+(+x||0).toFixed(2);
+// Pioggia di un giorno su un'area (come pioggiaL, con l'area salvata quando i dati della pianta erano altri)
+const pioggiaSu = (area, d) => Math.max(0,(d?.rain||0)-1.5)*area;
+// Giorni senza pioggia contata (fermata con un archivio del meteo più corto): si riempiono con l'area di allora appena
+// l'archivio li copre; quelli che restano si mostrano. buchi = [{da, a, area}]
+export function riempiBuchi(buchi, past){
+  let litri=0, giorni=0; const resto=[];
+  const primo=(past||[]).reduce((m,d)=>!m||d.date<m?d.date:m, null);
+  for(const b of buchi||[]){
+    if(!b || !ISO_GIORNO.test(b.da||'') || !ISO_GIORNO.test(b.a||'') || b.a<b.da) continue;
+    if(!primo || primo>b.a){ resto.push(b); continue; }
+    for(const d of past){ if(d.date<b.da || d.date>b.a) continue; const l=pioggiaSu(+b.area||0, d); if(l>0){ litri+=l; giorni++; } }
+    if(primo>b.da) resto.push({...b, a:addDays(primo,-1)});   // l'archivio comincia dopo: resta la parte prima
+  }
+  return {litri, giorni, buchi:resto};
+}
 // pioggia del meteo dal giorno dopo quella già contata (pioggia_vita) o dall'inizio, fino a «fino» compreso
 function pioggiaMeteo(p, dal, past, fino, lat, oggi){
   const pv=p.pioggia_vita, base=pv && pv.dal===dal && ISO_GIORNO.test(pv.fino||'') && pv.fino>=dal ? pv : null;
   const da=base?addDays(base.fino,1):dal, aperto=p.dove==='aperto';
-  let litri=0, giorni=0, primo=null;
+  let litri=0, giorni=0, primo=null, area=0;
   if(aperto && da<=fino){
-    const k=params(p, {oggi, lat});
+    const k=params(p, {oggi, lat}); area=k.pioggiaArea;
     for(const d of past||[]){ if(d.date<da || d.date>fino) continue; if(!primo || d.date<primo) primo=d.date; const l=pioggiaL(p,k,d); if(l>0){ litri+=l; giorni++; } }
   }
-  const out={litri:(+base?.litri||0)+litri, giorni:giorni+(+base?.giorni||0)};
+  const out={litri:(+base?.litri||0)+litri, giorni:giorni+(+base?.giorni||0), da, area, buchi:Array.isArray(base?.buchi)?base.buchi:[]};
   // all'aperto senza archivio del meteo (prima apertura senza rete): la pioggia non si sa ancora
   if(aperto && da<=fino && !primo) out.sconosciuta=true;
   else if(aperto && primo && primo>da) out.dal=primo;   // l'archivio comincia dopo: pioggia contata da lì
   return out;
 }
+const giorniBuchi = buchi => (buchi||[]).reduce((n,b)=>n+giorniTra(b.da,b.a)+1,0);
 // past = giorni passati (giorniPassati con n = ARCHIVIO_GIORNI); la pioggia fino a ieri (quella di oggi si conta domani)
 export function acquaVita(p, eventi, past, oggi, lat){
   const ini=inizioVita(p, eventi, oggi), dal=ini.data, vv=p.vita_vecchia||{};
@@ -711,7 +727,9 @@ export function acquaVita(p, eventi, past, oggi, lat){
   const litriI=inn.reduce((a,e)=>a+(+e.litri>0?+e.litri:0),0)+(+vv.litri||0);
   const presa=mie.filter(e=>e.tipo==='pioggia').reduce((a,e)=>a+(+e.litri>0?+e.litri:0),0)+(+vv.presa||0);
   const m=pioggiaMeteo(p, dal, past, addDays(oggi,-1), lat, oggi);
-  const pioggia={litri:r2(m.litri+presa), giorni:m.giorni, presa:r2(presa), ...(m.sconosciuta?{sconosciuta:true}:{}), ...(m.dal?{dal:m.dal}:{})};
+  // giorni fermati senza archivio: se adesso l'archivio li copre si contano (con l'area di allora), gli altri si mostrano
+  const rb=riempiBuchi(m.buchi, past), mancano=giorniBuchi(rb.buchi);
+  const pioggia={litri:r2(m.litri+rb.litri+presa), giorni:m.giorni+rb.giorni, presa:r2(presa), ...(m.sconosciuta?{sconosciuta:true}:{}), ...(m.dal?{dal:m.dal}:{}), ...(mancano?{mancano}:{})};
   return {dal, perche:ini.perche, innaffiature:{litri:r2(litriI), volte, senzaLitri:senza}, pioggia, totale:r2(litriI+pioggia.litri)};
 }
 // La pioggia si conterebbe in un altro modo dopo la modifica (posto, vaso, area, orto)?
@@ -724,10 +742,12 @@ export function cambiaPioggia(prima, dopo, oggi, lat){
 }
 // La pioggia del meteo fino a «fino» (di solito ieri) con i dati di adesso, da salvare nella pianta (pioggia_vita) prima di
 // cambiarli o prima che quei giorni escano dall'archivio. null se non si sa (all'aperto senza archivio del meteo).
+// I giorni che l'archivio non copre restano «buchi» con l'area di adesso: si riempiono appena l'archivio li ha.
 export function congelaPioggia(p, eventi, past, oggi, lat, fino=addDays(oggi,-1)){
   const dal=inizioVita(p, eventi, oggi).data, m=pioggiaMeteo(p, dal, past, fino, lat, oggi);
   if(m.sconosciuta || fino<dal) return null;
-  return {dal, fino, litri:r2(m.litri), giorni:m.giorni};
+  const rb=riempiBuchi([...m.buchi, ...(m.dal?[{da:m.da, a:addDays(m.dal,-1), area:+m.area.toFixed(4)}]:[])], past);
+  return {dal, fino, litri:r2(m.litri+rb.litri), giorni:m.giorni+rb.giorni, ...(rb.buchi.length?{buchi:rb.buchi}:{})};
 }
 // Eventi che escono dal diario del server (più vecchi di 400 giorni, o oltre i 3000): innaffiature e pioggia presa
 // restano contate nella pianta. tolti = eventi tolti, tutti = gli eventi di prima (per sapere quali valevano).

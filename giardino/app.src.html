@@ -1324,9 +1324,14 @@ function wxDays(){
 const futDays = () => { const t=today(); return wxDays().filter(d=>d.date>=t && d.tmax!=null && d.tmin!=null).slice(0,7); };
 // giorni passati per il bilancio dell'acqua: fino a 120 giorni dallo storico (meteo automatico, anche se oggi vale quello
 // scritto a mano), con la pioggia misurata dalla stazione ARPAE dove c'è
-// (n = ARCHIVIO_GIORNI per l'acqua di tutta la vita)
-const pastDays = n => { const w=activeWeather(), wb=W.bot;
-  return giorniPassati({archivio:w?.archivio||wb?.archivio||null, days:wxDays().filter(d=>d.tmax!=null), lat:S.location?.lat}, w?.misurata||wb?.misurata||null, today(), n); };
+// (n = ARCHIVIO_GIORNI per l'acqua di tutta la vita: 400 giorni, ricordati finché meteo, giorno e posizione non cambiano;
+// Piante e Diario li chiedono a ogni ridisegno)
+let vitaMemo={};
+const pastDays = n => { const w=activeWeather(), wb=W.bot, t=today(), lat=S.location?.lat;
+  if(n===ARCHIVIO_GIORNI && vitaMemo.w===w && vitaMemo.wb===wb && vitaMemo.t===t && vitaMemo.lat===lat) return vitaMemo.v;
+  const v=giorniPassati({archivio:w?.archivio||wb?.archivio||null, days:wxDays().filter(d=>d.tmax!=null), lat}, w?.misurata||wb?.misurata||null, t, n);
+  if(n===ARCHIVIO_GIORNI) vitaMemo={w, wb, t, lat, v};
+  return v; };
 
 const giornoVita = d => dataBreve(d)+(d.slice(0,4)!==today().slice(0,4)?' '+d.slice(0,4):'');
 const daQuando = a => a.perche==='semina'?'dalla semina, '+giornoVita(a.dal):a.perche==='trapianto'?'dal trapianto, '+giornoVita(a.dal):'da quando è nell\'app, '+giornoVita(a.dal);
@@ -1335,7 +1340,8 @@ function testoPioggiaVita(p, a){
   const g=a.pioggia;
   if(g.sconosciuta) return 'Pioggia: in attesa del meteo';
   if(p.dove!=='aperto' && !(g.litri>0)) return 'Pioggia: niente (al coperto)';
-  return 'Pioggia '+fmtL(g.litri)+(g.giorni?' in '+(g.giorni===1?'1 giorno':g.giorni+' giorni'):'')+(g.presa>0&&p.dove!=='aperto'?' (messa fuori)':'')+(g.dal?' (contata dal '+giornoVita(g.dal)+')':'');
+  return 'Pioggia '+fmtL(g.litri)+(g.giorni?' in '+(g.giorni===1?'1 giorno':g.giorni+' giorni'):'')+(g.presa>0&&p.dove!=='aperto'?' (messa fuori)':'')+(g.dal?' (contata dal '+giornoVita(g.dal)+')':'')
+    +(g.mancano?' (senza il meteo di '+(g.mancano===1?'1 giorno':g.mancano+' giorni')+')':'');
 }
 const testoInnaffiatureVita = a => { const i=a.innaffiature, v=n=>n===1?'1 volta':n+' volte';
   return 'Innaffiature '+fmtL(i.litri)+(!i.volte?'':i.senzaLitri===i.volte?' ('+v(i.volte)+' senza litri segnati)':' ('+v(i.volte)+(i.senzaLitri?', '+i.senzaLitri+' senza litri segnati':'')+')'); };
@@ -1836,7 +1842,7 @@ function renderPiante(AP){
   $('#plantCount').textContent=S.plants.length?'Le tue piante ('+S.plants.length+')':'Le tue piante';
   if(!ready){ setHTML(L,'<div class="empty">Caricamento…</div>'); return; }
   if(!S.plants.length){ setHTML(L,'<div class="card empty">Nessuna pianta. Tocca <b>+ Aggiungi</b> per iniziare.</div>'); return; }
-  const aperti=new Set([...L.querySelectorAll('details[open]')].map(d=>d.dataset.pid)), c=ctx(), haMeteo=futDays().length>0, zone=conZone();
+  const aperti=new Set([...L.querySelectorAll('details[open]')].map(d=>d.dataset.pid)), c=ctx(), haMeteo=futDays().length>0, zone=conZone(), passati=pastDays(ARCHIVIO_GIORNI);
   let zonaPrima=null;
   setHTML(L,piante().map(p=>{
     let testa='';
@@ -1855,7 +1861,7 @@ function renderPiante(AP){
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
     if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
     facts.push(['Risposte d\'accordo col calcolo',testoPrecisione(precisione(eventsOf(p.id),p.id,today()))]);
-    { const a=acquaVita(p, allEvents(), pastDays(ARCHIVIO_GIORNI), today(), S.location?.lat);
+    { const a=acquaVita(p, eventsOf(p.id), passati, today(), S.location?.lat);
       const minuscola=t=>t.charAt(0).toLowerCase()+t.slice(1);
       facts.push(['Acqua di tutta la vita',fmtL(a.totale)+' '+daQuando(a)+' · '+minuscola(testoInnaffiatureVita(a))+' · '+minuscola(testoPioggiaVita(p,a))]); }
     if(pp && 'dal' in pp) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
@@ -1960,7 +1966,7 @@ function renderDiario(){
     return `<div class="lrow"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}</b><span>${esc(det)}</span></span></div>`;
   }).join(''):'<div class="empty">Nessuna pianta.</div>');
   // acqua di tutta la vita, pianta per pianta: la barra è lunga quanto la pianta che ne ha ricevuta di più
-  { const pv=pastDays(ARCHIVIO_GIORNI), lat=S.location?.lat, vite=piante().map(p=>({p, a:acquaVita(p, ev, pv, t, lat)})), mx=Math.max(0, ...vite.map(x=>x.a.totale));
+  { const pv=pastDays(ARCHIVIO_GIORNI), lat=S.location?.lat, vite=piante().map(p=>({p, a:acquaVita(p, eventsOf(p.id), pv, t, lat)})), mx=Math.max(0, ...vite.map(x=>x.a.totale));
     $('#vitaBox').hidden=!vite.length;
     setHTML($('#vitaList'),vite.map(({p,a})=>{ const w=x=>mx>0?(x/mx*100).toFixed(1):'0';
       return `<div class="lrow vita"><span class="ri" aria-hidden="true">${esc(icoDi(p))}</span><span class="li"><b>${esc(p.nome)}<em>${esc(fmtL(a.totale))}</em></b><span class="vbar" aria-hidden="true"><i style="width:${w(a.innaffiature.litri)}%"></i><i style="width:${w(a.pioggia.litri)}%"></i></span><span>${esc(testoInnaffiatureVita(a))}</span><span>${esc(testoPioggiaVita(p,a))}</span><span>${esc(daQuando(a).replace(/^d/,'D'))}</span></span></div>`; }).join('')); }
