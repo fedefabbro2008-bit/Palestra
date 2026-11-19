@@ -9417,6 +9417,9 @@ function syncApply(m){
   let relinked = false;
   try{
     let logBefore = null;
+    // la giornata che tocca, prima dello storico nuovo: se arriva un allenamento fatto altrove (o registrato da Claude)
+    // e qui sei ancora su quella scelta dall'app, si passa a quella che tocca adesso (una giornata scelta da te resta)
+    const dueBefore = m.logs && !session ? dayAfterLast() : null;
     if(m.logs){
       // gli allenamenti corretti da Claude: com'erano qui un attimo prima, per «Rimetti com'era»
       // (un allenamento che qui non c'era, rimesso da Claude, ha session null: «Rimetti com'era» lo toglie di nuovo)
@@ -9437,13 +9440,15 @@ function syncApply(m){
     // storico e scheda insieme: gli esercizi dello storico si collegano a quelli della scheda con lo stesso nome
     // (un esercizio aggiunto altrove che avevi già fatto ritrova il suo storico)
     if((m.logs || m.days) && reconcileLogIds()){ relinked = true; persist('logs'); }
+    let dueMoved = false;
+    if(dueBefore!=null && currentDay===dueBefore && hasOwn(state.days, currentDay)){ const d = dayAfterLast(); if(d!==currentDay){ currentDay = d; state.settings.lastDay = d; dueMoved = true; } }
     if(m.settings){
       const s = m.settings, set = {};
       SYNC_SET_KEYS.forEach(k=>{ if(k!=='planStarts' && s[k]!==undefined) set[k] = s[k]; });
       restoreSettings(set);
       if(Array.isArray(s.planStarts)) state.settings.planStarts = [...new Set(s.planStarts.filter(validIso))].sort();
     }
-    if(m.days || m.settings) persist('settings');
+    if(m.days || m.settings || dueMoved) persist('settings');
     sync.setHash = setHash(state.settings);
     invalidateStats(); applyPrefs(); renderAll();
   }finally{ syncApplying = false; }

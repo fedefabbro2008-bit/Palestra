@@ -41,7 +41,7 @@ await c.connect(new StreamableHTTPClientTransport(new URL(`${BASE}/mcp/${on.toke
 const call = async (name, args) => { const t0 = performance.now(); const r = await c.callTool({ name, arguments: args || {} }); return { err: !!r.isError, t: r.content[0].text, ms: Math.round(performance.now() - t0) }; };
 const first = Object.keys(logs).sort()[0];
 const reads = [['riepilogo', {}], ['scheda', {}], ['allenamenti', { limite: 60 }], ['allenamenti', { limite: 200, formato: 'compatto' }], ['storico_esercizio', { esercizio: b0.days[keys[0]].exercises.find((e) => e.muscle && e.muscle !== 'Altro').name, limite: 100 }],
-  ['volume_muscoli', { settimane: 26 }], ['record', { limite: 200 }], ['confronta_periodi', { giorni: 365 }], ['confronta_periodi', { a_dal: first, a_al: '2025-12-31' }], ['analisi_scheda', { settimane: 12 }],
+  ['volume_muscoli', { settimane: 26 }], ['record', { limite: 200 }], ['confronta_periodi', { giorni: 365 }], ['confronta_periodi', { a_dal: first, a_al: new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10) }], ['analisi_scheda', { settimane: 12 }],
   ['progressione_suggerita', {}], ['cerca_note', { limite: 100 }], ['esporta', {}]];
 const times = [];
 for (const [name, args] of reads) {

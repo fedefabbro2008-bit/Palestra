@@ -45,14 +45,20 @@ await key({ action: 'writeLogs', on: true });
 
 // --- input non validi: errore che dice cosa, nessuna modifica
 const tomorrow = addDays(today, 1), y = +today.slice(0, 4);
-const marchDst = (() => { for (let d = 31; d > 24; d--) { const iso = `${y}-03-${d}`; if (new Date(iso + 'T12:00:00Z').getUTCDay() === 0) return iso; } })();
+// ultima domenica di marzo (alle 2 si passa alle 3): quella di quest'anno se è già passata, se no dell'anno prima
+const lastSunMarch = (yy) => { for (let d = 31; d > 24; d--) { const iso = `${yy}-03-${d}`; if (new Date(iso + 'T12:00:00Z').getUTCDay() === 0) return iso; } };
+const marchDst = lastSunMarch(y) < today ? lastSunMarch(y) : lastSunMarch(y - 1);
+// un giorno passato (mai oggi): quest'anno se è già passato, se no l'anno prima
+const past = (md) => `${y}-${md}` < today ? `${y}-${md}` : `${y - 1}-${md}`;
 const bads = [
   ['senza motivo', { ...base, motivo: '' }, /motivo/],
   ['data nel futuro', { ...base, data: tomorrow }, /non è ancora arrivato/],
   ['data impossibile', { ...base, data: '2026-02-30' }, /AAAA-MM-GG/],
   ['oggi a un\'ora che non è ancora arrivata', { ...base, data: today, ora: '23:59' }, /non è ancora arrivato|ora/],
   ['ora scritta male', { ...base, ora: '25:00' }, /HH:MM/],
-  ['ora che non esiste (cambio dell\'ora legale)', { ...base, data: marchDst <= today ? marchDst : `${y - 1}-03-29`, ora: '02:30' }, /non esiste/],
+  ['ora che non esiste (cambio dell\'ora legale)', { ...base, data: marchDst, ora: '02:30' }, /non esiste/],
+  ['riserva senza vale_come', { ...base, giornata: spare }, /indica «vale_come»/],
+  ['cominciato mezz\'ora fa e lungo 5 ore: finirebbe dopo adesso', { ...base, data: rome(Date.now() - 30 * 60000, 'iso'), ora: rome(Date.now() - 30 * 60000), durata: 300 }, /finirebbe dopo adesso/],
   ['durata fuori misura', { ...base, durata: 0 }, /durata/],
   ['giornata sconosciuta', { ...base, giornata: 'Z9' }, /nessuna giornata/],
   ['vale_come su una giornata normale', { ...base, vale_come: 'B' }, /solo per una giornata di riserva/],
@@ -98,7 +104,7 @@ const again = await call('registra_allenamento', { ...base, nota: 'Recuperato da
 check(again.err && /sembra già registrato/.test(again.t) && (await blob()).rev === b1.rev, 'richiesta ripetuta: rifiutata, nessun doppione');
 
 // --- 3. ora d'estate e d'inverno; riserva con «vale_come»
-const summer = `${today >= `${y}-07-15` ? y : y - 1}-07-15`, winter = `${today >= `${y}-01-15` ? y : y - 1}-01-15`;
+const summer = past('07-15'), winter = past('01-15');
 for (const [iso, what] of [[summer, 'estate'], [winter, 'inverno']]) {
   r = await call('registra_allenamento', { ...base, data: iso, ora: '19:05', giornata: spare, vale_come: 'A', esercizi: [ex()] });
   const s = (await blob()).logs[iso].find((x) => x.entries.some((e) => e.name === planEx.name) && rome(x.startedAt) === '19:05');

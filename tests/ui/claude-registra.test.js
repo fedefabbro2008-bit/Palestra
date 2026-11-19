@@ -70,6 +70,20 @@ const dmy = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(
   await p.reload(); await p.waitForTimeout(3000);
   check(stableStr(await appLogs()) === stableStr(L0), 'nell\'app: l\'allenamento registrato non c\'è più, storico come all\'inizio');
   check(/rimesso lo storico/.test(await p.textContent('#claudeLogCard')), 'avviso «Claude ha rimesso lo storico com\'era»');
+  await p.click('#claudeLogOk').catch(() => {});
+
+  // rotazione: registrato come il più recente (la giornata che toccava), poi tocca la successiva; annullato, torna com'era
+  const active = () => p.evaluate(() => { const a = document.querySelector('#dayPills .day-pill.active'); return a ? a.dataset.k : null; });
+  const due0 = await active(), rot = Object.keys(days).filter((k) => days[k].exercises.length && !days[k].spare), next = rot[(rot.indexOf(due0) + 1) % rot.length];
+  const st = Date.now() - 20 * 60000, romeIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date(st)), romeHm = new Intl.DateTimeFormat('it-IT', { timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit' }).format(new Date(st));
+  r = await call('registra_allenamento', { data: romeIso, ora: romeHm, durata: 15, giornata: due0, motivo: 'Fatto stamattina, non segnato', esercizi: [{ nome: days[due0].exercises.find((e) => e.muscle && e.muscle !== 'Altro').name, serie: [{ kg: 20, ripetizioni: 10 }] }] });
+  check(!r.err && /È l'allenamento più recente/.test(r.t), 'registrato come il più recente: la risposta dice che cambia la giornata che tocca');
+  await p.reload(); await p.waitForTimeout(3000);
+  const due1 = await active();
+  check(rot.length > 1 && due1 === next && due1 !== due0, `nell'app tocca la giornata dopo: ${due0} → ${due1}`);
+  r = await call('annulla_correzione_storico');
+  await p.reload(); await p.waitForTimeout(3000);
+  check(!r.err && await active() === due0, 'annullato: tocca di nuovo ' + due0);
   const errs = A.errors.filter((e) => !/404|Service Worker/.test(e));
   check(!errs.length, 'nessun errore ' + errs.join(' | '));
   await A.browser.close();

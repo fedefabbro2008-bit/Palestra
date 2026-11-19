@@ -1019,6 +1019,8 @@ function registerLog(cur, args) {
     let k = ks.find((x) => fold(x) === g); if (!k) { const hits = ks.filter((x) => fold(days[x].name).includes(g)); if (hits.length > 1) bad(`«${args.giornata}» va bene per più giornate (${hits.map((x) => `${x} = ${days[x].name}`).join(" · ")}): usa la lettera.`); k = hits[0]; }
     if (!k) bad(`nessuna giornata «${args.giornata}». Giornate: ${ks.map((x) => `${x} = ${days[x].name}`).join(" · ") || "nessuna"}. Senza «giornata» è un allenamento libero.`);
     dayKey = k; dayName = days[k].name;
+    // nell'app una riserva vale sempre come una giornata (forDay): senza, la rotazione non la conterebbe
+    if (days[k].spare && (args.vale_come == null || args.vale_come === "")) bad(`«${days[k].name}» è una riserva: indica «vale_come», la lettera della giornata al cui posto è stata fatta (${ks.filter((x) => !days[x].spare).map((x) => `${x} = ${days[x].name}`).join(" · ")}).`);
     if (args.vale_come != null && args.vale_come !== "") {
       if (!days[k].spare) bad("«vale_come» serve solo per una giornata di riserva.");
       const v = fold(args.vale_come), vk = ks.find((x) => fold(x) === v && !days[x].spare);
@@ -1077,7 +1079,14 @@ function registerLog(cur, args) {
   // una richiesta ripetuta (il client che riprova) non crea un doppione
   const same = daySessions(logs, iso).find((s) => hhmm(num(s.startedAt)) === hhmm(startedAt) && s.entries.filter(okEntry).map((e) => fold(e.name)).sort().join("|") === [...seen].sort().join("|"));
   if (same) bad(`il ${dmy(iso)} alle ${hhmm(startedAt)} c'è già un allenamento con gli stessi esercizi: sembra già registrato. Leggi «allenamenti» di quel giorno.`);
-  const est = dur == null, minutes = dur != null ? dur : Math.min(240, Math.max(10, Math.round(nSets * 2.5 + 5)));
+  const est = dur == null, ago = Math.floor((Date.now() - startedAt) / 60000);
+  let minutes = dur != null ? dur : Math.min(240, Math.max(10, Math.round(nSets * 2.5 + 5)));
+  // finito, non in corso: la fine non può essere dopo adesso
+  if (startedAt + minutes * 60000 > Date.now()) {
+    if (!est) bad(`cominciato alle ${hhmm(startedAt)} e lungo ${fmtMin(minutes)} finirebbe dopo adesso: si registrano solo allenamenti finiti (riduci «durata» o cambia «ora»).`);
+    if (ago < 1) bad("è cominciato meno di un minuto fa: si registrano solo allenamenti finiti.");
+    minutes = ago;
+  }
   const s = { id: newId(), dayKey, dayName };
   if (forDay) s.forDay = forDay;
   s.startedAt = startedAt; s.endedAt = startedAt + minutes * 60000;
@@ -1093,8 +1102,8 @@ function registerLog(cur, args) {
   if (est) notes.push(`Durata non indicata: stimata ${fmtMin(minutes)} dalle serie.`);
   if (news.length) notes.push(`Esercizi nuovi (né nella scheda né nello storico): ${news.join(", ")}. La scheda non cambia.`);
   if (others) notes.push(`Quel giorno c'${others === 1 ? "era già un altro allenamento" : `erano già ${others} allenamenti`}: restano com'erano.`);
-  const later = Object.keys(logs).some((x) => validIso(x) && x > iso && daySessions(logs, x).length);
-  if (!later && dayKey !== "free") notes.push(`È l'allenamento più recente: nell'app la prossima giornata che tocca si calcola da questo (${dayName}).`);
+  const later = Object.keys(logs).some((x) => validIso(x) && x >= iso && daySessions(logs, x).some((y) => y !== s && num(y.startedAt) > startedAt));
+  if (!later && dayKey !== "free") notes.push(`È l'allenamento più recente: nell'app la prossima giornata che tocca si calcola da questo (${forDay ? days[forDay].name : dayName}).`);
   // una riga sola nell'avviso dell'app (che conta le righe come correzioni): con le serie se ci stanno, se no quante
   let one = `${head}: ${lines.join(" · ")}`;
   if (one.length > 300) one = `${head}: ${entries.map((e) => `${e.name} (${many(e.detail.length, "serie", "serie")})`).join(" · ")}`;
@@ -1260,9 +1269,9 @@ const TOOLS = [
     inputSchema: { type: "object", properties: {
       data: { type: "string", description: "Giorno dell'allenamento, AAAA-MM-GG (oggi o prima)." },
       ora: { type: "string", description: "Ora di inizio HH:MM, ora italiana (predefinita 18:00; oggi non dopo adesso)." },
-      durata: { type: "integer", minimum: 1, maximum: 300, description: "Minuti. Se manca si stima dalle serie (e la risposta lo dice)." },
+      durata: { type: "integer", minimum: 1, maximum: 300, description: "Minuti; la fine non può essere dopo adesso. Se manca si stima dalle serie (e la risposta lo dice)." },
       giornata: { type: "string", description: "La giornata della scheda (lettera o nome, vedi «scheda»). Se manca: allenamento libero." },
-      vale_come: { type: "string", description: "Solo se «giornata» è una riserva: la lettera della giornata normale al cui posto è stata fatta." },
+      vale_come: { type: "string", description: "Obbligatorio se «giornata» è una riserva (e solo allora): la lettera della giornata normale al cui posto è stata fatta." },
       esercizi: { type: "array", minItems: 1, maxItems: 40, description: "Gli esercizi in ordine.", items: { type: "object", properties: {
         nome: { type: "string", maxLength: 120, description: "Nome intero, come in «scheda» o «storico_esercizio»; un nome nuovo crea un esercizio nuovo (solo nello storico)." },
         muscolo: { type: "string", enum: MUSCLES, description: "Solo per un esercizio nuovo (Altro per riscaldamento e stretching)." },
