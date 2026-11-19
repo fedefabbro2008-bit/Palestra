@@ -4,8 +4,9 @@ import { getStore } from "@netlify/blobs";
    Claude (claude.ai, app, Desktop) lo aggiunge come "connettore personalizzato" e legge da solo scheda e allenamenti
    sincronizzati: niente copia e incolla del riepilogo. Se l'utente lo permette nell'app («Claude può modificare la
    scheda»), Claude cambia anche la SCHEDA (modifica_scheda, annulla_modifica). Con un permesso a parte («Claude può correggere
-   lo storico») può correggere le SERIE di un esercizio già fatto (correggi_storico, annulla_correzione_storico): mai creare
-   o cancellare allenamenti. I due permessi sono indipendenti.
+   lo storico») può correggere le SERIE di un esercizio già fatto (correggi_storico), spostarle o toglierle (sposta_storico,
+   elimina_storico_esercizio) e registrare un allenamento già fatto e non segnato (registra_allenamento); tutto annullabile
+   (annulla_correzione_storico). I due permessi sono indipendenti.
 
    Indirizzo:  https://<sito>/mcp/<CHIAVE>              (la chiave nell'indirizzo, "Nessun accesso")
          o:    https://<sito>/mcp  +  "Authorization: Bearer <CHIAVE>" nelle Request headers (la chiave non è nell'indirizzo)
@@ -742,7 +743,13 @@ async function toolUndoLogs(ctx) {
       const find = (sid) => { for (const iso of Object.keys(logs)) { const a = logs[iso]; if (!Array.isArray(a)) continue; const i = a.findIndex((x) => x && String(x.id) === sid); if (i >= 0) return { iso, arr: a, idx: i }; } return null; };
       let done = 0;
       const spots = u.before.map((b) => {
-        const sid = String(b && b.session && b.session.id), f = find(sid), exp = u.after[sid], was = daysHash(b.session);
+        const sid = String(b && b.session ? b.session.id : b && b.id), f = find(sid), exp = u.after[sid];
+        if (!b.session) {   // allenamento registrato da Claude: annullare = toglierlo
+          if (!f) { done++; return null; }   // già tolto (dall'app)
+          if (daysHash(f.arr[f.idx]) !== exp) throw new Error(`L'allenamento del ${dmy(String(b.iso))} registrato da Claude è cambiato dopo (dall'app o da un altro dispositivo): non lo tolgo per non perdere quei cambiamenti.`);
+          return { b, f, remove: true };
+        }
+        const was = daysHash(b.session);
         if (f && daysHash(f.arr[f.idx]) === was) { done++; return null; }   // già com'era (rimesso dall'app)
         if (exp === null) {
           if (f) throw new Error(`L'allenamento del ${dmy(String(b.iso))} eliminato da Claude è stato rimesso o rifatto dopo (dall'app o da un altro dispositivo): non annullo.`);
@@ -754,13 +761,15 @@ async function toolUndoLogs(ctx) {
       });
       if (done === u.before.length) { already = true; throw new Error("già"); }
       if (done) throw new Error("Una parte degli allenamenti di quella modifica è già tornata com'era e un'altra no (cambiati a mano dopo): non annullo, per non mescolare le versioni.");
-      spots.forEach(({ b, f }) => {
+      spots.filter((x) => !x.remove).forEach(({ b, f }) => {
         if (f) { f.arr[f.idx] = clone(b.session); return; }
         const a = Array.isArray(logs[b.iso]) ? logs[b.iso] : (logs[b.iso] = []);
         a.push(clone(b.session));
         a.sort((x, y) => num(x && x.startedAt) - num(y && y.startedAt) || String(x && x.id).localeCompare(String(y && y.id)));
       });
-      return { logs, why: "Annullata la modifica di Claude del " + when + ": " + String(u.why || ""), lines: [`allenamenti rimessi com'erano prima della modifica del ${when}`], ids: u.before.map((b) => String(b.session.id)), undo: true };
+      // dopo le sostituzioni (che usano le posizioni trovate prima): via gli allenamenti registrati da Claude
+      spots.filter((x) => x.remove).forEach(({ b }) => { const f = find(String(b.id)); f.arr.splice(f.idx, 1); if (!f.arr.length) delete logs[f.iso]; });
+      return { logs, why: "Annullata la modifica di Claude del " + when + ": " + String(u.why || ""), lines: [`allenamenti rimessi com'erano prima della modifica del ${when}`], ids: u.before.map((b) => String(b.session ? b.session.id : b.id)), undo: true };
     });
   } catch (e) {
     if (!already) throw e;
@@ -966,6 +975,142 @@ async function toolDeleteLogs(ctx, args) {
   return L.join("\n");
 }
 
+/* ---------------- registrare un allenamento dimenticato ----------------
+   Un allenamento GIÀ FATTO e non segnato nell'app (data passata, mai nel futuro). Si scrive nella forma compatta che
+   salva l'app (compactSession), con gli esercizi riconosciuti come fa l'app (scheda, poi storico, altrimenti nuovo con il
+   muscolo): così al telefono arriva identico e «Rimetti com'era» lo toglie. Nell'annullo: before.session = null. */
+const MAX_REG_EX = 40, MAX_REG_SETS = 40;
+const HM_RX = /^([01]?\d|2[0-3])[:.]([0-5]\d)$/;
+/* data e ora del telefono (in Italia) -> istante; null se quell'ora non esiste (cambio dell'ora legale) */
+function romeTs(iso, hm) {
+  const want = Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10), hm.h, hm.m);
+  const f = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  let ts = want;
+  for (let i = 0; i < 3; i++) {
+    const p = Object.fromEntries(f.formatToParts(new Date(ts)).map((x) => [x.type, x.value]));
+    const wall = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute);
+    if (wall === want) return ts;
+    ts += want - wall;
+  }
+  return null;
+}
+function registerLog(cur, args) {
+  const bad = (m) => { throw new Error("Nessun allenamento registrato: " + m); };
+  const why = String(args.motivo == null ? "" : args.motivo).trim().slice(0, 300);
+  if (!why) bad("scrivi il «motivo» (l'utente lo legge nell'app).");
+  const iso = typeof args.data === "string" ? args.data.trim() : "";
+  if (!validIso(iso)) bad("«data» deve essere un giorno AAAA-MM-GG (es. 2026-09-28).");
+  const today = todayIso();
+  if (iso > today) bad(`il ${dmy(iso)} non è ancora arrivato: si registrano solo allenamenti già fatti.`);
+  let hm = { h: 18, m: 0 }, hmGiven = false;
+  if (args.ora != null && args.ora !== "") { const m = HM_RX.exec(String(args.ora).trim()); if (!m) bad("«ora» deve essere HH:MM (es. 18:30)."); hm = { h: +m[1], m: +m[2] }; hmGiven = true; }
+  const startedAt = romeTs(iso, hm);
+  if (startedAt == null) bad(`il ${dmy(iso)} alle ${String(hm.h).padStart(2, "0")}:${String(hm.m).padStart(2, "0")} non esiste (cambio dell'ora legale): scegli un'altra ora.`);
+  if (startedAt > Date.now()) bad(`oggi alle ${hhmm(startedAt)} non è ancora arrivato: indica l'«ora» in cui è cominciato.`);
+  let dur = null;
+  if (args.durata != null && args.durata !== "") { const d = toNum(args.durata); if (!Number.isInteger(d) || d < 1 || d > 300) bad("«durata» deve essere un numero intero di minuti da 1 a 300."); dur = d; }
+  const note = args.nota == null ? "" : String(args.nota).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim();
+  if (note.length > 1000) bad("«nota» troppo lunga (al massimo 1000 caratteri).");
+  // giornata della scheda (facoltativa): altrimenti «Allenamento libero», come nell'app
+  const days = sanitizeDays(cur.days);
+  let dayKey = "free", dayName = "Allenamento libero", forDay = null;
+  if (args.giornata != null && args.giornata !== "") {
+    const g = fold(args.giornata), ks = Object.keys(days);
+    let k = ks.find((x) => fold(x) === g); if (!k) { const hits = ks.filter((x) => fold(days[x].name).includes(g)); if (hits.length > 1) bad(`«${args.giornata}» va bene per più giornate (${hits.map((x) => `${x} = ${days[x].name}`).join(" · ")}): usa la lettera.`); k = hits[0]; }
+    if (!k) bad(`nessuna giornata «${args.giornata}». Giornate: ${ks.map((x) => `${x} = ${days[x].name}`).join(" · ") || "nessuna"}. Senza «giornata» è un allenamento libero.`);
+    dayKey = k; dayName = days[k].name;
+    if (args.vale_come != null && args.vale_come !== "") {
+      if (!days[k].spare) bad("«vale_come» serve solo per una giornata di riserva.");
+      const v = fold(args.vale_come), vk = ks.find((x) => fold(x) === v && !days[x].spare);
+      if (!vk) bad(`«vale_come» deve essere la lettera di una giornata normale (${ks.filter((x) => !days[x].spare).join(", ")}).`);
+      forDay = vk;
+    }
+  } else if (args.vale_come != null && args.vale_come !== "") bad("«vale_come» serve solo con una «giornata» di riserva.");
+  // esercizi
+  const list = Array.isArray(args.esercizi) ? args.esercizi : null;
+  if (!list || !list.length) bad("manca «esercizi» (almeno uno, con le sue serie).");
+  if (list.length > MAX_REG_EX) bad(`al massimo ${MAX_REG_EX} esercizi.`);
+  const logs = clone(cur.logs && typeof cur.logs === "object" && !Array.isArray(cur.logs) ? cur.logs : {});
+  const entries = [], lines = [], seen = new Set(), news = [];
+  let nSets = 0;
+  list.forEach((o, i) => {
+    const at = `esercizio ${i + 1}`;
+    if (!o || typeof o !== "object" || Array.isArray(o)) bad(at + ": voce non valida.");
+    const name = nameIn(o.nome, at + " · nome", bad), q = fold(name);
+    if (seen.has(q)) bad(`«${name}» compare due volte: metti tutte le sue serie in una voce sola.`);
+    seen.add(q);
+    const mIn = o.muscolo == null || o.muscolo === "" ? null : String(o.muscolo).trim();
+    if (mIn != null && !MUSCLES.includes(mIn)) bad(`${at}: «muscolo» deve essere uno di: ${MUSCLES.join(", ")}.`);
+    const sIn = o.secondario == null || o.secondario === "" || o.secondario === "nessuno" ? null : String(o.secondario).trim();
+    if (sIn != null && (!MUSCLES.includes(sIn) || sIn === "Altro")) bad(`${at}: «secondario» deve essere uno di: ${MUSCLES.filter((m) => m !== "Altro").join(", ")} (o nessuno).`);
+    const tIn = o.tipo == null || o.tipo === "" ? null : own(TYPE_IN, fold(o.tipo)) ? TYPE_IN[fold(o.tipo)] : bad(`${at}: «tipo» deve essere ripetizioni, tempo o distanza.`);
+    let D = destOf(cur, logs, q);
+    if (D) {
+      if (mIn && mIn !== D.muscle) bad(`«${D.name}» è già ${D.muscle} (${D.from === "scheda" ? "nella scheda" : "nello storico"}): il muscolo viene da lì, togli «muscolo».`);
+      if (tIn && tIn !== D.type) bad(`«${D.name}» è a ${TYPE_WORD[D.type]} (${D.from === "scheda" ? "nella scheda" : "nello storico"}), non a ${TYPE_WORD[tIn]}.`);
+    } else {
+      if (!mIn) bad(`«${name}» non è né nella scheda né nello storico: è un esercizio nuovo, indica «muscolo» (${MUSCLES.join(", ")}; Altro per riscaldamento e stretching). Se intendevi un esercizio che c'è già, scrivi il suo nome intero come in «scheda» o «storico_esercizio».`);
+      D = { from: "nuovo", name, exId: newId(), muscle: mIn, secondary: sIn && sIn !== mIn ? sIn : null, type: tIn || "reps", perSide: null };
+      news.push(`${name} (${mIn}${D.secondary ? " + " + D.secondary : ""})`);
+    }
+    const sets = Array.isArray(o.serie) ? o.serie : null;
+    if (!sets || !sets.length) bad(`${at} («${D.name}»): manca «serie» (almeno una).`);
+    if (sets.length > MAX_REG_SETS) bad(`${at}: al massimo ${MAX_REG_SETS} serie.`);
+    const mx = MAX_VAL[D.type];
+    const detail = sets.map((x, j) => {
+      const w = `${at} («${D.name}»), serie ${j + 1}`;
+      if (!x || typeof x !== "object" || Array.isArray(x)) bad(w + ": voce non valida.");
+      if (x.ripetizioni === undefined) bad(`${w}: manca «ripetizioni» (${D.type === "time" ? "i secondi" : D.type === "dist" ? "i metri" : "le ripetizioni"}).`);
+      const d = {}, kg = x.kg === undefined || x.kg === null || x.kg === "" ? 0 : numIn(x.kg, 0, 1000, w + ": «kg»", bad);
+      if (kg !== 0) d.kg = kg;
+      d.val = numIn(x.ripetizioni, 0, mx, w + ": «ripetizioni»", bad);
+      if (x.rpe !== undefined && x.rpe !== null && x.rpe !== "") d.rpe = numIn(x.rpe, 1, 10, w + ": «rpe»", bad);
+      if (x.tipo !== undefined && x.tipo !== null && x.tipo !== "") { const k = String(x.tipo).trim().toLowerCase(); if (!own(TIPO_SERIE, k)) bad(`${w}: tipo «${x.tipo}» sconosciuto (lavoro, riscaldamento, cedimento, drop, amrap).`); if (TIPO_SERIE[k] === "w") d.w = true; else if (TIPO_SERIE[k]) d.t = TIPO_SERIE[k]; }
+      return d;
+    });
+    const e = {}; setDest(e, D); e.detail = detail; fixEntry(e);
+    // l'ordine dei campi come nell'app (compactEntry): non cambia l'impronta, ma il file resta uguale a quello del telefono
+    const ord = {}; ["exId", "name", "muscle", "secondary", "type", "kg", "val", "perSide", "tonnage", "detail"].forEach((k) => { if (e[k] !== undefined) ord[k] = e[k]; });
+    entries.push(ord); nSets += detail.length;
+    lines.push(`${D.name}: ${detail.map((d) => rawSetTxt(d, D.type)).join(", ")}`);
+  });
+  // una richiesta ripetuta (il client che riprova) non crea un doppione
+  const same = daySessions(logs, iso).find((s) => hhmm(num(s.startedAt)) === hhmm(startedAt) && s.entries.filter(okEntry).map((e) => fold(e.name)).sort().join("|") === [...seen].sort().join("|"));
+  if (same) bad(`il ${dmy(iso)} alle ${hhmm(startedAt)} c'è già un allenamento con gli stessi esercizi: sembra già registrato. Leggi «allenamenti» di quel giorno.`);
+  const est = dur == null, minutes = dur != null ? dur : Math.min(240, Math.max(10, Math.round(nSets * 2.5 + 5)));
+  const s = { id: newId(), dayKey, dayName };
+  if (forDay) s.forDay = forDay;
+  s.startedAt = startedAt; s.endedAt = startedAt + minutes * 60000;
+  if (note) s.note = note;
+  s.entries = entries;
+  const a = Array.isArray(logs[iso]) ? logs[iso] : (logs[iso] = []);
+  a.push(s);
+  a.sort((x, y) => num(x && x.startedAt) - num(y && y.startedAt) || String(x && x.id).localeCompare(String(y && y.id)));
+  const others = a.filter((x) => x !== s).length;
+  const head = `registrato l'allenamento del ${dmy(iso)} delle ${hhmm(startedAt)} (${dayName}${forDay ? `, vale come ${days[forDay].name}` : ""}, ${fmtMin(minutes)}${est ? " stimati" : ""}): ${many(entries.length, "esercizio", "esercizi")}, ${many(nSets, "serie", "serie")}`;
+  const notes = [];
+  if (!hmGiven) notes.push("Ora non indicata: messo alle 18:00.");
+  if (est) notes.push(`Durata non indicata: stimata ${fmtMin(minutes)} dalle serie.`);
+  if (news.length) notes.push(`Esercizi nuovi (né nella scheda né nello storico): ${news.join(", ")}. La scheda non cambia.`);
+  if (others) notes.push(`Quel giorno c'${others === 1 ? "era già un altro allenamento" : `erano già ${others} allenamenti`}: restano com'erano.`);
+  const later = Object.keys(logs).some((x) => validIso(x) && x > iso && daySessions(logs, x).length);
+  if (!later && dayKey !== "free") notes.push(`È l'allenamento più recente: nell'app la prossima giornata che tocca si calcola da questo (${dayName}).`);
+  // una riga sola nell'avviso dell'app (che conta le righe come correzioni): con le serie se ci stanno, se no quante
+  let one = `${head}: ${lines.join(" · ")}`;
+  if (one.length > 300) one = `${head}: ${entries.map((e) => `${e.name} (${many(e.detail.length, "serie", "serie")})`).join(" · ")}`;
+  if (one.length > 300) one = one.slice(0, 299) + "…";
+  return { logs, why, lines: [one], head, detail: lines, ids: [s.id], before: [{ iso, id: s.id, session: null }], after: { [s.id]: daysHash(s) }, notes, iso, session: s };
+}
+async function toolRegisterLog(ctx, args) {
+  const { out, res } = await saveLogs(ctx, (c) => registerLog(c, args));
+  const undoNote = await pushUndo(ctx, out, res);
+  const L = [`# Storico: ${res.head}`, `Motivo: ${res.why}`, ""];
+  res.detail.forEach((x) => L.push("- " + x));
+  if (res.notes.length) L.push("", ...res.notes);
+  L.push("", "Record, massimale stimato, serie per muscolo, esercizi fermi e riepilogo lo contano da subito.", AFTER_SAVE_LOGS + undoNote);
+  return L.join("\n");
+}
+
 /* ---------------- strumenti ---------------- */
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const TOOLS = [
@@ -1110,8 +1255,31 @@ const TOOLS = [
       motivo: { type: "string", maxLength: 300, description: "Perché, in una frase: l'utente lo legge nell'app." } },
       required: ["esercizio", "date", "motivo"] },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, title: "Elimina dallo storico" }, run: toolDeleteLogs },
+  { name: "registra_allenamento", title: "Registra un allenamento già fatto", writeLogs: true,
+    description: "Aggiunge allo storico un allenamento GIÀ FATTO che l'utente non ha segnato nell'app (es. telefono scarico): data passata (mai futura), ora di inizio, durata, giornata della scheda (o allenamento libero), esercizi con le serie, nota. Gli esercizi si riconoscono per nome intero come nell'app (scheda, poi storico); uno nuovo vuole il «muscolo». Non cambia la scheda; una richiesta ripetuta non crea doppioni. Prima chiedi all'utente cosa ha fatto (esercizi, kg, ripetizioni) e proponi, poi registra con il motivo. Si annulla con annulla_correzione_storico. Serve il permesso «Claude può correggere lo storico».",
+    inputSchema: { type: "object", properties: {
+      data: { type: "string", description: "Giorno dell'allenamento, AAAA-MM-GG (oggi o prima)." },
+      ora: { type: "string", description: "Ora di inizio HH:MM, ora italiana (predefinita 18:00; oggi non dopo adesso)." },
+      durata: { type: "integer", minimum: 1, maximum: 300, description: "Minuti. Se manca si stima dalle serie (e la risposta lo dice)." },
+      giornata: { type: "string", description: "La giornata della scheda (lettera o nome, vedi «scheda»). Se manca: allenamento libero." },
+      vale_come: { type: "string", description: "Solo se «giornata» è una riserva: la lettera della giornata normale al cui posto è stata fatta." },
+      esercizi: { type: "array", minItems: 1, maxItems: 40, description: "Gli esercizi in ordine.", items: { type: "object", properties: {
+        nome: { type: "string", maxLength: 120, description: "Nome intero, come in «scheda» o «storico_esercizio»; un nome nuovo crea un esercizio nuovo (solo nello storico)." },
+        muscolo: { type: "string", enum: MUSCLES, description: "Solo per un esercizio nuovo (Altro per riscaldamento e stretching)." },
+        secondario: { type: "string", enum: [...MUSCLES.filter((m) => m !== "Altro"), "nessuno"], description: "Solo per un esercizio nuovo: muscolo secondario (conta ½ serie)." },
+        tipo: { type: "string", enum: ["ripetizioni", "tempo", "distanza"], description: "Solo per un esercizio nuovo (predefinito ripetizioni)." },
+        serie: { type: "array", minItems: 1, maxItems: 40, items: { type: "object", additionalProperties: false, properties: {
+          kg: { type: "number", minimum: 0, maximum: 1000, description: "Carico (0 o niente: corpo libero)." },
+          ripetizioni: { type: "number", minimum: 0, description: "Ripetizioni; secondi o metri per esercizi a tempo o distanza." },
+          rpe: { type: "number", minimum: 1, maximum: 10 },
+          tipo: { type: "string", enum: Object.keys(TIPO_SERIE), description: "Predefinito lavoro." } }, required: ["ripetizioni"] } } },
+        required: ["nome", "serie"] } },
+      nota: { type: "string", maxLength: 1000, description: "Nota dell'allenamento (come quella che l'utente scrive a fine seduta)." },
+      motivo: { type: "string", maxLength: 300, description: "Perché, in una frase: l'utente lo legge nell'app (es. \"Allenamento di sabato non segnato, telefono scarico\")." } },
+      required: ["data", "esercizi", "motivo"] },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false, title: "Registra allenamento" }, run: toolRegisterLog },
   { name: "annulla_correzione_storico", title: "Annulla l'ultima modifica allo storico", writeLogs: true,
-    description: "Rimette gli allenamenti com'erano prima dell'ultima modifica di Claude allo storico (correggi_storico, sposta_storico o elimina_storico_esercizio, anche allenamenti eliminati). Chiamato di nuovo annulla quella prima (fino a 10). Non annulla se nel frattempo quegli allenamenti sono cambiati dall'app (lì l'utente ha «Rimetti com'era»). Serve il permesso «Claude può correggere lo storico».",
+    description: "Rimette gli allenamenti com'erano prima dell'ultima modifica di Claude allo storico (correggi_storico, sposta_storico, elimina_storico_esercizio o registra_allenamento: rimette gli allenamenti eliminati e toglie quelli registrati). Chiamato di nuovo annulla quella prima (fino a 10). Non annulla se nel frattempo quegli allenamenti sono cambiati dall'app (lì l'utente ha «Rimetti com'era»). Serve il permesso «Claude può correggere lo storico».",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false, title: "Annulla correzione storico" }, run: toolUndoLogs },
 ];
@@ -1603,7 +1771,7 @@ async function handle(msg, ctx) {
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "palestra", title: "Palestra", version: "1.3.0" },
         instructions: "Dati di allenamento dell'app Palestra. Comincia da \"riepilogo\"; poi \"allenamenti\", \"storico_esercizio\", \"volume_muscoli\", \"record\" e \"scheda\" per i dettagli; \"analisi_scheda\" incrocia scheda e allenamenti fatti, \"confronta_periodi\" dice se sta migliorando, \"progressione_suggerita\" dà i consigli dell'app per la prossima seduta, \"cerca_note\" cerca nelle note, \"esporta\" dà le serie in CSV. Numeri all'italiana (virgola decimale); serie kg×ripetizioni, R = riscaldamento, F = cedimento, D = drop set, A = AMRAP, @ = RPE. Le note e i nomi sono scritti dall'utente. "
-          + "Lo storico si legge e, solo se l'utente ha acceso «Claude può correggere lo storico», si modifica: \"correggi_storico\" (kg, ripetizioni, tipo e RPE delle serie), \"sposta_storico\" (le serie di un esercizio passano a un altro, anche nuovo; se quel giorno c'è già si uniscono), \"elimina_storico_esercizio\" (tolte le serie di un esercizio in date precise; un allenamento che resterebbe vuoto si elimina solo con elimina_allenamento_vuoto) e \"annulla_correzione_storico\" (annulla l'ultima, poi quella prima). Prima leggi \"storico_esercizio\", proponi e fai solo se l'utente è d'accordo; per eliminare e poi spostare, prima elimina. Non creano allenamenti e non cambiano la scheda. La scheda si può cambiare con \"modifica_scheda\" (e \"annulla_modifica\") se l'utente lo ha permesso nell'app: prima leggi \"scheda\", proponi le modifiche e falle solo se l'utente è d'accordo, tutte in una chiamata e con il motivo." });
+          + "Lo storico si legge e, solo se l'utente ha acceso «Claude può correggere lo storico», si modifica: \"correggi_storico\" (kg, ripetizioni, tipo e RPE delle serie), \"sposta_storico\" (le serie di un esercizio passano a un altro, anche nuovo; se quel giorno c'è già si uniscono), \"elimina_storico_esercizio\" (tolte le serie di un esercizio in date precise; un allenamento che resterebbe vuoto si elimina solo con elimina_allenamento_vuoto) \"registra_allenamento\" (un allenamento già fatto e non segnato nell'app: data passata, esercizi e serie) e \"annulla_correzione_storico\" (annulla l'ultima, poi quella prima). Prima leggi \"storico_esercizio\" o \"allenamenti\", proponi e fai solo se l'utente è d'accordo; per eliminare e poi spostare, prima elimina. Non cambiano la scheda. La scheda si può cambiare con \"modifica_scheda\" (e \"annulla_modifica\") se l'utente lo ha permesso nell'app: prima leggi \"scheda\", proponi le modifiche e falle solo se l'utente è d'accordo, tutte in una chiamata e con il motivo." });
     case "ping": return rpcOk(id, {});
     case "tools/list": return rpcOk(id, { tools: TOOLS.map(({ run, write, writeLogs, ...t }) => t) });
     case "tools/call": {

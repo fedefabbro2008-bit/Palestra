@@ -12,6 +12,9 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
     await p.evaluate(seedLogs, { weeks: 3 });
     if (light) await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('palestra:settings')); s.dark = false; localStorage.setItem('palestra:settings', JSON.stringify(s)); });
     await p.reload(); await p.waitForTimeout(400);
+    // la giornata con la Lat machine (quella che tocca cambia col giorno della settimana in cui gira la prova)
+    await p.evaluate(() => { const d = JSON.parse(localStorage.getItem('palestra:days')); const k = Object.keys(d).find(k => !d[k].spare && d[k].exercises.some(e => /Lat machine/.test(e.name))); document.querySelector(`.day-pill[data-k="${k}"]`).click(); });
+    await p.waitForTimeout(300);
     await p.click('#startSessionBtn'); await p.waitForTimeout(300);
     const ei = await p.evaluate(() => [...document.querySelectorAll('#sessList .sess-name-input')].findIndex(e => /Lat machine/.test(e.value)));
     await p.click(`.sess-sub-btn[data-ei="${ei}"]`); await p.waitForTimeout(400);
