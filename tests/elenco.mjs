@@ -60,7 +60,10 @@ export const TESTS = [
   { nome: 'claude-modifica-scheda-app', file: 'ui/claude-modifica-scheda-app.test.js', cosa: 'Claude cambia la scheda: avviso, Rimetti com\'era' },
   { nome: 'claude-corregge-storico', file: 'ui/claude-corregge-storico.test.js', cosa: 'Claude corregge lo storico: permesso, avviso, annulla, conflitto' },
   { nome: 'claude-sposta-storico', file: 'ui/claude-sposta-storico.test.js', cosa: 'sposta ed elimina nello storico: avviso unito, ricalcoli, Rimetti com\'era, annulli, backup' },
+  { nome: 'claude-letture-uguali', file: 'ui/claude-letture-uguali.test.js', cosa: 'connettore e app: stessi consigli di progressione, stesso CSV' },
   { nome: 'mcp-chiave', file: 'mcp/chiave.test.mjs', args: c => [c.code], serveCodice: true, cosa: 'connettore: chiave, intestazione, revoca' },
   { nome: 'mcp-storico-sposta-elimina', file: 'mcp/storico-sposta-elimina.test.mjs', args: c => [c.code], serveCodice: true, cosa: 'connettore: sposta_storico, elimina_storico_esercizio, annulli in pila, rifiuti, ricalcoli' },
+  { nome: 'mcp-letture', file: 'mcp/letture.test.mjs', args: c => [c.code], serveCodice: true, cosa: 'connettore: confronta_periodi, analisi_scheda, progressione, note, esporta, formato compatto' },
+  { nome: 'mcp-tre-anni', file: 'mcp/tre-anni.test.mjs', args: c => [c.code], serveCodice: true, cosa: 'connettore con 3 anni di storico: letture entro lunghezza e tempo, esporta a pezzi completa' },
   { nome: 'mcp-modifica-scheda', file: 'mcp/modifica-scheda.test.mjs', args: c => [c.code], serveCodice: true, cosa: 'connettore: modifica_scheda, errori, annulla, concorrenza' },
 ];

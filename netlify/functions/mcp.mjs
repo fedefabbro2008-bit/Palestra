@@ -981,7 +981,8 @@ const TOOLS = [
       dal: { type: "string", description: "Data di inizio, AAAA-MM-GG (compresa)" },
       al: { type: "string", description: "Data di fine, AAAA-MM-GG (compresa)" },
       giornata: { type: "string", description: "Solo una giornata: parte del nome (es. \"Lunedì\") o la sua lettera" },
-      limite: { type: "integer", minimum: 1, maximum: 60, description: "Quanti allenamenti al massimo (predefinito 10)" } } },
+      limite: { type: "integer", minimum: 1, maximum: 200, description: "Quanti allenamenti al massimo (predefinito 10, al massimo 60; con formato compatto predefinito 30, al massimo 200)" },
+      formato: { type: "string", enum: ["completo", "compatto"], description: "compatto: solo le serie di lavoro (niente riscaldamento, mobilità e stretching), serie di fila con lo stesso peso unite (60×10/9/8), senza RPE né muscoli: per leggere molti allenamenti con meno testo. Predefinito completo." } } },
     annotations: { ...RO, title: "Allenamenti" }, run: toolWorkouts },
   { name: "storico_esercizio", title: "Storico di un esercizio",
     description: "Tutte le sedute di un esercizio (cerca per nome, anche parziale, senza accenti): serie, serie migliore, massimale stimato (Epley, serie da 1 a 12 ripetizioni), peso sollevato, record di sempre e se è fermo.",
@@ -999,6 +1000,36 @@ const TOOLS = [
       esercizio: { type: "string", description: "Solo gli esercizi il cui nome contiene questo testo" },
       limite: { type: "integer", minimum: 1, maximum: 200, description: "Quanti esercizi al massimo (predefinito 40)" } } },
     annotations: { ...RO, title: "Record" }, run: toolRecords },
+  { name: "confronta_periodi", title: "Confronta due periodi",
+    description: "Due periodi a confronto (predefinito: gli ultimi 28 giorni contro i 28 prima): allenamenti, tempo, peso sollevato, serie di lavoro (anche a settimana), serie per muscolo a settimana rispetto agli obiettivi, massimale stimato o serie migliore di ogni esercizio fatto in tutti e due, esercizi nuovi o lasciati, record battuti nel secondo. Per domande come «sto migliorando?».",
+    inputSchema: { type: "object", properties: {
+      giorni: { type: "integer", minimum: 7, maximum: 365, description: "Lunghezza dei periodi se non dai le date (predefinito 28): B = gli ultimi N giorni, A = gli N prima." },
+      a_dal: { type: "string", description: "Inizio del periodo A (il primo), AAAA-MM-GG" }, a_al: { type: "string", description: "Fine del periodo A, AAAA-MM-GG (predefinito: il giorno prima di B)" },
+      b_dal: { type: "string", description: "Inizio del periodo B (il secondo), AAAA-MM-GG" }, b_al: { type: "string", description: "Fine del periodo B, AAAA-MM-GG (predefinito: oggi)" } } },
+    annotations: { ...RO, title: "Confronta periodi" }, run: toolCompare },
+  { name: "analisi_scheda", title: "Analisi della scheda",
+    description: "La scheda incrociata con quello che l'utente fa davvero nelle ultime settimane complete: per ogni muscolo serie previste e fatte a settimana rispetto all'obiettivo e quante sedute a settimana lo allenano; quante sedute a settimana rispetto alle giornate; esercizi pronti ad aumentare, fermi, non fatti di recente o mai fatti; esercizi fatti ma non in scheda; per giornata serie, muscoli e durata media reale. Il punto di partenza per proporre modifiche alla scheda.",
+    inputSchema: { type: "object", properties: { settimane: { type: "integer", minimum: 1, maximum: 12, description: "Quante settimane complete (predefinito 4)" } } },
+    annotations: { ...RO, title: "Analisi scheda" }, run: toolAnalysis },
+  { name: "progressione_suggerita", title: "Consigli per la prossima seduta",
+    description: "Per gli esercizi della scheda il consiglio per la prossima volta, con le stesse regole e gli stessi numeri che l'app mostra durante l'allenamento: doppia progressione sull'ultima seduta (peso successivo fra quelli già usati su quella macchina, peso precedente, o una ripetizione in più) e seduta più leggera se l'esercizio è fermo da 3 sedute.",
+    inputSchema: { type: "object", properties: {
+      giornata: { type: "string", description: "Solo una giornata: lettera (es. \"A\") o parte del nome. Predefinito: tutte le giornate (riserve escluse)." },
+      esercizio: { type: "string", description: "Solo gli esercizi della scheda il cui nome contiene questo testo" } } },
+    annotations: { ...RO, title: "Progressione" }, run: toolProgression },
+  { name: "cerca_note", title: "Cerca nelle note",
+    description: "Le note scritte dall'utente negli allenamenti (es. dolori, sensazioni, attrezzi occupati), dalla più recente, con giornata ed esercizi di quella seduta; anche le «cose da sapere» delle impostazioni se corrispondono. Senza testo: tutte le note.",
+    inputSchema: { type: "object", properties: {
+      testo: { type: "string", description: "Parole da cercare (tutte, senza badare a maiuscole e accenti), es. \"spalla\"" },
+      dal: { type: "string", description: "Data di inizio, AAAA-MM-GG" }, al: { type: "string", description: "Data di fine, AAAA-MM-GG" },
+      limite: { type: "integer", minimum: 1, maximum: 100, description: "Quante note al massimo (predefinito 30)" } } },
+    annotations: { ...RO, title: "Cerca note" }, run: toolNotes },
+  { name: "esporta", title: "Esporta in CSV",
+    description: "Le serie come tabella CSV, con le stesse colonne di «Esporta → CSV» dell'app (data, ora, giornata, esercizio, muscoli, tipo, serie, kg, ripetizioni o secondi, RPE, peso sollevato, riscaldamento, tipo di serie, per lato). Separatore «;» e virgola decimale. Se è troppo lungo si ferma a un giorno intero e dice da dove ripartire.",
+    inputSchema: { type: "object", properties: {
+      dal: { type: "string", description: "Data di inizio, AAAA-MM-GG" }, al: { type: "string", description: "Data di fine, AAAA-MM-GG" },
+      esercizio: { type: "string", description: "Solo gli esercizi il cui nome contiene questo testo" } } },
+    annotations: { ...RO, title: "Esporta CSV" }, run: toolExport },
   { name: "modifica_scheda", title: "Modifica la scheda", write: true,
     description: "Modifica la SCHEDA dell'utente (mai lo storico degli allenamenti): valori di un esercizio (serie, ripetizioni, kg, recupero, riscaldamenti, muscoli, tipo, per lato, sezione, superset), aggiungere, togliere, spostare o sostituire esercizi, aggiungere, rinominare o togliere giornate. "
       + "Tutte le modifiche in UNA chiamata: si applicano in ordine e si salvano insieme; se una non è valida non si salva niente e la risposta dice quale. "
@@ -1094,8 +1125,14 @@ function sessLine(s, names) {
   const min = sessMin(s), alt = s.forDay ? (names && own(names, s.forDay) ? ` (riserva al posto di ${names[s.forDay].split("·")[0].trim()})` : " (riserva)") : "";
   return `${dm(s.iso)} ${WD[utc(s.iso).getUTCDay()].slice(0, 3)} · ${s.dayName}${alt}${min ? " · " + fmtMin(min) : ""} · ${workSets(s)} serie di lavoro${sessTon(s) > 0 ? " · " + fmtTon(sessTon(s)) : ""}`;
 }
-function entryLine(e) {
-  const sets = e.detail.map((d) => (d.w ? "R " : "") + (d.t ? KINDS[d.t] + " " : "") + setTxt(d, e.type) + (d.rpe ? " @" + fn(d.rpe) : "")).join(", ");
+function entryLine(e, compact) {
+  const txt = e.detail.map((d) => (d.w ? "R " : "") + (d.t ? KINDS[d.t] + " " : "") + setTxt(d, e.type) + (d.rpe ? " @" + fn(d.rpe) : ""));
+  if (compact) {   // serie di lavoro di fila con lo stesso peso unite: 60×10/9/8; niente riscaldamenti, RPE né muscoli
+    const g = [];
+    e.detail.filter((d) => !d.w).forEach((d) => { const k =  (d.t ? KINDS[d.t] + " " : "") + (d.kg > 0 ? fn(d.kg) + "×" : ""), l = g[g.length - 1]; if (l && l.k === k) l.v.push(d.val); else g.push({ k, v: [d.val] }); });
+    return `- ${e.name}: ${g.map((x) => x.k + x.v.map(fn).join("/") + (TYPES[e.type] || TYPES.reps).unit).join(", ")}`;
+  }
+  const sets = txt.join(", ");
   const m = e.muscle === "Altro" ? "" : " [" + e.muscle + (secOf(e) ? " + " + secOf(e) : "") + "]";
   return `- ${e.name}${e.side && !SIDE_RX.test(e.name) ? " (per lato)" : ""}${m}: ${sets}`;
 }
@@ -1123,7 +1160,7 @@ function toolSummary(data) {
   L.push("", "## Ultimi allenamenti");
   const names = Object.fromEntries(days.map((d) => [d.key, d.name]));
   S.slice(-5).reverse().forEach((s) => L.push("- " + sessLine(s, names)));
-  L.push("", "Per i dettagli: allenamenti, storico_esercizio, volume_muscoli, record, scheda.");
+  L.push("", "Per i dettagli: allenamenti, storico_esercizio, volume_muscoli, record, scheda, analisi_scheda, confronta_periodi, progressione_suggerita, cerca_note, esporta.");
   return L.join("\n");
 }
 /* una giornata della scheda come testo; vol (facoltativo) accumula le serie a settimana per muscolo */
@@ -1158,17 +1195,27 @@ function toolPlan(data) {
   return L.join("\n");
 }
 function toolWorkouts(data, a) {
-  const S = readSessions(data), lim = clamp(a.limite, 1, 60, 10);
+  const S = readSessions(data), compact = a.formato === "compatto", lim = clamp(a.limite, 1, compact ? 200 : 60, compact ? 30 : 10);
   const from = validIso(a.dal) ? a.dal : "0000-00-00", to = validIso(a.al) ? a.al : "9999-12-31";
   const g = a.giornata ? fold(a.giornata) : "";
   const list = S.filter((s) => s.iso >= from && s.iso <= to && (!g || fold(s.dayName).includes(g) || fold(s.dayKey) === g)).reverse();
-  const L = [`# Allenamenti${a.dal || a.al ? " dal " + (validIso(a.dal) ? dmy(a.dal) : "inizio") + " al " + (validIso(a.al) ? dmy(a.al) : "oggi") : ""}: ${list.length}${list.length > lim ? " (mostrati i " + lim + " più recenti)" : ""}`, header(data)];
   const names = Object.fromEntries(planDays(data).map((d) => [d.key, d.name]));
+  // allenamenti interi (a giorni interi) finché stanno nella risposta: niente tagli a metà
+  const blocks = [];
+  let size = 0, cut = false;
   for (const s of list.slice(0, lim)) {
-    L.push("", "## " + sessLine(s, names) + (s.startedAt ? ` · inizio ${hhmm(s.startedAt)}` : ""));
-    s.entries.forEach((e) => L.push(entryLine(e)));
-    if (s.note.trim()) L.push("Nota: " + s.note.trim());
+    const B = ["", "## " + sessLine(s, names) + (s.startedAt ? ` · inizio ${hhmm(s.startedAt)}` : "")];
+    s.entries.filter((e) => !compact || (e.muscle !== "Altro" && work(e.detail).length)).forEach((e) => B.push(entryLine(e, compact)));
+    if (s.note.trim()) B.push("Nota: " + s.note.trim());
+    const t = B.join("\n");
+    if (size + t.length > MAX_OUT - 2000 && blocks.length) { cut = true; while (blocks.length > 1 && blocks[blocks.length - 1].iso === s.iso) size -= blocks.pop().t.length; break; }
+    blocks.push({ iso: s.iso, t }); size += t.length;
   }
+  const shown = blocks.length, more = list.length > shown;
+  const L = [`# Allenamenti${a.dal || a.al ? " dal " + (validIso(a.dal) ? dmy(a.dal) : "inizio") + " al " + (validIso(a.al) ? dmy(a.al) : "oggi") : ""}: ${list.length}${more ? ` (mostrati i ${shown} più recenti)` : ""}`, header(data)];
+  if (compact) L.push("Formato compatto: solo serie di lavoro (niente riscaldamento, mobilità e stretching), serie di fila con lo stesso peso unite (60×10/9/8), senza RPE né muscoli.");
+  blocks.forEach((b) => L.push(b.t));
+  if (cut) L.push("", `Mostrati ${shown} allenamenti per non superare la lunghezza della risposta. Per quelli prima chiama di nuovo allenamenti con al = ${addDays(blocks[blocks.length - 1].iso, -1)}${a.dal ? ` e dal = ${a.dal}` : ""}${compact ? "" : " (o formato compatto)"}.`);
   if (!list.length) L.push("", "Nessun allenamento in questo periodo.");
   return L.join("\n");
 }
@@ -1221,6 +1268,329 @@ function toolRecords(data, a) {
   return L.join("\n");
 }
 
+/* ---------------- consigli di progressione: le stesse regole dell'app (index.html: parseTarget, knownWeights,
+   nextWeight, progressionHint, stallMsg, hintFor, findPrevEntry), così Claude e il telefono dicono gli stessi numeri ---------------- */
+const INC = { reps: "+1 rip", time: "+5 s", dist: "+50 m" };
+const INC_N = { reps: 1, time: 5, dist: 50 };
+/* obiettivo di ripetizioni solo da notazioni non ambigue: "12", "8-12", "40s", "30 sec", "8-12s hold" */
+function parseTarget(s) {
+  const str = String(s == null ? "" : s).trim().toLowerCase();
+  const m = str.match(/^(\d+(?:[.,]\d+)?)(?:\s*[-–]\s*(\d+(?:[.,]\d+)?))?\s*(?:s|sec|secondi|m|metri)?(?:\s+hold)?$/);
+  if (!m) return null;
+  const min = parseFloat(m[1].replace(",", ".")), max = m[2] ? parseFloat(m[2].replace(",", ".")) : min;
+  if (!(max >= min) || !(max > 0)) return null;
+  return { min, max };
+}
+const CABLE_RX = /\bcav[io]\b|corda/i;
+const sameEx = (en, exId, name) => (exId && en.exId === exId) || (!en.exId && en.name === name) || (!exId && en.name === name);
+function entriesFor(S, exId, name) {
+  const out = [];
+  for (const s of S) { const e = s.entries.find((en) => sameEx(en, exId, name)); if (e) out.push({ iso: s.iso, e }); }
+  return out;
+}
+/* i pesi già usati per quell'esercizio (le macchine hanno pesi fissi); ai cavi la pila è la stessa per tutti */
+function knownWeights(S, exId, name) {
+  const set = new Set(), add = (e) => e.detail.forEach((d) => { const k = Math.round(d.kg * 100) / 100; if (k > 0) set.add(k); });
+  entriesFor(S, exId, name).forEach(({ e }) => add(e));
+  if (CABLE_RX.test(String(name || ""))) S.forEach((s) => s.entries.forEach((e) => { if (CABLE_RX.test(e.name)) add(e); }));
+  return [...set].sort((a, b) => a - b);
+}
+const kgTxt = (ws, kg) => ws.some((w) => Math.abs(w - kg) < 0.01) ? fn(kg) + " kg" : "~" + fn(kg) + " kg (o il peso più vicino)";
+function weightStep(ws, kg) {
+  let st = Infinity;
+  for (let i = 1; i < ws.length; i++) { const d = Math.round((ws[i] - ws[i - 1]) * 100) / 100; if (d >= 0.5 && d < st) st = d; }
+  return Number.isFinite(st) ? st : (kg < 10 ? 1 : 2.5);
+}
+function nextWeight(ws, kg, dir) {
+  const step = weightStep(ws, kg);
+  const near = ws.filter((w) => dir > 0 ? (w > kg + 0.01 && w <= kg + 2 * step + 0.01) : (w < kg - 0.01 && w >= kg - 2 * step - 0.01));
+  if (near.length) return dir > 0 ? near[0] : near[near.length - 1];
+  return Math.max(0, Math.round((kg + dir * step) * 100) / 100);
+}
+function snapWeight(ws, kg, unit) {
+  if (ws && ws.length >= 2 && kg >= ws[0] - 0.01 && kg <= ws[ws.length - 1] + 0.01) return ws.reduce((a, w) => Math.abs(w - kg) < Math.abs(a - kg) ? w : a, ws[0]);
+  return Math.round(kg / unit) * unit;
+}
+const unitOf = (type) => (TYPES[type] || TYPES.reps).unit;
+const repsTxt = (arr, type) => arr.map((v) => fn(v)).join("/") + (unitOf(type) || " rip");
+/* l'ultima volta che l'esercizio è stato fatto con serie di lavoro (stesso nome se rinominato durante la seduta) */
+function findPrevEntry(S, exId, name, warmOnly) {
+  const k = normName(name); let first = null;
+  for (let i = S.length - 1; i >= 0; i--) {
+    const e = S[i].entries.find((en) => sameEx(en, exId, name));
+    if (e && (work(e.detail).length || (warmOnly && e.detail.length))) {
+      if (normName(e.name) === k) return { entry: e, iso: S[i].iso };
+      if (!first) first = { entry: e, iso: S[i].iso };
+    }
+  }
+  return first;
+}
+/* doppia progressione sull'ultima volta (serie di lavoro al carico più alto) */
+function progressionHint(S, planEx, prev) {
+  if (!prev) return null;
+  const type = own(TYPES, planEx.type) ? planEx.type : "reps", u = unitOf(type);
+  const range = parseTarget(planEx.reps);
+  if (!range) return null;
+  const planned = Math.round(num(planEx.sets));
+  if (!(planned > 0)) return null;
+  const det = main(prev.entry.detail);
+  if (!det.length) return null;
+  const top = Math.max(...det.map((d) => d.kg));
+  const at = det.filter((d) => d.kg === top), vals = at.map((d) => d.val);
+  if (at.length < Math.ceil(planned / 2)) return null;
+  const when = dm(prev.iso), last = (top > 0 ? fn(top) + " kg × " : "") + repsTxt(vals, type);
+  const ws = top > 0 ? knownWeights(S, planEx.id, planEx.name) : [];
+  if (vals.every((v) => v >= range.max)) {
+    if (top > 0) { const nk = nextWeight(ws, top, +1); return { kind: "up", hint: `${when}: ${last}, tutte a ${fn(range.max)}${u}. Oggi ${kgTxt(ws, nk)} e riparti da ${fn(range.min)}${u || " rip"}.` }; }
+    return { kind: "up", hint: type === "reps"
+      ? `${when}: ${last}, tutte a ${fn(range.max)}. Rendilo più difficile: zavorra leggera o discesa lenta (3 s) e riparti da ${fn(range.min)}.`
+      : `${when}: ${last}, tutte a ${fn(range.max)}${u}. Prova ${INC[type]} o un carico leggero.` };
+  }
+  if (top > 0 && vals.every((v) => v < range.min)) {
+    const lk = nextWeight(ws, top, -1);
+    if (lk > 0 && lk < top) return { kind: "down", hint: `${when}: ${last}, sotto le ${fn(range.min)}${u || " rip"}. Oggi ${kgTxt(ws, lk)} per restare nel range ${fn(range.min)}-${fn(range.max)}.` };
+  }
+  const tgt = Array.from({ length: planned }, (_, i) => vals[Math.min(i, vals.length - 1)]);
+  let wi = -1; tgt.forEach((v, i) => { if (v < range.max && (wi < 0 || v < tgt[wi])) wi = i; });
+  if (wi < 0) return null;
+  tgt[wi] = Math.min(range.max, tgt[wi] + (type === "reps" ? 1 : INC_N[type]));
+  return { kind: "keep", hint: `${when}: ${last}. Oggi stesso ${top > 0 ? "peso" : "esercizio"}, punta a ${repsTxt(tgt, type)}: quando arrivi a ${fn(range.max)} in tutte le serie si aumenta.` };
+}
+function stallMsg(st, ws) {
+  if (st.hasKg) {
+    const unit = st.topKg >= 20 ? 2.5 : 1;
+    let light = snapWeight(ws, st.topKg * 0.9, unit);
+    if (!(light < st.topKg)) light = nextWeight(ws || [], st.topKg, -1);
+    light = Math.max(unit, light);
+    return `Nessun progresso nelle ultime 3 sedute: oggi fai una seduta più leggera (${fn(light)} kg, stesse ripetizioni) e dalla prossima riparti. Se resta fermo, sostituiscilo per 3-4 settimane (⇄).`;
+  }
+  return "Nessun progresso nelle ultime 3 sedute: prova una variante più difficile (più lenta, pausa di 2 s) o sostituiscilo per 3-4 settimane (⇄).";
+}
+/* il consiglio dell'app per un esercizio della scheda: prima «aumenta», poi «fermo», poi il resto */
+function hintFor(S, planEx, prev, today) {
+  const h = progressionHint(S, planEx, prev);
+  if (h && h.kind === "up") return h;
+  if (Math.round(num(planEx.sets)) > 0 && planEx.muscle !== "Altro") {
+    const list = entriesFor(S, planEx.id, planEx.name), st = stallOf(list, today);
+    if (st) { const p = stallPerf(list); return { kind: "stall", hint: stallMsg(p, p.hasKg ? knownWeights(S, planEx.id, planEx.name) : []) }; }
+  }
+  return h;
+}
+/* carico di riferimento dello stallo come nell'app (stallFromEntries): l'ultima seduta del tipo più recente */
+function stallPerf(list) {
+  const P = list.map(({ e }) => ({ p: perfOf(e), type: e.type })).filter((x) => x.p);
+  const t = P[P.length - 1].type, last = P.filter((x) => x.type === t).pop().p;
+  return { hasKg: last.hasKg, topKg: last.topKg };
+}
+
+/* ---------------- letture in più ---------------- */
+const pct = (a, b) => b > 0 ? ` (${a >= b ? "+" : "−"}${Math.round(Math.abs(a - b) / b * 100)}%)` : "";
+const sgn = (d, f) => (d > 0 ? "+" : d < 0 ? "−" : "±") + f(Math.abs(d));
+function dateArg(v, what) {
+  if (v == null || v === "") return null;
+  if (!validIso(v)) throw new Error(`«${what}» non è una data valida: usa AAAA-MM-GG (es. 2026-09-28).`);
+  return v;
+}
+/* esercizio: miglior massimale stimato (ripetizioni con carico) o serie migliore, in un periodo */
+function bestIn(items, from, to) {
+  let r1 = 0, top = null, n = 0;
+  for (const { iso, e } of items) {
+    if (iso < from || iso > to) continue;
+    n++;
+    r1 = Math.max(r1, e1rm(e.detail, e.type));
+    for (const d of main(e.detail)) if (!top || d.kg > top.kg || (d.kg === top.kg && d.val > top.val)) top = d;
+  }
+  return n ? { r1, top, n } : null;
+}
+function toolCompare(data, a) {
+  const S = readSessions(data), today = todayIso(), g = clamp(a.giorni, 7, 365, 28);
+  const bTo = dateArg(a.b_al, "b_al") || today, bFrom = dateArg(a.b_dal, "b_dal") || addDays(bTo, -(g - 1));
+  if (bFrom > bTo) throw new Error("Il periodo B finisce prima di cominciare: controlla b_dal e b_al.");
+  const lenB = daysBetween(bFrom, bTo) + 1;
+  const aTo = dateArg(a.a_al, "a_al") || addDays(bFrom, -1), aFrom = dateArg(a.a_dal, "a_dal") || addDays(aTo, -(lenB - 1));
+  if (aFrom > aTo) throw new Error("Il periodo A finisce prima di cominciare: controlla a_dal e a_al.");
+  const lenA = daysBetween(aFrom, aTo) + 1;
+  const A = stats(S, aFrom, aTo), B = stats(S, bFrom, bTo), wa = lenA / 7, wb = lenB / 7;
+  const L = [`# Confronto: A ${dmy(aFrom)}–${dmy(aTo)} (${lenA} giorni) · B ${dmy(bFrom)}–${dmy(bTo)} (${lenB} giorni)`, header(data)];
+  if (bTo > today) L.push(`(B arriva al ${dmy(bTo)}: dopo oggi non ci sono allenamenti, i numeri di B sono parziali)`);
+  const row = (t, x, y, f) => `- ${t}: A ${f(x)} → B ${f(y)} (${sgn(y - x, f)})${pct(y, x)}`;
+  const f1 = (v) => fn(Math.round(v * 10) / 10);
+  L.push("", "## Totali", row("Allenamenti", A.n, B.n, f1), row("Allenamenti a settimana", A.n / wa, B.n / wb, f1), row("Tempo in palestra", A.min, B.min, fmtMin),
+    row("Peso sollevato", A.ton, B.ton, fmtTon), row("Serie di lavoro", A.sets, B.sets, f1), row("Serie di lavoro a settimana", A.sets / wa, B.sets / wb, f1));
+  if (lenA !== lenB) L.push("(periodi di lunghezza diversa: confronta le righe «a settimana»)");
+  L.push("", "## Serie per muscolo a settimana (principale 1, secondario ½)");
+  for (const m of Object.keys(TARGET)) {
+    const x = A.vol[m] / wa, y = B.vol[m] / wb;
+    if (OPTIONAL.has(m) && !x && !y) continue;
+    const t = TARGET[m], st = (v) => Math.round(v) < t[0] ? "sotto" : Math.round(v) > t[1] ? "oltre" : "ok";
+    L.push(`- ${m}: ${f1(x)} → ${f1(y)} (${sgn(y - x, f1)}) · obiettivo ${t[0]}-${t[1]}: ${st(x)} → ${st(y)}`);
+  }
+  const ex = byExercise(S).filter((v) => v.muscle !== "Altro"), both = [], onlyA = [], onlyB = [];
+  for (const v of ex) {
+    const x = bestIn(v.items, aFrom, aTo), y = bestIn(v.items, bFrom, bTo);
+    if (x && y) both.push({ v, x, y }); else if (x) onlyA.push(v.name); else if (y) onlyB.push(v.name);
+  }
+  L.push("", `## Esercizi fatti in tutti e due i periodi: ${both.length}`, "(massimale stimato migliore se c'è, altrimenti la serie migliore; sedute fra parentesi)");
+  both.sort((p, q) => (q.y.r1 - q.x.r1) / (q.x.r1 || 1) - (p.y.r1 - p.x.r1) / (p.x.r1 || 1) || p.v.name.localeCompare(q.v.name));
+  for (const { v, x, y } of both) {
+    if (x.r1 && y.r1) L.push(`- ${v.name}: ${fn(x.r1)} → ${fn(y.r1)} kg (${sgn(y.r1 - x.r1, fn)} kg)${pct(y.r1, x.r1)} · sedute ${x.n} → ${y.n}`);
+    else L.push(`- ${v.name}: ${x.top ? setTxt(x.top, v.type) : "—"} → ${y.top ? setTxt(y.top, v.type) : "—"} · sedute ${x.n} → ${y.n}`);
+  }
+  if (onlyB.length) L.push("", "## Nuovi in B (non fatti in A): " + onlyB.join(", "));
+  if (onlyA.length) L.push("", "## Fatti in A e non in B: " + onlyA.join(", "));
+  const rec = records(S, bFrom, bTo);
+  L.push("", `## Record battuti in B: ${rec.length}`);
+  rec.slice(0, 20).forEach((r) => L.push(`- ${r.name}: ${r.txt} (${r.gain}, ${dm(r.iso)})`));
+  return L.join("\n");
+}
+function toolAnalysis(data, a) {
+  const S = readSessions(data), days = planDays(data), today = todayIso(), n = clamp(a.settimane, 1, 12, 4);
+  if (!days.length) return "Nessuna scheda sincronizzata.";
+  const mon = mondayOf(today), from = addDays(mon, -7 * n), to = addDays(mon, -1);
+  const weeks = Array.from({ length: n }, (_, w) => stats(S, addDays(from, 7 * w), addDays(from, 7 * w + 6)));
+  const mainDays = days.filter((d) => !d.spare);
+  // previsto dalla scheda (una seduta per giornata, riserve escluse) e fatto (media delle settimane complete)
+  const plan = Object.fromEntries(MUSCLES.map((m) => [m, 0]));
+  for (const d of mainDays) for (const e of d.exercises) { const m = MUSCLES.includes(e.muscle) ? e.muscle : "Altro"; if (m === "Altro") continue; const k = Math.max(0, Math.round(num(e.sets))); plan[m] += k; const sm = secOf({ muscle: m, secondary: e.secondary }); if (sm) plan[sm] += k * 0.5; }
+  const done = Object.fromEntries(MUSCLES.map((m) => [m, weeks.reduce((x, r) => x + r.vol[m], 0) / n]));
+  // frequenza: sedute a settimana che allenano il muscolo (principale o secondario)
+  const inP = S.filter((s) => s.iso >= from && s.iso <= to), freq = Object.fromEntries(MUSCLES.map((m) => [m, 0]));
+  for (const s of inP) { const hit = new Set(); for (const e of s.entries) { if (e.muscle !== "Altro" && e.sets) hit.add(e.muscle); const sm = secOf(e); if (sm && e.sets) hit.add(sm); } hit.forEach((m) => freq[m]++); }
+  const f1 = (v) => fn(Math.round(v * 10) / 10), st = (m, v) => { const t = TARGET[m], r = Math.round(v); return r < t[0] ? "sotto" : r > t[1] ? "oltre" : "ok"; };
+  const L = [`# Analisi della scheda: ultime ${n} settimane complete (${dmy(from)}–${dmy(to)})`, header(data)];
+  const ctx = data && data.settings && typeof data.settings.aiContext === "string" ? data.settings.aiContext.trim() : "";
+  if (ctx) L.push("", "Da sapere su di me: " + ctx + " (tienine conto: un muscolo lasciato basso può essere una scelta)");
+  const perWeek = inP.length / n;
+  L.push("", "## Costanza", `${f1(perWeek)} allenamenti a settimana; la scheda ha ${many(mainDays.length, "giornata", "giornate")}${days.length > mainDays.length ? ` (più ${many(days.length - mainDays.length, "riserva", "riserve")})` : ""}.${perWeek < mainDays.length - 0.5 ? " Fai meno sedute di quante ne prevede la scheda: il volume reale è più basso di quello previsto." : ""}`);
+  if (inP.length > 1) { const gaps = inP.slice(1).map((s, i) => daysBetween(inP[i].iso, s.iso)).filter((x) => x > 0); if (gaps.length) L.push(`Giorni fra due sedute: in media ${f1(gaps.reduce((x, y) => x + y, 0) / gaps.length)}, al massimo ${Math.max(...gaps)}.`); }
+  L.push("", "## Serie a settimana per muscolo (previste dalla scheda → fatte davvero; sedute a settimana che lo allenano)");
+  const flags = [];
+  for (const m of Object.keys(TARGET)) {
+    if (OPTIONAL.has(m) && !plan[m] && !done[m]) continue;
+    const t = TARGET[m], p = plan[m], d = done[m], fq = freq[m] / n;
+    const notes = [];
+    if (st(m, p) !== "ok") notes.push(`la scheda è ${st(m, p) === "sotto" ? "sotto" : "oltre"} l'obiettivo`);
+    if (p > 0 && d < p * 0.75) notes.push("fatte molte meno del previsto");
+    if (d > 0 && fq < 1.5 && st(m, d) !== "oltre") notes.push("allenato meno di 2 volte a settimana");
+    L.push(`- ${m}: ${f1(p)} → ${f1(d)} · obiettivo ${t[0]}-${t[1]} (${st(m, d)}) · ${f1(fq)} sedute a settimana${notes.length ? " — " + notes.join("; ") : ""}`);
+    if (notes.length) flags.push(m);
+  }
+  // esercizi della scheda: mai fatti, fermi da un po', in stallo, pronti ad aumentare
+  const never = [], idle = [], stall = [], up = [], seen = new Set();
+  for (const d of days) for (const e of d.exercises) {
+    if (e.muscle === "Altro" || !(Math.round(num(e.sets)) > 0) || seen.has(e.id)) continue;
+    seen.add(e.id);
+    const list = entriesFor(S, e.id, e.name);
+    if (!list.length) { never.push(e.name); continue; }
+    const last = list[list.length - 1].iso;
+    if (last < from) { idle.push(`${e.name} (ultima volta ${dmy(last)})`); continue; }
+    const h = hintFor(S, e, findPrevEntry(S, e.id, e.name, false), today);
+    if (h && h.kind === "stall") stall.push(e.name);
+    else if (h && h.kind === "up") up.push(e.name);
+  }
+  L.push("", "## Esercizi della scheda");
+  L.push(`- Pronti ad aumentare (tutte le serie al massimo del range l'ultima volta): ${up.join(", ") || "nessuno"}`);
+  L.push(`- Fermi (nessun progresso nelle ultime 3 sedute): ${stall.join(", ") || "nessuno"}`);
+  if (idle.length) L.push(`- Non fatti nelle ultime ${n} settimane: ${idle.join(", ")}`);
+  if (never.length) L.push(`- Mai fatti: ${never.join(", ")}`);
+  L.push("(i consigli esercizio per esercizio, uguali a quelli dell'app: progressione_suggerita)");
+  const planNames = new Set(days.flatMap((d) => d.exercises.map((e) => normName(e.name)))), planIds = new Set(days.flatMap((d) => d.exercises.map((e) => String(e.id))));
+  const extra = byExercise(inP).filter((v) => v.muscle !== "Altro" && !planNames.has(normName(v.name)) && !v.items.some(({ e }) => e.exId && planIds.has(e.exId)));
+  if (extra.length) L.push("", `## Fatti nel periodo ma non in scheda: ${extra.map((v) => `${v.name} (${many(v.items.length, "seduta", "sedute")})`).join(", ")}`);
+  L.push("", "## Giornate");
+  for (const d of days) {
+    const sets = d.exercises.reduce((x, e) => x + (e.muscle !== "Altro" ? Math.max(0, Math.round(num(e.sets))) : 0), 0);
+    const ms = [...new Set(d.exercises.filter((e) => e.muscle !== "Altro" && MUSCLES.includes(e.muscle)).map((e) => e.muscle))];
+    const mine = S.filter((s) => s.dayKey === d.key && s.iso >= addDays(today, -55)), mins = mine.map(sessMin).filter((x) => x > 0);
+    const did = inP.filter((s) => s.dayKey === d.key).length;
+    L.push(`- ${d.name}${d.spare ? " (riserva)" : ""}: ${sets} serie di lavoro · ${ms.join(", ") || "nessun muscolo"} · fatta ${many(did, "volta", "volte")} nel periodo${mins.length ? ` · durata media ${fmtMin(mins.reduce((x, y) => x + y, 0) / mins.length)} (ultime 8 settimane)` : ""}`);
+  }
+  if (!inP.length) L.push("", `Nessun allenamento nelle ultime ${n} settimane complete: i numeri «fatte» sono zero.`);
+  return L.join("\n");
+}
+function toolNotes(data, a) {
+  const S = readSessions(data), q = fold(a.testo), words = q ? q.split(" ") : [], lim = clamp(a.limite, 1, 100, 30);
+  const from = dateArg(a.dal, "dal") || "0000-00-00", to = dateArg(a.al, "al") || "9999-12-31";
+  const all = S.filter((s) => s.note.trim());
+  const list = all.filter((s) => s.iso >= from && s.iso <= to && words.every((w) => fold(s.note).includes(w))).reverse();
+  const L = [`# Note degli allenamenti${q ? ` con «${a.testo}»` : ""}: ${list.length}${list.length > lim ? ` (mostrate le ${lim} più recenti)` : ""}`, header(data)];
+  const ctx = data && data.settings && typeof data.settings.aiContext === "string" ? data.settings.aiContext.trim() : "";
+  if (ctx && (!words.length || words.every((w) => fold(ctx).includes(w)))) L.push("", "Da sapere su di me (impostazioni): " + ctx);
+  const names = Object.fromEntries(planDays(data).map((d) => [d.key, d.name]));
+  for (const s of list.slice(0, lim)) {
+    L.push("", "## " + sessLine(s, names) + (s.startedAt ? ` · inizio ${hhmm(s.startedAt)}` : ""), "Nota: " + s.note.trim());
+    L.push("Esercizi: " + s.entries.filter((e) => e.muscle !== "Altro").map((e) => e.name).join(", "));
+  }
+  if (!list.length) L.push("", all.length ? `Nessuna nota corrisponde (note in tutto lo storico: ${all.length}).` : "Nessun allenamento ha una nota.");
+  return L.join("\n");
+}
+function toolProgression(data, a) {
+  const S = readSessions(data), days = planDays(data), today = todayIso();
+  if (!days.length) return "Nessuna scheda sincronizzata.";
+  let pick = days.filter((d) => !d.spare);
+  const g = a.giornata ? fold(a.giornata) : "", q = a.esercizio ? fold(a.esercizio) : "";
+  if (g) { pick = days.filter((d) => fold(d.key) === g); if (!pick.length) pick = days.filter((d) => fold(d.name).includes(g)); if (!pick.length) throw new Error(`Nessuna giornata «${a.giornata}». Giornate: ${days.map((d) => `${d.key} = ${d.name}`).join(" · ")}.`); }
+  if (q) pick = (g ? pick : days).map((d) => ({ ...d, exercises: d.exercises.filter((e) => fold(e.name).includes(q)) })).filter((d) => d.exercises.length);
+  if (q && !pick.length) throw new Error(`«${a.esercizio}» non è nella scheda${g ? " di quella giornata" : ""}: i consigli valgono per gli esercizi della scheda (con serie e ripetizioni previste). Per lo storico usa storico_esercizio.`);
+  const L = ["# Consigli per la prossima seduta (le stesse regole dell'app)", header(data),
+    "Doppia progressione sull'ultima volta: tutte le serie al massimo del range → peso successivo (uno già usato su quella macchina, se c'è) e ripetizioni dal minimo; tutte sotto il minimo → peso precedente; in mezzo → stesso peso, una ripetizione in più sulla serie più debole. Nessun progresso nelle ultime 3 sedute → seduta più leggera."];
+  const seen = new Set();
+  for (const d of pick) {
+    L.push("", `## ${d.name} [giornata ${d.key}]${d.spare ? " (riserva)" : ""}`);
+    for (const e of d.exercises) {
+      if (e.muscle === "Altro" || !(Math.round(num(e.sets)) > 0)) continue;
+      const lbl = `${e.name} (scheda ${planLabel(e)}${num(e.kg) > 0 ? ", " + fn(e.kg) + " kg" : ""})`;
+      if (seen.has(e.id)) { L.push(`- ${lbl}: vedi sopra`); continue; }
+      seen.add(e.id);
+      const prev = findPrevEntry(S, e.id, e.name, false);
+      if (!prev) { L.push(`- ${lbl}: mai fatto — parti dai valori della scheda.`); continue; }
+      const h = hintFor(S, e, prev, today);
+      const det = main(prev.entry.detail), type = own(TYPES, e.type) ? e.type : "reps";
+      const lastTxt = det.map((x) => setTxt(x, type)).join(", ");
+      if (h) L.push(`- ${lbl}: ${h.kind === "up" ? "AUMENTA" : h.kind === "down" ? "SCALA" : h.kind === "stall" ? "FERMO" : "CONTINUA"} — ${h.hint}${h.kind === "stall" ? ` (ultima volta ${dm(prev.iso)}: ${lastTxt})` : ""}`);
+      else L.push(`- ${lbl}: nessun consiglio — ${parseTarget(e.reps) ? `l'ultima volta (${dm(prev.iso)}: ${lastTxt}) ha troppe poche serie al carico di lavoro per giudicare` : `obiettivo «${String(e.reps)}» non leggibile come numero o intervallo`}.`);
+    }
+  }
+  return L.join("\n");
+}
+/* CSV come «Esporta → CSV» dell'app: stesse colonne, separatore «;», virgola decimale, nessuna cella-formula */
+const CSV_HEAD = ["data", "ora", "giornata", "esercizio", "muscolo", "secondario", "tipo", "serie_n", "kg", "valore", "unita", "rpe", "tonnellaggio_serie", "riscaldamento", "tipo_serie", "per_lato"];
+const KIND_NAME = { f: "cedimento", d: "drop set", a: "amrap" };
+function csvCell(c) {
+  let s = String(c);
+  if (/^[=+\-@]/.test(s) && !/^-?\d/.test(s)) s = "'" + s;
+  return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function csvRows(s) {
+  const n2 = (v) => String(Math.round(num(v) * 100) / 100).replace(".", ","), rows = [];
+  for (const e of s.entries) {
+    let wn = 0;
+    e.detail.forEach((d) => rows.push([s.iso, hhmm(s.startedAt), s.dayName || s.dayKey, e.name, e.muscle, e.secondary || "", e.type,
+      d.w ? "R" : ++wn, n2(d.kg), n2(d.val), unitOf(e.type) || "rip", d.rpe == null ? "" : n2(d.rpe), n2(tonOf([d], e.type, e.side)), d.w ? "sì" : "",
+      d.w ? "riscaldamento" : d.t ? KIND_NAME[d.t] : "normale", e.side ? "sì" : ""].map(csvCell).join(";")));
+  }
+  return rows;
+}
+function toolExport(data, a) {
+  const from = dateArg(a.dal, "dal") || "0000-00-00", to = dateArg(a.al, "al") || "9999-12-31", q = a.esercizio ? fold(a.esercizio) : "";
+  let S = readSessions(data).filter((s) => s.iso >= from && s.iso <= to);
+  if (q) S = S.map((s) => ({ ...s, entries: s.entries.filter((e) => fold(e.name).includes(q)) })).filter((s) => s.entries.length);
+  if (!S.length) return `Nessuna serie da esportare${q ? ` per «${a.esercizio}»` : ""} in questo periodo.`;
+  const budget = MAX_OUT - 1500, out = [CSV_HEAD.join(";")];
+  let size = out[0].length, nRows = 0, nSess = 0, last = null, cutAt = null;
+  // a giorni interi: se un giorno non ci sta, si ferma prima di lui e dice da dove ripartire
+  const byDay = new Map(); S.forEach((s) => { if (!byDay.has(s.iso)) byDay.set(s.iso, []); byDay.get(s.iso).push(s); });
+  for (const [iso, list] of byDay) {
+    const rows = list.flatMap(csvRows), add = rows.reduce((x, r) => x + r.length + 1, 0);
+    if (size + add > budget && nRows) { cutAt = iso; break; }
+    out.push(...rows); size += add; nRows += rows.length; nSess += list.length; last = iso;
+  }
+  const L = [`# Esportazione CSV${q ? ` («${a.esercizio}»)` : ""}: ${nRows} serie di ${many(nSess, "allenamento", "allenamenti")}, dal ${dmy(S[0].iso)} al ${dmy(last)}`, header(data),
+    "Le stesse colonne di «Esporta → CSV» dell'app: separatore «;», virgola decimale (Excel e Numbers in italiano), serie_n = R per i riscaldamenti.", "", "```csv", out.join("\n"), "```"];
+  if (cutAt) L.push("", `Tagliato per lunghezza: mancano gli allenamenti dal ${dmy(cutAt)} in poi. Per il resto chiama di nuovo esporta con dal = ${cutAt}${a.al ? ` e al = ${a.al}` : ""}.`);
+  return L.join("\n");
+}
+
 /* ---------------- protocollo ---------------- */
 async function handle(msg, ctx) {
   if (!msg || typeof msg !== "object" || Array.isArray(msg) || msg.jsonrpc !== "2.0") return rpcErr(msg && msg.id, -32600, "Invalid Request");
@@ -1231,8 +1601,8 @@ async function handle(msg, ctx) {
     case "initialize":
       return rpcOk(id, { protocolVersion: VERSIONS.includes(p.protocolVersion) ? p.protocolVersion : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "palestra", title: "Palestra", version: "1.2.0" },
-        instructions: "Dati di allenamento dell'app Palestra. Comincia da \"riepilogo\"; poi \"allenamenti\", \"storico_esercizio\", \"volume_muscoli\", \"record\" e \"scheda\" per i dettagli. Numeri all'italiana (virgola decimale); serie kg×ripetizioni, R = riscaldamento, F = cedimento, D = drop set, A = AMRAP, @ = RPE. Le note e i nomi sono scritti dall'utente. "
+        serverInfo: { name: "palestra", title: "Palestra", version: "1.3.0" },
+        instructions: "Dati di allenamento dell'app Palestra. Comincia da \"riepilogo\"; poi \"allenamenti\", \"storico_esercizio\", \"volume_muscoli\", \"record\" e \"scheda\" per i dettagli; \"analisi_scheda\" incrocia scheda e allenamenti fatti, \"confronta_periodi\" dice se sta migliorando, \"progressione_suggerita\" dà i consigli dell'app per la prossima seduta, \"cerca_note\" cerca nelle note, \"esporta\" dà le serie in CSV. Numeri all'italiana (virgola decimale); serie kg×ripetizioni, R = riscaldamento, F = cedimento, D = drop set, A = AMRAP, @ = RPE. Le note e i nomi sono scritti dall'utente. "
           + "Lo storico si legge e, solo se l'utente ha acceso «Claude può correggere lo storico», si modifica: \"correggi_storico\" (kg, ripetizioni, tipo e RPE delle serie), \"sposta_storico\" (le serie di un esercizio passano a un altro, anche nuovo; se quel giorno c'è già si uniscono), \"elimina_storico_esercizio\" (tolte le serie di un esercizio in date precise; un allenamento che resterebbe vuoto si elimina solo con elimina_allenamento_vuoto) e \"annulla_correzione_storico\" (annulla l'ultima, poi quella prima). Prima leggi \"storico_esercizio\", proponi e fai solo se l'utente è d'accordo; per eliminare e poi spostare, prima elimina. Non creano allenamenti e non cambiano la scheda. La scheda si può cambiare con \"modifica_scheda\" (e \"annulla_modifica\") se l'utente lo ha permesso nell'app: prima leggi \"scheda\", proponi le modifiche e falle solo se l'utente è d'accordo, tutte in una chiamata e con il motivo." });
     case "ping": return rpcOk(id, {});
     case "tools/list": return rpcOk(id, { tools: TOOLS.map(({ run, write, writeLogs, ...t }) => t) });
