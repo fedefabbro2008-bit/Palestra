@@ -53,11 +53,11 @@ const meta = async (p, i) => { await p.click(`#sessList .sess-meta-btn[data-ei="
   check(!!z && z.muscle === 'Bicipiti' && z.sets.length === 3, 'scritto a mano: Curl Zottman, ' + (z && z.muscle) + ', ' + (z && z.sets.length) + ' serie');
   await p.click('#sessFinishBtn'); await p.waitForTimeout(300); await p.click('#confirmYes'); await p.waitForTimeout(400);
   // 7. allenamento libero
-  await p.click('#freeOpenBtn'); await p.waitForTimeout(400);
+  if (!(await p.isVisible('#freeOpenBtn'))) { await p.click('#moreBtn'); await p.waitForTimeout(300); } await p.click('#freeOpenBtn'); await p.waitForTimeout(400);
   check(/Aggiungi esercizio/.test(await p.textContent('#subSheetTitle')), 'Allenamento libero: si apre subito l\'elenco');
   await p.click('#subSheetClose'); await p.waitForTimeout(300);
   check(!(await p.evaluate(() => localStorage.getItem('palestra:session'))) && await p.isVisible('#planView'), 'chiuso senza scegliere: allenamento libero vuoto annullato');
-  await p.click('#freeOpenBtn'); await p.waitForTimeout(400);
+  if (!(await p.isVisible('#freeOpenBtn'))) { await p.click('#moreBtn'); await p.waitForTimeout(300); } await p.click('#freeOpenBtn'); await p.waitForTimeout(400);
   await p.fill('#subSearch', 'trazioni presa neutra'); await p.waitForTimeout(150);
   await p.click('#subList .sub-opt:not([hidden]) >> nth=0'); await p.waitForTimeout(300);
   await p.click('#sessAddExBtn'); await p.waitForTimeout(300);

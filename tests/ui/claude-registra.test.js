@@ -35,9 +35,10 @@ const dmy = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(
   const planEx = days.A.exercises.find((e) => e.muscle && e.muscle !== 'Altro' && e.sets > 0 && (!e.type || e.type === 'reps'));
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Rome' }).format(new Date());
   let iso = today; do { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 1); iso = d.toISOString().slice(0, 10); } while (L0[iso]);
+  // Progressi conta al massimo le ultime 6 sedute: si guarda l'esercizio nuovo registrato da Claude (prima non c'è, poi 1)
   const xtCount = async (name) => { await tab(p, 'plan'); await p.waitForTimeout(400); if (await p.$('#exTableMore[aria-expanded="false"]')) { await p.click('#exTableMore'); await p.waitForTimeout(200); }
-    return p.evaluate((n) => { const r = [...document.querySelectorAll('#exTable .xt-row')].find((x) => x.querySelector('.xt-name b').textContent === n); return r ? parseInt(r.querySelector('.xt-name small').textContent, 10) : 0; }, name); };
-  const n0 = await xtCount(planEx.name);
+    return p.evaluate((n) => { const r = [...document.querySelectorAll('#exTable .xt-row')].find((x) => x.querySelector('.xt-name b').textContent === n); return r ? r.querySelector('.xt-name small').textContent : ''; }, name); };
+  const NEW = 'Croci ai cavi alti (prova)', n0 = await xtCount(NEW);
   await tab(p, 'workout');
 
   // Claude registra un allenamento dimenticato
@@ -52,8 +53,8 @@ const dmy = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(
   const card = (await p.textContent('#claudeLogCard')).replace(/\s+/g, ' ');
   check(card.includes(`registrato l'allenamento del ${dmy(iso)} delle 08:15`) && /Allenamento di ieri non segnato/.test(card) && card.includes(planEx.name + ': 30×10') && /· 1 correzione/.test(card), 'avviso: «registrato l\'allenamento del …», motivo ed esercizi con le serie, conta 1 correzione');
   await p.locator('#claudeLogCard').screenshot({ path: OUT + '/avviso.png' });
-  const n1 = await xtCount(planEx.name);
-  check(n1 === n0 + 1, `Progressi lo conta: ${planEx.name} ${n0} → ${n1} sedute`);
+  const n1 = await xtCount(NEW);
+  check(n0 === '' && n1 === `1 seduta · ${iso.slice(8, 10)}/${iso.slice(5, 7)}`, `Progressi lo conta: ${NEW} «${n0 || 'assente'}» → «${n1}»`);
   await tab(p, 'workout');
 
   // Rimetti com'era nell'app: tolto; Rifai: rimesso

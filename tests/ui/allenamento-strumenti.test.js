@@ -11,7 +11,8 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   await p.evaluate(seedLogs, { weeks: 5 });
   await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('palestra:settings')); s.showRpe = true; localStorage.setItem('palestra:settings', JSON.stringify(s)); });
   await p.reload(); await p.waitForTimeout(400);
-  // --- allenamento ---
+  // --- allenamento --- sempre su Lunedì (A: primo esercizio di lavoro con i kg); quella che tocca cambia col giorno della prova
+  await p.click('#dayPills .day-pill[data-k="A"]'); await p.waitForTimeout(300);
   await p.click('#startSessionBtn'); await p.waitForTimeout(400);
   // chiude il riscaldamento: spunta le prime serie finché l'esercizio corrente non è di lavoro
   for (let i = 0; i < 12; i++) { const k = await p.textContent('.sess-ex.current .sess-name-input').catch(() => ''); const warmEx = await p.$('.sess-ex.current .sess-set-row.warm.next'); const onlyWarm = await p.$$eval('.sess-ex.current .sess-set-row', r => r.every(x => x.classList.contains('warm'))); if (!onlyWarm) break; await p.click('.sess-set-row.next .check'); await p.waitForTimeout(40); }

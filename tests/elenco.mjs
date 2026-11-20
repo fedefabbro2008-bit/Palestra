@@ -12,6 +12,7 @@ export const TESTS = [
   { nome: 'campo-sopra-timer', file: 'ui/campo-sopra-timer.test.js', cosa: 'campo in basso con il timer aperto' },
   // allenamento
   { nome: 'rotazione-riserve', file: 'ui/rotazione-riserve.test.js', cosa: 'giornata che tocca, riserve, dopo Termina e riavvio' },
+  { nome: 'altri-allenamenti', file: 'ui/altri-allenamenti.test.js', cosa: 'Altri allenamenti: la zona si allunga, versioni corte, libero, nuova giornata' },
   { nome: 'allenamento-strumenti', file: 'ui/allenamento-strumenti.test.js', cosa: 'consiglio, drop set, avvicinamento, sostituisci, recupero, termina' },
   { nome: 'allenamento-sposta-superset', file: 'ui/allenamento-sposta-superset.test.js', cosa: 'sposta, superset, aggiungi, allenamento libero, fine = ultima spunta' },
   { nome: 'serie-successiva', file: 'ui/serie-successiva.test.js', cosa: 'la serie illuminata va sempre avanti' },

@@ -12,7 +12,7 @@ const activePill = page => page.evaluate(() => { const a = document.querySelecto
   console.log('due before:', due, '| hint:', h0);
   check(!!due && /Tocca a questa/.test(h0), 'all\'apertura è scelta la giornata che tocca: ' + due);
   // allenamento corto
-  await page.click('#spareOpenBtn'); await page.waitForTimeout(300);
+  await page.click('#moreBtn'); await page.waitForTimeout(300);
   await page.screenshot({ path: OUT + '/10-spare-sheet.png' });
   await page.click('#sparePills .day-pill >> nth=0'); await page.waitForTimeout(300);
   const sh = await page.textContent('#nextHint'); console.log('spare hint:', sh);

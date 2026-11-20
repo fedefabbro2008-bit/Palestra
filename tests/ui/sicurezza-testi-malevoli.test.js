@@ -21,7 +21,7 @@ const check = async (p, where) => {
   const vis = await p.evaluate(() => (document.body.innerText.match(/<img data-x/g) || []).length); console.log((vis > 0 ? 'OK   ' : 'FAIL ') + 'il testo malevolo si vede come testo (' + vis + ' volte)');
   await check(p, 'home');
   await p.click('#planEditBtn'); await p.waitForTimeout(200); await check(p, 'modifica scheda'); await p.click('#planEditBtn');
-  await p.click('#spareOpenBtn'); await p.waitForTimeout(200); await check(p, 'allenamento corto'); await p.click('#spareSheetClose');
+  await p.click('#moreBtn'); await p.waitForTimeout(200); await check(p, 'altri allenamenti (versioni corte)'); await p.click('#moreBtn'); await p.waitForTimeout(300);
   await p.click('#exList .ex-sec:not(.closed) .ex-read >> nth=0'); await p.waitForTimeout(300); await check(p, 'storico esercizio'); await p.click('#exSheetClose');
   await p.click('#timerBar'); await p.waitForTimeout(200); await check(p, 'timer'); await p.click('#timerClose');
   for (const t of ['stats', 'month', 'plan']) { await tab(p, t); await p.waitForTimeout(300); await check(p, 'sezione ' + t); }
