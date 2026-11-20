@@ -33,10 +33,15 @@ Regole:
 - `index.html`: HTML, stile e script in un file (tutto dentro una funzione). Le variabili lette all'avvio prima della
   loro dichiarazione sono `var`, non `let`/`const`.
 - Dati nel telefono: chiavi `palestra:*` in localStorage; la copia automatica in IndexedDB.
+- `allSessions()` (copia) e `allSessionsList()` (da leggere soltanto) ricordano l'elenco degli allenamenti e lo
+  ricontrollano a ogni chiamata; sopra c'è l'indice per esercizio `exLookup()` (entriesOf, findPrevEntry, knownWeights,
+  stallInfo), che si rifà quando cambia l'elenco o `dataVersion`. Se cambi una voce di un allenamento già salvato
+  (nome, id, serie), salvala con `persist('logs')` prima di leggere o ridisegnare.
 - `fonts/`: i caratteri (nome con l'impronta del contenuto: un carattere nuovo ha un nome nuovo). `sw.js` li salva
   all'installazione e li serve dalla copia.
-- `sw.js`: la pagina si apre sempre dalla copia salvata (subito, anche con rete lentissima); la versione pubblicata si
-  scarica in sottofondo e, se è cambiata, la pagina mostra «Aggiorna» (mai durante un allenamento). Le richieste al
+- `sw.js`: la pagina si apre sempre dalla copia salvata (subito, anche con rete lentissima); in sottofondo chiede al
+  server se la versione pubblicata è cambiata (`If-None-Match` con l'impronta della copia: se no, 304 senza contenuto)
+  e, se è cambiata, la scarica e la pagina mostra «Aggiorna» (mai durante un allenamento). Le richieste al
   server passano da `fetchT` (tempo massimo) e la sincronizzazione riprova da sola (`syncRetry`).
 - `netlify/functions/sync.mjs`: sincronizzazione (unione a tre con versione ed etag), chiave del connettore, Telegram.
 - `netlify/functions/mcp.mjs`: connettore per Claude (lettura; scheda e storico solo con i permessi accesi nell'app).
