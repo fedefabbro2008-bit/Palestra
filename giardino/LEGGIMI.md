@@ -150,6 +150,13 @@ Su GitHub partono da sole a ogni push (Actions → “Giardino · prove”).
 - **Provato dal modulo** (dati come quelli veri, senza `aggiunta`): Aglio messo al riparo → un solo salvataggio, sul server inizi 3, 6, 6 e 7 nov e `pioggia_vita` fino a ieri; nel Diario il totale resta 2,3 L.
 - **Costo**: i 400 giorni passati si calcolano una volta finché meteo, giorno e posizione non cambiano (la chiave guarda anche giorni dell'archivio e ora della pioggia misurata, non solo gli oggetti), e ogni pianta usa i suoi eventi già divisi. Misurato con telefono simulato 4 volte più lento, 16 piante e 864 eventi: Diario 11–15 ms e Piante ~10 ms per ridisegno, come prima (senza queste due cose +10 ms ciascuno).
 
+## Connettore per Claude: cosa sa fare in più
+- **`giardino` in breve** (`compatto: true`): meteo di 3 giorni e una riga per pianta (cosa fare oggi, acqua nel terriccio, prossima innaffiatura), avvisi; circa un terzo della versione intera. **`orto`**: solo un orto (id, nome o città).
+- **Avviso in testa** (`avvisoDati`, in «giardino» e «pianta») se il meteo non ha oggi, se è quello di riserva (MET Norway o l'ultimo salvato) o se la pioggia misurata ARPAE è ferma da più di 36 ore: Claude lo dice prima di consigliare.
+- **`diario`**: `pianta` per una sola pianta, litri per mese (innaffiature segnate, senza litri a parte), fino a 400 giorni (quanti ne tiene il server).
+- **`modifica_pianta` con `campi.aggiunta`**: corregge da quando conta l'acqua di tutta la vita, se la stima è sbagliata (mai nel futuro).
+- **`registra`** risponde anche con l'effetto: acqua nel terriccio e prossima innaffiatura dopo la registrazione, senza rileggere «pianta».
+
 ## Più orti (città diverse)
 - `data.location` è l'orto principale (id `p`); gli altri in `data.orti = [{id, nome, location}]` (una voce `p` porta solo il nome del principale); ogni pianta ha `orto` (assente = principale). La pioggia ARPAE degli altri orti la scrive il bot in `data.pioggia_orti[id]` (l'app non può scriverla).
 - `vistaOrto(data, id)` (modello) dà un orto come se fosse l'unico: posizione, piante, eventi e pioggia misurata; piano, messaggi, riepilogo e connettore lavorano sulle viste. `vistePiene` = orti con posizione e piante.

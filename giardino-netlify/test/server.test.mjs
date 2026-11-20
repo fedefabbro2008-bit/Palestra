@@ -707,3 +707,38 @@ test("Telegram: «Annaffiato» registra i litri scritti nel messaggio, e «Annul
   assert.deepEqual(inviati.find((x) => x[0] === "editMessageReplyMarkup")[1].reply_markup.inline_keyboard, kb, "pulsanti di prima, con i litri");
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants } } });
 });
+
+test("connettore: giardino in breve e per orto, avviso del meteo vecchio, diario per pianta e per mese, inizio dell'acqua modificabile, registra con l'effetto", async () => {
+  const st = getStore({ name: "giardino" }), d0 = await leggiDati();
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  const testo = async (n, a = {}) => { const r = await strumento(n, a); return { err: r.isError, t: r.content[0].text }; };
+  // in breve: molto più corto, una riga per pianta con l'azione di oggi
+  const pieno = (await testo("giardino")).t, breve = (await testo("giardino", { compatto: true })).t;
+  assert.ok(breve.length < pieno.length / 3, `breve ${breve.length} contro ${pieno.length} caratteri`);
+  for (const p of d0.plants.filter((p) => !p.orto)) assert.match(breve, new RegExp(`\\*\\*${p.nome}\\*\\* \\[${p.id}\\][^\\n]*: oggi `));
+  assert.match(breve, /^Meteo: /m);
+  assert.ok((await testo("giardino", { orto: "boh-non-esiste" })).err, "orto sconosciuto");
+  // meteo vecchio (niente previsioni per oggi): avviso in testa, prima di tutto
+  const loc = d0.location, key = `c-meteo-${(+loc.lat).toFixed(2)},${(+loc.lon).toFixed(2)}`, c0 = await st.get(key, { type: "json" });
+  await st.setJSON(key, { at: Date.now(), met: { ...c0.met, days: c0.met.days.filter((d) => d.date < OGGI) } });
+  const vecchio = (await testo("giardino", { compatto: true })).t;
+  assert.match(vecchio.split("\n")[1], /⚠️ Meteo vecchio: niente previsioni per oggi/);
+  await st.setJSON(key, c0);
+  assert.ok(!/⚠️/.test((await testo("giardino", { compatto: true })).t.split("\n")[1] || ""), "col meteo buono nessun avviso");
+  // diario di una pianta sola, con i litri per mese
+  const pid = d0.plants.find((p) => d0.eventi.some((e) => e.plantId === p.id && (e.tipo === "fatto" || e.tipo === "secco"))).id, nome = d0.plants.find((p) => p.id === pid).nome;
+  const dia = (await testo("diario", { pianta: pid, giorni: 400 })).t;
+  assert.match(dia, new RegExp(`^# Diario degli ultimi 400 giorni · ${nome}`)); assert.match(dia, /## Per mese \(innaffiature\)\n- \d{4}-\d{2}: [\d,]+ L in \d+ volt/);
+  assert.equal(dia.split("\n").filter((r) => /^- .*: \d+ innaffiature/.test(r)).length, 1, "riepilogo solo di quella pianta");
+  // inizio dell'acqua di tutta la vita: Claude lo corregge se l'utente dice che è sbagliato (mai nel futuro)
+  assert.equal((await testo("modifica_pianta", { azione: "modifica", pianta: pid, campi: { aggiunta: "2026-01-10" } })).err, false);
+  assert.equal((await leggiDati()).plants.find((p) => p.id === pid).aggiunta, "2026-01-10");
+  assert.ok((await testo("modifica_pianta", { azione: "modifica", pianta: pid, campi: { aggiunta: "2099-01-01" } })).err);
+  // registra: risponde con l'effetto sul calcolo
+  const r = (await testo("registra", { pianta: pid, tipo: "umido" })).t;
+  assert.match(r, /Correzione appresa .* Adesso: acqua nel terriccio ~\d+% \(sotto \d+% si innaffia\); /);
+  // pulizia
+  const ev = (await leggiDati()).eventi.find((e) => e.fonte === "claude" && e.plantId === pid && e.tipo === "umido" && e.data === OGGI);
+  if (ev) await strumento("annulla", { id: ev.id });
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants } } });
+});
