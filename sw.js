@@ -38,10 +38,13 @@ function save(req, resp){
 }
 
 /* pagina: dalla copia, e in sottofondo la versione pubblicata. Se è diversa da quella salvata la si salva
-   (pagina e "./") e si avvisa la finestra che l'ha chiesta */
+   (pagina e "./") e si avvisa la finestra che l'ha chiesta. Si chiede al server se è cambiata, con l'impronta della
+   copia (If-None-Match): se è la stessa risponde 304 senza contenuto, così a ogni apertura non si riscaricano i
+   ~750 KB della pagina (prima sì, sempre) */
 function refreshPage(req, cached){
-  return fetch(req.url, { cache:'no-store', credentials:'same-origin' }).then(r=>{
-    if(!r.ok || r.type!=='basic') return;
+  const tag = cached.headers.get('etag');
+  return fetch(req.url, { cache:'no-store', credentials:'same-origin', headers: tag ? { 'If-None-Match': tag } : {} }).then(r=>{
+    if(r.status===304 || !r.ok || r.type!=='basic') return;   // 304: uguale a quella salvata, niente scaricato
     return Promise.all([r.clone().text(), cached.text()]).then(([nu, old])=>{
       if(nu===old) return;
       return caches.open(CACHE).then(c=> Promise.all([c.put(PAGE, r.clone()), c.put('./', r.clone()), c.put(req, r)]))

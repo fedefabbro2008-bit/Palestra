@@ -31,6 +31,7 @@ export const TESTS = [
   { nome: 'animazioni', file: 'ui/animazioni.test.js', cosa: 'timer, serie dopo, interruttori, giornate, numeri, riquadri, fiammella' },
   // statistiche
   { nome: 'muscoli-corpo-costanza', file: 'ui/muscoli-corpo-costanza.test.js', args: DF, cosa: 'Serie per muscolo con il corpo, costanza 6 mesi' },
+  { nome: 'figura-corpo-leggera', file: 'ui/figura-corpo-leggera.test.js', cosa: 'figura del corpo: niente <title>, non si ricrea cambiando giornata, colori subito' },
   { nome: 'avambracci', file: 'ui/avambracci.test.js', args: FD, cosa: 'avambracci: figura, statistiche, nomi' },
   { nome: 'peso-per-giornata', file: 'ui/peso-per-giornata.test.js', args: FD, cosa: 'Peso totale per giornata: riserve, sedute escluse' },
   // dati: backup, import, sicurezza, memoria

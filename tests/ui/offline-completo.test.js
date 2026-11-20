@@ -45,9 +45,14 @@ async function newPage(ctx, errs) {
   check(dt < 1500 && pills >= 3, `rete lentissima: aperta in ${dt} ms (prima aspettava 3 s), ${pills} giornate`);
   await ctl('hang=0'); await q1.close();
 
-  // 2. stessa versione: nessun avviso
+  // 2. stessa versione: nessun avviso, e la pagina non si riscarica: il service worker chiede con l'impronta della copia
+  //    (If-None-Match) e il server risponde 304 senza contenuto (prima ogni apertura riscaricava tutti i ~750 KB)
+  const pageLog = async () => (await fetch(BASE.replace(/\/$/, '') + '/__ctl?pagelog=1')).json();
+  await pageLog();
   await p.reload(); await p.waitForTimeout(2000);
   check(!(await toastNew(p)), 'versione uguale: nessun avviso');
+  const pl = await pageLog();
+  check(pl.length >= 1 && pl.every(x => x.status === 304 && x.bytes === 0 && x.inm), 'versione uguale: la pagina non si riscarica (risposta 304 senza contenuto: ' + JSON.stringify(pl) + ')');
 
   // 3. versione nuova pubblicata: si apre la copia, arriva l'avviso, «Aggiorna» carica la nuova
   await ctl('version=v2');
@@ -55,6 +60,8 @@ async function newPage(ctx, errs) {
   check(!(await hasVersion(p, 'v2')), 'versione nuova pubblicata: si apre subito quella salvata');
   let seen = false; for (let i = 0; i < 30 && !seen; i++) { await p.waitForTimeout(100); seen = await toastNew(p); }
   check(seen, 'avviso «Nuova versione dell\'app pronta · Aggiorna»');
+  const pl2 = await pageLog();
+  check(pl2.some(x => x.status === 200 && x.bytes > 100000), 'versione nuova: la pagina si scarica (' + JSON.stringify(pl2.map(x => x.status + '/' + x.bytes)) + ')');
   await Promise.all([p.waitForNavigation({ waitUntil: 'load' }), p.click('#toastAct')]); await p.waitForTimeout(1500);
   check(await hasVersion(p, 'v2'), 'Aggiorna: caricata la versione nuova');
   check(!(await toastNew(p)), 'dopo l\'aggiornamento nessun nuovo avviso');

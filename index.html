@@ -147,6 +147,7 @@ body .pr-compact .val.stall{color:var(--warn); font-weight:600;}
 @media (prefers-reduced-motion: reduce){ .bd-m, .bd-body, .bd-head, .bd-hl, .bd-ln, .bd-chip{transition:none;} .bd-det{animation:none;} }
 .bd-m.n0{fill:var(--bd-off);} .bd-m.lo{fill:var(--bd-lo);} .bd-m.hi{fill:var(--bd-hi);}
 .bd-m.sel{stroke:#ffffff; stroke-width:2;}
+.bd-instant .bd-m{transition:none;}   /* colori di un'altra giornata: subito */
 .bd-ln{fill:none; stroke:var(--bd-line); stroke-width:1; stroke-linecap:round; opacity:.9; pointer-events:none;}
 .bd-legend{display:flex; flex-wrap:wrap; justify-content:center; gap:6px 14px; font-size:11.5px; color:var(--text-faint); margin:6px 0 12px;}
 .bd-legend span{display:inline-flex; align-items:center; gap:6px;}
@@ -2890,11 +2891,50 @@ function recalcEntry(e){
   e.tonnage = tonOf(e.detail, e.type, sideOf(e));
   return e;
 }
-/* elenco cronologico piatto di tutte le sessioni */
-function allSessions(){
-  const out=[];
-  Object.keys(state.logs).sort().forEach(iso=> state.logs[iso].forEach(s=> out.push({iso, s})));
-  return out;
+/* elenco cronologico piatto di tutte le sessioni. Lo si ricorda: a ogni chiamata si controlla, solo con confronti (niente
+   da costruire né ordinare), che lo storico sia ancora quello (stessi giorni, stessi allenamenti nello stesso ordine);
+   se è cambiato qualcosa si rifà. allSessions() dà una copia (chi la chiama può girarla o tagliarla); allSessionsList()
+   la lista ricordata, solo per leggerla */
+var allSessCache = null;   // var: si legge già all'avvio
+function allSessionsList(){
+  const logs = state.logs, c = allSessCache;
+  if(c && c.logs===logs){
+    let n = 0, ok = true;
+    for(const k in logs) n++;
+    if(n===c.isos.length){
+      let at = 0;
+      for(let i=0;i<c.isos.length && ok;i++){
+        const a = logs[c.isos[i]];
+        if(a!==c.arrs[i] || !a || a.length!==c.lens[i]){ ok = false; break; }
+        for(let j=0;j<a.length;j++){ if(a[j]!==c.list[at++].s){ ok = false; break; } }
+      }
+      if(ok) return c.list;
+    }
+  }
+  const isos = Object.keys(logs).sort(), list = [], arrs = [], lens = [];
+  isos.forEach(iso=>{ const a = logs[iso]; arrs.push(a); lens.push(a ? a.length : 0); (a||[]).forEach(s=> list.push({iso, s})); });
+  allSessCache = { logs, isos, arrs, lens, list, v: (c ? c.v : 0) + 1 };
+  return list;
+}
+function allSessions(){ return allSessionsList().slice(); }
+/* indice per esercizio (consigli, pesi già usati, esercizi fermi): si rifà quando cambia l'elenco o si salva un
+   cambiamento ai dati (dataVersion: anche nomi o esercizi corretti dentro un allenamento). Prima ognuna di queste
+   domande scorreva tutto lo storico, per ogni esercizio */
+var exLookCache = null;
+function exLookup(){
+  const list = allSessionsList();
+  if(exLookCache && exLookCache.v===allSessCache.v && exLookCache.dv===dataVersion) return exLookCache;
+  const byId = new Map(), byNameNoId = new Map(), byName = new Map(), cable = new Set();
+  const put = (m, k, r)=>{ const a = m.get(k); if(a) a.push(r); else m.set(k, [r]); };
+  list.forEach(({iso, s}, si)=> (Array.isArray(s.entries) ? s.entries : []).forEach((e, ei)=>{
+    if(!e) return;
+    const r = { iso, e, si, ei };
+    if(e.exId) put(byId, e.exId, r); else put(byNameNoId, e.name, r);
+    put(byName, e.name, r);
+    if(CABLE_RX.test(String(e.name||''))) (e.detail||[]).forEach(d=>{ const k = Math.round(num(d.kg)*100)/100; if(k>0) cable.add(k); });
+  }));
+  exLookCache = { v: allSessCache.v, dv: dataVersion, byId, byNameNoId, byName, cable, memo: new Map(), stall: new Map() };
+  return exLookCache;
 }
 function sessionCount(){ let n=0; Object.keys(state.logs).forEach(iso=> n+=state.logs[iso].length); return n; }
 function exKey(e){ return e.exId ? 'id:'+e.exId : 'n:'+e.name; }
@@ -2956,11 +2996,11 @@ function pruneOldBackups(){
 }
 /* ultimo log dell'esercizio (per prefill e suggerimenti) */
 function findPrevEntry(exId, name, warmOnly){
-  const all = allSessions();
+  const all = entriesOf(exId, name).map(({iso, e})=> ({ iso, s:{ entries:[e] } }));   // dall'indice: solo gli allenamenti con quell'esercizio
   const k = normName(name);
   let first = null;
   for(let i=all.length-1; i>=0; i--){
-    const e = all[i].s.entries.find(en => (exId && en.exId===exId) || (!en.exId && en.name===name) || (!exId && en.name===name));
+    const e = all[i].s.entries[0];
     // una seduta di solo riscaldamento non è un riferimento, salvo per un esercizio che in scheda è solo riscaldamento
     if(e && (workDetail(e.detail).length || (warmOnly && Array.isArray(e.detail) && e.detail.length))){
       // stesso esercizio ma rinominato durante la seduta (es. "con corda" → "con barra ad angolo": attrezzo e pesi diversi):
@@ -4091,7 +4131,7 @@ function slotOf(s){
   const f = s.forDay!=null ? String(s.forDay) : null;
   return (f && hasOwn(state.days, f) && !isSpare(f)) ? f : null;
 }
-function lastSlotted(){ const all = allSessions(); for(let i=all.length-1; i>=0; i--){ if(slotOf(all[i].s)) return all[i]; } return null; }
+function lastSlotted(){ const all = allSessionsList(); for(let i=all.length-1; i>=0; i--){ if(slotOf(all[i].s)) return all[i]; } return null; }
 /* la giornata che tocca: quella dopo l'ultima fatta (una riserva conta come la giornata che ha sostituito) */
 function dayAfterLast(){
   const last = lastSlotted();
@@ -4234,18 +4274,26 @@ let bodySel = null;
              [[148,158],[155,176],[159,198]], [[111,301],[118,306],[125,301]], [[117,314],[119,340],[118,364]] ],
     back:  [ [[100,54],[100,193]], [[119,240],[118,295]], [[118,305],[118,352]], [[148,158],[155,176],[159,198]], [[117,360],[117,378]] ]
   };
-  function bodyFigure(view, lvl, sel){
-    const shapes = BD_M[view].map(([g,p])=>[g,p]);
-    const all = []; shapes.forEach(([g,p])=>{ all.push([g,p]); all.push([g,bdMir(p).reverse()]); });
+  /* la geometria della figura non cambia mai: si calcola una volta per lato (davanti/dietro) e a ogni disegno cambiano
+     solo i colori dei muscoli. Niente <title> nei muscoli: la figura è un'immagine unica per i lettori di schermo
+     (role="img") e sul telefono non c'è il passaggio del mouse; erano 36 elementi in più per figura da preparare */
+  const BD_GEO = {};
+  function bdGeo(view){
+    if(BD_GEO[view]) return BD_GEO[view];
+    const all = []; BD_M[view].forEach(([g,p])=>{ all.push([g,p]); all.push([g,bdMir(p).reverse()]); });
     const HEAD = [[100,52],[92,49.5],[86.5,43],[84.2,33],[85,22],[89,13],[95.5,8],[102,6],[108.5,6.8],[113.5,11],[116,20],[115.8,33],[113.5,43],[108,49.5]];
     const HAIRLINE = view==='front' ? [[86.3,23],[92,16.5],[100,14],[108,15],[114.2,20]] : [[88,38.5],[100,41.5],[112,38.5]];
     const head = `<ellipse class="bd-head" cx="84.4" cy="32" rx="2.6" ry="4.8"/><ellipse class="bd-head" cx="115.6" cy="32" rx="2.6" ry="4.8"/>`
       + `<path class="bd-head" d="${bdSmooth(HEAD,true,0.45)}"/><path class="bd-hl" d="${bdSmooth(HAIRLINE,false,0.5)}"/>`;
     const decor = BD_DECOR[view].flatMap(p=>[p, bdMir(p).reverse()]).map(p=>`<path class="bd-x" d="${bdSmooth(p,true,0.32)}"/>`).join('');
-    const musc = all.map(([g,p])=>`<path class="bd-m ${lvl[g]||'n0'}${g===sel?' sel':''}" data-m="${g}" d="${bdSmooth(p,true,0.32)}"><title>${g}</title></path>`).join('');
     const lines = BD_LINES[view].flatMap(pts=>[pts, bdMir(pts)]).map(pts=>`<path class="bd-ln" d="${bdSmooth(pts,false)}"/>`).join('');
+    return (BD_GEO[view] = { pre:`<path class="bd-body" d="${bdBodyPath()}"/>${head}${decor}`, musc: all.map(([g,p])=>[g, bdSmooth(p,true,0.32)]), lines });
+  }
+  function bodyFigure(view, lvl, sel){
+    const G = bdGeo(view);
+    const musc = G.musc.map(([g,d])=>`<path class="bd-m ${lvl[g]||'n0'}${g===sel?' sel':''}" data-m="${g}" d="${d}"/>`).join('');
     return `<svg class="bd-fig" viewBox="0 0 200 404" role="img" aria-label="${view==='front'?'Davanti':'Dietro'}">
-      <path class="bd-body" d="${bdBodyPath()}"/>${head}${decor}${musc}${lines}</svg>`;
+      ${G.pre}${musc}${G.lines}</svg>`;
   }
 function dayMuscleLoad(day){
   const load = {}, by = {};
@@ -4276,9 +4324,19 @@ function renderBodyCard(keepFigs){
   const trained = Object.keys(load).sort((a,b)=> load[b]-load[a] || a.localeCompare(b));
   const fmt = v=> String(Math.round(v));   // numeri interi a vista; il ½ del secondario si legge nel dettaglio
   const chips = document.getElementById('bodyChips');
-  if(keepFigs && figs.querySelector('.bd-m')){
+  const have = figs.querySelector('.bd-m');
+  if(keepFigs && have){
     figs.querySelectorAll('.bd-m').forEach(el=> el.classList.toggle('sel', el.getAttribute('data-m')===bodySel));
     chips.querySelectorAll('.bd-chip').forEach(el=> el.classList.toggle('sel', el.getAttribute('data-m')===bodySel));
+  } else if(have){
+    // la figura c'è già (la forma è sempre la stessa): cambiano solo i colori dei muscoli, subito (senza transizione
+    // del colore: niente lavoro a ogni fotogramma a ogni tocco). Prima si ricreava da capo a ogni giornata
+    figs.classList.add('bd-instant');
+    figs.querySelectorAll('.bd-m').forEach(el=>{ const g = el.getAttribute('data-m'); el.setAttribute('class', 'bd-m '+(lvl[g]||'n0')+(g===bodySel?' sel':'')); });
+    requestAnimationFrame(()=> requestAnimationFrame(()=> figs.classList.remove('bd-instant')));   // dopo che il fotogramma coi colori nuovi è calcolato
+    chips.innerHTML = trained.length
+      ? trained.map(m=>`<button type="button" class="bd-chip ${lvl[m]}${m===bodySel?' sel':''}" data-m="${m}">${m} <b>${fmt(load[m])}</b></button>`).join('')
+      : '<div class="chart-empty">Nessun muscolo allenato in questa giornata.</div>';
   } else {
     figs.innerHTML = `<div class="bd-col">${bodyFigure('front', lvl, bodySel)}<span>Davanti</span></div><div class="bd-col">${bodyFigure('back', lvl, bodySel)}<span>Dietro</span></div>`;
     chips.innerHTML = trained.length
@@ -4376,6 +4434,7 @@ document.addEventListener('click', ev=>{
     + '</div>';
 });
 
+var bodyFirstDone = false;   // var: si legge già all'avvio
 function renderExList(){
   const list = document.getElementById('exList');
   const day = state.days[currentDay];
@@ -4387,7 +4446,10 @@ function renderExList(){
   editBtn.querySelector('#planEditLbl').textContent = planEditMode ? 'Fatto' : 'Modifica';
   editBtn.firstChild.outerHTML = planEditMode ? ic('check') : ic('edit');
   document.getElementById('planEditTools').style.display = planEditMode ? '' : 'none';
-  try{ renderBodyCard(); }catch(err){ console.error('renderBodyCard', err); }
+  // la figura del corpo sta in fondo: al primo disegno dopo l'apertura arriva un fotogramma dopo (non rallenta il primo
+  // disegno della pagina); poi si ridisegna subito come sempre
+  if(bodyFirstDone){ try{ renderBodyCard(); }catch(err){ console.error('renderBodyCard', err); } }
+  else { bodyFirstDone = true; requestAnimationFrame(()=> setTimeout(()=>{ try{ renderBodyCard(); }catch(err){ console.error('renderBodyCard', err); } }, 0)); }
   list.innerHTML='';
 
   if(!n){
@@ -4917,7 +4979,7 @@ function knownWeights(exId, name){
   const add = e=> (e.detail||[]).forEach(d=>{ const k = Math.round(num(d.kg)*100)/100; if(k>0) set.add(k); });
   entriesOf(exId, name).forEach(({e})=> add(e));
   // ai cavi la pila di pesi è la stessa per tutti gli esercizi: valgono anche i pesi usati negli altri esercizi ai cavi
-  if(CABLE_RX.test(String(name||''))) allSessions().forEach(({s})=> s.entries.forEach(e=>{ if(CABLE_RX.test(e.name)) add(e); }));
+  if(CABLE_RX.test(String(name||''))) exLookup().cable.forEach(k=> set.add(k));
   return [...set].sort((a,b)=>a-b);
 }
 /* "41 kg" se è un peso che hai già usato, altrimenti "~38,5 kg (o il più vicino)": su una macchina sconosciuta il passo è una stima */
@@ -5542,17 +5604,27 @@ function stallFromEntries(list){
   if(best3 > bestBefore*1.005 || vol3 > volBefore*1.005) return null;   // anche un piccolo passo avanti è progresso
   return { since:last3[0].iso, lastIso:last3[2].iso, hasKg:kind, topKg:last3[2].p.topKg };
 }
+/* per ogni allenamento la prima voce di quell'esercizio (stesso id; o, senza id, stesso nome), in ordine di data.
+   Dall'indice: le voci con quell'id e quelle senza id con quel nome, unite in ordine; una per allenamento */
 function entriesOf(exId, name){
-  const out=[];
-  allSessions().forEach(({iso,s})=>{
-    const e = s.entries.find(en => (exId && en.exId===exId) || (!en.exId && en.name===name) || (!exId && en.name===name));
-    if(e) out.push({iso, e});
-  });
-  return out;
+  const X = exLookup(), key = (exId ? 'i' + exId : 'n') + '\u0001' + name;
+  const hit = X.memo.get(key); if(hit) return hit.slice();
+  let src;
+  if(exId){ const a = X.byId.get(exId) || [], b = X.byNameNoId.get(name) || []; src = !b.length ? a : !a.length ? b : a.concat(b).sort((x, y)=> x.si - y.si || x.ei - y.ei); }
+  else src = X.byName.get(name) || [];
+  const out = []; let last = -1;
+  for(const r of src){ if(r.si!==last){ out.push({ iso:r.iso, e:r.e }); last = r.si; } }
+  X.memo.set(key, out);
+  return out.slice();
 }
 const STALL_MAX_AGE_DAYS = 42;   // un esercizio non fatto da 6 settimane non è "in stallo": è fermo
 function stallRecent(st, refIso){ return !!st && Math.round((fromIso(refIso||todayISO()) - fromIso(st.lastIso))/864e5) <= STALL_MAX_AGE_DAYS; }   // round: l'ora legale non sposta il limite
-function stallInfo(exId, name){ const st = stallFromEntries(entriesOf(exId, name)); return stallRecent(st) ? st : null; }
+function stallInfo(exId, name){
+  const X = exLookup(), key = (exId || '') + '\u0001' + name;
+  let st = X.stall.get(key);
+  if(st===undefined){ st = stallFromEntries(entriesOf(exId, name)); X.stall.set(key, st); }
+  return stallRecent(st) ? st : null;
+}
 function stallMsg(st, ws){
   if(st.hasKg){
     const unit = st.topKg>=20 ? 2.5 : 1;

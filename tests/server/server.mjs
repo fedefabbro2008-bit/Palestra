@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,14 +48,24 @@ http.createServer(async (req, res) => {
     const out = await handler(r);
     res.writeHead(out.status, Object.fromEntries(out.headers)); return res.end(Buffer.from(await out.arrayBuffer()));
   }
-  if (url.pathname === '/__ctl') { const q = url.searchParams; if (q.has('delay')) globalThis.__delayWrite = +q.get('delay'); if (q.has('fail')) globalThis.__fail = q.get('fail')==='1'; if (q.has('down')) globalThis.__apiDown = q.get('down')==='1'; if (q.has('dump')) { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify([...(globalThis.__stores||new Map()).entries()].map(([k,m])=>[k,[...m.entries()]]))); } if (q.has('version')) globalThis.__version = q.get('version') || null; if (q.has('hang')) globalThis.__hang = q.get('hang')==='1'; if(q.has('reset')) { (globalThis.__stores||new Map()).clear(); globalThis.__version = null; globalThis.__hang = false; } if (q.has('tgrun')) { await tgScheduled(new Request('http://x')); } if (q.has('tglog')) { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify(globalThis.tgFake.calls)); } if (q.has('tgclear')) globalThis.tgFake.calls = []; if (q.has('tgfail')) globalThis.tgFake.fail = q.get('tgfail') || null; if (q.has('tgnoupd')) globalThis.tgFake.updates = q.get('tgnoupd')==='1' ? [] : [{ update_id: 1, message: { chat: { id: 4242, type: 'private', first_name: 'Fede' } } }]; res.writeHead(200); return res.end('ok'); }
+  if (url.pathname === '/__ctl') { const q = url.searchParams; if (q.has('delay')) globalThis.__delayWrite = +q.get('delay'); if (q.has('fail')) globalThis.__fail = q.get('fail')==='1'; if (q.has('down')) globalThis.__apiDown = q.get('down')==='1'; if (q.has('dump')) { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify([...(globalThis.__stores||new Map()).entries()].map(([k,m])=>[k,[...m.entries()]]))); } if (q.has('pagelog')) { const l = globalThis.__pageLog || []; globalThis.__pageLog = []; res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify(l)); } if (q.has('version')) globalThis.__version = q.get('version') || null; if (q.has('hang')) globalThis.__hang = q.get('hang')==='1'; if(q.has('reset')) { (globalThis.__stores||new Map()).clear(); globalThis.__version = null; globalThis.__hang = false; } if (q.has('tgrun')) { await tgScheduled(new Request('http://x')); } if (q.has('tglog')) { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify(globalThis.tgFake.calls)); } if (q.has('tgclear')) globalThis.tgFake.calls = []; if (q.has('tgfail')) globalThis.tgFake.fail = q.get('tgfail') || null; if (q.has('tgnoupd')) globalThis.tgFake.updates = q.get('tgnoupd')==='1' ? [] : [{ update_id: 1, message: { chat: { id: 4242, type: 'private', first_name: 'Fede' } } }]; res.writeHead(200); return res.end('ok'); }
   if (globalThis.__fail && !url.pathname.endsWith('sw.js')) { res.writeHead(500); return res.end('errore'); }
   let p = decodeURIComponent(url.pathname); if (p.endsWith('/')) p += 'index.html';
   const f = path.join(ROOT, p);
   if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end('nf'); }
-  res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-cache', 'x-frame-options': 'DENY', 'content-security-policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'", 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' });
-  if (req.method === 'HEAD') return res.end();
+  // come Netlify: ogni file ha la sua impronta (ETag); se la richiesta porta la stessa (If-None-Match) risponde 304
+  // senza contenuto. Le richieste della pagina si annotano (stato e byte) per le prove
+  let body = fs.readFileSync(f);
   // «nuova versione pubblicata»: la pagina con un commento in più
-  if (globalThis.__version && f.endsWith('index.html')) return res.end(fs.readFileSync(f, 'utf8').replace('</html>', `<!-- versione ${globalThis.__version} --></html>`));
-  fs.createReadStream(f).pipe(res);
+  if (globalThis.__version && f.endsWith('index.html')) body = Buffer.from(body.toString('utf8').replace('</html>', `<!-- versione ${globalThis.__version} --></html>`));
+  const etag = '"' + createHash('md5').update(body).digest('hex').slice(0, 20) + '"';
+  const isPage = f.endsWith('index.html');
+  if (req.headers['if-none-match'] === etag) {
+    if (isPage) (globalThis.__pageLog = globalThis.__pageLog || []).push({ status: 304, bytes: 0, inm: true });
+    res.writeHead(304, { etag, 'cache-control': 'no-cache' }); return res.end();
+  }
+  res.writeHead(200, { etag, 'content-type': TYPES[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-cache', 'x-frame-options': 'DENY', 'content-security-policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'", 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' });
+  if (req.method === 'HEAD') return res.end();
+  if (isPage) (globalThis.__pageLog = globalThis.__pageLog || []).push({ status: 200, bytes: body.length, inm: !!req.headers['if-none-match'] });
+  res.end(body);
 }).listen(PORT, () => console.log('in ascolto su ' + PORT));
