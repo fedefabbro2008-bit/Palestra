@@ -37,22 +37,35 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
     await p.tap('#sparePills .day-pill >> nth=0'); await p.waitForTimeout(500);
     const s3 = await st(), hint = await p.textContent('#nextHint');
     check(s3.hidden && /Allenamento corto: .+cambia/.test(s3.btn) && /Versione corta di oggi/.test(hint), tag + 'scelta una versione corta: zona chiusa, pulsante «' + s3.btn + '»');
-    // nuova giornata normale: in alto, scelta, modifica aperta col nome pronto da scrivere
+    // stile: come le giornate in alto (vetro sulla scheda, niente fondo grigio); la scelta col velo e il bordo della lente
+    await p.tap('#moreBtn'); await p.waitForTimeout(400);
+    const look = await p.evaluate(() => { const cs = (sel) => getComputedStyle(document.querySelector(sel)), top = cs('#dayPills .day-pill:not(.active)');
+      const pills = [...document.querySelectorAll('#sparePills .day-pill:not(.active), #freeOpenBtn, #newMainDayBtn, #newSpareDayBtn')].map((e) => getComputedStyle(e));
+      const act = cs('#sparePills .day-pill.active'), lens = cs('#dayPills .dp-ind .lq-e');
+      return { areaBg: cs('#moreArea').backgroundColor, areaBorder: cs('#moreArea').borderTopWidth,
+        same: pills.every((x) => x.backgroundColor === top.backgroundColor && x.borderTopColor === top.borderTopColor && x.borderTopLeftRadius === top.borderTopLeftRadius && x.backgroundImage === top.backgroundImage),
+        actBorder: act.borderTopColor === lens.borderTopColor, actImg: /gradient/.test(act.backgroundImage), n: pills.length }; });
+    check(look.areaBg === 'rgba(0, 0, 0, 0)' && look.areaBorder === '0px' && look.same && look.n >= 4 && look.actBorder && look.actImg, tag + `stile come le giornate in alto (${JSON.stringify(look)}): ${look.n} pillole con lo stesso vetro, bordo e angoli, zona senza fondo grigio, versione corta scelta col bordo della lente`);
+    await p.tap('#moreBtn'); await p.waitForTimeout(400);
+    // nuova giornata normale: va tra le giornate in alto, scelta e visibile (la riga scorre fino a lei), modifica aperta
     const nDays = () => p.evaluate(() => { const d = JSON.parse(localStorage.getItem('palestra:days')); return { main: Object.keys(d).filter((k) => !d[k].spare).length, spare: Object.keys(d).filter((k) => d[k].spare).length, keys: Object.keys(d) }; });
     const d0 = await nDays();
-    await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newMainDayBtn'); await p.waitForTimeout(700);
-    const d1 = await nDays(), e1 = await p.evaluate(() => ({ edit: document.getElementById('planEditTools').style.display !== 'none', focus: document.activeElement && document.activeElement.id, name: document.getElementById('dayNameInput').value, pill: document.querySelector('#dayPills .day-pill.active .dp-key').textContent, area: document.getElementById('moreArea').hidden, spare: document.getElementById('spareToggle').checked }));
-    check(d1.main === d0.main + 1 && d1.spare === d0.spare && e1.edit && e1.focus === 'dayNameInput' && /^Giorno /.test(e1.name) && e1.pill.startsWith('Giorno') && e1.area && !e1.spare, tag + `nuova giornata: ${d0.main} → ${d1.main} in alto, scelta, modifica aperta col nome «${e1.name}» pronto da scrivere`);
+    await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newMainDayBtn'); await p.waitForTimeout(900);
+    const d1 = await nDays(), e1 = await p.evaluate(() => { const w = document.getElementById('dayPills'), a = w.querySelector('.day-pill.active'), q = w.getBoundingClientRect(), x = a.getBoundingClientRect(), main = document.querySelector('main');
+      return { edit: document.getElementById('planEditTools').style.display !== 'none', name: document.getElementById('dayNameInput').value, pill: a.querySelector('.dp-key').textContent, area: document.getElementById('moreArea').hidden, spare: document.getElementById('spareToggle').checked,
+        inRow: x.left >= q.left - 1 && x.right <= q.right + 1, onScreen: x.top >= (parseFloat(getComputedStyle(main).paddingTop) || 0) - 1 && x.bottom <= innerHeight, last: [...w.querySelectorAll('.day-pill[data-k]')].pop() === a, toast: document.getElementById('toastMsg').textContent }; });
+    check(d1.main === d0.main + 1 && d1.spare === d0.spare && /^Giorno /.test(e1.pill) && e1.last && e1.inRow && e1.onScreen && e1.area && e1.edit && !e1.spare && /Giornata aggiunta in alto/.test(e1.toast), tag + `nuova giornata: ${d0.main} → ${d1.main} giornate in alto, «${e1.pill}» in fondo alla riga, scelta e visibile senza scorrere, modifica aperta`);
     await p.fill('#dayNameInput', 'Sabato · Gambe leggere'); await p.waitForTimeout(300);
     check((await p.textContent('#dayPills .day-pill.active .dp-key')) === 'Sabato', tag + 'il nome scritto compare subito in alto');
-    // nuova versione corta: tra le versioni corte, interruttore «riserva» acceso
+    // nuova versione corta: nell'elenco delle versioni corte (zona aperta), scelta, interruttore «riserva» acceso
     await p.click('#planEditBtn'); await p.waitForTimeout(300);
-    await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newSpareDayBtn'); await p.waitForTimeout(700);
-    const d2 = await nDays(), e2 = await p.evaluate(() => ({ spare: document.getElementById('spareToggle').checked, name: document.getElementById('dayNameInput').value, focus: document.activeElement && document.activeElement.id }));
-    check(d2.spare === d1.spare + 1 && d2.main === d1.main && e2.spare && /^Riserva · /.test(e2.name) && e2.focus === 'dayNameInput', tag + `nuova versione corta: ${d1.spare} → ${d2.spare}, interruttore «riserva» acceso, nome «${e2.name}»`);
+    await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newSpareDayBtn'); await p.waitForTimeout(900);
+    const d2 = await nDays(), e2 = await p.evaluate(() => { const a = document.querySelector('#sparePills .day-pill.active'), x = a && a.getBoundingClientRect();
+      return { spare: document.getElementById('spareToggle').checked, name: document.getElementById('dayNameInput').value, open: !document.getElementById('moreArea').hidden, list: document.querySelectorAll('#sparePills .day-pill').length,
+        act: a ? a.querySelector('.dp-key').textContent + ' · ' + (a.querySelector('.dp-focus') || {}).textContent : '', vis: !!x && x.top >= 0 && x.bottom <= innerHeight, topPills: document.querySelectorAll('#dayPills .day-pill[data-k]').length }; });
+    check(d2.spare === d1.spare + 1 && d2.main === d1.main && e2.open && e2.list === d2.spare && /Giorno/.test(e2.act) && e2.vis && e2.topPills === d2.main && e2.spare && /^Riserva · /.test(e2.name), tag + `nuova versione corta: ${d1.spare} → ${d2.spare} nell'elenco, «${e2.act}» scelta e visibile, non in alto; interruttore «riserva» acceso`);
+    if (motion) await p.locator('#todayCard').screenshot({ path: OUT + '/versione-corta-nuova.png' });
     await p.click('#planEditBtn'); await p.waitForTimeout(300);
-    await p.tap('#moreBtn'); await p.waitForTimeout(400);
-    check(await p.evaluate(() => document.querySelectorAll('#sparePills .day-pill').length) === d2.spare, tag + 'la versione corta nuova è nell\'elenco delle versioni corte');
     const errs = A.errors.filter((e) => !/404|Service Worker/.test(e));
     check(!errs.length, tag + 'nessun errore ' + errs.join(' | '));
     await A.browser.close();

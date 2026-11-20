@@ -318,29 +318,35 @@ main{
 .spare-open b{color:var(--text); font-weight:600;}
 .spare-open > span{flex:1; min-width:0;}
 .spare-open .ic{width:15px; height:15px; flex:0 0 auto; color:var(--text-faint);}
-.spare-open.on{border-style:solid; border-color:var(--grp-line); background:var(--grp-band); color:var(--text-dim);}
-.spare-open.on b{color:var(--text);} .spare-open.on .ic{color:var(--accent-hi);}
 .resume-row{border-style:solid; border-color:var(--accent-dim);}
 .resume-row .ic{color:var(--accent-hi);}
 .resume-row .so-chg{color:var(--accent-hi); font-weight:600; text-decoration:none;}
 .dc-resume{width:100%; margin-top:12px;}
 .spare-open .so-chg{flex:0 0 auto; font-size:11.5px; text-decoration:underline; text-underline-offset:2px;}
 .spare-list{display:flex; flex-direction:column; gap:10px; padding-bottom:6px;}
-/* «Altri allenamenti»: la zona che si apre sotto il pulsante (versioni corte, allenamento libero, nuova giornata) */
+/* «Altri allenamenti»: la zona che si apre sotto il pulsante (versioni corte, allenamento libero, nuova giornata).
+   Stesso aspetto delle giornate in alto: pillole di vetro sulla scheda (niente fondo grigio), la scelta col velo e il bordo
+   rosso della lente */
 .more-open > span small{display:block; font-size:11.5px; color:var(--text-faint); margin-top:1px;}
 .more-open .mo-chev{flex:0 0 auto; display:flex; transition:transform .25s ease;}
-.more-open.open{border-style:solid; border-color:var(--grp-line); background:var(--grp-band); margin-bottom:8px;}
+.more-open.open{border-style:solid; margin-bottom:12px;}
 .more-open.open .mo-chev{transform:rotate(180deg);}
-.more-area{display:flex; flex-direction:column; gap:14px; margin:0 0 14px; padding:12px; border-radius:var(--r-box, 14px); border:1px solid var(--grp-line); background:var(--grp-band);}
+.more-area{display:flex; flex-direction:column; gap:16px; margin:0 0 16px;}
 .more-area[hidden]{display:none;}
-.more-h{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-dim);}
-.more-h .ic{width:15px; height:15px; flex:0 0 auto; color:var(--accent-hi);}
-.more-h b{color:var(--text); font-weight:600;}
-.more-sub{font-size:11.5px; color:var(--text-faint); margin:3px 0 10px 23px;}
-.more-area .spare-open.free-open{margin:0;}
-.more-new{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;}
-.more-new .btn{display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px; padding:10px 12px; text-align:left; min-width:0; border-radius:var(--r-ctl, 14px);}
-.more-new .btn small{font-size:11px; line-height:1.25; color:var(--text-faint); font-weight:400; white-space:normal;}
+.more-h{font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint); margin:0 0 8px 2px;}
+.more-h b{font-weight:600; color:var(--text-dim);}
+.more-sub{font-size:11.5px; color:var(--text-faint); margin:-4px 0 10px 2px;}
+.more-pill{width:100%; min-width:0; font:inherit; cursor:pointer; padding:12px 14px;}
+.more-pill .dp-key{display:flex; align-items:center; gap:6px;}
+.more-pill .dp-key .ic{width:14px; height:14px; flex:0 0 auto; color:var(--accent-hi);}
+.more-new{display:flex; gap:8px;}
+.more-new .more-pill{flex:1 1 0;}
+.more-new .more-pill .dp-focus{white-space:normal;}
+/* la versione corta scelta e il pulsante che la indica: velo e bordo come la lente delle giornate in alto */
+.spare-list .day-pill.active, .spare-open.on{border-style:solid; border-color:color-mix(in srgb, var(--accent) 85%, transparent);
+  background-color:var(--glass-fill); background-image:linear-gradient(color-mix(in srgb, var(--accent) 11%, transparent), color-mix(in srgb, var(--accent) 11%, transparent)), var(--glass-sheen);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12);}
+.spare-open.on{color:var(--text-dim);} .spare-open.on b{color:var(--accent-hi);} .spare-open.on .ic{color:var(--accent-hi);}
 .spare-list .day-pill{width:100%; max-width:none; min-width:0; align-items:flex-start; text-align:left; padding:13px 14px; gap:3px;}
 .spare-list .day-pill .dp-key{font-size:15px;}
 .spare-list .day-pill .dp-focus{font-size:12.5px; white-space:normal;}
@@ -976,7 +982,6 @@ body.kb-open main{scroll-padding-top:calc(var(--head-h, 0px) + 12px);}
 /* ⋯ dell'esercizio in allenamento: spostalo, mettilo in superset, aggiungine uno al superset */
 .sess-ex-tools{display:flex; flex-wrap:wrap; gap:8px; width:100%;}
 .sess-ex-tools .sess-side-btn:disabled{opacity:.4;}
-.spare-open.free-open{margin-top:8px;}
 .es-side{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-dim); margin:-2px 0 10px; line-height:1.35;}
 .es-side input{width:18px; height:18px; flex:0 0 auto; accent-color:var(--accent);}
 .sess-ex-sub select{
@@ -1768,14 +1773,17 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
         <button class="spare-open more-open" id="moreBtn" type="button" aria-expanded="false" aria-controls="moreArea"></button>
         <div class="more-area" id="moreArea" hidden>
           <div class="more-sec" id="moreSpare">
-            <div class="more-h"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg><span>Poco tempo? <b>Allenamento corto</b></span></div>
+            <div class="more-h">Poco tempo · <b>allenamento corto</b></div>
             <div class="more-sub" id="spareSub"></div>
             <div class="spare-list" id="sparePills"></div>
           </div>
-          <button class="spare-open free-open" id="freeOpenBtn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Pochi esercizi? <b>Allenamento libero</b></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
           <div class="more-sec">
-            <div class="more-h"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span><b>Nuova giornata</b></span></div>
-            <div class="more-new"><button class="btn" id="newMainDayBtn" type="button">Giornata<small>come quelle in alto</small></button><button class="btn" id="newSpareDayBtn" type="button">Versione corta<small>per i giorni con poco tempo</small></button></div>
+            <div class="more-h">Pochi esercizi</div>
+            <button class="day-pill more-pill" id="freeOpenBtn" type="button"><span class="dp-key">Allenamento libero</span><span class="dp-focus">scegli gli esercizi mentre ti alleni</span></button>
+          </div>
+          <div class="more-sec">
+            <div class="more-h">Nuova giornata</div>
+            <div class="more-new"><button class="day-pill more-pill" id="newMainDayBtn" type="button"><span class="dp-key"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Giornata</span><span class="dp-focus">va in alto con le altre</span></button><button class="day-pill more-pill" id="newSpareDayBtn" type="button"><span class="dp-key"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Versione corta</span><span class="dp-focus">per i giorni con poco tempo</span></button></div>
           </div>
         </div>
         <button class="spare-open resume-row" id="resumeBtn" type="button" style="display:none;"></button>
@@ -3791,6 +3799,11 @@ function placeDayInd(wrap, animate){
   wrap.classList.toggle('fits', fits);
   const wall = fits ? null : a===pills[0] ? 'l' : a===pills[pills.length-1] ? 'r' : null;
   edgeMove(dayInd, { l:a.offsetLeft, t:a.offsetTop, w:a.offsetWidth, h:a.offsetHeight }, animate && was, wall);
+  if(!fits){
+    const sl = wrap.scrollLeft, L = a.offsetLeft - 8, R = a.offsetLeft + a.offsetWidth + 8 - wrap.clientWidth;
+    const to = L < sl ? L : R > sl ? R : null;
+    if(to!=null) try{ wrap.scrollTo({ left: Math.max(0, to), behavior: animate && motionOK() ? 'smooth' : 'auto' }); }catch(e){ wrap.scrollLeft = Math.max(0, to); }
+  }
 }
 /* VETRO LIQUIDO DELLE GIORNATE: non un riquadro che scivola, ma il bordo che si sposta. Il riquadro è in tre pezzi
    (angolo sinistro, parte di mezzo, angolo destro): i due lati si muovono ognuno con la sua molla, quello davanti
@@ -3883,13 +3896,23 @@ function setMoreOpen(open, anim){
   if(card) card.classList.toggle('more-on', open);
 }
 document.getElementById('moreBtn').addEventListener('click', ()=> setMoreOpen(!moreOpen, true));
-/* nuova giornata dalla scheda di oggi: si crea, diventa quella scelta e si apre la modifica per darle nome ed esercizi */
+/* nuova giornata dalla scheda di oggi: si crea, diventa quella scelta e si vede subito dove è finita (in alto tra le
+   giornate, o tra le versioni corte qui sotto); la modifica si apre, per nome ed esercizi nel riquadro Esercizi */
 function addDayHere(spare){
-  const key = addNewDay(spare);
-  setMoreOpen(false, false);
+  const key = addNewDay(spare, true);
   if(!planEditMode) document.getElementById('planEditBtn').click(); else renderWorkout();
-  const inp = document.getElementById('dayNameInput');
-  if(inp){ try{ inp.scrollIntoView({ block:'center', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){} try{ inp.focus({ preventScroll:true }); inp.select(); }catch(e){} }
+  if(spare){
+    // resta aperta: la versione corta nuova è nell'elenco, scelta
+    if(!moreOpen) setMoreOpen(true, false);
+    const b = document.querySelector(`#sparePills .day-pill[data-k="${CSS.escape(key)}"]`);
+    if(b) try{ b.scrollIntoView({ block:'nearest', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
+  } else {
+    setMoreOpen(false, false);
+    // la scheda di oggi in vista, con la giornata nuova scelta nella riga in alto
+    const card = document.getElementById('todayCard'), r = card.getBoundingClientRect(), top = parseFloat(getComputedStyle(document.querySelector('main')).paddingTop) || 0;
+    if(r.top < top) try{ card.scrollIntoView({ block:'start', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
+  }
+  showToast(spare ? 'Versione corta aggiunta: nome ed esercizi nel riquadro Esercizi, qui sotto' : 'Giornata aggiunta in alto: nome ed esercizi nel riquadro Esercizi, qui sotto', null, null, 4000);
   return key;
 }
 document.getElementById('newMainDayBtn').addEventListener('click', ()=> addDayHere(false));
@@ -3902,12 +3925,12 @@ function nextDayKey(){
   for(let c=65;c<=90;c++){ const l=String.fromCharCode(c); if(!used.has(l)) return l; }
   return 'D'+Date.now();
 }
-function addNewDay(spare){
+function addNewDay(spare, quiet){
   const key = nextDayKey();
   state.days[key] = spare===true ? { name:'Riserva · Giorno '+key, spare:true, exercises:[] } : { name:'Giorno '+key, exercises:[] };
   currentDay=key; state.settings.lastDay=key;
   persist('days'); persist('settings'); renderWorkout();
-  showToast(spare===true ? 'Versione corta creata: dalle un nome e aggiungi gli esercizi' : 'Nuova giornata creata: dalle un nome e aggiungi gli esercizi');
+  if(!quiet) showToast(spare===true ? 'Versione corta creata: dalle un nome e aggiungi gli esercizi' : 'Nuova giornata creata: dalle un nome e aggiungi gli esercizi');
   return key;
 }
 async function deleteCurrentDay(){
@@ -4368,7 +4391,7 @@ function renderExList(){
   list.innerHTML='';
 
   if(!n){
-    list.innerHTML = '<div class="chart-empty">Questa giornata è vuota. Tocca “Modifica” per aggiungere esercizi.</div>';
+    list.innerHTML = '<div class="chart-empty">'+(planEditMode ? 'Giornata ancora vuota: scrivi il nome e aggiungi gli esercizi qui sotto.' : 'Questa giornata è vuota. Tocca “Modifica” per aggiungere esercizi.')+'</div>';
     return;
   }
   if(!planEditMode){ renderExRead(list, day); return; }
