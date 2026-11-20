@@ -1421,7 +1421,7 @@ body.light .nav-ind{background:color-mix(in srgb, var(--accent) 10%, transparent
 html.eco .nav-ind{background:#1c1c1c;}
 /* lenti a vetro liquido: si muovono solo con transform (lo fa la scheda grafica, senza ricalcolare la pagina) e
    l'alone è un livello sopra di cui cambia solo l'opacità */
-.nav-ind, .day-pills .dp-ind{will-change:transform; transform-origin:50% 50%; backface-visibility:hidden;}
+.nav-ind{will-change:transform; transform-origin:50% 50%; backface-visibility:hidden;}
 .lq-glow{position:absolute; inset:-1px; border-radius:inherit; box-shadow:var(--lq-glow); opacity:0; pointer-events:none; will-change:opacity;}
 nav.bottom button.active::before{background:transparent; box-shadow:none;}
 nav.bottom button:active::before{background:transparent;}
@@ -1445,9 +1445,13 @@ body.dark nav.bottom.lq-drag button.lq-over{color:#ff7d8f;}
 @keyframes nextGlow{0%{opacity:0;} 30%{opacity:1;} 100%{opacity:0;}}   /* sul velo colorato qui sotto: solo opacità, niente ridisegno a ogni fotogramma */
 .day-pills{position:relative;}
 .day-pills .dp-ind{position:absolute; left:0; top:0; width:0; height:0; border-radius:var(--r-box, 12px); pointer-events:none; z-index:2; opacity:0;
-  background:color-mix(in srgb, var(--accent) 11%, transparent); border:1px solid color-mix(in srgb, var(--accent) 85%, transparent);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 0 14px rgba(184,25,58,.14);   /* velo leggero: le giornate sotto si vedono */
-  --lq-glow:inset 0 1px 0 rgba(255,255,255,.2), 0 0 16px rgba(184,25,58,.22), 0 6px 16px rgba(0,0,0,.25);}
+  --r-ind:var(--r-box, 12px);}
+/* i tre pezzi del bordo: velo leggero (le giornate sotto si vedono), bordo e riflesso in alto */
+.dp-ind > .lq-e{position:absolute; top:0; bottom:0; background:color-mix(in srgb, var(--accent) 11%, transparent); border:1px solid color-mix(in srgb, var(--accent) 85%, transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12); will-change:transform; backface-visibility:hidden;}
+.dp-ind > .lq-l{left:0; width:var(--r-ind); border-right:0; border-radius:var(--r-ind) 0 0 var(--r-ind);}
+.dp-ind > .lq-r{right:0; width:var(--r-ind); border-left:0; border-radius:0 var(--r-ind) var(--r-ind) 0;}
+.dp-ind > .lq-m{left:var(--r-ind); right:var(--r-ind); border-left:0; border-right:0; border-radius:0; transform-origin:0 50%;}
 .day-pills.has-ind .day-pill{position:relative; z-index:1;}
 .day-pills.has-ind .day-pill.active{background-color:var(--glass-fill); border-color:var(--border-input); box-shadow:inset 0 1px 0 var(--glass-hi-soft);}   /* uguale alle altre: il colore lo dà il riquadro che scivola */
 .day-pills.has-ind .dp-ind{opacity:1;}
@@ -3327,9 +3331,8 @@ function statsFirstFx(tab){
 }
 /* VETRO LIQUIDO, come la barra di WhatsApp su iPhone (iOS 26): la lente che indica la scelta si solleva (un po' più
    grande del pulsante), si allunga verso la destinazione col bordo davanti che parte per primo, va oltre e torna con un
-   rimbalzo morbido. el: la lente (position:absolute); to: {l,t,w,h} in px; opt.wall: 'l'|'r' se lì c'è un bordo da non
-   superare (si schiaccia contro). Parte sempre da dove si trova davvero, anche a metà di un'altra animazione o di un
-   trascinamento. */
+   rimbalzo morbido (barra in basso; per le giornate edgeMove). el: la lente (position:absolute); to: {l,t,w,h} in px.
+   Parte sempre da dove si trova davvero, anche a metà di un'altra animazione o di un trascinamento. */
 /* dove si vede adesso la lente (anche a metà di un'animazione o di un trascinamento), nelle coordinate di left/top */
 function liquidBox(el){
   const p = el.offsetParent || el.parentNode, r = el.getBoundingClientRect(), q = p.getBoundingClientRect();
@@ -3348,37 +3351,11 @@ function liquidMove(el, to, opt){
   const glowFrom = glow ? +getComputedStyle(glow).opacity || 0 : 0;
   [el, glow].forEach(x=>{ if(x && x._liq){ try{ x._liq.cancel(); }catch(e){} x._liq = null; } });
   liquidSet(el, to); liquidGlow(el, false);
-  const d = to.l - from.l, dist = Math.abs(d), grow = Math.abs(from.h - to.h) > 1 || Math.abs(from.w - to.w) > 1;
+  const dist = Math.abs(to.l - from.l), grow = Math.abs(from.h - to.h) > 1 || Math.abs(from.w - to.w) > 1;
   if(!opt.animate || !motionOK() || !el.animate || (dist < 1 && !grow)) return;
-  const s = d >= 0 ? 1 : -1, lift = opt.lift==null ? 4 : opt.lift;
-  const up = g=> ({ l:g.l - lift*0.6, t:g.t - lift, w:g.w + lift*1.2, h:g.h + lift*2 });   // sollevata: un po' più grande
-  const A = from.h > to.h + 1 ? from : up(from), B = up(to);
-  // allungata a metà strada: il bordo davanti al 78%, quello dietro al 32%; al massimo 1,7 volte (con la scala gli angoli
-  // tondi si deformano: oltre si vedrebbe)
-  const lead = s > 0 ? A.l + A.w + (B.l + B.w - A.l - A.w)*0.78 : A.l + (B.l - A.l)*0.78;
-  const tail = s > 0 ? A.l + (B.l - A.l)*0.32 : A.l + A.w + (B.l + B.w - A.l - A.w)*0.32;
-  let mid = s > 0 ? { l:tail, t:B.t, w:lead - tail, h:B.h } : { l:lead, t:B.t, w:tail - lead, h:B.h };
-  const maxW = B.w * 1.7;
-  if(mid.w > maxW){ const c = mid.l + mid.w/2; mid = { l:c - maxW/2, t:mid.t, w:maxW, h:mid.h }; }
-  const ov = Math.min(9, Math.max(3, dist * 0.05));
-  const wall = (s > 0 && opt.wall==='r') || (s < 0 && opt.wall==='l');
-  const past = dist < 1 ? to
-    : wall ? (s > 0 ? { l:to.l + ov, t:to.t - 1, w:to.w - ov, h:to.h + 2 } : { l:to.l, t:to.t - 1, w:to.w - ov, h:to.h + 2 })   // contro il bordo: schiacciata
-    : { l:to.l + s*ov, t:to.t - 1, w:to.w - ov*0.4, h:to.h + 2 };
-  const back = dist < 1 || wall ? to : { l:to.l - s*ov*0.22, t:to.t, w:to.w, h:to.h };
-  const T = g=> ({ transform: liquidTf(g, to) });
-  const duration = Math.min(580, 400 + dist*0.45);   // circa il 20% più veloce di prima (era 500-720 ms)
-  if(opt.spring && !wall) return liquidSpring(el, glow, glowFrom, from, to, A, lift, dist, duration);
-  const kf = [ Object.assign(T(from), { easing:'cubic-bezier(.3,0,.4,1)' }) ];
-  if(A!==from) kf.push(Object.assign(T(A), { offset:.12, easing:'cubic-bezier(.4,0,.5,1)' }));
-  kf.push(Object.assign(T(mid), { offset:.44, easing:'cubic-bezier(.2,.7,.3,1)' }));
-  kf.push(Object.assign(T(past), { offset:.72, easing:'cubic-bezier(.4,0,.4,1)' }));
-  kf.push(Object.assign(T(back), { offset:.88, easing:'ease-out' }));
-  kf.push({ transform:'none' });
-  try{
-    el._liq = el.animate(kf, { duration }); el._liq.onfinish = ()=>{ el._liq = null; };
-    if(glow){ glow._liq = glow.animate([{ opacity:glowFrom }, { opacity:1, offset:.12 }, { opacity:1, offset:.5 }, { opacity:0 }], { duration }); glow._liq.onfinish = ()=>{ glow._liq = null; }; }
-  }catch(e){}
+  const lift = opt.lift==null ? 4 : opt.lift;
+  const A = from.h > to.h + 1 ? from : { l:from.l - lift*0.6, t:from.t - lift, w:from.w + lift*1.2, h:from.h + lift*2 };   // sollevata: un po' più grande
+  liquidSpring(el, glow, glowFrom, from, to, A, lift, dist, Math.min(580, 400 + dist*0.45));
 }
 /* MOLLA: un moto solo dall'inizio alla fine (niente tratti separati che frenano fino a fermarsi e poi ripartono di
    colpo a metà strada). Il centro segue una molla con un piccolo rimbalzo all'arrivo; la lente si allunga quanto va
@@ -3416,7 +3393,7 @@ function liquidSpring(el, glow, glowFrom, from, to, A, lift, dist, D){
 /* lente della barra in basso */
 function navIndTo(btn, animate){
   const nav = document.querySelector('nav.bottom'), ind = nav && nav.querySelector('.nav-ind'); if(!ind || !btn || !btn.offsetWidth) return;
-  liquidMove(ind, { l:btn.offsetLeft, t:btn.offsetTop, w:btn.offsetWidth, h:btn.offsetHeight }, { animate, lift:5, spring:true });
+  liquidMove(ind, { l:btn.offsetLeft, t:btn.offsetTop, w:btn.offsetWidth, h:btn.offsetHeight }, { animate, lift:5 });
 }
 navIndTo(document.querySelector('nav.bottom button.active'), false);
 try{ new ResizeObserver(()=> navIndTo(document.querySelector('nav.bottom button.active'), false)).observe(document.querySelector('nav.bottom')); }catch(e){}
@@ -3785,7 +3762,7 @@ let dayInd = null;
 /* stessa lente a vetro liquido della barra in basso (liquidMove). Se le giornate scorrono (tante), contro la prima o
    l'ultima non esce dal bordo: si schiaccia un attimo contro la parete */
 function placeDayInd(wrap, animate){
-  if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); dayInd.innerHTML = '<i class="lq-glow"></i>'; }
+  if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); dayInd.innerHTML = '<i class="lq-e lq-l"></i><i class="lq-e lq-m"></i><i class="lq-e lq-r"></i>'; }
   if(dayInd.parentNode!==wrap){ wrap.appendChild(dayInd); animate = false; }
   const a = wrap.querySelector('.day-pill.active');
   if(!a || !a.offsetWidth){ wrap.classList.remove('has-ind'); dayInd._on = false; return; }
@@ -3796,7 +3773,53 @@ function placeDayInd(wrap, animate){
   const fits = pills.length ? pills[pills.length-1].offsetLeft + pills[pills.length-1].offsetWidth <= wrap.clientWidth + 1 : true;
   wrap.classList.toggle('fits', fits);
   const wall = fits ? null : a===pills[0] ? 'l' : a===pills[pills.length-1] ? 'r' : null;
-  liquidMove(dayInd, { l:a.offsetLeft, t:a.offsetTop, w:a.offsetWidth, h:a.offsetHeight }, { animate: animate && was, lift:3, wall });
+  edgeMove(dayInd, { l:a.offsetLeft, t:a.offsetTop, w:a.offsetWidth, h:a.offsetHeight }, animate && was, wall);
+}
+/* VETRO LIQUIDO DELLE GIORNATE: non un riquadro che scivola, ma il bordo che si sposta. Il riquadro è in tre pezzi
+   (angolo sinistro, parte di mezzo, angolo destro): i due lati si muovono ognuno con la sua molla, quello davanti
+   parte subito, quello dietro lo segue e lo raggiunge, e all'arrivo il bordo ondeggia un attimo. Il bordo resta di 1 px
+   e gli angoli tondi (con un riquadro unico scalato si stiravano). Solo transform; contro la prima o l'ultima giornata
+   (se scorrono) il lato davanti non va oltre. */
+function edgeParts(el){ return el._p || (el._p = { l:el.querySelector('.lq-l'), m:el.querySelector('.lq-m'), r:el.querySelector('.lq-r') }); }
+function edgeMove(el, to, animate, wall){
+  const P = edgeParts(el), parts = [P.l, P.m, P.r];
+  let from = null;
+  if(animate && motionOK() && el.animate && el.offsetWidth){
+    // dove sono i lati adesso (anche a metà di un movimento: si riparte da lì)
+    const w = el.parentNode, off = w.getBoundingClientRect().left + w.clientLeft - w.scrollLeft;
+    from = { L: P.l.getBoundingClientRect().left - off, R: P.r.getBoundingClientRect().right - off };
+  }
+  parts.forEach(x=>{ if(x._liq){ try{ x._liq.cancel(); }catch(e){} x._liq = null; } });
+  liquidSet(el, to);
+  const L1 = to.l, R1 = to.l + to.w;
+  if(!from || (Math.abs(from.L - L1) < 0.5 && Math.abs(from.R - R1) < 0.5)) return;
+  const s = (L1 + R1) >= (from.L + from.R) ? 1 : -1, dist = Math.abs((L1 + R1) - (from.L + from.R)) / 2;
+  const r = P.l.offsetWidth || 12, minW = 2*r + 6, D = Math.min(640, 440 + dist*0.5);
+  // molla da 0 a 1 (z: smorzamento, wn: rapidità); quella dietro parte un po' dopo
+  const spring = (p, z, wn)=>{ if(p <= 0) return 0; const wd = wn*Math.sqrt(1 - z*z); return 1 - Math.exp(-z*wn*p)*(Math.cos(wd*p) + z*wn/wd*Math.sin(wd*p)); };
+  const ss = (a, b, x)=>{ x = Math.min(1, Math.max(0, (x - a)/(b - a))); return x*x*(3 - 2*x); };
+  const lead = p=> spring(p, 0.55, 10.5), tail = p=> spring((p - 0.07)/0.93, 0.68, 9);
+  const blocked = (s > 0 && wall==='r') || (s < 0 && wall==='l');
+  const edge = (a, b, u, end)=>{   // posizione di un lato; oltre l'arrivo al massimo ~7 px (morbido), mai fuori dal bordo
+    let x = a + (b - a)*u;
+    const ov = (x - b)*s;
+    if(ov > 0) x = b + s*(blocked ? 0 : 7*Math.tanh(ov/7));
+    return x + (b - x)*ss(0.9, 1, end);   // arriva esatto
+  };
+  const kL = [], kM = [], kR = [], N = 48;
+  for(let i = 0; i <= N; i++){
+    const p = i/N;
+    const uF = lead(p), uB = tail(p);
+    // il lato davanti è il destro se si va a destra
+    let L = edge(from.L, L1, s > 0 ? uB : uF, p), R = edge(from.R, R1, s > 0 ? uF : uB, p);
+    if(R - L < minW){ const c = (L + R)/2; L = c - minW/2; R = c + minW/2; }
+    const tx = (L - L1).toFixed(2), sx = Math.max(0.01, (R - L - 2*r) / Math.max(1, to.w - 2*r)).toFixed(4);
+    kL.push({ transform:`translateX(${tx}px)` });
+    kM.push({ transform:`translateX(${tx}px) scaleX(${sx})` });
+    kR.push({ transform:`translateX(${(R - R1).toFixed(2)}px)` });
+  }
+  kL[N] = kM[N] = kR[N] = { transform:'none' };
+  try{ [[P.l, kL], [P.m, kM], [P.r, kR]].forEach(([x, k])=>{ x._liq = x.animate(k, { duration:D }); x._liq.onfinish = ()=>{ x._liq = null; }; }); }catch(e){}
 }
 addEventListener('resize', ()=>{ const w = document.getElementById('dayPills'); if(w && dayInd && dayInd._on) placeDayInd(w, false); });
 /* allenamenti corti: un pulsante discreto sotto le giornate apre la finestra con le riserve */
