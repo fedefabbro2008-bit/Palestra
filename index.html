@@ -1804,12 +1804,12 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
             <div class="spare-list" id="sparePills"></div>
           </div>
           <div class="more-sec">
-            <div class="more-h">Pochi esercizi</div>
-            <button class="day-pill more-pill" id="freeOpenBtn" type="button"><span class="dp-key">Allenamento libero</span><span class="dp-focus">scegli gli esercizi mentre ti alleni</span></button>
-          </div>
-          <div class="more-sec">
             <div class="more-h">Nuova giornata</div>
             <div class="more-new"><button class="day-pill more-pill" id="newMainDayBtn" type="button"><span class="dp-key"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Giornata</span><span class="dp-focus">va in alto con le altre</span></button><button class="day-pill more-pill" id="newSpareDayBtn" type="button"><span class="dp-key"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Versione corta</span><span class="dp-focus">per i giorni con poco tempo</span></button></div>
+          </div>
+          <div class="more-sec">
+            <div class="more-h">Senza scheda · <b>parte subito</b></div>
+            <button class="day-pill more-pill" id="freeOpenBtn" type="button"><span class="dp-key"><svg class="ic solid" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>Inizia un allenamento libero</span><span class="dp-focus">parte adesso: aggiungi gli esercizi uno alla volta</span></button>
           </div>
         </div>
         <button class="spare-open resume-row" id="resumeBtn" type="button" style="display:none;"></button>
@@ -3963,6 +3963,8 @@ function setMoreOpen(open, anim){
   if(area._fade){ try{ area._fade.cancel(); }catch(e){} area._fade = null; }
   if(open){
     area.hidden = false; renderMoreBtn();
+    // per un attimo dopo l'apertura la zona ancora si muove: un tocco lì (es. un secondo tocco veloce) non vale
+    area._lockUntil = go ? performance.now() + 350 : 0;
     if(go){
       below.forEach((e, i)=>{ const d = before[i] - e.getBoundingClientRect().top; if(Math.abs(d) > 0.5) e.animate([{ transform:`translateY(${d.toFixed(1)}px)` }, { transform:'none' }], { duration:320, easing:'cubic-bezier(.2,.8,.2,1)' }); });
       area.animate([{ opacity:0, transform:'translateY(-10px)' }, { opacity:1, transform:'none' }], { duration:280, easing:'cubic-bezier(.2,.8,.2,1)' });
@@ -3978,6 +3980,9 @@ function setMoreOpen(open, anim){
   if(card) card.classList.toggle('more-on', open);
 }
 document.getElementById('moreBtn').addEventListener('click', ()=> setMoreOpen(!moreOpen, true));
+document.getElementById('moreArea').addEventListener('click', (e)=>{
+  const a = e.currentTarget; if(a._lockUntil && performance.now() < a._lockUntil){ e.stopPropagation(); e.preventDefault(); }
+}, true);
 /* NUOVA GIORNATA: prima si programma (nome ed esercizi con serie, ripetizioni e kg), poi «Crea giornata» la mette
    tra le giornate in alto (o tra le versioni corte), già pronta. Nessun allenamento parte e nessuna giornata vuota resta
    in giro se annulli. La giornata scelta resta quella di prima. Gli esercizi si scelgono col selettore di «Sostituisci» (fatti di recente, dalla scheda, comuni,
@@ -6591,8 +6596,10 @@ function openAddSheet(mode){
   const g = subAdd.group;
   document.getElementById('subSheetTitle').textContent = g ? 'Aggiungi al superset' : 'Aggiungi esercizio';
   document.getElementById('subSheetSub').textContent = g ? 'Insieme a: '+g.name : (session.exercises.length ? 'In fondo, prima dello stretching' : session.dayName);
+  const freeStart = !g && session.dayKey==='free' && !session.exercises.length;
   document.getElementById('subNote').textContent = g
     ? 'Si fa subito dopo, senza recupero in mezzo: il recupero resta alla fine del giro.'
+    : freeStart ? 'Allenamento libero: parte con il primo esercizio che scegli. Chiudi senza sceglierne per non iniziarlo.'
     : 'Scegli dall\'elenco o scrivi il nome: kg e ripetizioni ripartono dall\'ultima volta che l\'hai fatto.';
   subCands = subCandidates(g || { name:'', muscle:null, exId:null, sets:[] });
   renderSubList(g && MUSCLES.includes(g.muscle) && g.muscle!=='Altro' ? 'Consigliati per '+g.muscle : 'Fatti di recente');

@@ -14,6 +14,7 @@ export const TESTS = [
   { nome: 'rotazione-riserve', file: 'ui/rotazione-riserve.test.js', cosa: 'giornata che tocca, riserve, dopo Termina e riavvio' },
   { nome: 'altri-allenamenti', file: 'ui/altri-allenamenti.test.js', cosa: 'Altri allenamenti: la zona si allunga, versioni corte, libero, nuova giornata' },
   { nome: 'nuova-giornata', file: 'ui/nuova-giornata.test.js', cosa: 'Nuova giornata: si programma (esercizi, serie, ripetizioni, kg) e poi si crea' },
+  { nome: 'altri-tocchi', file: 'ui/altri-tocchi.test.js', cosa: 'Altri allenamenti: il libero è in fondo, non parte per un tocco a zona in movimento né da «+ Giornata»' },
   { nome: 'allenamento-strumenti', file: 'ui/allenamento-strumenti.test.js', cosa: 'consiglio, drop set, avvicinamento, sostituisci, recupero, termina' },
   { nome: 'allenamento-sposta-superset', file: 'ui/allenamento-sposta-superset.test.js', cosa: 'sposta, superset, aggiungi, allenamento libero, fine = ultima spunta' },
   { nome: 'serie-successiva', file: 'ui/serie-successiva.test.js', cosa: 'la serie illuminata va sempre avanti' },
