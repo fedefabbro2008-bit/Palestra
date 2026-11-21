@@ -348,6 +348,15 @@ main{
 .more-new{display:flex; gap:8px;}
 .more-new .more-pill{flex:1 1 0;}
 .more-new .more-pill .dp-focus{white-space:normal;}
+/* eliminare allenamenti: pulsante in fondo alla zona; acceso, ogni giornata e versione corta mostra una ✕ e un tocco la elimina */
+.del-mode-btn{width:100%; display:flex; align-items:center; justify-content:center; gap:7px; font:inherit; font-size:13px; color:var(--text-dim);
+  background:none; border:1px dashed var(--border-input); border-radius:var(--r-ctl,14px); padding:11px 14px; cursor:pointer; text-align:center;}
+.del-mode-btn .ic{width:15px; height:15px; flex:0 0 auto;}
+.del-mode-btn small{display:block; font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+.del-mode .del-mode-btn{border-style:solid; color:var(--accent-hi); border-color:color-mix(in srgb, var(--accent) 70%, transparent);}
+.del-mode .day-pill[data-k]{position:relative;}
+.del-mode .day-pill[data-k]::after{content:'×'; position:absolute; top:6px; right:6px; width:20px; height:20px; border-radius:50%;
+  background:var(--accent); color:#fff; font:700 15px/20px -apple-system,sans-serif; text-align:center; z-index:3; pointer-events:none;}
 /* la versione corta scelta e il pulsante che la indica: velo e bordo come la lente delle giornate in alto */
 .spare-list .day-pill.active, .spare-open.on{border-style:solid; border-color:color-mix(in srgb, var(--accent) 85%, transparent);
   background-color:var(--glass-fill); background-image:linear-gradient(color-mix(in srgb, var(--accent) 11%, transparent), color-mix(in srgb, var(--accent) 11%, transparent)), var(--glass-sheen);
@@ -1819,6 +1828,7 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
             <div class="more-h">Senza scheda · <b>parte subito</b></div>
             <button class="day-pill more-pill" id="freeOpenBtn" type="button"><span class="dp-key"><svg class="ic solid" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>Inizia un allenamento libero</span><span class="dp-focus">parte adesso: aggiungi gli esercizi uno alla volta</span></button>
           </div>
+          <button class="del-mode-btn" id="delModeBtn" type="button" aria-pressed="false"></button>
         </div>
         <button class="spare-open resume-row" id="resumeBtn" type="button" style="display:none;"></button>
         <button class="complete-btn" id="startSessionBtn"><svg class="ic solid" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>Inizia allenamento</button>
@@ -3863,6 +3873,7 @@ function renderDayPills(){
     btn.dataset.k = k;
     btn.innerHTML = html;
     btn.addEventListener('click', ()=>{
+      if(delMode){ deleteDay(k); return; }   // «Elimina un allenamento» acceso: il tocco elimina (con conferma)
       currentDay=k; state.settings.lastDay=k; persist('settings');
       if(isSpare(k)) setMoreOpen(false, false);   // scelta la versione corta: la zona si richiude, il pulsante dice quale
       renderWorkout();
@@ -3999,6 +4010,7 @@ function setMoreOpen(open, anim){
     area._fade.onfinish = ()=>{ area._fade = null; if(!moreOpen) area.hidden = true; };
   } else { area.hidden = true; renderMoreBtn(); }
   if(card) card.classList.toggle('more-on', open);
+  if(!open && delMode) setDelMode(false);
 }
 document.getElementById('moreBtn').addEventListener('click', ()=> setMoreOpen(!moreOpen, true));
 document.getElementById('moreArea').addEventListener('click', (e)=>{
@@ -4160,28 +4172,45 @@ function nextDayKey(){
   for(let c=65;c<=90;c++){ const l=String.fromCharCode(c); if(!used.has(l)) return l; }
   return 'D'+Date.now();
 }
-async function deleteCurrentDay(){
+function deleteCurrentDay(){ return deleteDay(currentDay); }
+/* elimina una giornata o una versione corta (lo storico resta); «Ripristina» la rimette dov'era */
+async function deleteDay(k){
+  if(!hasOwn(state.days, k)) return;
   if(Object.keys(state.days).length<=1){ showToast('Deve restare almeno una giornata'); return; }
   // restassero solo riserve, non ci sarebbe più una giornata "che tocca" a cui farle valere
-  if(!isSpare(currentDay) && mainDayKeys().length<=1){ showToast('Serve almeno una giornata normale'); return; }
-  const backup = { key:currentDay, day: JSON.parse(JSON.stringify(state.days[currentDay])), order: Object.keys(state.days) };
-  const ok = await customConfirm('Eliminare "'+state.days[currentDay].name+'"? Lo storico allenamenti resta salvato.');
-  if(!ok) return;
-  delete state.days[currentDay];
-  currentDay = dayAfterLast();   // la giornata di turno (prima poteva finire su una riserva)
-  state.settings.lastDay = currentDay;
+  if(!isSpare(k) && mainDayKeys().length<=1){ showToast('Serve almeno una giornata normale'); return; }
+  const backup = { key:k, day: JSON.parse(JSON.stringify(state.days[k])), order: Object.keys(state.days), cur: currentDay };
+  const ok = await customConfirm('Eliminare "'+state.days[k].name+'"? Lo storico allenamenti resta salvato.');
+  if(!ok || !hasOwn(state.days, k)) return;
+  delete state.days[k];
+  if(currentDay===k || !hasOwn(state.days, currentDay)){
+    currentDay = dayAfterLast();   // la giornata di turno (prima poteva finire su una riserva)
+    state.settings.lastDay = currentDay;
+  }
   persist('days'); persist('settings'); renderWorkout();
-  showToast('Giornata eliminata', 'Ripristina', ()=>{
+  showToast((isSpareDay(backup.day) ? 'Versione corta eliminata' : 'Giornata eliminata')+': «'+backup.day.name+'»', 'Ripristina', ()=>{
     // ricostruita nell'ordine di prima: altrimenti finiva in fondo e cambiava la rotazione
     const rebuilt = {};
-    backup.order.forEach(k=>{ if(k===backup.key) rebuilt[k]=backup.day; else if(hasOwn(state.days,k)) rebuilt[k]=state.days[k]; });
-    Object.keys(state.days).forEach(k=>{ if(!hasOwn(rebuilt,k)) rebuilt[k]=state.days[k]; });
+    backup.order.forEach(x=>{ if(x===backup.key) rebuilt[x]=backup.day; else if(hasOwn(state.days,x)) rebuilt[x]=state.days[x]; });
+    Object.keys(state.days).forEach(x=>{ if(!hasOwn(rebuilt,x)) rebuilt[x]=state.days[x]; });
     state.days = rebuilt;
-    currentDay = backup.key; state.settings.lastDay = backup.key;
+    if(hasOwn(state.days, backup.cur)){ currentDay = backup.cur; state.settings.lastDay = backup.cur; }
     persist('days'); persist('settings'); renderWorkout();
-    showToast('Giornata ripristinata');
-  });
+    showToast('Ripristinato: «'+backup.day.name+'»');
+  }, 5000);
 }
+const isSpareDay = d=> !!(d && d.spare);
+var delMode = false;
+function setDelMode(on){
+  delMode = !!on;
+  const card = document.getElementById('todayCard'); if(card) card.classList.toggle('del-mode', delMode);
+  const b = document.getElementById('delModeBtn'); if(!b) return;
+  b.setAttribute('aria-pressed', String(delMode));
+  b.innerHTML = delMode ? `${ic('check')}<span>Fatto<small>Tocca una giornata o una versione corta per eliminarla</small></span>`
+    : `${ic('trash')}<span>Elimina un allenamento</span>`;
+}
+document.getElementById('delModeBtn').addEventListener('click', ()=> setDelMode(!delMode));
+setDelMode(false);
 /* "Giorno 1 · Trazione Superiore, Spinta & Core" -> {key:"Giorno 1", focus:"Trazione Superiore"} */
 function splitDayName(name, k){
   const s = String(name||'').trim();
