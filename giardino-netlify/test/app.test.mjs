@@ -205,8 +205,18 @@ test("flusso completo a 390 px", async (t) => {
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
   { const cod = await page.evaluate(() => window.GiardinoNet.codice()), srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": cod } }))).text()).data.impostazioni;
     assert.equal(srv.annaffiatoio, 11); assert.deepEqual(srv.notifiche, { riepilogo: false, mattina: false }, "sul server: il bot le legge da qui"); }
+  assert.ok(await page.isDisabled('#notList [data-ora="mattina"]'), "notifica spenta: ora non modificabile");
   await page.click('#notList [data-not="mattina"]');
   assert.equal(await page.textContent("#notVal"), "8 su 9"); assert.ok(await page.isHidden("#notHint"));
+  // ogni notifica alla sua ora: di partenza quelle di prima (mattino 7, sera 19), poi quella scelta, salvata sul server
+  assert.equal(await page.locator("#notList select.ora").count(), 8, "tutte tranne i crediti, che arrivano appena succede");
+  assert.deepEqual([await page.inputValue('#notList [data-ora="mattina"]'), await page.inputValue('#notList [data-ora="avvisi"]')], ["7", "19"]);
+  await page.selectOption('#notList [data-ora="avvisi"]', "21");
+  assert.equal(await page.evaluate(() => S.impostazioni.orari.avvisi), 21);
+  await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+  { const cod = await page.evaluate(() => window.GiardinoNet.codice()), srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": cod } }))).text()).data.impostazioni;
+    assert.equal(srv.orari.avvisi, 21, "il bot la legge dal server"); }
+  assert.ok(!(await page.locator("#impM").count()), "le ore non stanno più in Misure");
   await page.click("#set-claude summary"); await page.click("#mcpOn");
   await quando(page, () => document.querySelector("#mcpUrl").textContent.length > 10);
   assert.match(await page.textContent("#mcpUrl"), /\/mcp\/[A-Z2-7]{26}$/);

@@ -657,6 +657,19 @@ export function testoPrecisione(pr){
   if(pr.totale<3) return pr.giusti+' su '+pr.totale+' (ancora pochi)';
   return pr.giusti+' su '+pr.totale+' ('+Math.round(pr.giusti/pr.totale*100)+'%)';
 }
+/* ---------------- Orari delle notifiche Telegram ----------------
+   Ogni notifica ha la sua ora (impostazioni.orari = {tipo: 0-23}); senza, quella di prima: il mattino per il piano e il
+   controllo del sabato, la sera per le altre. Il bot gira ogni ora: la notifica parte al primo giro da quell'ora in poi, finché
+   ha senso (il mattino fino alle 21, le altre fino alle 23, sempre almeno 3 ore); dopo si salta fino a domani. */
+export const NOTIFICHE_MATTINO = ['mattina','verifica'];
+export const NOTIFICHE_CON_ORA = ['mattina','sera','controllo','avvisi','verifica','riepilogo','backup','piano'];
+export function oraNotifica(imp, tipo){
+  const o=imp?.orari?.[tipo]; if(Number.isInteger(o) && o>=0 && o<=23) return o;
+  const m=NOTIFICHE_MATTINO.includes(tipo), d=Number(m?imp?.ora_mattina:imp?.ora_sera);
+  return Number.isInteger(d) && d>=0 && d<=23 ? d : (m?7:19);
+}
+export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));
+
 /* ---------------- Acqua di tutta la vita ----------------
    Quanta acqua ha ricevuto una pianta da quando la segui (o dalla semina/trapianto, se è dopo): innaffiature segnate nel
    diario (come nel Diario: «innaffiata» ed «era secca, innaffiata», con i litri; quelle senza litri si contano a parte, non

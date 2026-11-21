@@ -105,7 +105,7 @@ async function toolGiardino(ctx, a = {}) {
   const rec = tutto.eventi.filter((e) => e.data >= M.addDays(oggi, -7)).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 25);
   if (rec.length) L.push("", "## Ultimi 7 giorni", ...rec.map((e) => `- [${e.id}] ${e.data} ${tutto.plants.find((p) => p.id === e.plantId)?.nome || e.plantId}: ${e.tipo}${e.litri ? " " + fmt(+e.litri, 2) + " L" : ""}${e.nota ? " — " + e.nota : ""} (${e.fonte})`));
   if (tuttePiante.some(daScrivere)) L.push("", ...COME_SCHEDA);
-  L.push("", `Misure dell'utente: bicchiere ${fmt(imp.bicchiere, 2)} L, annaffiatoio ${fmt(imp.annaffiatoio)} L. Promemoria Telegram alle ${imp.ora_mattina} e avvisi alle ${imp.ora_sera}.`);
+  L.push("", `Misure dell'utente: bicchiere ${fmt(imp.bicchiere, 2)} L, annaffiatoio ${fmt(imp.annaffiatoio)} L. Notifiche Telegram (ora · accesa/spenta): ${M.NOTIFICHE_CON_ORA.map((k) => k + " " + String(M.oraNotifica(imp, k)).padStart(2, "0") + ":00" + (imp.notifiche?.[k] === false ? " spenta" : "")).join(", ")}; crediti appena succede.`);
   return L.join("\n");
 }
 // un orto in breve: meteo di oggi e dei 2 giorni dopo, una riga per pianta (oggi, acqua nel terriccio, prossima innaffiatura), avvisi
@@ -402,14 +402,21 @@ async function toolImpostazioni(ctx, a) {
     if (!NOTIFICHE.includes(k)) throw new Error("notifiche: " + k + " non esiste (" + NOTIFICHE.join(", ") + ")");
     if (typeof v === "boolean") notif[k] = v;
   }
-  if (!Object.keys(nuove).length && !Object.keys(notif).length) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), ora_mattina, ora_sera, notifiche.");
+  // ora di ogni notifica (0-23, ora intera: il bot gira ogni ora)
+  const orari = {};
+  for (const [k, v] of Object.entries(a.orari && typeof a.orari === "object" ? a.orari : {})) {
+    if (!M.NOTIFICHE_CON_ORA.includes(k)) throw new Error("orari: " + k + " non ha un'ora (" + M.NOTIFICHE_CON_ORA.join(", ") + ")");
+    if (!Number.isInteger(+v) || +v < 0 || +v > 23) throw new Error("orari: " + k + " tra 0 e 23 (ora intera)");
+    orari[k] = +v;
+  }
+  if (!Object.keys(nuove).length && !Object.keys(notif).length && !Object.keys(orari).length) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), orari, notifiche.");
   const out = await aggiorna(ctx.store, ctx.code, (d) => {
     const prima = { ...IMP_DEF, ...(d.impostazioni || {}) }, n = { ...(prima.notifiche || {}) };
     for (const [k, v] of Object.entries(notif)) { if (v) delete n[k]; else n[k] = false; }
-    d.impostazioni = { ...prima, ...nuove, notifiche: n };
+    d.impostazioni = { ...prima, ...nuove, notifiche: n, ...(Object.keys(orari).length ? { orari: { ...(prima.orari || {}), ...orari } } : {}) };
   });
   ctx.saved(out);
-  return "Impostazioni aggiornate: " + [...Object.entries(nuove).map(([k, v]) => k + " " + v), ...Object.entries(notif).map(([k, v]) => "notifica " + k + (v ? " accesa" : " spenta"))].join(", ") + ".";
+  return "Impostazioni aggiornate: " + [...Object.entries(nuove).map(([k, v]) => k + " " + v), ...Object.entries(notif).map(([k, v]) => "notifica " + k + (v ? " accesa" : " spenta")), ...Object.entries(orari).map(([k, v]) => k + " alle " + String(v).padStart(2, "0") + ":00")].join(", ") + ".";
 }
 
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -467,8 +474,9 @@ const TOOLS = [
     description: "Toglie il tuo piano salvato: app e promemoria Telegram tornano al calcolo automatico dell'app (meteo reale, aggiornato ogni giorno). Usalo se il piano è superato o l'utente lo chiede.",
     inputSchema: { type: "object", properties: {} }, annotations: { ...RW, destructiveHint: true, title: "Calcolo automatico" }, run: toolPianoAutomatico },
   { name: "impostazioni", title: "Misure e orari", write: true,
-    description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri), l'ora del messaggio Telegram del mattino (4-12) e della sera (15-22) e accende (true) o spegne (false) le notifiche Telegram: mattina (piano del mattino), sera (promemoria delle piante ancora da innaffiare), controllo (la sera, le piante da controllare col dito ancora senza risposta), avvisi (gelo, caldo, vento per domani), verifica (controllo del sabato col dito), riepilogo (domenica), backup (mensile), piano (fine del piano di Claude), crediti (crediti Netlify).",
-    inputSchema: { type: "object", properties: { bicchiere: { type: "number" }, annaffiatoio: { type: "number" }, ora_mattina: { type: "integer" }, ora_sera: { type: "integer" },
+    description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri), l'ora di ogni notifica Telegram (orari = {tipo: 0-23}, ora intera) e accende (true) o spegne (false) le notifiche Telegram: mattina (piano del mattino), sera (promemoria delle piante ancora da innaffiare), controllo (la sera, le piante da controllare col dito ancora senza risposta), avvisi (gelo, caldo, vento per domani), verifica (controllo del sabato col dito), riepilogo (domenica), backup (mensile), piano (fine del piano di Claude), crediti (crediti Netlify).",
+    inputSchema: { type: "object", properties: { bicchiere: { type: "number" }, annaffiatoio: { type: "number" }, ora_mattina: { type: "integer", description: "vecchio: ora di partenza delle notifiche del mattino senza un'ora propria" }, ora_sera: { type: "integer", description: "vecchio: ora di partenza delle altre senza un'ora propria" },
+      orari: { type: "object", description: "ora di ogni notifica, 0-23 (ora intera)", properties: Object.fromEntries(M.NOTIFICHE_CON_ORA.map((k) => [k, { type: "integer", minimum: 0, maximum: 23 }])), additionalProperties: false },
       notifiche: { type: "object", properties: Object.fromEntries(NOTIFICHE.map((k) => [k, { type: "boolean" }])), additionalProperties: false } } }, annotations: { ...RW, title: "Impostazioni" }, run: toolImpostazioni },
   { name: "vacanza", title: "Imposta la vacanza", write: true,
     description: "Imposta (dal, al = giorno del rientro) o annulla il periodo in cui l'utente è via.",

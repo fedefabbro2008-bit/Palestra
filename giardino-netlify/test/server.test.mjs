@@ -317,7 +317,7 @@ test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora um
   const st = getStore({ name: "giardino" }), t = await st.get("t-" + CODE, { type: "json" });
   // fuso scelto perché lì adesso siano le 12: mattino e sera partono nello stesso giro (orari impostati a 7 e 12)
   const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
-  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: new Date().toISOString().slice(0, 7) });
+  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null, ultimo_backup: new Date().toISOString().slice(0, 7) });
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
   inviati.length = 0;
   await bot();
@@ -333,7 +333,7 @@ test("bot orario: promemoria della sera con «Annaffiato» e «Terreno ancora um
   assert.equal(inviati.filter((x) => x[0] === "sendMessage").length, 0, "una volta al giorno");
   // due giri del bot nello stesso momento (Netlify a volte lo avvia due volte): un messaggio solo
   const t1 = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t1, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  await st.setJSON("t-" + CODE, { ...t1, tz, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null });
   inviati.length = 0; await Promise.all([bot(), bot()]);
   assert.equal(inviati.filter((x) => x[0] === "sendMessage" && x[1].text.includes("Giardino —")).length, 1, "mattino una volta sola");
   assert.equal(inviati.filter((x) => x[0] === "sendMessage" && x[1].text.includes("Ancora da innaffiare")).length, 1, "sera una volta sola");
@@ -344,7 +344,7 @@ test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della
   const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
   const giro = async (notifiche) => {
     const t = await st.get("t-" + CODE, { type: "json" });
-    await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: null, notificati: {} });
+    await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null, ultimo_backup: null, notificati: {} });
     await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12, notifiche } } } });
     inviati.length = 0; await bot();
     const testi = inviati.filter((x) => x[0] === "sendMessage").map((x) => x[1].text);
@@ -379,7 +379,7 @@ test("controlli del terreno: la sera le piante da toccare col dito ancora senza 
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: [...d0.plants, fic], piano_claude: piano, vacanza: null, impostazioni: imp({ controllo: false }) } } });
   const giro = async () => {
     const t = await st.get("t-" + CODE, { type: "json" });
-    await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: new Date().toISOString().slice(0, 7), notificati: {} });
+    await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null, ultimo_backup: new Date().toISOString().slice(0, 7), notificati: {} });
     inviati.length = 0; await bot();
     return inviati.filter((x) => x[0] === "sendMessage" && x[1].text.includes("Da controllare oggi"));
   };
@@ -426,14 +426,14 @@ test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calc
   // fuso in cui adesso sono le 12 (dopo il primo giro il bot salva il fuso del meteo finto, UTC)
   const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
   const st = getStore({ name: "giardino" }), t = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_avviso_sera: null });
+  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_avviso_sera: null, inviati_il: {} });
   inviati.length = 0; await bot();
   const msg = inviati.find((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude"));
   assert.ok(msg, "avviso di fine piano");
   assert.match(msg[1].text, /finisce domani/);
   assert.match(msg[1].reply_markup.inline_keyboard[0][0].url, /^https:\/\/claude\.ai\/new\?q=/);
   const t2 = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_avviso_sera: null });
+  await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_avviso_sera: null, inviati_il: {} });
   inviati.length = 0; await bot();
   assert.ok(!inviati.some((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude")), "non si ripete per lo stesso piano");
 });
@@ -444,11 +444,11 @@ test("crediti Netlify: una versione contata una volta, avviso su Telegram sopra 
   const st = getStore({ name: "giardino" }), key = "u-" + c1.mese, u = await st.get(key, { type: "json" });
   await st.setJSON(key, { ...u, versioni: [...u.versioni, ...Array.from({ length: 15 }, (_, i) => "v" + i)] });
   const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12), t = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null });
   inviati.length = 0; await bot();
   assert.ok(inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "avviso crediti");
   assert.ok(inviati.some((x) => x[0] === "sendMessage" && /Giardino —/.test(x[1].text)), "il messaggio del mattino parte lo stesso");
-  const t2 = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_invio: null, ultimo_avviso_sera: null });
+  const t2 = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null });
   inviati.length = 0; await bot();
   assert.ok(!inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "una volta al mese");
 });
@@ -503,7 +503,7 @@ test("più orti: un messaggio per orto (col suo nome), connettore orto per orto,
   assert.equal(M.vistaOrto(d0, "o1").location.name, "Rimini");
   assert.deepEqual(M.vistePiene(d0).map((v) => v.orto.id), ["p", "o1"]);
   // Telegram: mattino e sera, un messaggio per orto
-  await st.setJSON("t-" + C2, { token: "TOK2", chat_id: 99, tz, notificati: {}, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: new Date().toISOString().slice(0, 7) });
+  await st.setJSON("t-" + C2, { token: "TOK2", chat_id: 99, tz, notificati: {}, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null, ultimo_backup: new Date().toISOString().slice(0, 7) });
   inviati.length = 0; await bot();
   const miei = inviati.filter((x) => x[0] === "sendMessage" && x[1].chat_id === 99).map((x) => x[1].text);
   const mattino = miei.filter((x) => /^🪴 <b>/.test(x));
@@ -741,4 +741,42 @@ test("connettore: giardino in breve e per orto, avviso del meteo vecchio, diario
   const ev = (await leggiDati()).eventi.find((e) => e.fonte === "claude" && e.plantId === pid && e.tipo === "umido" && e.data === OGGI);
   if (ev) await strumento("annulla", { id: ev.id });
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants } } });
+});
+
+test("orari delle notifiche: ognuna alla sua ora, quelle fatte non si ripetono, i dati di prima valgono, Claude le cambia", async () => {
+  const st = getStore({ name: "giardino" }), t0 = await st.get("t-" + CODE, { type: "json" }), d0 = await leggiDati();
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);   // lì adesso sono le 12
+  const orp = { id: "orp", nome: "Prova orari", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 5, num: 1, luce: 6, dove: "aperto" };
+  const piano = { createdAt: new Date().toISOString(), source: "claude", data: { sintesi: "", avvisi: [], piante: [{ id: "orp", giorni: [{ data: OGGI, azione: "innaffia", litri: 0.4, momento: "mattina presto", motivo: "prova" }] }] } };
+  const imp = (orari) => ({ bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12, orari });
+  // il bot salva il fuso del meteo (finto: UTC): prima di ogni giro rimetto quello in cui sono le 12
+  const giro = async () => { const x = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...x, tz }); inviati.length = 0; await bot(); return inviati.filter((x) => x[0] === "sendMessage").map((x) => x[1].text); };
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: [...d0.plants, orp], piano_claude: piano, vacanza: null, impostazioni: imp({ sera: 13, controllo: 13, avvisi: 13, riepilogo: 13, piano: 13, backup: 13 }) } } });
+  await st.setJSON("t-" + CODE, { ...t0, tz, inviati_il: {}, segnati_il: null, ultimo_invio: null, ultimo_avviso_sera: null, notificati: {}, ultimo_backup: null, lavori_il: null });
+  // alle 12: il mattino (ora 7) sì, il promemoria della sera (ora 13) non ancora
+  let testi = await giro();
+  assert.ok(testi.some((x) => x.includes("Giardino —") && x.includes("Prova orari")), "piano del mattino");
+  assert.ok(!testi.some((x) => x.includes("Ancora da innaffiare")) && !inviati.some((x) => x[0] === "sendDocument"), "niente notifiche delle 13");
+  let t = await st.get("t-" + CODE, { type: "json" });
+  assert.equal(t.inviati_il.mattina, OGGI); assert.ok(!t.inviati_il.sera); assert.ok(t.notificati[OGGI].some((n) => n.id === "orp"), "la pianta di oggi è segnata per la sera");
+  // anticipo il promemoria alle 12: arriva al giro dopo, il mattino non si ripete
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: imp({ sera: 12, controllo: 13, avvisi: 13, riepilogo: 13, piano: 13, backup: 13 }) } } });
+  testi = await giro();
+  assert.ok(testi.some((x) => x.includes("Ancora da innaffiare") && x.includes("Prova orari")), "promemoria alla sua ora");
+  assert.ok(!testi.some((x) => x.includes("Giardino —")), "il mattino non si ripete");
+  assert.equal((await giro()).length, 0, "una volta sola");
+  // i dati di prima (solo ultimo_invio e ultimo_avviso_sera di oggi): niente messaggi doppi il giorno del passaggio
+  t = await st.get("t-" + CODE, { type: "json" }); const { inviati_il, ...vecchio } = t;
+  await st.setJSON("t-" + CODE, { ...vecchio, ultimo_invio: OGGI, ultimo_avviso_sera: OGGI });
+  assert.equal((await giro()).length, 0, "con i dati di prima, mattino e sera già fatti");
+  // dal connettore: Claude cambia l'ora di una notifica
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  assert.match((await strumento("impostazioni", { orari: { avvisi: 21 } })).content[0].text, /avvisi alle 21:00/);
+  assert.equal((await leggiDati()).impostazioni.orari.avvisi, 21);
+  assert.ok((await strumento("impostazioni", { orari: { crediti: 9 } })).isError, "i crediti arrivano appena succede");
+  assert.ok((await strumento("impostazioni", { orari: { sera: 25 } })).isError);
+  assert.match((await strumento("giardino")).content[0].text, /avvisi 21:00/);
+  // pulizia
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants, piano_claude: d0.piano_claude, vacanza: d0.vacanza, impostazioni: d0.impostazioni } } });
+  await st.setJSON("t-" + CODE, { ...t0 });
 });

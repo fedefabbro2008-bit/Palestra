@@ -1,6 +1,7 @@
 import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, doseControllo, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, aggiornaPioggiaMisurata, rinnovaPioggia, esc, IMP_DEF, ESITI, notifica, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
+   Ogni notifica alla sua ora (Impostazioni → Notifiche, impostazioni.orari; senza, il mattino o la sera di prima).
    Per ogni bot Telegram collegato, all'ora locale:
    - mattino (default dalle 7): una volta al giorno il piano, solo se c'è qualcosa da fare;
    - sera (default dalle 19), una volta al giorno:
@@ -29,42 +30,61 @@ export default async () => {
 };
 
 
+// Notifiche già fatte oggi (inviate, spente o saltate perché è passata l'ora): t.inviati_il = {tipo: giorno}.
+// Con i dati di prima (solo ultimo_invio / ultimo_avviso_sera) valgono quelli, per non rimandare i messaggi il giorno del passaggio.
+function fattiOggi(t, oggi) {
+  const f = new Set(Object.entries(t.inviati_il || {}).filter(([, g]) => g === oggi).map(([k]) => k));
+  if (!t.inviati_il) { if (t.ultimo_invio === oggi) M.NOTIFICHE_MATTINO.forEach((k) => f.add(k)); if (t.ultimo_avviso_sera === oggi) M.NOTIFICHE_CON_ORA.filter((k) => !M.NOTIFICHE_MATTINO.includes(k)).forEach((k) => f.add(k)); }
+  return f;
+}
+
 async function uno(st, tkey, cr) {
   const f = await st.getWithMetadata(tkey, { type: "json" }), t = f?.data;
   if (!t?.chat_id) return;
-  // oggi mattino e sera già fatti (e niente avviso dei crediti): niente da leggere né da calcolare fino a domani
-  if (!cr) { const { oggi: g } = oraLocale(t.tz || "Europe/Rome"); if (t.ultimo_invio === g && t.ultimo_avviso_sera === g) return; }
+  // tutte le notifiche di oggi già fatte (e niente avviso dei crediti): niente da leggere né da calcolare fino a domani
+  if (!cr) { const { oggi: g } = oraLocale(t.tz || "Europe/Rome"), fatti = fattiOggi(t, g); if (M.NOTIFICHE_CON_ORA.every((k) => fatti.has(k))) return; }
   const code = tkey.slice(2);
   const cur = await leggi(st, code);
   if (!M.vistePiene(cur?.data || {}).length) return;   // nessun orto con posizione e piante
   const imp = { ...IMP_DEF, ...(cur.data.impostazioni || {}) }, on = (tipo) => notifica(imp, tipo);   // notifiche spente in Impostazioni
   const { oggi, ora } = oraLocale(t.tz || "Europe/Rome");
-  const mattina = ora >= +imp.ora_mattina && ora < 21 && t.ultimo_invio !== oggi;
-  const sera = ora >= +imp.ora_sera && ora < 23 && t.ultimo_avviso_sera !== oggi;
   let avvisoCrediti = false;
   if (cr && t.chat_id) {
     if (on("crediti")) await tg(t.token, "sendMessage", { chat_id: t.chat_id, parse_mode: "HTML", text: `📊 <b>Crediti Netlify</b>: stima ${cr.stima} su ${cr.limite} questo mese (${cr.pubblicazioni} pubblicazioni da 15 crediti).\nSe finiscono il sito va in pausa fino al mese prossimo: rimanda gli aggiornamenti dell'app. Il conto esatto è su app.netlify.com → Usage.` }, { ignora: true });
     avvisoCrediti = true;   // inviato, o spento: per questo mese non si ripropone
   }
-  if (!mattina && !sera) return avvisoCrediti;
-  // prenotazione: segno mattino/sera come fatti prima di inviare, solo se nessun altro giro del bot l'ha già fatto
+  // ogni notifica alla sua ora (Impostazioni → Notifiche): dovute = da fare adesso; passate = ora finita senza giro del bot
+  const fatti = fattiOggi(t, oggi), dovute = new Set(), passate = [];
+  for (const k of M.NOTIFICHE_CON_ORA) {
+    if (fatti.has(k) || ora < M.oraNotifica(imp, k)) continue;
+    if (ora < M.fineNotifica(imp, k)) dovute.add(k); else passate.push(k);
+  }
+  if (!dovute.size && !passate.length) return avvisoCrediti;
+  // prenotazione: segno le notifiche come fatte prima di inviare, solo se nessun altro giro del bot l'ha già fatto
   // (Netlify a volte avvia la funzione pianificata due volte nello stesso minuto: prima arrivavano due messaggi uguali)
-  const pren = { ...t, ...(mattina ? { ultimo_invio: oggi } : {}), ...(sera ? { ultimo_avviso_sera: oggi } : {}) };
+  const segnate = {}; for (const [k, g] of Object.entries(t.inviati_il || {})) if (g === oggi) segnate[k] = g;
+  for (const k of fatti) segnate[k] = oggi;
+  for (const k of [...dovute, ...passate]) segnate[k] = oggi;
+  const pren = { ...t, inviati_il: segnate, ...(segnate.mattina ? { ultimo_invio: oggi } : {}), ...(segnate.sera ? { ultimo_avviso_sera: oggi } : {}) };
   const ok = await st.setJSON(tkey, pren, f.etag ? { onlyIfMatch: f.etag } : {});
   if (ok && ok.modified === false) return avvisoCrediti;
+  if (!dovute.size) return avvisoCrediti;
 
-  try { return await invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvisoCrediti); }
+  try { return await invii(st, tkey, pren, cur, code, imp, on, oggi, dovute, avvisoCrediti); }
   catch (e) {
-    // invio non riuscito: tolgo la prenotazione, così ci riprova il giro dell'ora dopo
+    // invio non riuscito: tolgo la prenotazione delle notifiche di questo giro, così ci riprova il giro dell'ora dopo
     const g = await st.getWithMetadata(tkey, { type: "json" }).catch(() => null);
-    if (g?.data) await st.setJSON(tkey, { ...g.data, ...(mattina && g.data.ultimo_invio === oggi ? { ultimo_invio: t.ultimo_invio ?? null } : {}), ...(sera && g.data.ultimo_avviso_sera === oggi ? { ultimo_avviso_sera: t.ultimo_avviso_sera ?? null } : {}) }, { onlyIfMatch: g.etag }).catch(() => {});
+    if (g?.data) {
+      const il = { ...(g.data.inviati_il || {}) }; for (const k of dovute) { if (t.inviati_il?.[k] != null) il[k] = t.inviati_il[k]; else delete il[k]; }
+      await st.setJSON(tkey, { ...g.data, inviati_il: il, ...(dovute.has("mattina") ? { ultimo_invio: t.ultimo_invio ?? null } : {}), ...(dovute.has("sera") ? { ultimo_avviso_sera: t.ultimo_avviso_sera ?? null } : {}) }, { onlyIfMatch: g.etag }).catch(() => {});
+    }
     throw e;
   }
 }
 
-async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvisoCrediti) {
+async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute, avvisoCrediti) {
   // ogni orto (città) con il suo meteo e il suo piano; meteo e piano solo se servono a una notifica accesa
-  const next = { ...t };
+  const next = { ...t }, fa = (k) => dovute.has(k) && on(k);
   const invia = (text, extra = {}) => tg(t.token, "sendMessage", { chat_id: t.chat_id, text, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
   let data = cur.data;
   const memo = new Map();
@@ -74,27 +94,34 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvis
   const orti = () => M.orti(data).filter((o) => { const v = vista(o); return v.location && v.plants.length; });
   const titolo = (v, testo) => (v.piuOrti ? `<b>${esc(M.nomeOrto(v.orto))}</b> · ` : "") + testo;
 
-  if (mattina) {
+  // il primo giro del giorno: innaffiature notificate ieri e rimaste senza risposta (date per fatte), pioggia di tutta la vita
+  if (t.lavori_il !== oggi) {
     const pres = presunti(t, data, oggi);
     if (pres.length) data = (await aggiorna(st, code, (d) => { for (const e of pres) if (!d.eventi.some((x) => x.id === e.id)) d.eventi.push(e); })).data;
     // acqua di tutta la vita: la pioggia che sta per uscire dall'archivio del meteo resta contata (di rado: ogni ~50 giorni)
     try { data = await rinnovaPioggia(st, code, data, oggi, meteoDi); } catch (e) { console.warn("pioggia di tutta la vita:", e?.message); }
     next.notificati = Object.fromEntries(Object.entries(t.notificati || {}).filter(([d]) => d >= oggi));
+    next.lavori_il = oggi;
+  }
+
+  // le piante da innaffiare oggi: servono al piano del mattino e al promemoria della sera (anche se il mattino è spento),
+  // si segnano una volta al giorno, alla prima delle due che arriva
+  const segnare = next.segnati_il !== oggi && (dovute.has("mattina") || dovute.has("sera")) && (on("mattina") || on("sera"));
+  if (fa("mattina") || segnare || fa("verifica")) {
     const oggiN = [];
     const sabato = new Date(oggi + "T12:00:00Z").getUTCDay() === 6 && t.ultima_verifica !== oggi;
     for (const o of orti()) {
       const v = vista(o);
-      // le piante di oggi servono al messaggio del mattino e al promemoria della sera (anche se il mattino è spento)
-      if (on("mattina") || on("sera")) {
+      if (fa("mattina") || segnare) {
         const p = await pianoDi(v), { msg, tastiera, daFare } = messaggioMattina(v, p, oggi);
         if (daFare) {
-          if (on("mattina")) await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {});
-          oggiN.push(...v.plants.map((x) => ({ id: x.id, g: p.piano.piante.find((y) => y.id === x.id)?.giorni?.find((g) => g.data === oggi) }))
+          if (fa("mattina")) await invia(msg, tastiera.length ? { reply_markup: { inline_keyboard: tastiera } } : {});
+          if (segnare) oggiN.push(...v.plants.map((x) => ({ id: x.id, g: p.piano.piante.find((y) => y.id === x.id)?.giorni?.find((g) => g.data === oggi) }))
             .filter((x) => x.g?.azione === "innaffia").map((x) => ({ id: x.id, litri: x.g.litri })));
         }
       }
       // il sabato, il controllo della settimana: una pianta da toccare con il dito (una per orto)
-      const pv = on("verifica") && sabato ? M.verificaDaFare(v.plants, v.eventi, oggi, v.vacanza) : null;
+      const pv = fa("verifica") && sabato ? M.verificaDaFare(v.plants, v.eventi, oggi, v.vacanza) : null;
       if (pv) {
         const pb = (await pianoDi(v)).base.piante.find((x) => x.id === pv.id), a = Math.round((pb?.acqua ?? -1) * 100), sg = Math.round((pb?.soglia ?? -1) * 100), as = Math.round((pb?.acquaSecco ?? -1) * 100), ora = pb?.seccoOra ? 1 : 0;
         const cb = (r) => `v|${oggi}|${pv.id}|${r}|${a}|${sg}|${as}|${ora}`;
@@ -103,16 +130,16 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvis
         next.ultima_verifica = oggi;
       }
     }
-    if (oggiN.length) next.notificati[oggi] = oggiN;
-    next.ultimo_invio = oggi;
+    if (segnare) { next.notificati = { ...(next.notificati || {}) }; if (oggiN.length) next.notificati[oggi] = oggiN; next.segnati_il = oggi; }
   }
 
-  if (sera) {
+  const SERALI = ["sera", "controllo", "avvisi", "riepilogo", "backup", "piano"];
+  if (SERALI.some(fa)) {
     data = (await leggi(st, code))?.data || data;
     for (const o of orti()) {
       const v = vista(o);
       // 1. promemoria: piante da innaffiare oggi ancora senza risposta (né dall'app, né da Telegram, né da Claude)
-      const mancano = !on("sera") ? [] : (next.notificati?.[oggi] || []).filter((n) => !v.eventi.some((e) => e.plantId === n.id && e.data === oggi && ESITI.includes(e.tipo)))
+      const mancano = !fa("sera") ? [] : (next.notificati?.[oggi] || []).filter((n) => !v.eventi.some((e) => e.plantId === n.id && e.data === oggi && ESITI.includes(e.tipo)))
         .map((n) => ({ ...n, p: v.plants.find((p) => p.id === n.id) })).filter((n) => n.p)
         .sort((a, b) => a.p.nome.localeCompare(b.p.nome, "it", { sensitivity: "base" }));
       if (mancano.length && !M.inVacanza(v.vacanza, oggi)) {
@@ -121,8 +148,8 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvis
           { reply_markup: { inline_keyboard: mancano.flatMap((n) => pulsantiAcqua(n.p, oggi, { conNome: mancano.length > 1, salto: false, litri: n.litri })) } });
       }
       // 2. controlli col dito: le piante che il piano di adesso dice di controllare oggi, ancora senza risposta.
-      //    Dal piano della sera, mai in notificati: lì domani diventerebbero innaffiature presunte.
-      if (on("controllo") && !M.inVacanza(v.vacanza, oggi)) {
+      //    Dal piano di adesso, mai in notificati: lì domani diventerebbero innaffiature presunte.
+      if (fa("controllo") && !M.inVacanza(v.vacanza, oggi)) {
         const pa = await pianoDi(v), lat = v.location?.lat, giaSera = new Set((next.notificati?.[oggi] || []).map((n) => n.id));
         const ctrl = M.pianteOrdinate(v.plants).filter((x) => !giaSera.has(x.id)
           && pa.piano.piante.find((y) => y.id === x.id)?.giorni?.find((g) => g.data === oggi)?.azione === "controlla"
@@ -133,26 +160,25 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, mattina, sera, avvis
           { reply_markup: { inline_keyboard: ctrl.flatMap((x) => pulsantiAcqua(x, oggi, { conNome: ctrl.length > 1, salto: false, secca: true })) } });
       }
       // 3. avvisi per domani
-      if (on("avvisi")) {
+      if (fa("avvisi")) {
         const m = await meteoDi(v), avv = M.avvisiDomani(v.plants, m.days.find((d) => d.date === M.addDays(oggi, 1)), m.notte);
         if (avv.length) { const ic = { gelo: "🥶", caldo: "🔥", vento: "💨", temporale: "⛈", grandine: "🧊" }; await invia(titolo(v, "🌙 <b>Per domani</b>\n") + avv.map((a) => `${ic[a.tipo]} ${esc(a.testo)}`).join("\n")); }
       }
       // 4. la domenica, il riepilogo della settimana (uno per orto)
-      if (on("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0) await invia(riepilogoSettimana(v, oggi, await meteoDi(v)));
+      if (fa("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0) await invia(riepilogoSettimana(v, oggi, await meteoDi(v)));
     }
     // 5. una volta al mese, il backup (tutti gli orti insieme)
-    if (on("backup") && (t.ultimo_backup || "").slice(0, 7) !== oggi.slice(0, 7)) {
+    if (fa("backup") && (t.ultimo_backup || "").slice(0, 7) !== oggi.slice(0, 7)) {
       try { await inviaFile(t.token, t.chat_id, `giardino-backup-${oggi}.json`, JSON.stringify(backup(data), null, 2), "🗂 Backup mensile del Giardino: in caso di bisogno importalo dall'app (Impostazioni → Backup)."); next.ultimo_backup = oggi; }
       catch (e) { console.error("backup", e?.message); }
     }
-    // 6. il piano di Claude sta per finire: lo dico una volta per piano, la sera prima dell'ultimo giorno (o appena me ne accorgo)
+    // 6. il piano di Claude sta per finire: lo dico una volta per piano, il giorno prima dell'ultimo (o appena me ne accorgo)
     const pc = data.piano_claude, fine = finePiano(pc), idPiano = pc?.createdAt || fine;
-    if (on("piano") && fine && fine <= M.addDays(oggi, 1) && t.avviso_piano !== idPiano) {
+    if (fa("piano") && fine && fine <= M.addDays(oggi, 1) && t.avviso_piano !== idPiano) {
       const m = messaggioFinePiano(fine, oggi);
       await invia(m.testo, { reply_markup: m.tastiera });
       next.avviso_piano = idPiano;
     }
-    next.ultimo_avviso_sera = oggi;
   }
   const primo = memo.get("p")?.met || [...memo.values()][0]?.met;
   if (primo?.tz) next.tz = primo.tz;
