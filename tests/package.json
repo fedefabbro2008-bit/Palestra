@@ -1,0 +1,10 @@
+{
+  "name": "palestra-prove",
+  "private": true,
+  "description": "Prove dell'app Palestra: node tests/run.mjs",
+  "type": "commonjs",
+  "scripts": { "test": "node run.mjs" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2"
+  }
+}
