@@ -47,25 +47,28 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
         actBorder: act.borderTopColor === lens.borderTopColor, actImg: /gradient/.test(act.backgroundImage), n: pills.length }; });
     check(look.areaBg === 'rgba(0, 0, 0, 0)' && look.areaBorder === '0px' && look.same && look.n >= 4 && look.actBorder && look.actImg, tag + `stile come le giornate in alto (${JSON.stringify(look)}): ${look.n} pillole con lo stesso vetro, bordo e angoli, zona senza fondo grigio, versione corta scelta col bordo della lente`);
     await p.tap('#moreBtn'); await p.waitForTimeout(400);
-    // nuova giornata normale: va tra le giornate in alto, scelta e visibile (la riga scorre fino a lei), modifica aperta
+    // nuova giornata normale: «Giornata» apre la programmazione (nessuna giornata vuota, nessun allenamento); dopo «Crea»
+    // va tra le giornate in alto, scelta e visibile (la riga scorre fino a lei), già con i suoi esercizi
     const nDays = () => p.evaluate(() => { const d = JSON.parse(localStorage.getItem('palestra:days')); return { main: Object.keys(d).filter((k) => !d[k].spare).length, spare: Object.keys(d).filter((k) => d[k].spare).length, keys: Object.keys(d) }; });
     const d0 = await nDays();
-    await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newMainDayBtn'); await p.waitForTimeout(900);
+    await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newMainDayBtn'); await p.waitForTimeout(500);
+    const open1 = await p.evaluate(() => ({ sheet: document.getElementById('newDaySheet').classList.contains('show'), session: !!localStorage.getItem('palestra:session') }));
+    check(open1.sheet && !open1.session && (await nDays()).main === d0.main, tag + '«Giornata»: si apre la programmazione della giornata, niente giornata vuota né allenamento');
+    await p.tap('#ndAddBtn'); await p.waitForTimeout(400); await p.tap('#subList .sub-opt >> nth=0'); await p.waitForTimeout(300);
+    await p.fill('#ndName', 'Sabato · Gambe leggere'); await p.tap('#ndCreate'); await p.waitForTimeout(900);
     const d1 = await nDays(), e1 = await p.evaluate(() => { const w = document.getElementById('dayPills'), a = w.querySelector('.day-pill.active'), q = w.getBoundingClientRect(), x = a.getBoundingClientRect(), main = document.querySelector('main');
-      return { edit: document.getElementById('planEditTools').style.display !== 'none', name: document.getElementById('dayNameInput').value, pill: a.querySelector('.dp-key').textContent, area: document.getElementById('moreArea').hidden, spare: document.getElementById('spareToggle').checked,
+      return { pill: a.querySelector('.dp-key').textContent, area: document.getElementById('moreArea').hidden, sheet: document.getElementById('newDaySheet').classList.contains('show'),
         inRow: x.left >= q.left - 1 && x.right <= q.right + 1, onScreen: x.top >= (parseFloat(getComputedStyle(main).paddingTop) || 0) - 1 && x.bottom <= innerHeight, last: [...w.querySelectorAll('.day-pill[data-k]')].pop() === a, toast: document.getElementById('toastMsg').textContent }; });
-    check(d1.main === d0.main + 1 && d1.spare === d0.spare && /^Giorno /.test(e1.pill) && e1.last && e1.inRow && e1.onScreen && e1.area && e1.edit && !e1.spare && /Giornata aggiunta in alto/.test(e1.toast), tag + `nuova giornata: ${d0.main} → ${d1.main} giornate in alto, «${e1.pill}» in fondo alla riga, scelta e visibile senza scorrere, modifica aperta`);
-    await p.fill('#dayNameInput', 'Sabato · Gambe leggere'); await p.waitForTimeout(300);
-    check((await p.textContent('#dayPills .day-pill.active .dp-key')) === 'Sabato', tag + 'il nome scritto compare subito in alto');
-    // nuova versione corta: nell'elenco delle versioni corte (zona aperta), scelta, interruttore «riserva» acceso
-    await p.click('#planEditBtn'); await p.waitForTimeout(300);
-    await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newSpareDayBtn'); await p.waitForTimeout(900);
+    check(d1.main === d0.main + 1 && d1.spare === d0.spare && e1.pill === 'Sabato' && e1.last && e1.inRow && e1.onScreen && e1.area && !e1.sheet && /Giornata creata/.test(e1.toast), tag + `nuova giornata: ${d0.main} → ${d1.main} giornate in alto, «${e1.pill}» in fondo alla riga, scelta e visibile senza scorrere`);
+    // nuova versione corta: nell'elenco delle versioni corte (zona aperta), scelta, non in alto
+    await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newSpareDayBtn'); await p.waitForTimeout(500);
+    await p.tap('#ndAddBtn'); await p.waitForTimeout(400); await p.tap('#subList .sub-opt >> nth=0'); await p.waitForTimeout(300);
+    await p.tap('#ndCreate'); await p.waitForTimeout(900);
     const d2 = await nDays(), e2 = await p.evaluate(() => { const a = document.querySelector('#sparePills .day-pill.active'), x = a && a.getBoundingClientRect();
-      return { spare: document.getElementById('spareToggle').checked, name: document.getElementById('dayNameInput').value, open: !document.getElementById('moreArea').hidden, list: document.querySelectorAll('#sparePills .day-pill').length,
+      return { open: !document.getElementById('moreArea').hidden, list: document.querySelectorAll('#sparePills .day-pill').length,
         act: a ? a.querySelector('.dp-key').textContent + ' · ' + (a.querySelector('.dp-focus') || {}).textContent : '', vis: !!x && x.top >= 0 && x.bottom <= innerHeight, topPills: document.querySelectorAll('#dayPills .day-pill[data-k]').length }; });
-    check(d2.spare === d1.spare + 1 && d2.main === d1.main && e2.open && e2.list === d2.spare && /Giorno/.test(e2.act) && e2.vis && e2.topPills === d2.main && e2.spare && /^Riserva · /.test(e2.name), tag + `nuova versione corta: ${d1.spare} → ${d2.spare} nell'elenco, «${e2.act}» scelta e visibile, non in alto; interruttore «riserva» acceso`);
+    check(d2.spare === d1.spare + 1 && d2.main === d1.main && e2.open && e2.list === d2.spare && /Giorno/.test(e2.act) && e2.vis && e2.topPills === d2.main, tag + `nuova versione corta: ${d1.spare} → ${d2.spare} nell'elenco, «${e2.act}» scelta e visibile, non in alto`);
     if (motion) await p.locator('#todayCard').screenshot({ path: OUT + '/versione-corta-nuova.png' });
-    await p.click('#planEditBtn'); await p.waitForTimeout(300);
     const errs = A.errors.filter((e) => !/404|Service Worker/.test(e));
     check(!errs.length, tag + 'nessun errore ' + errs.join(' | '));
     await A.browser.close();

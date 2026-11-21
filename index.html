@@ -348,6 +348,31 @@ main{
   background-color:var(--glass-fill); background-image:linear-gradient(color-mix(in srgb, var(--accent) 11%, transparent), color-mix(in srgb, var(--accent) 11%, transparent)), var(--glass-sheen);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.12);}
 .spare-open.on{color:var(--text-dim);} .spare-open.on b{color:var(--accent-hi);} .spare-open.on .ic{color:var(--accent-hi);}
+/* «Nuova giornata»: la programmazione prima di crearla (nome ed esercizi con serie, ripetizioni e kg) */
+.nd-field{display:flex; flex-direction:column; gap:6px; font-size:11.5px; color:var(--text-faint);}
+.nd-field input{box-sizing:border-box; width:100%; border-radius:var(--r-ctl, 14px); border:1px solid var(--border-input); background-color:var(--glass-fill, var(--card-2));
+  color:var(--text); padding:12px 14px; font:inherit; font-size:16px;}
+.nd-hint{font-size:11.5px; line-height:1.4; color:var(--text-faint); margin:6px 2px 0;}
+#ndList{display:flex; flex-direction:column; gap:10px; margin-bottom:10px;}
+#ndList .chart-empty{padding:14px 6px;}
+.nd-ex{border:1px solid var(--border-input); border-radius:var(--r-box, 16px); padding:12px 12px 10px; background-color:var(--glass-fill); background-image:var(--glass-sheen); box-shadow:inset 0 1px 0 var(--glass-hi-soft);}
+.nd-top{display:flex; align-items:flex-start; gap:10px;}
+.nd-num{flex:0 0 auto; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12px; color:var(--text-faint); padding-top:2px;}
+.nd-txt{flex:1; min-width:0;}
+.nd-txt b{display:block; font-family:'Space Grotesk',-apple-system,sans-serif; font-weight:700; font-size:15px; color:var(--text); overflow-wrap:anywhere;}
+.nd-txt small{display:block; font-size:11.5px; color:var(--text-faint); margin-top:2px;}
+.nd-del{flex:0 0 auto; width:34px; height:34px;}
+.nd-vals{display:grid; grid-template-columns:auto 1fr 1fr; gap:8px; margin-top:10px; align-items:end;}
+.nd-vals label, .nd-step{display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--text-faint); min-width:0;}
+.nd-vals input, .nd-vals select{box-sizing:border-box; width:100%; min-width:0; border-radius:10px; border:1px solid var(--border-input); background-color:var(--glass-fill);
+  color:var(--text); padding:9px 10px; font:inherit; font-size:16px; text-align:center;}
+.nd-step > div{display:flex; align-items:center; gap:2px;}
+.nd-step button{width:34px; height:40px; border-radius:10px; border:1px solid var(--border-input); background-color:var(--glass-fill); color:var(--text); font:inherit; font-size:18px; line-height:1;}
+.nd-step b{min-width:26px; text-align:center; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:16px; color:var(--text);}
+.nd-musc{grid-column:1 / -1;}
+.nd-musc select{text-align:left;}
+.nd-foot{margin-top:16px;} .nd-foot .btn{flex:1;}
+#ndAddBtn{margin-top:0;}
 .spare-list .day-pill{width:100%; max-width:none; min-width:0; align-items:flex-start; text-align:left; padding:13px 14px; gap:3px;}
 .spare-list .day-pill .dp-key{font-size:15px;}
 .spare-list .day-pill .dp-focus{font-size:12.5px; white-space:normal;}
@@ -2282,6 +2307,22 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
   </div>
 </div>
 
+<div class="sheet-overlay" id="newDaySheet" role="dialog" aria-modal="true" aria-labelledby="ndTitle">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div><h3 id="ndTitle">Nuova giornata</h3><div class="sheet-sub" id="ndSub"></div></div>
+      <button class="icon-btn" id="ndClose" aria-label="Chiudi"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <label class="nd-field"><span>Nome</span><input type="text" id="ndName" maxlength="80" autocomplete="off" enterkeyhint="done"></label>
+    <p class="nd-hint">La parte prima del «·» è quella grande nella giornata, il resto va sotto (es. «Giovedì · Palestra · Gambe»).</p>
+    <div class="sheet-sec" id="ndSec">Esercizi</div>
+    <div id="ndList"></div>
+    <button class="sess-add-set" id="ndAddBtn" type="button"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Aggiungi esercizio</button>
+    <p class="nd-hint" id="ndAfter">Recupero, riscaldamenti, superset e ordine li cambi poi da «Modifica».</p>
+    <div class="btn-row nd-foot"><button class="btn" id="ndCancel" type="button">Annulla</button><button class="btn primary" id="ndCreate" type="button">Crea giornata</button></div>
+  </div>
+</div>
+
 <div class="sheet-overlay" id="subSheet">
   <div class="sheet">
     <div class="sheet-head">
@@ -3815,7 +3856,7 @@ function renderDayPills(){
   if(planEditMode){   // aggiungere una giornata è una modifica della scheda: il "+" compare in Modifica
     const addBtn = document.createElement('button');
     addBtn.className='day-pill add-day-pill'; addBtn.innerHTML=ic('plus'); addBtn.title='Nuova giornata'; addBtn.setAttribute('aria-label','Nuova giornata');
-    addBtn.addEventListener('click', ()=> addNewDay(false));
+    addBtn.addEventListener('click', ()=> openNewDaySheet(false));
     wrap.appendChild(addBtn);
   }
   placeDayInd(wrap, false);
@@ -3936,27 +3977,142 @@ function setMoreOpen(open, anim){
   if(card) card.classList.toggle('more-on', open);
 }
 document.getElementById('moreBtn').addEventListener('click', ()=> setMoreOpen(!moreOpen, true));
-/* nuova giornata dalla scheda di oggi: si crea, diventa quella scelta e si vede subito dove è finita (in alto tra le
-   giornate, o tra le versioni corte qui sotto); la modifica si apre, per nome ed esercizi nel riquadro Esercizi */
-function addDayHere(spare){
-  const key = addNewDay(spare, true);
-  if(!planEditMode) document.getElementById('planEditBtn').click(); else renderWorkout();
+/* NUOVA GIORNATA: prima si programma (nome ed esercizi con serie, ripetizioni e kg), poi «Crea giornata» la mette
+   tra le giornate in alto (o tra le versioni corte), già pronta. Nessun allenamento parte e nessuna giornata vuota resta
+   in giro se annulli. Gli esercizi si scelgono col selettore di «Sostituisci» (fatti di recente, dalla scheda, comuni,
+   nome nuovo): quelli che hai già fatto tengono il loro id, così storico e consigli restano collegati */
+var ndDraft = null;   // { spare, exercises:[...] } mentre il foglio è aperto
+function openNewDaySheet(spare){
+  if(session){ showToast('Termina o annulla l\'allenamento in corso prima'); return; }
+  ndDraft = { spare: !!spare, exercises: [] };
+  const key = nextDayKey();
+  document.getElementById('ndTitle').textContent = spare ? 'Nuova versione corta' : 'Nuova giornata';
+  document.getElementById('ndSub').textContent = spare ? 'Per i giorni con poco tempo: vale come la giornata che tocca' : 'Va in alto con le altre giornate';
+  const nm = document.getElementById('ndName'); nm.value = ''; nm.placeholder = spare ? 'es. Riserva · Casa · Full body' : 'es. Giovedì · Palestra · Gambe';
+  ndDraft.key = key;
+  setMoreOpen(false, false);
+  renderNewDay();
+  document.getElementById('newDaySheet').classList.add('show');
+  const sh = document.querySelector('#newDaySheet .sheet'); if(sh) sh.scrollTop = 0;
+}
+/* un esercizio scelto -> voce della giornata: serie e ripetizioni dalla scheda o dalla libreria, kg dall'ultima volta */
+function ndExFrom(c){
+  const name = String(c && c.name || '').trim(), k = normName(name);
+  let planEx = null;
+  Object.values(state.days).forEach(d=> d.exercises.forEach(e=>{ if(!planEx && normName(e.name)===k) planEx = e; }));
+  const lib = (ALT_LIB[c.muscle]||[]).concat(COMMON_LIB[c.muscle]||[]).find(a=> normName(a[0])===k);
+  const id = c.exId || subId(name);
+  const type = EX_TYPES[c.type] ? c.type : (planEx ? planEx.type : ((lib && lib[3]) || 'reps'));
+  const prev = findPrevEntry(id, name);
+  const det = prev ? mainDetail(prev.entry.detail) : [];
+  const top = det.length ? Math.max(...det.map(d=> num(d.kg))) : 0;
+  const muscle = MUSCLES.includes(c.muscle) ? c.muscle : 'Altro';
+  const sec = c.secondary && c.secondary!==muscle && MUSCLES.includes(c.secondary) && c.secondary!=='Altro' ? c.secondary : null;
+  const x = { id, name, muscle, secondary: sec, type,
+    sets: planEx ? (Math.round(num(planEx.sets)) || 3) : 3,
+    reps: c.reps || (planEx && planEx.reps) || (lib && lib[2]) || (type==='time' ? '30' : type==='dist' ? '500' : '8-12'),
+    kg: top || (planEx ? num(planEx.kg) : 0),
+    rest: planEx && num(planEx.rest)>0 ? num(planEx.rest) : (muscle==='Altro' ? 30 : 90), linkNext:false };
+  if(typeof c.perSide==='boolean') x.perSide = c.perSide;
+  return { x, isNew: !planEx && !prev && !lib, last: prev ? prev.iso : null };
+}
+function renderNewDay(){
+  if(!ndDraft) return;
+  const L = ndDraft.exercises, list = document.getElementById('ndList');
+  document.getElementById('ndSec').textContent = L.length ? 'Esercizi · '+L.length : 'Esercizi';
+  const musc = e=> e.muscle + (e.secondary ? ' + '+e.secondary : '');
+  list.innerHTML = L.length ? L.map(({x, isNew, last}, i)=>{
+    const T = EX_TYPES[x.type] || EX_TYPES.reps;
+    return `<div class="nd-ex" data-i="${i}">
+      <div class="nd-top"><span class="nd-num">${i+1}</span><div class="nd-txt"><b>${escapeHtml(x.name)}</b><small>${escapeHtml(isNew ? 'esercizio nuovo' : musc(x))}${last ? ' · ultima volta '+dm(last) : ''}</small></div>
+        <button type="button" class="icon-btn nd-del" data-i="${i}" aria-label="Togli ${escapeHtml(x.name)}">${ic('x')}</button></div>
+      <div class="nd-vals">
+        <div class="nd-step"><span>Serie</span><div><button type="button" data-i="${i}" data-d="-1" aria-label="Una serie in meno">−</button><b>${x.sets}</b><button type="button" data-i="${i}" data-d="1" aria-label="Una serie in più">+</button></div></div>
+        <label><span>${x.type==='time' ? 'Secondi' : x.type==='dist' ? 'Metri' : 'Ripetizioni'}</span><input type="text" data-i="${i}" data-f="reps" value="${escapeHtml(x.reps)}" inputmode="${x.type==='reps' ? 'text' : 'numeric'}" autocomplete="off"></label>
+        <label><span>Kg</span><input type="text" data-i="${i}" data-f="kg" value="${x.kg ? fn(x.kg) : ''}" placeholder="0" inputmode="decimal" autocomplete="off"></label>
+        ${isNew ? `<label class="nd-musc"><span>Muscolo</span><select data-i="${i}" data-f="muscle">${MUSCLES.map(m=>`<option${m===x.muscle?' selected':''}>${m}</option>`).join('')}</select></label>` : ''}
+      </div></div>`;
+  }).join('') : '<div class="chart-empty">Nessun esercizio ancora: aggiungi quelli della giornata.</div>';
+  const go = document.getElementById('ndCreate');
+  go.disabled = !L.length;
+  go.textContent = ndDraft.spare ? 'Crea versione corta' : 'Crea giornata';
+}
+function ndAdd(c){
+  if(!ndDraft || !c || !String(c.name||'').trim()) return;
+  const k = normName(c.name);
+  if(ndDraft.exercises.some(o=> normName(o.x.name)===k)){ showToast('È già nella giornata'); return; }
+  ndDraft.exercises.push(ndExFrom(c));
+  renderNewDay();
+  const rows = document.querySelectorAll('#ndList .nd-ex'), r = rows[rows.length-1];
+  if(r) try{ r.scrollIntoView({ block:'nearest', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
+}
+function openPlanPicker(){
+  if(!ndDraft) return;
+  subAdd = { plan:true }; subEx = null;
+  document.getElementById('subSheetTitle').textContent = 'Aggiungi esercizio';
+  document.getElementById('subSheetSub').textContent = ndDraft.spare ? 'Alla versione corta nuova' : 'Alla giornata nuova';
+  document.getElementById('subNote').textContent = 'Scegli dall\'elenco o scrivi il nome: serie e ripetizioni consigliate, kg dall\'ultima volta che l\'hai fatto.';
+  subCands = subCandidates({ name:'', muscle:null, exId:null, sets:[] });
+  renderSubList('Fatti di recente');
+  document.getElementById('subSheet').classList.add('show');
+  const sh = document.querySelector('#subSheet .sheet'); if(sh) sh.scrollTop = 0;
+}
+async function closeNewDaySheet(){
+  if(ndDraft && ndDraft.exercises.length && !(await customConfirm('Lasciare la giornata nuova? Gli esercizi scelti non vengono salvati.', 'Lascia', 'Continua'))) return;
+  ndDraft = null;
+  document.getElementById('newDaySheet').classList.remove('show');
+}
+function createNewDay(){
+  if(!ndDraft || !ndDraft.exercises.length) return;
+  const key = hasOwn(state.days, ndDraft.key) ? nextDayKey() : ndDraft.key, spare = ndDraft.spare;
+  const nm = document.getElementById('ndName').value.trim();
+  const day = { name: nm || (spare ? 'Riserva · Giorno '+key : 'Giorno '+key), ...(spare ? { spare:true } : {}),
+    exercises: ndDraft.exercises.map(({x})=>{ const e = Object.assign({}, x); cleanPlanEx(e); return e; }) };
+  normalizeLinks(day);
+  state.days[key] = day;
+  currentDay = key; state.settings.lastDay = key;
+  if(!persist('days')){ delete state.days[key]; return; }
+  persist('settings');
+  ndDraft = null;
+  document.getElementById('newDaySheet').classList.remove('show');
+  renderWorkout();
   if(spare){
-    // resta aperta: la versione corta nuova è nell'elenco, scelta
-    if(!moreOpen) setMoreOpen(true, false);
+    setMoreOpen(true, false);
     const b = document.querySelector(`#sparePills .day-pill[data-k="${CSS.escape(key)}"]`);
     if(b) try{ b.scrollIntoView({ block:'nearest', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
   } else {
-    setMoreOpen(false, false);
-    // la scheda di oggi in vista, con la giornata nuova scelta nella riga in alto
     const card = document.getElementById('todayCard'), r = card.getBoundingClientRect(), top = parseFloat(getComputedStyle(document.querySelector('main')).paddingTop) || 0;
     if(r.top < top) try{ card.scrollIntoView({ block:'start', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
   }
-  showToast(spare ? 'Versione corta aggiunta: nome ed esercizi nel riquadro Esercizi, qui sotto' : 'Giornata aggiunta in alto: nome ed esercizi nel riquadro Esercizi, qui sotto', null, null, 4000);
-  return key;
+  const n = day.exercises.length;
+  showToast((spare ? 'Versione corta creata' : 'Giornata creata')+': «'+splitDayName(day.name, key).key+'», '+(n===1 ? '1 esercizio' : n+' esercizi'), null, null, 3000);
 }
-document.getElementById('newMainDayBtn').addEventListener('click', ()=> addDayHere(false));
-document.getElementById('newSpareDayBtn').addEventListener('click', ()=> addDayHere(true));
+document.getElementById('newMainDayBtn').addEventListener('click', ()=> openNewDaySheet(false));
+document.getElementById('newSpareDayBtn').addEventListener('click', ()=> openNewDaySheet(true));
+document.getElementById('ndAddBtn').addEventListener('click', openPlanPicker);
+document.getElementById('ndCreate').addEventListener('click', createNewDay);
+document.getElementById('ndCancel').addEventListener('click', closeNewDaySheet);
+document.getElementById('ndClose').addEventListener('click', closeNewDaySheet);
+document.getElementById('newDaySheet').addEventListener('click', e=>{ if(e.target.id==='newDaySheet') closeNewDaySheet(); });
+document.getElementById('ndName').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); } });
+document.getElementById('ndList').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-i]'); if(!b || !ndDraft) return;
+  const i = +b.dataset.i, o = ndDraft.exercises[i]; if(!o) return;
+  if(b.classList.contains('nd-del')){ ndDraft.exercises.splice(i, 1); renderNewDay(); return; }
+  const d = +b.dataset.d; if(!d) return;
+  o.x.sets = Math.min(20, Math.max(1, o.x.sets + d));
+  b.parentElement.querySelector('b').textContent = o.x.sets;
+});
+document.getElementById('ndList').addEventListener('change', e=>{
+  const t = e.target, i = +t.dataset.i, o = ndDraft && ndDraft.exercises[i]; if(!o) return;
+  if(t.dataset.f==='reps'){ const v = t.value.trim(); if(v) o.x.reps = v; else t.value = o.x.reps; }
+  else if(t.dataset.f==='kg'){ const v = Math.max(0, Math.min(1000, num(String(t.value).replace(',', '.')))); o.x.kg = Math.round(v*100)/100; t.value = o.x.kg ? fn(o.x.kg) : ''; }
+  else if(t.dataset.f==='muscle' && MUSCLES.includes(t.value)){
+    const was = o.x.muscle; o.x.muscle = t.value; if(o.x.secondary===t.value) o.x.secondary = null;
+    // recupero proposto: corto per riscaldamento e stretching (Altro), normale per un muscolo vero
+    if(was==='Altro' && t.value!=='Altro' && o.x.rest===30) o.x.rest = 90; else if(was!=='Altro' && t.value==='Altro' && o.x.rest===90) o.x.rest = 30;
+  }
+});
 function nextDayKey(){
   // anche le chiavi presenti nello storico sono "usate": una giornata nuova con la chiave di una
   // cancellata ne ereditava data, "oggi già fatto" e rotazione
@@ -3964,14 +4120,6 @@ function nextDayKey(){
   Object.keys(state.logs).forEach(iso=> state.logs[iso].forEach(x=> used.add(String(x.dayKey))));
   for(let c=65;c<=90;c++){ const l=String.fromCharCode(c); if(!used.has(l)) return l; }
   return 'D'+Date.now();
-}
-function addNewDay(spare, quiet){
-  const key = nextDayKey();
-  state.days[key] = spare===true ? { name:'Riserva · Giorno '+key, spare:true, exercises:[] } : { name:'Giorno '+key, exercises:[] };
-  currentDay=key; state.settings.lastDay=key;
-  persist('days'); persist('settings'); renderWorkout();
-  if(!quiet) showToast(spare===true ? 'Versione corta creata: dalle un nome e aggiungi gli esercizi' : 'Nuova giornata creata: dalle un nome e aggiungi gli esercizi');
-  return key;
 }
 async function deleteCurrentDay(){
   if(Object.keys(state.days).length<=1){ showToast('Deve restare almeno una giornata'); return; }
@@ -5716,8 +5864,10 @@ const KNEE_RE = /leg ?curl|leg ?press|leg ?extension|squat|affond|calf|ponte glu
 function subCandidates(exx){
   const free = exx.muscle==null;   // aggiunta senza esercizio di riferimento: i più recenti di ogni muscolo
   const m = MUSCLES.includes(exx.muscle) ? exx.muscle : 'Altro';
-  const seen = new Set(session ? session.exercises.map(x=>normName(x.name)) : [normName(exx.name)]);
-  const ids = new Set((session ? session.exercises : [exx]).map(x=>x.exId).filter(Boolean));
+  // già scelti: quelli dell'allenamento in corso, o quelli della giornata nuova che stai programmando
+  const cur = subAdd && subAdd.plan && ndDraft ? ndDraft.exercises.map(o=> ({ name:o.x.name, exId:o.x.id })) : session ? session.exercises : [exx];
+  const seen = new Set(cur.map(x=>normName(x.name)).filter(Boolean));
+  const ids = new Set(cur.map(x=>x.exId).filter(Boolean));
   const out = [];
   const push = c=>{ const k=normName(c.name); if(!k || seen.has(k) || (c.exId && ids.has(c.exId)) || KNEE_RE.test(c.name)) return; seen.add(k); out.push(c); };
   const dayLbl = d=> String(d.name).split('·')[0].trim();
@@ -5885,6 +6035,7 @@ function closeAddSheet(){
 function subLost(){ closeSubSheet(); showToast("L'esercizio non è più nell'allenamento: riapri ⇄", null, null, 2600, 'warn'); }
 document.getElementById('subList').addEventListener('click', ev=>{
   const b = ev.target.closest('.sub-opt'); if(!b) return;
+  if(subAdd && subAdd.plan){ const c = subCands[+b.dataset.i]; subAdd = null; closeSubSheet(); ndAdd(c); return; }
   if(subAdd){ const c = subCands[+b.dataset.i], mode = subAdd; closeSubSheet(); subAdd = mode; addPicked(c); return; }
   const c = subCands[+b.dataset.i], ei = subIndex();
   if(ei<0){ subLost(); return; }
@@ -5893,6 +6044,12 @@ document.getElementById('subList').addEventListener('click', ev=>{
 });
 function subCustomGo(){
   const name = document.getElementById('subSearch').value.trim();
+  if(subAdd && subAdd.plan){
+    if(!name){ document.getElementById('subSearch').focus(); return; }
+    subAdd = null; closeSubSheet();
+    ndAdd({ name, muscle: muscleFromName(name) || 'Altro', secondary:null, type: guessType(name), exId:null });
+    return;
+  }
   if(subAdd){
     if(!name){ document.getElementById('subSearch').focus(); return; }
     const mode = subAdd, g = mode.group;
