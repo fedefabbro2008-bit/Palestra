@@ -19,6 +19,7 @@ export const TESTS = [
   { nome: 'tastiera-foglio', file: 'ui/tastiera-foglio.test.js', cosa: 'tastiera nel foglio Nuova giornata: i campi in basso restano sopra la tastiera' },
   { nome: 'ricalcoli-evitati', file: 'ui/ricalcoli-evitati.test.js', cosa: 'tocco su una giornata senza ricalcoli; menu ⋯ dell\'esercizio creato solo quando si apre' },
   { nome: 'dati-vecchi', file: 'ui/dati-vecchi.test.js', cosa: 'dati di versioni vecchie: giornata vuota, libero vuoto salvato, storico lungo' },
+  { nome: 'timer-risveglio', file: 'ui/timer-risveglio.test.js', cosa: 'recupero con schermo spento: al risveglio la barra del timer è al punto giusto' },
   { nome: 'allenamento-strumenti', file: 'ui/allenamento-strumenti.test.js', cosa: 'consiglio, drop set, avvicinamento, sostituisci, recupero, termina' },
   { nome: 'allenamento-sposta-superset', file: 'ui/allenamento-sposta-superset.test.js', cosa: 'sposta, superset, aggiungi, allenamento libero, fine = ultima spunta' },
   { nome: 'serie-successiva', file: 'ui/serie-successiva.test.js', cosa: 'la serie illuminata va sempre avanti' },

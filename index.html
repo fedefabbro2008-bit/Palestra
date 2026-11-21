@@ -9281,7 +9281,11 @@ function timerEndedFx(){
   clearTimeout(timerEndT);
   timerEndT = setTimeout(()=>{ timerBar.classList.remove('ended','tick'); if(ring) ring.classList.remove('ended'); }, 1600);
 }
-document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState!=='visible') return; if(timer.running) tick(); else refreshTimerUI(); updateSessionElapsed(); });
+/* schermo riacceso o app ripresa: la barra (e l'anello) ripartono dal punto giusto. Con lo schermo spento iPhone ferma
+   le animazioni della pagina: al risveglio la barra ripartiva da dove si era fermata e restava indietro rispetto al tempo */
+function timerWake(){ if(document.visibilityState!=='visible') return; timerFlowKey = null; if(timer.running) tick(); else refreshTimerUI(); updateSessionElapsed(); }
+document.addEventListener('visibilitychange', timerWake);
+window.addEventListener('pageshow', timerWake);
 
 function fmt(sec){ const s=Math.max(0,sec); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
 function updateSheetDisplay(){
