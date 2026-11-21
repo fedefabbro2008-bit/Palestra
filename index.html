@@ -312,6 +312,11 @@ main{
 .day-pill .dp-focus{font-size:10.5px; line-height:1.25; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .day-pill .last{font-size:10.5px; color:var(--text-faint); font-family:'JetBrains Mono',ui-monospace,monospace;}
 .day-pill.active{background:var(--accent-dim); border-color:var(--accent);}
+.day-pills > .day-pill:not(.add-day-pill){min-width:max-content;}
+.day-pills > .day-pill .dp-key{max-width:190px;}
+.day-pills > .day-pill .dp-focus{contain:inline-size;}
+.day-pills > .day-pill .last{min-width:66px;}
+@media (max-width:359px){ .day-pills > .day-pill .last{min-width:0;} }
 /* riserve: riga sotto le giornate, pill più basse e tratteggiate */
 /* allenamenti corti: pulsante discreto sotto le giornate + finestra */
 .spare-open{display:flex; align-items:center; gap:8px; width:100%; margin:-4px 0 14px; padding:9px 12px; border-radius:var(--r-ctl,14px);
@@ -372,6 +377,7 @@ main{
 .nd-musc{grid-column:1 / -1;}
 .nd-musc select{text-align:left;}
 .nd-foot{margin-top:16px;} .nd-foot .btn{flex:1;}
+.nd-foot .btn:disabled{opacity:.42; box-shadow:none; cursor:default;}
 #ndAddBtn{margin-top:0;}
 .spare-list .day-pill{width:100%; max-width:none; min-width:0; align-items:flex-start; text-align:left; padding:13px 14px; gap:3px;}
 .spare-list .day-pill .dp-key{font-size:15px;}
@@ -1314,6 +1320,8 @@ html.eco .sub-search{background:#000 !important;}
 /* ---------- pannello storico esercizio ---------- */
 .sheet-overlay{position:fixed; inset:0; background:rgba(0,0,0,.82); z-index:65; display:none; align-items:flex-end; justify-content:center;}
 .sheet-overlay.show{display:flex;}
+.sheet-overlay.kb-fit{bottom:auto;}
+.sheet-overlay.kb-fit > .sheet{max-height:calc(100% - 8px);}
 .sheet{
   width:100%; max-width:560px; max-height:88vh; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain;
   background:var(--bg-elev); border:1px solid var(--border); border-bottom:none;
@@ -3965,13 +3973,17 @@ function setMoreOpen(open, anim){
     area.hidden = false; renderMoreBtn();
     // per un attimo dopo l'apertura la zona ancora si muove: un tocco lì (es. un secondo tocco veloce) non vale
     area._lockUntil = go ? performance.now() + 350 : 0;
+    // quanto far scorrere perché la zona si veda (misurato prima che le animazioni la spostino): a scorrere è <main>,
+    // non la pagina. Se non ci sta tutta, «Altri allenamenti» sale fin sotto l'intestazione e il resto si scorre a mano
+    const main = document.querySelector('main'), mr = main.getBoundingClientRect(), mcs = getComputedStyle(main);
+    const visTop = mr.top + (parseFloat(mcs.scrollPaddingTop) || 0), visBot = mr.bottom - (parseFloat(mcs.scrollPaddingBottom) || 0);
+    const ar = area.getBoundingClientRect(), bt = document.getElementById('moreBtn').getBoundingClientRect();
+    const dy = Math.min(ar.bottom - visBot, bt.top - visTop);
     if(go){
       below.forEach((e, i)=>{ const d = before[i] - e.getBoundingClientRect().top; if(Math.abs(d) > 0.5) e.animate([{ transform:`translateY(${d.toFixed(1)}px)` }, { transform:'none' }], { duration:320, easing:'cubic-bezier(.2,.8,.2,1)' }); });
       area.animate([{ opacity:0, transform:'translateY(-10px)' }, { opacity:1, transform:'none' }], { duration:280, easing:'cubic-bezier(.2,.8,.2,1)' });
     }
-    // la zona aperta si vede tutta (se finisce sotto lo schermo)
-    const r = area.getBoundingClientRect(), vh = window.innerHeight - (parseFloat(getComputedStyle(document.querySelector('main')).getPropertyValue('--nav-h')) || 90);
-    if(r.bottom > vh) try{ window.scrollBy({ top: Math.min(r.bottom - vh + 16, r.top - 80), behavior: go ? 'smooth' : 'auto' }); }catch(e){}
+    if(dy > 1) try{ main.scrollBy({ top: dy, behavior: go ? 'smooth' : 'auto' }); }catch(e){ main.scrollTop += dy; }
   } else if(go){
     renderMoreBtn();
     area._fade = area.animate([{ opacity:1 }, { opacity:0 }], { duration:140, easing:'ease-out' });
@@ -3996,7 +4008,6 @@ function openNewDaySheet(spare){
   document.getElementById('ndSub').textContent = spare ? 'Per i giorni con poco tempo: vale come la giornata che tocca' : 'Va in alto con le altre giornate';
   const nm = document.getElementById('ndName'); nm.value = ''; nm.placeholder = spare ? 'es. Riserva · Casa · Full body' : 'es. Giovedì · Palestra · Gambe';
   ndDraft.key = key;
-  setMoreOpen(false, false);
   renderNewDay();
   document.getElementById('newDaySheet').classList.add('show');
   const sh = document.querySelector('#newDaySheet .sheet'); if(sh) sh.scrollTop = 0;
@@ -4012,9 +4023,12 @@ function ndExFrom(c){
   const prev = findPrevEntry(id, name);
   const det = prev ? mainDetail(prev.entry.detail) : [];
   const top = det.length ? Math.max(...det.map(d=> num(d.kg))) : 0;
-  const muscle = MUSCLES.includes(c.muscle) ? c.muscle : 'Altro';
-  const sec = c.secondary && c.secondary!==muscle && MUSCLES.includes(c.secondary) && c.secondary!=='Altro' ? c.secondary : null;
-  const x = { id, name, muscle, secondary: sec, type,
+  const known = m=> MUSCLES.includes(m) && m!=='Altro';
+  const muscle = known(c.muscle) ? c.muscle : planEx && MUSCLES.includes(planEx.muscle) ? planEx.muscle
+    : prev && known(prev.entry.muscle) ? prev.entry.muscle : MUSCLES.includes(c.muscle) ? c.muscle : 'Altro';
+  const sec0 = c.secondary!==undefined && c.secondary!==null ? c.secondary : planEx ? planEx.secondary : null;
+  const sec = sec0 && sec0!==muscle && known(sec0) ? sec0 : null;
+  const x = { id, name, muscle, secondary: sec, type, ...(planEx ? { phase: phaseOf(planEx) } : {}),
     sets: planEx ? (Math.round(num(planEx.sets)) || 3) : 3,
     reps: c.reps || (planEx && planEx.reps) || (lib && lib[2]) || (type==='time' ? '30' : type==='dist' ? '500' : '8-12'),
     kg: top || (planEx ? num(planEx.kg) : 0),
@@ -4080,6 +4094,7 @@ function createNewDay(){
   if(!persist('days')){ delete state.days[key]; return; }
   ndDraft = null;
   document.getElementById('newDaySheet').classList.remove('show');
+  if(!spare) setMoreOpen(false, false);   // giornata in alto: la zona si richiude e si vede la riga delle giornate
   renderWorkout();
   if(spare){
     setMoreOpen(true, false);
@@ -4093,7 +4108,8 @@ function createNewDay(){
     if(b && b.offsetLeft + b.offsetWidth > w.scrollLeft + w.clientWidth) try{ w.scrollTo({ left: b.offsetLeft + b.offsetWidth + 8 - w.clientWidth, behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
   }
   const n = day.exercises.length;
-  showToast((spare ? 'Versione corta creata' : 'Giornata creata')+': «'+splitDayName(day.name, key).key+'», '+(n===1 ? '1 esercizio' : n+' esercizi')+(spare ? ' · la trovi qui tra le versioni corte' : ' · la trovi in alto tra le giornate'), null, null, 3200);
+  // versione corta: il nome intero (la parte grande è quasi sempre «Riserva» e non diceva quale)
+  showToast((spare ? 'Versione corta creata' : 'Giornata creata')+': «'+(spare ? day.name : splitDayName(day.name, key).key)+'», '+(n===1 ? '1 esercizio' : n+' esercizi')+(spare ? ' · la trovi qui tra le versioni corte' : ' · la trovi in alto tra le giornate'), null, null, 3200);
 }
 document.getElementById('newMainDayBtn').addEventListener('click', ()=> openNewDaySheet(false));
 document.getElementById('newSpareDayBtn').addEventListener('click', ()=> openNewDaySheet(true));
@@ -4110,6 +4126,11 @@ document.getElementById('ndList').addEventListener('click', e=>{
   const d = +b.dataset.d; if(!d) return;
   o.x.sets = Math.min(20, Math.max(1, o.x.sets + d));
   b.parentElement.querySelector('b').textContent = o.x.sets;
+});
+document.getElementById('ndList').addEventListener('input', e=>{
+  const t = e.target, f = t.dataset.f, o = ndDraft && ndDraft.exercises[+t.dataset.i]; if(!o) return;
+  if(f==='reps'){ const v = t.value.trim(); if(v) o.x.reps = v; }
+  else if(f==='kg'){ const v = String(t.value).trim(); o.x.kg = v ? Math.round(Math.max(0, Math.min(1000, num(v.replace(',', '.'))))*100)/100 : 0; }
 });
 document.getElementById('ndList').addEventListener('change', e=>{
   const t = e.target, i = +t.dataset.i, o = ndDraft && ndDraft.exercises[i]; if(!o) return;
@@ -5500,6 +5521,10 @@ function renderEta(){
   const r = estimateRemaining(session.exercises, now);
   if(box.getAttribute('aria-expanded')!==String(etaOpen)) box.setAttribute('aria-expanded', etaOpen);
   if(box.classList.contains('open')!==etaOpen) box.classList.toggle('open', etaOpen);
+  if(!session.exercises.length){
+    setHTML(box, `<span>Nessun esercizio ancora · aggiungine uno qui sotto</span>`);
+    if(!det.hidden) det.hidden = true; return;
+  }
   if(!r.nSets){
     setHTML(box, `<span>Tutte le serie fatte · <b>${fmtEtaMin(el)}</b> in tutto</span>`);
     if(!det.hidden) det.hidden = true; return;
@@ -6043,6 +6068,7 @@ function closeAddSheet(){
 function subLost(){ closeSubSheet(); showToast("L'esercizio non è più nell'allenamento: riapri ⇄", null, null, 2600, 'warn'); }
 document.getElementById('subList').addEventListener('click', ev=>{
   const b = ev.target.closest('.sub-opt'); if(!b) return;
+  if(subAdd && subAdd.free){ const c = subCands[+b.dataset.i]; subAdd = null; closeSubSheet(); beginFreeSession(c); return; }
   if(subAdd && subAdd.plan){ const c = subCands[+b.dataset.i]; subAdd = null; closeSubSheet(); ndAdd(c); return; }
   if(subAdd){ const c = subCands[+b.dataset.i], mode = subAdd; closeSubSheet(); subAdd = mode; addPicked(c); return; }
   const c = subCands[+b.dataset.i], ei = subIndex();
@@ -6052,6 +6078,12 @@ document.getElementById('subList').addEventListener('click', ev=>{
 });
 function subCustomGo(){
   const name = document.getElementById('subSearch').value.trim();
+  if(subAdd && subAdd.free){
+    if(!name){ document.getElementById('subSearch').focus(); return; }
+    subAdd = null; closeSubSheet();
+    beginFreeSession({ name, muscle: muscleFromName(name) || 'Altro', secondary:null, type:'reps', exId:null });
+    return;
+  }
   if(subAdd && subAdd.plan){
     if(!name){ document.getElementById('subSearch').focus(); return; }
     subAdd = null; closeSubSheet();
@@ -6596,24 +6628,34 @@ function openAddSheet(mode){
   const g = subAdd.group;
   document.getElementById('subSheetTitle').textContent = g ? 'Aggiungi al superset' : 'Aggiungi esercizio';
   document.getElementById('subSheetSub').textContent = g ? 'Insieme a: '+g.name : (session.exercises.length ? 'In fondo, prima dello stretching' : session.dayName);
-  const freeStart = !g && session.dayKey==='free' && !session.exercises.length;
   document.getElementById('subNote').textContent = g
     ? 'Si fa subito dopo, senza recupero in mezzo: il recupero resta alla fine del giro.'
-    : freeStart ? 'Allenamento libero: parte con il primo esercizio che scegli. Chiudi senza sceglierne per non iniziarlo.'
     : 'Scegli dall\'elenco o scrivi il nome: kg e ripetizioni ripartono dall\'ultima volta che l\'hai fatto.';
   subCands = subCandidates(g || { name:'', muscle:null, exId:null, sets:[] });
   renderSubList(g && MUSCLES.includes(g.muscle) && g.muscle!=='Altro' ? 'Consigliati per '+g.muscle : 'Fatti di recente');
   document.getElementById('subSheet').classList.add('show');
   const sh = document.querySelector('#subSheet .sheet'); if(sh) sh.scrollTop = 0;
 }
-/* allenamento libero: fuori scheda (non sposta la rotazione), con gli esercizi che scegli */
+/* allenamento libero: fuori scheda (non sposta la rotazione), con gli esercizi che scegli. Prima si sceglie il primo
+   esercizio e solo allora parte: chiudendo l'elenco senza sceglierne non è partito niente */
 function startFreeSession(){
   if(session) return;
+  subAdd = { free:true }; subEx = null;
+  document.getElementById('subSheetTitle').textContent = 'Aggiungi esercizio';
+  document.getElementById('subSheetSub').textContent = 'Allenamento libero · parte quando scegli il primo';
+  document.getElementById('subNote').textContent = 'Fuori scheda: la giornata che tocca non cambia. Chiudi senza scegliere e non parte niente.';
+  subCands = subCandidates({ name:'', muscle:null, exId:null, sets:[] });
+  renderSubList('Fatti di recente');
+  document.getElementById('subSheet').classList.add('show');
+  const sh = document.querySelector('#subSheet .sheet'); if(sh) sh.scrollTop = 0;
+}
+function beginFreeSession(c){
+  if(session || !c || !String(c.name||'').trim()) return;
   lastSummary = null; hideToast();
   session = { id: uid(), dayKey:'free', dayName:'Allenamento libero', startedAt: Date.now(), note:'', exercises:[] };
   sessExpanded = new Set(); sessMetaOpen = new Set(); etaOpen = false;
-  saveSession(); enterSessionView();
-  openAddSheet({});
+  enterSessionView();
+  subAdd = {}; addPicked(c);   // aggiunge il primo esercizio, salva e ridisegna
 }
 document.getElementById('freeOpenBtn').addEventListener('click', startFreeSession);
 document.getElementById('sessNotes').addEventListener('input', (e)=>{
@@ -9359,6 +9401,23 @@ lastBkSig = settingsSig();   // all'apertura la copia automatica ha già queste 
     if(r.top < top) mainEl.scrollTop -= top - r.top;
     else if(r.bottom > bottom) mainEl.scrollTop += Math.min(r.bottom - bottom, r.top - top);   // mai oltre il bordo alto libero
   }
+  /* campo dentro una finestra che sale dal basso (es. «Nuova giornata», con kg e ripetizioni in fondo): la finestra
+     si accorcia all'area sopra la tastiera e scorre fino al campo. Prima restava alta come lo schermo e, annullato lo
+     spostamento di iOS, i campi in basso finivano sotto la tastiera */
+  function fitSheet(el, open){
+    const ov = open && el && el.closest ? el.closest('.sheet-overlay.show') : null;
+    document.querySelectorAll('.sheet-overlay.kb-fit').forEach(o=>{ if(o!==ov){ o.classList.remove('kb-fit'); o.style.top = ''; o.style.height = ''; } });
+    if(!ov) return false;
+    ov.classList.add('kb-fit');
+    ov.style.top = Math.round(vv.offsetTop || 0)+'px'; ov.style.height = Math.round(vv.height)+'px';
+    const sh = el.closest('.sheet');
+    if(sh){
+      const r = el.getBoundingClientRect(), b = sh.getBoundingClientRect(), pad = 16;
+      if(r.bottom > b.bottom - pad) sh.scrollTop += r.bottom - (b.bottom - pad);
+      else if(r.top < b.top + pad) sh.scrollTop -= (b.top + pad) - r.top;
+    }
+    return true;
+  }
   function apply(){
     raf = 0;
     const el = document.activeElement;
@@ -9369,7 +9428,7 @@ lastBkSig = settingsSig();   // all'apertura la copia automatica ha già queste 
     body.classList.toggle('kb-open', open);
     body.style.height = open ? Math.round(vv.height)+'px' : '';
     if(window.scrollY || document.documentElement.scrollTop) window.scrollTo(0, 0);
-    if(open) keepVisible(el);
+    if(!fitSheet(el, open) && open) keepVisible(el);
   }
   const schedule = ()=>{ if(!raf) raf = requestAnimationFrame(apply); };
   vv.addEventListener('resize', schedule);

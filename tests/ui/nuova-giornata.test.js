@@ -4,7 +4,8 @@
 // si cambiano; «Crea» è spento finché non c'è un esercizio; Annulla con esercizi scelti chiede conferma e non crea
 // niente; la giornata creata tiene gli id degli esercizi già fatti (storico e consigli collegati) e si può iniziare;
 // il «+» in Modifica apre lo stesso foglio; Indietro chiude prima il selettore poi il foglio. La giornata creata
-// va nella sua lista ma NON diventa quella scelta (nessun allenamento cambia o parte)
+// va nella sua lista ma NON diventa quella scelta (nessun allenamento cambia o parte). «Crea» spento si vede spento;
+// su iPhone quello scritto nei campi resta anche senza uscire dal campo; un riscaldamento della scheda resta tale
 const { open } = require('./lib');
 const { seedLogs } = require('./seed');
 const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
@@ -22,6 +23,9 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newMainDayBtn'); await p.waitForTimeout(500);
   let s = await st();
   check(s.sheet && s.title === 'Nuova giornata' && !s.rows.length && s.create && !s.session && Object.keys(await days()).length === n0, '«Giornata»: si apre «Nuova giornata» vuota, «Crea» spento, nessuna giornata creata né allenamento avviato');
+  // spento si vede: prima sembrava acceso e toccandolo non succedeva niente
+  const dim = await p.evaluate(() => +getComputedStyle(document.getElementById('ndCreate')).opacity);
+  check(dim < 0.6, '«Crea giornata» spento si vede spento (opacità ' + dim + ')');
 
   // 2. un esercizio già fatto, dal selettore (sta sopra il foglio): serie e ripetizioni della scheda, kg dell'ultima volta
   await p.tap('#ndAddBtn'); await p.waitForTimeout(400);
@@ -86,6 +90,29 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   await p.click('#dayPills .add-day-pill'); await p.waitForTimeout(400);
   check((await st()).sheet && (await st()).title === 'Nuova giornata', 'il «+» in Modifica apre «Nuova giornata»');
   await p.tap('#ndCancel'); await p.waitForTimeout(300);
+
+  // 8. iPhone: toccando un pulsante il campo può restare attivo (niente «change»): kg e ripetizioni scritti non si
+  //    perdono né aggiungendo un altro esercizio (l'elenco si ridisegna) né toccando subito «Crea giornata».
+  //    Un riscaldamento della scheda resta un riscaldamento (prima finiva in Allenamento)
+  await p.click('#dayPills .add-day-pill'); await p.waitForTimeout(400);
+  await p.tap('#ndAddBtn'); await p.waitForTimeout(300);
+  await p.fill('#subSearch', 'wall slide'); await p.waitForTimeout(150);
+  const warmName = await p.evaluate(() => { const b = document.querySelector('#subList .sub-opt:not([hidden]) .so-name'); return b ? b.textContent : null; });
+  await p.tap('#subList .sub-opt:not([hidden]) >> nth=0'); await p.waitForTimeout(300);
+  await p.tap('#ndAddBtn'); await p.waitForTimeout(300); await p.tap('#subList .sub-opt >> nth=0'); await p.waitForTimeout(300);
+  const type = (sel, v) => p.evaluate(([sel, v]) => { const i = document.querySelector(sel); i.focus(); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); }, [sel, v]);
+  await type('#ndList .nd-ex[data-i="1"] input[data-f="kg"]', '41,5');
+  await p.evaluate(() => document.getElementById('ndAddBtn').click()); await p.waitForTimeout(300);
+  await p.evaluate(() => document.querySelector('#subList .sub-opt').click()); await p.waitForTimeout(300);
+  const kgAfter = await p.evaluate(() => document.querySelector('#ndList .nd-ex[data-i="1"] input[data-f="kg"]').value);
+  await type('#ndList .nd-ex[data-i="2"] input[data-f="reps"]', '6');
+  await type('#ndName', 'Domenica · Prova campi');
+  const names8 = await p.evaluate(() => [...document.querySelectorAll('#ndList .nd-txt b')].map((b) => b.textContent));
+  await p.evaluate(() => document.getElementById('ndCreate').click()); await p.waitForTimeout(600);
+  const D8 = await days(), d8 = Object.values(D8).find((d) => d.name === 'Domenica · Prova campi');
+  const e1 = d8 && d8.exercises.find((e) => e.name === names8[1]), e2 = d8 && d8.exercises.find((e) => e.name === names8[2]), w8 = d8 && d8.exercises.find((e) => e.name === warmName);
+  check(kgAfter === '41,5' && !!e1 && e1.kg === 41.5 && !!e2 && e2.reps === '6', `campo ancora attivo: 41,5 kg resta dopo «Aggiungi esercizio» (${kgAfter}) ed è salvato (${e1 && e1.kg}); ripetizioni «6» salvate toccando subito «Crea» (${e2 && e2.reps})`);
+  check(!!warmName && !!w8 && w8.phase === 'warm' && d8.exercises[0] === w8, `riscaldamento della scheda («${warmName}»): resta nel riscaldamento, in cima (${w8 && w8.phase})`);
   const errs = A.errors.filter((e) => !/404|Service Worker/.test(e));
   check(!errs.length, 'nessun errore ' + errs.join(' | '));
   // Android, tasto Indietro: chiude prima il selettore, poi il foglio (senza uscire dall'app)
