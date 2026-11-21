@@ -12,7 +12,7 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
     const ar = a && a.getBoundingClientRect(), ir = ind && ind.getBoundingClientRect(), wr = w.getBoundingClientRect();
     return { fits: w.classList.contains('fits'), pills, lens: a && ind ? Math.abs(ir.left - ar.left) + Math.abs(ir.width - ar.width) : null, activeIn: a ? ar.left >= wr.left - 1 && ar.right <= wr.right + 1 : true }; });
   const desc = (r) => r.pills.map((x) => x.name + ' ' + Math.round(x.w) + (x.cut ? '✂' : '')).join(' | ');
-  for (const [w, extra] of [[390, 0], [375, 0], [390, 1], [390, 2]]) {
+  for (const [w, extra] of [[390, 0], [375, 0], [360, 0], [390, 1], [390, 2]]) {
     const A = await open({ browser, ls: {}, w }), p = A.page; browser = A.browser;
     await p.evaluate(seedLogs, { weeks: 3 });
     await p.evaluate((extra) => { const d = JSON.parse(localStorage.getItem('palestra:days')); const ex = Object.values(d)[0].exercises.slice(0, 2);
@@ -22,6 +22,7 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
     const r = await row(p), n = r.pills.length, tag = `${w} px, ${n} giornate`;
     check(r.pills.every((x) => !x.cut), `${tag}: nomi interi (${desc(r)})`);
     if (n === 3 && w === 390) check(r.fits && Math.max(...r.pills.map((x) => x.w)) - Math.min(...r.pills.map((x) => x.w)) < 1, `${tag}: come prima, tutte larghe uguali e senza scorrere`);
+    if (n === 3 && w < 390) check(r.fits, `${tag}: ci stanno senza scorrere`);
     if (n > 3) check(!r.fits && r.lens !== null && r.lens < 1.5 && r.activeIn, `${tag}: la riga scorre, la lente è sulla giornata scelta e si vede (scarto ${r.lens && r.lens.toFixed(1)} px)`);
     const errs = A.errors.filter((e) => !/404|Service Worker/.test(e));
     if (errs.length) check(false, tag + ': errori ' + errs.join(' | '));

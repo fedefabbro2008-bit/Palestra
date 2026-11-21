@@ -316,7 +316,7 @@ main{
 .day-pills > .day-pill .dp-key{max-width:190px;}
 .day-pills > .day-pill .dp-focus{contain:inline-size;}
 .day-pills > .day-pill .last{min-width:66px;}
-@media (max-width:359px){ .day-pills > .day-pill .last{min-width:0;} }
+@media (max-width:374px){ .day-pills > .day-pill .last{min-width:0;} }   /* telefoni stretti: 3 giornate senza scorrere */
 /* riserve: riga sotto le giornate, pill più basse e tratteggiate */
 /* allenamenti corti: pulsante discreto sotto le giornate + finestra */
 .spare-open{display:flex; align-items:center; gap:8px; width:100%; margin:-4px 0 14px; padding:9px 12px; border-radius:var(--r-ctl,14px);
@@ -2433,6 +2433,8 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 <script>
 (function(){
 'use strict';
+/* per le prove: quante volte si rifanno i calcoli pesanti (statistiche, indice degli esercizi, durate previste) */
+var conta = window.__conta = { stats:0, indice:0, durata:0, dati:[] };
 
 /* ============================================================
    COSTANTI
@@ -2983,6 +2985,7 @@ function exLookup(){
     if(CABLE_RX.test(String(e.name||''))) (e.detail||[]).forEach(d=>{ const k = Math.round(num(d.kg)*100)/100; if(k>0) cable.add(k); });
   }));
   exLookCache = { v: allSessCache.v, dv: dataVersion, byId, byNameNoId, byName, cable, memo: new Map(), stall: new Map() };
+  conta.indice++;
   return exLookCache;
 }
 function sessionCount(){ let n=0; Object.keys(state.logs).forEach(iso=> n+=state.logs[iso].length); return n; }
@@ -3068,6 +3071,7 @@ let storageFull = false;
 let logsLocked = false;       // true solo se l'avvio è fallito prima di leggere lo storico
 let logsUnreadable = false;   // storico salvato illeggibile: la copia automatica (buona) non va sovrascritta finché non ripristini
 let dataVersion = 0;          // cresce a ogni salvataggio che cambia i dati: dice a Stats (e alle copie in memoria) se c'è da ricalcolare
+var dataSetSig = null;        // impostazioni che contano per i calcoli (senza la giornata scelta e la data dell'ultimo export)
 let logsChecks = 0;           // confronti dello storico con il testo salvato (vedi persistLogsSoon)
 /* testo già salvato (o letto all'avvio) per scheda, storico e impostazioni: se non è cambiato niente
    non si riscrive. Scrivere lo storico costa (con anni di allenamenti decine di ms e batteria) */
@@ -3130,7 +3134,11 @@ function persist(key){
       localStorage.setItem(LS_PREFIX+key, txt); savedText[key] = txt; try{ syncNoteChange(key); }catch(e){}
       if(key==='logs' && claudeLogNote && !syncApplying) try{ claudeLogCheck(); }catch(e){}   // storico cambiato dopo Claude
       if(key==='days' && claudeNote) try{ claudeNoteCheck(); }catch(e){}   // scheda cambiata dopo Claude: l'avviso non vale più
-      dataVersion++;   // solo se i dati sono cambiati: un salvataggio identico non fa ricalcolare statistiche e stime
+      // solo se i dati sono cambiati: un salvataggio identico non fa ricalcolare statistiche e stime. Toccare una giornata
+      // salva solo la giornata scelta: prima rifaceva da capo indice degli esercizi, durate previste e statistiche
+      const ss = key==='settings' ? settingsSig() : null;
+      if(ss===null || ss!==dataSetSig){ dataVersion++; conta.dati.push(key); if(conta.dati.length>40) conta.dati.splice(0, 20); }
+      if(ss!==null) dataSetSig = ss;
     }
     storageFull = false;
     if(key==='settings') settingsBackupSoon();
@@ -4042,7 +4050,6 @@ function renderNewDay(){
   document.getElementById('ndSec').textContent = L.length ? 'Esercizi · '+L.length : 'Esercizi';
   const musc = e=> e.muscle + (e.secondary ? ' + '+e.secondary : '');
   list.innerHTML = L.length ? L.map(({x, isNew, last}, i)=>{
-    const T = EX_TYPES[x.type] || EX_TYPES.reps;
     return `<div class="nd-ex" data-i="${i}">
       <div class="nd-top"><span class="nd-num">${i+1}</span><div class="nd-txt"><b>${escapeHtml(x.name)}</b><small>${escapeHtml(isNew ? 'esercizio nuovo' : musc(x))}${last ? ' · ultima volta '+dm(last) : ''}</small></div>
         <button type="button" class="icon-btn nd-del" data-i="${i}" aria-label="Togli ${escapeHtml(x.name)}">${ic('x')}</button></div>
@@ -4068,6 +4075,8 @@ function ndAdd(c){
 }
 function openPlanPicker(){
   if(!ndDraft) return;
+  // su iPhone toccando il pulsante il campo kg o ripetizioni resta attivo: la tastiera coprirebbe l'elenco
+  const ae = document.activeElement; if(ae && ae!==document.body && typeof ae.blur==='function') ae.blur();
   subAdd = { plan:true }; subEx = null;
   document.getElementById('subSheetTitle').textContent = 'Aggiungi esercizio';
   document.getElementById('subSheetSub').textContent = ndDraft.spare ? 'Alla versione corta nuova' : 'Alla giornata nuova';
@@ -5231,6 +5240,9 @@ function loadSession(){
     if(!raw) return;
     const parsed = JSON.parse(raw);
     if(!parsed || !Array.isArray(parsed.exercises)){ localStorage.removeItem(LS_PREFIX+'session'); return; }
+    // allenamento libero senza esercizi (le versioni precedenti lo facevano partire prima della scelta): non c'è niente
+    // da riprendere né da salvare, si scarta invece di riaprire un allenamento vuoto
+    if(parsed.dayKey==='free' && !parsed.exercises.length){ localStorage.removeItem(LS_PREFIX+'session'); return; }
     // il criterio è l'età, non il giorno di calendario: un allenamento iniziato alle 23:40
     // e ripreso alle 00:20 è ancora lo stesso allenamento
     session = parsed;
@@ -5559,7 +5571,7 @@ function planEtaSec(k){
   const day = state.days[k]; if(!day || !day.exercises.length) return 0;
   const key = k+'|'+dataVersion;
   if(planEtaCache[k] && planEtaCache[k].key===key) return planEtaCache[k].sec;
-  let sec = 0;
+  let sec = 0; conta.durata++;
   try{ sec = estimateRemaining(sessionExercisesFor(day, true), Date.now(), {all:true}).total; }catch(e){ console.error('planEta', e); }
   planEtaCache[k] = { key, sec };
   return sec;
@@ -6257,7 +6269,9 @@ function renderSessionList(){
       </div>
       ${exx.subOf ? `<div class="sess-sub-of">${ic('swap')}<span>al posto di ${escapeHtml(exx.subOf)}</span></div>` : ''}
       ${exx.hint && ei===currentIdx ? `<div class="hint-chip${exx.hintKind==='stall'?' stall':''}">${ic(exx.hintKind==='stall'?'alert':'trending')}<span>${escapeHtml(exx.hint)}${hintCanApply(exx) ? `<button type="button" class="hint-apply" data-ei="${ei}">Applica</button>` : (exx.hintApplied ? '<em class="hint-done">applicato</em>' : '')}</span></div>` : ''}
-      <div class="sess-ex-sub">
+      ${/* menu ⋯ (muscoli, tipo, per lato, recupero, sposta, superset): si crea solo quando è aperto. Prima c'era sempre,
+         nascosto: con 18 esercizi 54 tendine e 504 voci da creare a ogni «Inizia» */''}
+      ${sessMetaOpen.has(sk(exx)) ? `<div class="sess-ex-sub">
         <select class="sess-muscle-select" data-ei="${ei}">
           ${MUSCLES.map(m=>`<option ${m===exx.muscle?'selected':''}>${m}</option>`).join('')}
         </select>
@@ -6276,7 +6290,7 @@ function renderSessionList(){
           ${ei<session.exercises.length-1 ? `<button type="button" class="sess-side-btn sess-link${exx.linkNext?' on':''}" data-ei="${ei}" aria-pressed="${!!exx.linkNext}">${ic('link')}${exx.linkNext ? 'Staccalo dal successivo' : 'Superset col successivo'}</button>` : ''}
           <button type="button" class="sess-side-btn sess-add-grp" data-ei="${ei}">${ic('plus')}Esercizio in superset</button>
         </div>
-      </div>
+      </div>` : ''}
       <div class="sess-col-head"><span>Serie</span><span>Prec</span><span>Kg</span><span>${T.short}${sideOf(exx)?'/lato':''}</span>${state.settings.showRpe?'<span>RPE</span>':''}<span></span></div>
       ${rows}
       <div class="sess-set-actions">
@@ -6641,8 +6655,8 @@ function openAddSheet(mode){
 function startFreeSession(){
   if(session) return;
   subAdd = { free:true }; subEx = null;
-  document.getElementById('subSheetTitle').textContent = 'Aggiungi esercizio';
-  document.getElementById('subSheetSub').textContent = 'Allenamento libero · parte quando scegli il primo';
+  document.getElementById('subSheetTitle').textContent = 'Allenamento libero';
+  document.getElementById('subSheetSub').textContent = 'Parte quando scegli il primo esercizio';
   document.getElementById('subNote').textContent = 'Fuori scheda: la giornata che tocca non cambia. Chiudi senza scegliere e non parte niente.';
   subCands = subCandidates({ name:'', muscle:null, exId:null, sets:[] });
   renderSubList('Fatti di recente');
@@ -7431,7 +7445,7 @@ function statsWhenIdle(){
 /* sezione aperta: ridisegnata solo se i dati sono cambiati da quando l'hai vista */
 function renderStatsIfStale(t){ if(isStatsTab(t) && statsDone[t]!==statsSig()) renderStatsTab(t); }
 function renderStatsTab(t){
-  statsDone[t] = statsSig();
+  statsDone[t] = statsSig(); conta.stats++;
   if(t==='month'){
     renderCalendar();
     const idx = exerciseIndex();
@@ -9285,7 +9299,7 @@ function updateSheetDisplay(){
    grafica, e da nascosto faceva ridisegnare la pagina 60 volte al secondo per tutto il recupero (batteria) */
 let timerFlowKey = null, timerFlowAnims = [], ringAnim = null;
 function timerFlow(pct){
-  const ring = document.getElementById('timerRing'), bar = document.getElementById('tbProg');
+  const bar = document.getElementById('tbProg');
   const live = timer.running && timer.endAt && motionOK();
   const key = live ? timer.endAt+'|'+timer.duration : 'p'+pct.toFixed(3);
   if(key===timerFlowKey) return;
@@ -9730,7 +9744,7 @@ function syncNoteChange(key){
 function syncSoon(ms){ clearTimeout(syncTimer); syncTimer = setTimeout(()=> syncNow(), ms==null ? 2500 : ms); }
 /* qualcosa aperto o a metà (un pannello di modifica, una conferma, un campo in cui stai scrivendo): i dati
    dell'altro dispositivo non devono ridisegnare l'app sotto le dita. Si rimanda di poco */
-const SYNC_BUSY_SEL = '#editSessSheet.show, #exSheet.show, #subSheet.show, #aiSheet.show, #setTypeOverlay.show, #confirmOverlay.show';
+const SYNC_BUSY_SEL = '#editSessSheet.show, #exSheet.show, #subSheet.show, #aiSheet.show, #setTypeOverlay.show, #confirmOverlay.show, #newDaySheet.show';
 function syncUiBusy(){
   if(planEditMode || document.querySelector(SYNC_BUSY_SEL)) return true;
   const a = document.activeElement;

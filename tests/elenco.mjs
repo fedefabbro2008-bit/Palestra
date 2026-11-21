@@ -17,6 +17,8 @@ export const TESTS = [
   { nome: 'altri-tocchi', file: 'ui/altri-tocchi.test.js', cosa: 'Altri allenamenti: il libero parte solo scegliendo il primo esercizio, la zona si vede su schermi bassi, «+ Giornata» non avvia niente' },
   { nome: 'giornate-nome-intero', file: 'ui/giornate-nome-intero.test.js', cosa: 'giornate in alto: nome sempre intero anche con 4-5 giornate o su telefono stretto' },
   { nome: 'tastiera-foglio', file: 'ui/tastiera-foglio.test.js', cosa: 'tastiera nel foglio Nuova giornata: i campi in basso restano sopra la tastiera' },
+  { nome: 'ricalcoli-evitati', file: 'ui/ricalcoli-evitati.test.js', cosa: 'tocco su una giornata senza ricalcoli; menu ⋯ dell\'esercizio creato solo quando si apre' },
+  { nome: 'dati-vecchi', file: 'ui/dati-vecchi.test.js', cosa: 'dati di versioni vecchie: giornata vuota, libero vuoto salvato, storico lungo' },
   { nome: 'allenamento-strumenti', file: 'ui/allenamento-strumenti.test.js', cosa: 'consiglio, drop set, avvicinamento, sostituisci, recupero, termina' },
   { nome: 'allenamento-sposta-superset', file: 'ui/allenamento-sposta-superset.test.js', cosa: 'sposta, superset, aggiungi, allenamento libero, fine = ultima spunta' },
   { nome: 'serie-successiva', file: 'ui/serie-successiva.test.js', cosa: 'la serie illuminata va sempre avanti' },

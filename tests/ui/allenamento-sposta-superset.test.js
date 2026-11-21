@@ -54,7 +54,7 @@ const meta = async (p, i) => { await p.click(`#sessList .sess-meta-btn[data-ei="
   await p.click('#sessFinishBtn'); await p.waitForTimeout(300); await p.click('#confirmYes'); await p.waitForTimeout(400);
   // 7. allenamento libero
   if (!(await p.isVisible('#freeOpenBtn'))) { await p.click('#moreBtn'); await p.waitForTimeout(300); } await p.click('#freeOpenBtn'); await p.waitForTimeout(400);
-  check(/Aggiungi esercizio/.test(await p.textContent('#subSheetTitle')), 'Allenamento libero: si apre subito l\'elenco');
+  check(/Allenamento libero/.test(await p.textContent('#subSheetTitle')), 'Allenamento libero: si apre subito l\'elenco, col suo titolo');
   await p.click('#subSheetClose'); await p.waitForTimeout(300);
   check(!(await p.evaluate(() => localStorage.getItem('palestra:session'))) && await p.isVisible('#planView'), 'chiuso senza scegliere: allenamento libero vuoto annullato');
   if (!(await p.isVisible('#freeOpenBtn'))) { await p.click('#moreBtn'); await p.waitForTimeout(300); } await p.click('#freeOpenBtn'); await p.waitForTimeout(400);

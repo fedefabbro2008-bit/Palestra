@@ -4,6 +4,8 @@
 // - l'allenamento libero parte solo quando scegli il primo esercizio (dall'elenco, con Invio o con un nome scritto a mano):
 //   prima c'è solo l'elenco sopra la schermata di oggi, e chiudendolo non è partito niente;
 // - «+ Giornata» non avvia mai un allenamento, nemmeno scegliendo un esercizio, e Annulla lascia la zona aperta;
+// - i due elenchi hanno titoli diversi («Allenamento libero» / «Aggiungi esercizio»); un libero vuoto di una versione
+//   vecchia all'apertura si scarta;
 // - su uno schermo basso (come l'anteprima nell'app di Claude, 390×655) aprendo la zona la pagina scorre da sola:
 //   prima la zona si apriva sotto la barra in basso e «+ Giornata» non si vedeva (scorreva la finestra, che è ferma)
 const { open } = require('./lib');
@@ -30,7 +32,7 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   await p.waitForTimeout(400); await p.tap('#freeOpenBtn'); await p.waitForTimeout(400);
   const pk = await p.evaluate(() => ({ title: document.getElementById('subSheetTitle').textContent, sub: document.getElementById('subSheetSub').textContent, note: document.getElementById('subNote').textContent, show: document.getElementById('subSheet').classList.contains('show') }));
   const s2 = await sess();
-  check(pk.show && !s2.ls && !s2.view && s2.plan && /parte quando scegli il primo/.test(pk.sub) && /non parte niente/.test(pk.note), `libero: si apre l'elenco («${pk.sub}»), nessun allenamento finché non scegli`);
+  check(pk.show && !s2.ls && !s2.view && s2.plan && pk.title === 'Allenamento libero' && /Parte quando scegli il primo esercizio/.test(pk.sub) && /non parte niente/.test(pk.note), `libero: si apre l'elenco «${pk.title}» («${pk.sub}»), nessun allenamento finché non scegli`);
   await p.tap('#subSheetClose'); await p.waitForTimeout(400);
   const s3 = await sess();
   check(!s3.ls && s3.plan && !s3.view, 'chiuso senza scegliere: nessun allenamento');
@@ -59,13 +61,19 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   // «+ Giornata» → selettore → esercizio: nessun allenamento; Annulla: la zona resta aperta com'era
   await openMore(); await p.tap('#newMainDayBtn'); await p.waitForTimeout(500);
   await p.tap('#ndAddBtn'); await p.waitForTimeout(400);
-  const sub = await p.textContent('#subSheetSub');
+  const sub = await p.textContent('#subSheetSub'), subTitle = await p.textContent('#subSheetTitle');
+  check(subTitle === 'Aggiungi esercizio' && subTitle !== pk.title, `selettore della giornata nuova: titolo diverso dal libero («${subTitle}» / «${pk.title}»)`);
   await p.tap('#subList .sub-opt >> nth=0'); await p.waitForTimeout(400);
   const s7 = await sess(), nd = await p.evaluate(() => ({ open: document.getElementById('newDaySheet').classList.contains('show'), n: document.querySelectorAll('#ndList .nd-ex').length }));
   check(!s7.ls && nd.open && nd.n === 1 && !/Allenamento libero/.test(sub), `«+ Giornata» e un esercizio scelto: resta la programmazione (${nd.n} esercizio, sottotitolo «${sub}»), nessun allenamento`);
   await p.tap('#ndCancel'); await p.waitForTimeout(300); await p.tap('#confirmYes'); await p.waitForTimeout(400);
   const back = await p.evaluate(() => ({ sheet: document.getElementById('newDaySheet').classList.contains('show'), area: !document.getElementById('moreArea').hidden }));
   check(!back.sheet && back.area, 'Annulla: si torna alla zona «Altri allenamenti» ancora aperta');
+  // allenamento libero vuoto salvato da una versione precedente (partiva prima di scegliere): all'apertura si scarta
+  await p.evaluate(() => localStorage.setItem('palestra:session', JSON.stringify({ id: 'vecchio', dayKey: 'free', dayName: 'Allenamento libero', startedAt: Date.now() - 60000, note: '', exercises: [] })));
+  await p.reload(); await p.waitForTimeout(600);
+  const s8 = await sess();
+  check(!s8.ls && !s8.view && s8.plan, 'allenamento libero vuoto di una versione vecchia: all\'apertura si scarta, si resta nella schermata di oggi');
   const errs = A.errors.filter((e) => !/404|Service Worker/.test(e));
   check(!errs.length, 'nessun errore ' + errs.join(' | '));
 

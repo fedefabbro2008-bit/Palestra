@@ -34,10 +34,13 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   await p.waitForTimeout(900);
   check(/720 kg/.test(await p.evaluate(() => document.getElementById('sessMeta').textContent)), 'peso sollevato contando i due lati: 720 kg (10×12×3×2)');
   // 3. stesso allenamento: tolgo "per lato" a un esercizio che lo ha nel nome? (Lunedì non ne ha: lo provo su Alzate, da ⋯)
-  await p.click(`.sess-meta-btn[data-ei="${ei}"]`).catch(() => {});
+  //    l'esercizio finito è chiuso: si riapre toccandolo, poi ⋯ (il menu si crea solo quando lo apri)
+  const shut = p.locator('.sess-ex.collapsed', { has: p.locator(`.sess-name-input[data-ei="${ei}"]`) });
+  if (await shut.count()) { await shut.locator('.sess-ex-head').click({ position: { x: 20, y: 12 } }); await p.waitForTimeout(200); }
+  await p.click(`.sess-meta-btn[data-ei="${ei}"]`);
   await p.waitForTimeout(150);
   const sideBtn = await p.$(`.sess-side-btn[data-ei="${ei}"]`);
-  check(!!sideBtn && /Per lato/.test(await sideBtn.textContent()), 'menu ⋯: pulsante «Per lato»');
+  check(!!sideBtn && await sideBtn.isVisible() && /Per lato/.test(await sideBtn.textContent()), 'menu ⋯: pulsante «Per lato» (visibile)');
   await p.click('#sessFinishBtn'); await p.waitForTimeout(300);
   if (await p.isVisible('#confirmOverlay.show')) await p.click('#confirmYes');
   await p.waitForTimeout(400);

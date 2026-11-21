@@ -37,6 +37,11 @@ Regole:
   ricontrollano a ogni chiamata; sopra c'è l'indice per esercizio `exLookup()` (entriesOf, findPrevEntry, knownWeights,
   stallInfo), che si rifà quando cambia l'elenco o `dataVersion`. Se cambi una voce di un allenamento già salvato
   (nome, id, serie), salvala con `persist('logs')` prima di leggere o ridisegnare.
+- `dataVersion` cresce solo se cambiano i dati: salvare le impostazioni cambiando solo la giornata scelta (`lastDay`) o
+  la data dell'ultimo export non lo fa crescere (`settingsSig`), così toccare una giornata non rifà indice, durate
+  previste e statistiche. `window.__conta` conta i ricalcoli pesanti per le prove (`ricalcoli-evitati`).
+- In allenamento il menu ⋯ di un esercizio (tendine di muscoli e tipo, sposta, superset) si crea solo quando è aperto
+  (`sessMetaOpen`): le prove che lo usano devono aprirlo prima.
 - `fonts/`: i caratteri (nome con l'impronta del contenuto: un carattere nuovo ha un nome nuovo). `sw.js` li salva
   all'installazione e li serve dalla copia.
 - `sw.js`: la pagina si apre sempre dalla copia salvata (subito, anche con rete lentissima); in sottofondo chiede al
