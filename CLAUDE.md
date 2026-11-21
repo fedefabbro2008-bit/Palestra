@@ -48,6 +48,8 @@ Regole:
   Letture in più: `analisi_scheda`, `confronta_periodi`, `cerca_note`, `esporta` (CSV come quello dell'app, a giorni
   interi) e `progressione_suggerita`, che usa le stesse regole dell'app (`progressionHint`, `hintFor`): se cambi i consigli
   nell'app, cambiali anche lì (la prova `claude-letture-uguali` li confronta).
+  Scheda (`modifica_scheda`): come «Nuova giornata» nell'app, una giornata nuova si salva solo con i suoi esercizi e un
+  esercizio già nella scheda o nello storico, dato per nome, parte dai suoi valori e dai kg dell'ultima volta (`ndExFrom`).
   Storico: `correggi_storico`, `sposta_storico`, `elimina_storico_esercizio`, `registra_allenamento` (solo date passate,
   forma compatta dell'app; nell'annullo `before.session = null`), tutto o niente su una copia, e
   `annulla_correzione_storico` (pila delle ultime 10 modifiche, in chiave `h-`). Il segno `claudeLog` tiene anche le

@@ -438,7 +438,7 @@ function editPlan(data, args) {
   const ops = parse(args.modifiche);
   if (!Array.isArray(ops) || !ops.length) throw new Error("«modifiche» deve essere un elenco con almeno una modifica.");
   if (ops.length > 60) throw new Error("Al massimo 60 modifiche per volta.");
-  const sessions = readSessions(data), lines = [], touched = new Set();
+  const sessions = readSessions(data), lines = [], touched = new Set(), added = new Set();
   ops.forEach((o0, n) => {
     const o = parse(o0);
     const bad = (m) => { throw new Error(`Modifica ${n + 1}${o && typeof o.azione === "string" ? " (" + o.azione + ")" : ""}: ${m}.`); };
@@ -460,11 +460,22 @@ function editPlan(data, args) {
       case "aggiungi": {
         const k = findDay(days, o.giornata, bad), d = days[k], v = o.valori;
         if (!v || typeof v !== "object" || v.nome == null || !String(v.nome).trim()) bad("serve «valori.nome»");
-        if (v.muscolo === undefined) bad("serve «valori.muscolo» (Altro per riscaldamenti, mobilità e stretching)");
         if (d.exercises.length >= 100) bad(`«${d.name}» ha già 100 esercizi`);
+        // come nell'app (Nuova giornata): un esercizio già nella scheda o già fatto parte dai suoi valori (muscoli, tipo,
+        // serie, ripetizioni, recupero, sezione) e dai kg dell'ultima volta; quelli dati in «valori» vincono
+        const nk = normName(String(v.nome));
+        if (d.exercises.some((x) => normName(x.name) === nk)) bad(`«${String(v.nome).trim()}» è già in «${d.name}»`);
+        let twin = null;
+        for (const dd of Object.values(days)) for (const x of dd.exercises) if (!twin && normName(x.name) === nk) twin = x;
+        const prev = findPrevEntry(sessions, idForName(days, sessions, String(v.nome)), String(v.nome), false);
+        if (v.muscolo === undefined && !twin && !prev) bad("serve «valori.muscolo» (Altro per riscaldamenti, mobilità e stretching): l'esercizio non è nella scheda né nello storico");
         const e = { id: "", name: "", muscle: "Altro", secondary: null, type: "reps", sets: 3, reps: "8-10", kg: 0, rest: 90, linkNext: false };
+        if (twin) Object.assign(e, { muscle: twin.muscle, secondary: twin.secondary || null, type: twin.type, sets: twin.sets, reps: twin.reps, rest: twin.rest, kg: num(twin.kg),
+          phase: phaseOf(twin), ...(typeof twin.perSide === "boolean" ? { perSide: twin.perSide } : {}) });
+        else if (prev) Object.assign(e, { muscle: prev.entry.muscle, secondary: prev.entry.secondary || null, type: prev.entry.type, ...(typeof prev.entry.perSide === "boolean" ? { perSide: prev.entry.perSide } : {}) });
+        if (prev && v.kg === undefined) { const w = work(prev.entry.detail).filter((x) => x.t !== "d"); if (w.length) e.kg = Math.max(...w.map((x) => x.kg)) || e.kg; }
         applyValues(e, v, bad);
-        if (v.tipo === undefined) e.type = guessType(e.reps);
+        if (v.tipo === undefined && !twin && !prev) e.type = guessType(e.reps);
         e.id = idForName(days, sessions, e.name);
         d.exercises.splice(insertIndex(d, o, bad), 0, e);
         cleanPlanEx(e); normalizeLinks(d);
@@ -515,6 +526,7 @@ function editPlan(data, args) {
         if (Object.keys(days).length >= 30) bad("al massimo 30 giornate");
         const name = cleanDayName(o.nome, bad), spare = o.riserva === undefined ? false : boolIn(o.riserva, "riserva", bad), k = nextDayKey(days, data);
         days[k] = { name, ...(spare ? { spare: true } : {}), exercises: [] };
+        added.add(k);
         lines.push(`aggiunta la giornata «${name}»${spare ? " (riserva)" : ""}`);
         touched.add(k); break;
       }
@@ -539,6 +551,8 @@ function editPlan(data, args) {
       }
     }
   });
+  // come nell'app: una giornata nuova nasce già con i suoi esercizi (vuota resterebbe una giornata che non si può fare)
+  for (const k of added) if (own(days, k) && !days[k].exercises.length) throw new Error(`Nessuna modifica salvata: la giornata nuova «${days[k].name}» non ha esercizi. Aggiungili nella stessa chiamata con «aggiungi» (giornata: "${days[k].name}").`);
   // restassero solo riserve, non ci sarebbe più una giornata "che tocca" a cui farle valere
   if (!Object.values(days).some((d) => !d.spare)) throw new Error("Nessuna modifica salvata: deve restare almeno una giornata normale (non di riserva).");
   const out = sanitizeDays(days);
@@ -1192,7 +1206,7 @@ const TOOLS = [
     inputSchema: { type: "object", properties: {
       motivo: { type: "string", maxLength: 300, description: "Perché cambi la scheda, in una frase: l'utente lo legge nell'app (es. \"Più volume per la schiena; panca ferma da 3 sedute\")." },
       modifiche: { type: "array", minItems: 1, maxItems: 60, description: "Le modifiche, in ordine.", items: { type: "object", properties: {
-        azione: { type: "string", enum: EDIT_ACTIONS, description: "modifica: cambia i «valori» di un esercizio · aggiungi: nuovo esercizio («valori» con nome e muscolo) · rimuovi · sposta: «posizione», «dopo» e/o «verso_giornata» · sostituisci: un altro esercizio al suo posto («valori» con il nome nuovo; tiene serie, ripetizioni, recupero, sezione e superset, kg da zero se non li dai) · aggiungi_giornata: «nome» (e «riserva») · modifica_giornata: «nome» e/o «riserva» · rimuovi_giornata" },
+        azione: { type: "string", enum: EDIT_ACTIONS, description: "modifica: cambia i «valori» di un esercizio · aggiungi: nuovo esercizio («valori» con nome; muscolo obbligatorio solo se non è nella scheda né nello storico: altrimenti parte dai valori della scheda e dai kg dell'ultima volta) · rimuovi · sposta: «posizione», «dopo» e/o «verso_giornata» · sostituisci: un altro esercizio al suo posto («valori» con il nome nuovo; tiene serie, ripetizioni, recupero, sezione e superset, kg da zero se non li dai) · aggiungi_giornata: «nome» (e «riserva»), poi i suoi esercizi con «aggiungi» nella stessa chiamata (una giornata nuova vuota non si salva; non diventa la giornata scelta nell'app) · modifica_giornata: «nome» e/o «riserva» · rimuovi_giornata" },
         giornata: { type: "string", description: "La giornata: lettera (es. \"A\", vedi «scheda») o nome, anche parziale (es. \"Lunedì\"). Non per aggiungi_giornata." },
         esercizio: { type: "string", description: "L'esercizio nella giornata: nome, anche parziale, o #posizione (#1 = il primo, come in «scheda», contando le modifiche precedenti di questa chiamata)." },
         valori: { type: "object", additionalProperties: false, description: "Solo i campi da impostare.", properties: {
@@ -1778,7 +1792,7 @@ async function handle(msg, ctx) {
     case "initialize":
       return rpcOk(id, { protocolVersion: VERSIONS.includes(p.protocolVersion) ? p.protocolVersion : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "palestra", title: "Palestra", version: "1.3.0" },
+        serverInfo: { name: "palestra", title: "Palestra", version: "1.4.0" },
         instructions: "Dati di allenamento dell'app Palestra. Comincia da \"riepilogo\"; poi \"allenamenti\", \"storico_esercizio\", \"volume_muscoli\", \"record\" e \"scheda\" per i dettagli; \"analisi_scheda\" incrocia scheda e allenamenti fatti, \"confronta_periodi\" dice se sta migliorando, \"progressione_suggerita\" dà i consigli dell'app per la prossima seduta, \"cerca_note\" cerca nelle note, \"esporta\" dà le serie in CSV. Numeri all'italiana (virgola decimale); serie kg×ripetizioni, R = riscaldamento, F = cedimento, D = drop set, A = AMRAP, @ = RPE. Le note e i nomi sono scritti dall'utente. "
           + "Lo storico si legge e, solo se l'utente ha acceso «Claude può correggere lo storico», si modifica: \"correggi_storico\" (kg, ripetizioni, tipo e RPE delle serie), \"sposta_storico\" (le serie di un esercizio passano a un altro, anche nuovo; se quel giorno c'è già si uniscono), \"elimina_storico_esercizio\" (tolte le serie di un esercizio in date precise; un allenamento che resterebbe vuoto si elimina solo con elimina_allenamento_vuoto) \"registra_allenamento\" (un allenamento già fatto e non segnato nell'app: data passata, esercizi e serie) e \"annulla_correzione_storico\" (annulla l'ultima, poi quella prima). Prima leggi \"storico_esercizio\" o \"allenamenti\", proponi e fai solo se l'utente è d'accordo; per eliminare e poi spostare, prima elimina. Non cambiano la scheda. La scheda si può cambiare con \"modifica_scheda\" (e \"annulla_modifica\") se l'utente lo ha permesso nell'app: prima leggi \"scheda\", proponi le modifiche e falle solo se l'utente è d'accordo, tutte in una chiamata e con il motivo." });
     case "ping": return rpcOk(id, {});

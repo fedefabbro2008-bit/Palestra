@@ -34,7 +34,7 @@ const [, w1] = await key({ action: 'write', on: true });
 check(w1.write === true, 'permesso acceso dall\'app');
 const [, g1] = await key(); check(g1.write === true && g1.token === on.token, 'GET riporta write=true, stessa chiave');
 // errori: niente salvato
-const rev0 = (await blob()).rev;
+const rev0 = (await blob()).rev, latName = (await blob()).days.A.exercises.find(e => e.name.startsWith('Lat machine')).name;
 for (const [what, args, rx] of [
   ['muscolo sbagliato', { motivo: 'x', modifiche: [{ azione: 'modifica', giornata: 'A', esercizio: 'Lat machine', valori: { muscolo: 'Collo' } }] }, /muscolo/],
   ['esercizio ambiguo', { motivo: 'x', modifiche: [{ azione: 'rimuovi', giornata: 'A', esercizio: 'Superset' }] }, /più esercizi/],
@@ -45,6 +45,9 @@ for (const [what, args, rx] of [
   ['seconda op non valida: anche la prima non si salva', { motivo: 'x', modifiche: [{ azione: 'rimuovi', giornata: 'A', esercizio: 'Face pull' }, { azione: 'aggiungi', giornata: 'A', valori: { nome: 'Senza muscolo' } }] }, /muscolo/],
   ['togliere tutte le giornate normali', { motivo: 'x', modifiche: [{ azione: 'rimuovi_giornata', giornata: 'A' }, { azione: 'rimuovi_giornata', giornata: 'B' }, { azione: 'rimuovi_giornata', giornata: 'C' }] }, /giornata normale/],
   ['azione inventata', { motivo: 'x', modifiche: [{ azione: 'cancella_storico' }] }, /azione/],
+  ['giornata nuova senza esercizi (come nell\'app)', { motivo: 'x', modifiche: [{ azione: 'aggiungi_giornata', nome: 'Domenica vuota' }] }, /non ha esercizi/],
+  ['esercizio già nella giornata', { motivo: 'x', modifiche: [{ azione: 'aggiungi', giornata: 'A', valori: { nome: latName } }] }, /già in/],
+  ['esercizio mai visto senza muscolo', { motivo: 'x', modifiche: [{ azione: 'aggiungi', giornata: 'A', valori: { nome: 'Esercizio mai visto' } }] }, /muscolo/],
 ]) { const x = await call('modifica_scheda', args); check(x.err && rx.test(x.t), `${what} -> errore: ${x.t.slice(0, 110)}`); }
 check((await blob()).rev === rev0, 'dopo gli errori il server è com\'era (rev ' + rev0 + ')');
 const before = await blob();
@@ -93,6 +96,14 @@ const b4 = await blob(), A4 = b4.days.A.exercises;
 check(!x1.err && !x2.err && A4.find(e => e.name.startsWith('Lat machine')).rest === 101 && A4.find(e => e.name.startsWith('Alzate laterali')).rest === 102 && b4.rev === b3.rev + 2, 'due modifiche insieme: entrambe salvate, rev +2');
 { const x = await call('modifica_scheda', { motivo: 'testo JSON', modifiche: JSON.stringify([{ azione: 'modifica', giornata: 'A', esercizio: 'Barchetta', valori: JSON.stringify({ ripetizioni: '12' }) }]) });
   check(!x.err && /ripetizioni 10 → 12/.test(x.t), 'modifiche mandate come testo JSON: accettate'); await call('annulla_modifica'); }
+// giornata nuova come nell'app: un esercizio della scheda dato solo per nome parte dai suoi valori e dai kg dell'ultima volta
+{ const b5 = await blob(), src = b5.days.A.exercises.find(e => e.name === latName);
+  let last = null; Object.keys(b5.logs).sort().forEach(iso => b5.logs[iso].forEach(s => s.entries.forEach(en => { if (en.exId === src.id) { const w = en.detail.filter(d => !d.w && d.t !== 'd'); if (w.length) last = Math.max(...w.map(d => d.kg)); } })));
+  const x = await call('modifica_scheda', { motivo: 'giornata nuova', modifiche: [{ azione: 'aggiungi_giornata', nome: 'Domenica · Prova nome' }, { azione: 'aggiungi', giornata: 'Domenica', valori: { nome: latName } }, { azione: 'aggiungi', giornata: 'Domenica', valori: { nome: 'Crunch inventato', muscolo: 'Addominali' } }] });
+  const nd = Object.values((await blob()).days).find(d => d.name === 'Domenica · Prova nome'), e = nd && nd.exercises.find(y => y.name === latName);
+  check(!x.err && e && e.id === src.id && e.muscle === src.muscle && e.sets === src.sets && e.reps === src.reps && e.rest === src.rest && e.kg === (last != null ? last : src.kg),
+    `giornata nuova: «${latName}» solo per nome → stesso id, ${e && e.sets}×${e && e.reps}, recupero ${e && e.rest} s, ${e && e.kg} kg (ultima volta ${last})`);
+  await call('annulla_modifica'); }
 // permesso spento: rifiuta subito
 await key({ action: 'write', on: false });
 r = await call('modifica_scheda', { motivo: 'x', modifiche: [{ azione: 'modifica', giornata: 'A', esercizio: 'Lat machine', valori: { serie: 5 } }] });
