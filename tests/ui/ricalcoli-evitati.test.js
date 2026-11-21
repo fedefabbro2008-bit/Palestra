@@ -14,6 +14,7 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   // Poi ogni giornata e ogni sezione viste una volta (la durata prevista di ogni giornata si calcola la prima volta che la scegli)
   await p.waitForTimeout(4000);
   const keys = await p.evaluate(() => [...document.querySelectorAll('#dayPills .day-pill[data-k]')].map((b) => b.dataset.k));
+  const due = await p.evaluate(() => document.querySelector('#dayPills .day-pill.active').dataset.k);   // quella che tocca
   for (const k of keys) { await p.click(`#dayPills .day-pill[data-k="${k}"]`); await p.waitForTimeout(150); }
   for (const t of ['stats', 'month', 'plan', 'workout']) { await tab(p, t); await p.waitForTimeout(150); }
   await p.waitForTimeout(4500);
@@ -27,6 +28,15 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   check(lastDay === keys[3 % keys.length], 'la giornata scelta si salva (' + lastDay + ')');
   check(c1.stats === c0.stats && c1.indice === c0.indice && c1.durata === c0.durata,
     `4 tocchi sulle giornate e giro delle sezioni: niente rifatto (statistiche ${c0.stats}→${c1.stats}, indice ${c0.indice}→${c1.indice}, durate ${c0.durata}→${c1.durata}; salvataggi che cambiano i dati: «${c0.dati}» → «${c1.dati}»)`);
+  // riapertura normale dell'app (la giornata salvata è già quella che tocca, quindi all'apertura le impostazioni non
+  // cambiano): già il primo tocco su una giornata non rifà niente
+  await p.click(`#dayPills .day-pill[data-k="${due}"]`); await p.waitForTimeout(300);
+  await p.reload(); await p.waitForTimeout(4000);
+  const r0 = await conta();
+  const other = await p.evaluate(() => [...document.querySelectorAll('#dayPills .day-pill[data-k]:not(.active)')][0].dataset.k);
+  await p.click(`#dayPills .day-pill[data-k="${other}"]`); await p.waitForTimeout(400);
+  const r1 = await conta();
+  check(r1.indice === r0.indice && r1.dati === r0.dati, `riaperta l'app, primo tocco su una giornata: indice ${r0.indice}→${r1.indice}, salvataggi che cambiano i dati «${r0.dati}» → «${r1.dati}»`);
   // in allenamento: nessun menu ⋯ creato finché non lo apri
   await p.click('#startSessionBtn'); await p.waitForTimeout(500);
   const m0 = await p.evaluate(() => ({ menus: document.querySelectorAll('#sessList .sess-ex-sub').length, selects: document.querySelectorAll('#sessList select').length, cards: document.querySelectorAll('#sessList .sess-ex').length }));
@@ -43,7 +53,7 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   if (await p.isVisible('#confirmOverlay.show')) { await p.click('#confirmYes'); await p.waitForTimeout(300); }
   await tab(p, 'stats'); await p.waitForTimeout(300);
   const c2 = await conta();
-  check(c2.indice > c1.indice && c2.stats > c1.stats, `allenamento salvato: indice (${c1.indice}→${c2.indice}) e statistiche (${c1.stats}→${c2.stats}) rifatti`);
+  check(c2.indice > r1.indice && c2.stats > r1.stats, `allenamento salvato: indice (${r1.indice}→${c2.indice}) e statistiche (${r1.stats}→${c2.stats}) rifatti`);
   const errs = A.errors.filter((e) => !/404|Service Worker/.test(e));
   check(!errs.length, 'nessun errore ' + errs.join(' | '));
   await A.browser.close();

@@ -3253,6 +3253,7 @@ function loadAll(){
   currentDay = dayAfterLast();   // ogni volta che apri l'app: la giornata dopo l'ultima che hai fatto
   state.settings.lastDay = currentDay;
   persist('settings');
+  dataSetSig = settingsSig();   // impostazioni lette: il primo tocco su una giornata non conta come dati cambiati
 
   applyPrefs();
   renderAll();
