@@ -3870,14 +3870,15 @@ let dayInd = null;
 function placeDayInd(wrap, animate){
   if(!dayInd){ dayInd = document.createElement('i'); dayInd.className = 'dp-ind'; dayInd.setAttribute('aria-hidden', 'true'); dayInd.innerHTML = '<i class="lq-e lq-l"></i><i class="lq-e lq-m"></i><i class="lq-e lq-r"></i>'; }
   if(dayInd.parentNode!==wrap){ wrap.appendChild(dayInd); animate = false; }
+  // le giornate ci stanno senza scorrere? Si misura sempre, anche senza una giornata scelta in alto (versione corta
+  // scelta): prima restava la misura vecchia e una giornata in più usciva dalla scheda
+  const pills = [...wrap.querySelectorAll('.day-pill:not(.add-day-pill)')];
+  if(wrap.offsetWidth) wrap.classList.toggle('fits', pills.length ? pills[pills.length-1].offsetLeft + pills[pills.length-1].offsetWidth <= wrap.clientWidth + 1 : true);
+  const fits = wrap.classList.contains('fits');
   const a = wrap.querySelector('.day-pill.active');
   if(!a || !a.offsetWidth){ wrap.classList.remove('has-ind'); dayInd._on = false; return; }
   const was = dayInd._on; dayInd._on = true;
   wrap.classList.add('has-ind');
-  const pills = [...wrap.querySelectorAll('.day-pill:not(.add-day-pill)')];
-  // misure prima: la lente nuova non deve far sembrare che le giornate non ci stiano
-  const fits = pills.length ? pills[pills.length-1].offsetLeft + pills[pills.length-1].offsetWidth <= wrap.clientWidth + 1 : true;
-  wrap.classList.toggle('fits', fits);
   const wall = fits ? null : a===pills[0] ? 'l' : a===pills[pills.length-1] ? 'r' : null;
   edgeMove(dayInd, { l:a.offsetLeft, t:a.offsetTop, w:a.offsetWidth, h:a.offsetHeight }, animate && was, wall);
   if(!fits){
@@ -3979,7 +3980,7 @@ function setMoreOpen(open, anim){
 document.getElementById('moreBtn').addEventListener('click', ()=> setMoreOpen(!moreOpen, true));
 /* NUOVA GIORNATA: prima si programma (nome ed esercizi con serie, ripetizioni e kg), poi «Crea giornata» la mette
    tra le giornate in alto (o tra le versioni corte), già pronta. Nessun allenamento parte e nessuna giornata vuota resta
-   in giro se annulli. Gli esercizi si scelgono col selettore di «Sostituisci» (fatti di recente, dalla scheda, comuni,
+   in giro se annulli. La giornata scelta resta quella di prima. Gli esercizi si scelgono col selettore di «Sostituisci» (fatti di recente, dalla scheda, comuni,
    nome nuovo): quelli che hai già fatto tengono il loro id, così storico e consigli restano collegati */
 var ndDraft = null;   // { spare, exercises:[...] } mentre il foglio è aperto
 function openNewDaySheet(spare){
@@ -4070,9 +4071,8 @@ function createNewDay(){
     exercises: ndDraft.exercises.map(({x})=>{ const e = Object.assign({}, x); cleanPlanEx(e); return e; }) };
   normalizeLinks(day);
   state.days[key] = day;
-  currentDay = key; state.settings.lastDay = key;
+  // si aggiunge alla sua lista e basta: la giornata scelta (quella che tocca) resta com'era, nessun allenamento parte
   if(!persist('days')){ delete state.days[key]; return; }
-  persist('settings');
   ndDraft = null;
   document.getElementById('newDaySheet').classList.remove('show');
   renderWorkout();
@@ -4083,9 +4083,12 @@ function createNewDay(){
   } else {
     const card = document.getElementById('todayCard'), r = card.getBoundingClientRect(), top = parseFloat(getComputedStyle(document.querySelector('main')).paddingTop) || 0;
     if(r.top < top) try{ card.scrollIntoView({ block:'start', behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
+    // la riga delle giornate scorre fino a quella nuova, se non si vede
+    const w = document.getElementById('dayPills'), b = w.querySelector(`.day-pill[data-k="${CSS.escape(key)}"]`);
+    if(b && b.offsetLeft + b.offsetWidth > w.scrollLeft + w.clientWidth) try{ w.scrollTo({ left: b.offsetLeft + b.offsetWidth + 8 - w.clientWidth, behavior: noMotion() ? 'auto' : 'smooth' }); }catch(e){}
   }
   const n = day.exercises.length;
-  showToast((spare ? 'Versione corta creata' : 'Giornata creata')+': «'+splitDayName(day.name, key).key+'», '+(n===1 ? '1 esercizio' : n+' esercizi'), null, null, 3000);
+  showToast((spare ? 'Versione corta creata' : 'Giornata creata')+': «'+splitDayName(day.name, key).key+'», '+(n===1 ? '1 esercizio' : n+' esercizi')+(spare ? ' · la trovi qui tra le versioni corte' : ' · la trovi in alto tra le giornate'), null, null, 3200);
 }
 document.getElementById('newMainDayBtn').addEventListener('click', ()=> openNewDaySheet(false));
 document.getElementById('newSpareDayBtn').addEventListener('click', ()=> openNewDaySheet(true));

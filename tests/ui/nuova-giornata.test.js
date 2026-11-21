@@ -3,7 +3,8 @@
 // arrivano con serie e ripetizioni della scheda o della libreria e i kg dell'ultima volta; serie, ripetizioni e kg
 // si cambiano; «Crea» è spento finché non c'è un esercizio; Annulla con esercizi scelti chiede conferma e non crea
 // niente; la giornata creata tiene gli id degli esercizi già fatti (storico e consigli collegati) e si può iniziare;
-// il «+» in Modifica apre lo stesso foglio; Indietro chiude prima il selettore poi il foglio
+// il «+» in Modifica apre lo stesso foglio; Indietro chiude prima il selettore poi il foglio. La giornata creata
+// va nella sua lista ma NON diventa quella scelta (nessun allenamento cambia o parte)
 const { open } = require('./lib');
 const { seedLogs } = require('./seed');
 const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
@@ -16,6 +17,7 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
     rows: [...document.querySelectorAll('#ndList .nd-ex')].map((r) => ({ name: r.querySelector('.nd-txt b').textContent, sets: +r.querySelector('.nd-step b').textContent, reps: r.querySelector('input[data-f="reps"]').value, kg: r.querySelector('input[data-f="kg"]').value, musc: !!r.querySelector('select[data-f="muscle"]') })),
     create: document.getElementById('ndCreate').disabled, title: document.getElementById('ndTitle').textContent, session: !!localStorage.getItem('palestra:session') }));
 
+  const before = await p.textContent('#dayPills .day-pill.active .dp-key');
   // 1. si apre la programmazione: niente creato, nessun allenamento, «Crea» spento
   await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newMainDayBtn'); await p.waitForTimeout(500);
   let s = await st();
@@ -65,8 +67,11 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
   const pe = day && day.exercises.find((e) => e.name === pick.first), ne = day && day.exercises.find((e) => e.name === 'Spinta inventata alla macchina');
   check(!!day && !day.spare && day.name === 'Sabato · Palestra · Prova' && day.exercises.length === 2 && (!planEx || pe.id === planEx.id) && pe.sets === sets0 + 1 && ne.reps === '10-12' && ne.kg === 22.5 && ne.muscle === 'Petto' && ne.rest === 90,
     `giornata creata «${day && day.name}» con ${day && day.exercises.length} esercizi: stesso id della scheda per «${pick.first}», «Spinta inventata» Petto 3×10-12 22,5 kg, recupero 90 s`);
-  const top = await p.evaluate(() => ({ active: document.querySelector('#dayPills .day-pill.active .dp-key').textContent, sheet: document.getElementById('newDaySheet').classList.contains('show'), session: !!localStorage.getItem('palestra:session'), count: document.getElementById('planCount').textContent }));
-  check(top.active === 'Sabato' && !top.sheet && !top.session && /2 esercizi/.test(top.count), `in alto e scelta («${top.active}»), riquadro Esercizi: ${top.count}; nessun allenamento avviato`);
+  const top = await p.evaluate((k) => ({ active: document.querySelector('#dayPills .day-pill.active .dp-key').textContent, mine: !!document.querySelector(`#dayPills .day-pill[data-k="${k}"]`), mineActive: !!document.querySelector(`#dayPills .day-pill.active[data-k="${k}"]`), sheet: document.getElementById('newDaySheet').classList.contains('show'), session: !!localStorage.getItem('palestra:session') }), k);
+  check(top.mine && !top.mineActive && top.active === before && !top.sheet && !top.session, `la giornata nuova è in alto tra le giornate ma non scelta: resta «${top.active}», nessun allenamento avviato`);
+  // scelta a mano: il riquadro Esercizi ha quelli programmati e Inizia parte con quelli
+  await p.click(`#dayPills .day-pill[data-k="${k}"]`); await p.waitForTimeout(400);
+  check(/2 esercizi/.test(await p.textContent('#planCount')), 'toccata la giornata nuova: ' + (await p.textContent('#planCount')));
   await p.click('#startSessionBtn'); await p.waitForTimeout(500);
   const sess = await p.evaluate(() => JSON.parse(localStorage.getItem('palestra:session') || 'null'));
   check(sess && sess.dayKey === k && sess.exercises.map((e) => e.name).join('|') === day.exercises.map((e) => e.name).join('|'), 'Inizia allenamento: parte con gli esercizi programmati');

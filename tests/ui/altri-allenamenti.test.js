@@ -55,19 +55,23 @@ const check = (ok, what) => console.log((ok ? 'OK   ' : 'FAIL ') + what);
     const open1 = await p.evaluate(() => ({ sheet: document.getElementById('newDaySheet').classList.contains('show'), session: !!localStorage.getItem('palestra:session') }));
     check(open1.sheet && !open1.session && (await nDays()).main === d0.main, tag + '«Giornata»: si apre la programmazione della giornata, niente giornata vuota né allenamento');
     await p.tap('#ndAddBtn'); await p.waitForTimeout(400); await p.tap('#subList .sub-opt >> nth=0'); await p.waitForTimeout(300);
+    const chosen = () => p.evaluate(() => { const a = document.querySelector('#dayPills .day-pill.active, #sparePills .day-pill.active'); return a ? a.dataset.k : null; });
+    const ch0 = await chosen();
     await p.fill('#ndName', 'Sabato · Gambe leggere'); await p.tap('#ndCreate'); await p.waitForTimeout(900);
-    const d1 = await nDays(), e1 = await p.evaluate(() => { const w = document.getElementById('dayPills'), a = w.querySelector('.day-pill.active'), q = w.getBoundingClientRect(), x = a.getBoundingClientRect(), main = document.querySelector('main');
-      return { pill: a.querySelector('.dp-key').textContent, area: document.getElementById('moreArea').hidden, sheet: document.getElementById('newDaySheet').classList.contains('show'),
-        inRow: x.left >= q.left - 1 && x.right <= q.right + 1, onScreen: x.top >= (parseFloat(getComputedStyle(main).paddingTop) || 0) - 1 && x.bottom <= innerHeight, last: [...w.querySelectorAll('.day-pill[data-k]')].pop() === a, toast: document.getElementById('toastMsg').textContent }; });
-    check(d1.main === d0.main + 1 && d1.spare === d0.spare && e1.pill === 'Sabato' && e1.last && e1.inRow && e1.onScreen && e1.area && !e1.sheet && /Giornata creata/.test(e1.toast), tag + `nuova giornata: ${d0.main} → ${d1.main} giornate in alto, «${e1.pill}» in fondo alla riga, scelta e visibile senza scorrere`);
+    const d1 = await nDays(), e1 = await p.evaluate(() => { const w = document.getElementById('dayPills'), a = [...w.querySelectorAll('.day-pill[data-k]')].pop(), q = w.getBoundingClientRect(), x = a.getBoundingClientRect(), main = document.querySelector('main');
+      return { pill: a.querySelector('.dp-key').textContent, act: a.classList.contains('active'), area: document.getElementById('moreArea').hidden, sheet: document.getElementById('newDaySheet').classList.contains('show'), session: !!localStorage.getItem('palestra:session'),
+        inRow: x.left >= q.left - 1 && x.right <= q.right + 1, onScreen: x.top >= (parseFloat(getComputedStyle(main).paddingTop) || 0) - 1 && x.bottom <= innerHeight, toast: document.getElementById('toastMsg').textContent }; });
+    const ch1 = await chosen();
+    check(d1.main === d0.main + 1 && d1.spare === d0.spare && e1.pill === 'Sabato' && !e1.act && ch1 === ch0 && !e1.session && e1.inRow && e1.onScreen && e1.area && !e1.sheet && /Giornata creata.*in alto/.test(e1.toast), tag + `nuova giornata: ${d0.main} → ${d1.main} giornate in alto, «${e1.pill}» in fondo alla riga e visibile, NON scelta (resta ${ch0}), nessun allenamento`);
     // nuova versione corta: nell'elenco delle versioni corte (zona aperta), scelta, non in alto
     await p.tap('#moreBtn'); await p.waitForTimeout(400); await p.tap('#newSpareDayBtn'); await p.waitForTimeout(500);
     await p.tap('#ndAddBtn'); await p.waitForTimeout(400); await p.tap('#subList .sub-opt >> nth=0'); await p.waitForTimeout(300);
     await p.tap('#ndCreate'); await p.waitForTimeout(900);
-    const d2 = await nDays(), e2 = await p.evaluate(() => { const a = document.querySelector('#sparePills .day-pill.active'), x = a && a.getBoundingClientRect();
-      return { open: !document.getElementById('moreArea').hidden, list: document.querySelectorAll('#sparePills .day-pill').length,
-        act: a ? a.querySelector('.dp-key').textContent + ' · ' + (a.querySelector('.dp-focus') || {}).textContent : '', vis: !!x && x.top >= 0 && x.bottom <= innerHeight, topPills: document.querySelectorAll('#dayPills .day-pill[data-k]').length }; });
-    check(d2.spare === d1.spare + 1 && d2.main === d1.main && e2.open && e2.list === d2.spare && /Giorno/.test(e2.act) && e2.vis && e2.topPills === d2.main, tag + `nuova versione corta: ${d1.spare} → ${d2.spare} nell'elenco, «${e2.act}» scelta e visibile, non in alto`);
+    const d2 = await nDays(), e2 = await p.evaluate(() => { const a = [...document.querySelectorAll('#sparePills .day-pill')].pop(), x = a && a.getBoundingClientRect();
+      return { open: !document.getElementById('moreArea').hidden, list: document.querySelectorAll('#sparePills .day-pill').length, chosen: !!a && a.classList.contains('active'),
+        name: a ? a.querySelector('.dp-key').textContent + ' · ' + (a.querySelector('.dp-focus') || {}).textContent : '', vis: !!x && x.top >= 0 && x.bottom <= innerHeight, topPills: document.querySelectorAll('#dayPills .day-pill[data-k]').length }; });
+    const ch2 = await chosen();
+    check(d2.spare === d1.spare + 1 && d2.main === d1.main && e2.open && e2.list === d2.spare && /Giorno/.test(e2.name) && !e2.chosen && ch2 === ch0 && e2.vis && e2.topPills === d2.main, tag + `nuova versione corta: ${d1.spare} → ${d2.spare} nell'elenco, «${e2.name}» visibile, NON scelta (resta ${ch0}), non in alto`);
     if (motion) await p.locator('#todayCard').screenshot({ path: OUT + '/versione-corta-nuova.png' });
     const errs = A.errors.filter((e) => !/404|Service Worker/.test(e));
     check(!errs.length, tag + 'nessun errore ' + errs.join(' | '));
