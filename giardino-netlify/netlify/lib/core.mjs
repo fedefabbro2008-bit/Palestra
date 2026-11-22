@@ -37,7 +37,7 @@ export const siteUrl = (req) => (globalThis.Netlify?.env?.get("URL")) || new URL
 export const IMP_DEF = { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 19 };
 // Notifiche Telegram che si spengono dall'app (Impostazioni → Notifiche): impostazioni.notifiche = { tipo: false }, accese se
 // mancano. Le risposte ai comandi (/oggi, pulsanti) arrivano sempre, e così il messaggio di riserva da GitHub (sito fermo).
-export const NOTIFICHE = ["mattina", "sera", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"];
+export const NOTIFICHE = ["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"];
 export const notifica = (imp, tipo) => imp?.notifiche?.[tipo] !== false;
 export const vuoto = () => ({ location: null, plants: [], impostazioni: { ...IMP_DEF }, vacanza: null, eventi: [], piano_claude: null, meteo_manual: null, orti: [] });
 // campi che l'app può scrivere (pioggia_misurata e pioggia_orti li scrive solo il bot)
@@ -55,17 +55,56 @@ export async function aggiorna(st, code, fn) {
     const data = cur ? structuredClone(cur.data) : vuoto();
     const r = await fn(data);
     if (r === false) return cur;
-    data.eventi = pota(data.eventi);
+    segnaInizi(data);
+    data.eventi = pota(data.eventi, data.plants);
     const next = { rev: (cur?.rev || 0) + 1, updatedAt: Date.now(), data };
     const res = await st.setJSON("d-" + code, next, cur?.etag ? { onlyIfMatch: cur.etag } : { onlyIfNew: true });
     if (!res || res.modified !== false) return { ...next, etag: res?.etag };
   }
   throw new Error("Troppe modifiche nello stesso momento: riprova.");
 }
-export function pota(ev) {
-  const lim = M.addDays(M.isoDate(new Date()), -400);
+// Diario del server: 400 giorni e al massimo 3000 eventi. Quello che esce resta contato nell'acqua di tutta la vita della
+// pianta (vita_vecchia: innaffiature e pioggia presa), così il totale non torna indietro.
+export function pota(ev, piante) {
+  const oggi = M.isoDate(new Date()), lim = M.addDays(oggi, -M.ARCHIVIO_GIORNI);
   const visti = new Set();
-  return (Array.isArray(ev) ? ev : []).filter((e) => e && e.id && e.plantId && /^\d{4}-\d{2}-\d{2}$/.test(e.data || "") && e.data >= lim && !visti.has(e.id) && visti.add(e.id)).slice(-3000);
+  const validi = (Array.isArray(ev) ? ev : []).filter((e) => e && e.id && e.plantId && /^\d{4}-\d{2}-\d{2}$/.test(e.data || "") && !visti.has(e.id) && visti.add(e.id));
+  let tenuti = validi.filter((e) => e.data >= lim).slice(-3000);
+  if (tenuti.length < validi.length) {
+    let resta = new Set(tenuti.map((e) => e.id));
+    // una «data per fatta» che resterebbe senza la risposta vera del suo giorno (tolta qui) tornerebbe a valere: via anche lei
+    const viaVere = new Set(validi.filter((e) => !resta.has(e.id) && e.fonte !== "presunto").map((e) => e.plantId + "|" + e.data));
+    if (viaVere.size) { tenuti = tenuti.filter((e) => !(e.fonte === "presunto" && viaVere.has(e.plantId + "|" + e.data))); resta = new Set(tenuti.map((e) => e.id)); }
+    const tolti = validi.filter((e) => !resta.has(e.id));
+    if (Array.isArray(piante)) for (const p of piante) if (p && p.id) { const vv = M.riportaVita(p, tolti, validi, oggi); if (vv) p.vita_vecchia = vv; }
+  }
+  return tenuti;
+}
+// Inizio dell'acqua di tutta la vita per le piante che non l'hanno (create prima che esistesse, o da un'app vecchia): la
+// prima traccia nel diario o nella pianta. Si scrive una volta sola, dentro un salvataggio che c'è comunque (dal telefono
+// avrebbe potuto rimandare al server una copia vecchia delle piante).
+export function segnaInizi(d) {
+  const oggi = oraLocale("Europe/Rome").oggi;
+  for (const p of Array.isArray(d?.plants) ? d.plants : []) if (p && typeof p === "object" && !p.example && !/^\d{4}-\d{2}-\d{2}$/.test(p.aggiunta || "")) p.aggiunta = M.stimaAggiunta(p, d.eventi) || oggi;
+}
+// La pioggia dei giorni che stanno per uscire dall'archivio del meteo (400 giorni) resta contata nella pianta
+// (pioggia_vita, fino a 300 giorni fa): dal bot, al mattino, una volta ogni ~50 giorni per pianta all'aperto. Lo stesso
+// giro riempie i giorni fermati senza archivio (buchi) appena l'archivio li copre.
+export async function rinnovaPioggia(st, code, data, oggi, meteoDi) {
+  const lim = M.addDays(oggi, -350), fino = M.addDays(oggi, -300);
+  for (const o of M.orti(data)) {
+    const v = M.vistaOrto(data, o.id);
+    if (!v.location) continue;
+    const vecchia = (p) => { if (p.dove !== "aperto") return false; const dal = M.inizioVita(p, v.eventi, oggi).data; return (p.pioggia_vita?.dal === dal ? p.pioggia_vita.fino : dal) < lim; };
+    // buchi che l'archivio può ancora coprire (quelli più vecchi di 400 giorni restano, senza chiedere il meteo ogni mattina)
+    const daFare = v.plants.filter((p) => vecchia(p) || p.pioggia_vita?.buchi?.some((b) => b.a >= M.addDays(oggi, -M.ARCHIVIO_GIORNI)));
+    if (!daFare.length) continue;
+    const met = await meteoDi(v), past = M.giorniPassati({ ...met, lat: met.lat ?? v.location.lat }, v.pioggia_misurata, oggi, M.ARCHIVIO_GIORNI);
+    const nuovi = new Map(daFare.map((p) => [p.id, M.congelaPioggia(p, v.eventi, past, oggi, v.location.lat, vecchia(p) ? fino : p.pioggia_vita.fino)])
+      .filter(([id, x]) => x && JSON.stringify(x) !== JSON.stringify(v.plants.find((p) => p.id === id)?.pioggia_vita)));
+    if (nuovi.size) data = (await aggiorna(st, code, (d) => { let n = 0; for (const p of d.plants) { const x = nuovi.get(p.id); if (x && !(p.pioggia_vita?.fino > x.fino)) { p.pioggia_vita = x; n++; } } return n ? undefined : false; }))?.data || data;
+  }
+  return data;
 }
 
 /* ---------------- Meteo (Open-Meteo) ----------------
@@ -179,7 +218,9 @@ export async function aggiornaPioggiaMisurata(st) {
       const c = await misureArpae(st, l.lat, l.lon, testo);
       if (!c?.stazione) continue;
       await previsioniPioggia(st, code, o, l).catch((e) => console.warn("previsioni della pioggia:", e?.message));
-      const att = o.pioggia_misurata, limite = M.addDays(M.isoDate(new Date()), -60), letto = c;
+      // i giorni misurati restano quanto l'archivio del meteo (400): dopo 60 giorni l'acqua di tutta la vita passava dalla
+      // pioggia misurata a quella del modello e il totale cambiava da solo
+      const att = o.pioggia_misurata, limite = M.addDays(M.isoDate(new Date()), -M.ARCHIVIO_GIORNI), letto = c;
       const giorni = { ...Object.fromEntries(Object.entries(att?.stazione === letto.stazione.nome ? att.giorni || {} : {}).filter(([d]) => d >= limite)), ...giorniMisurati(c.ore, "Europe/Rome") };
       if (JSON.stringify(att?.giorni || {}) !== JSON.stringify(giorni) || att?.stazione !== letto.stazione.nome) {
         const v = { stazione: letto.stazione.nome, km: letto.stazione.km, giorni, aggiornato: new Date().toISOString() };
@@ -272,9 +313,13 @@ const POSTO = { interno: "in casa", serra: "in veranda/serra", riparato: "al rip
 export const notaPioggia = (p, giorno) => (giorno?.rain || 0) >= 1 && POSTO[p.dove] ? `${POSTO[p.dove]}: la pioggia non la raggiunge` : "";
 // Pulsanti per una pianta: “Annaffiato” e “Terreno ancora umido” su righe intere (si leggono bene sul telefono);
 // il nome serve solo se nel messaggio ci sono più piante; “Salto” solo nel messaggio del mattino.
-export function pulsantiAcqua(p, oggi, { conNome = true, salto = true, secca = false } = {}) {
-  const n = conNome ? " · " + corto(p.nome) : "";
-  const r1 = [{ text: (secca ? "🏜 Era secca: annaffiato" : "✅ Annaffiato") + n, callback_data: `g|${oggi}|${p.id}|${secca ? "a" : "f"}` }];
+// Litri se al controllo la terra è asciutta (come nell'app): l'acqua che si consuma prima di innaffiare, più il 10%.
+// Serve quando il piano di oggi non ha una dose (pianta da controllare, piano del mattino spento).
+export const doseControllo = (p, oggi, lat) => +(M.params(p, { oggi, lat }).rawL * 1.1).toFixed(2);
+// litri = la dose scritta nel messaggio: viaggia nel pulsante «Annaffiato», così si registra quella che hai letto
+export function pulsantiAcqua(p, oggi, { conNome = true, salto = true, secca = false, litri = null } = {}) {
+  const n = conNome ? " · " + corto(p.nome) : "", l = !secca && +litri > 0 ? "|" + +(+litri).toFixed(2) : "";
+  const r1 = [{ text: (secca ? "🏜 Era secca: annaffiato" : "✅ Annaffiato") + n, callback_data: `g|${oggi}|${p.id}|${secca ? "a" : "f"}${l}` }];
   const r2 = [{ text: "💦 Terreno ancora umido", callback_data: `g|${oggi}|${p.id}|u` }];
   if (salto && !secca) r2.push({ text: "⏭ Salto", callback_data: `g|${oggi}|${p.id}|s` });
   return [r1, r2];
@@ -290,7 +335,7 @@ export function messaggioMattina(data, ap, oggi, { prova = false } = {}) {
     if (g?.azione === "innaffia") {
       const np = notaPioggia(p, d0);
       righe.innaffia.push(`💧 <b>${esc(p.nome)}</b>${conZona(p)}: ${fmt(g.litri, g.litri < 2 ? 2 : 1)} L (${esc(M.dose(g.litri, imp))}), ${esc(g.momento)}\n      <i>${esc(g.motivo)}${np ? " — " + esc(np) : ""}</i>`);
-      tastiera.push(...pulsantiAcqua(p, oggi, { conNome }));
+      tastiera.push(...pulsantiAcqua(p, oggi, { conNome, litri: g.litri }));
     } else if (g?.azione === "controlla") {
       righe.controlla.push(`👆 <b>${esc(p.nome)}</b>${conZona(p)}: ${esc(g.motivo)}`);
       tastiera.push(...pulsantiAcqua(p, oggi, { conNome, secca: true }));

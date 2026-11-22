@@ -542,3 +542,65 @@ test("prossima innaffiatura come intervallo: contiene il giorno del calcolo, non
   // oggi è già il giorno: niente intervallo
   const ora = piano([...base]); if (ora.giorni[0].azione === "innaffia") assert.equal(ora.finestra, null);
 });
+
+test("acqua di tutta la vita: innaffiature segnate e pioggia arrivata al terriccio, dall'inizio giusto; non torna indietro", () => {
+  const oggi = "2026-11-18", g = (d) => M.addDays(oggi, d);
+  const giorni = [...Array(20)].map((_, i) => ({ date: g(i - 20), tmax: 15, tmin: 6, et0: 1, rain: 0, prob: 0, wind: 5 }));
+  giorni[18].rain = 10.6; giorni[19].rain = 7.2; giorni[5].rain = 1;   // l'ultimo pochissima: la bagnatura di foglie e superficie
+  const aglio = { id: "ag", nome: "Aglio", specie: "aglio", fase: "auto", data_semina: g(-15), tipo_data: "semina", colt: "vaso", vaso: 30, diametro: 50, num: 4, luce: 4, dove: "aperto", ultima: g(-15), aggiunta: g(-15) };
+  const k = M.params(aglio, { oggi, lat: 44 }), attesa = ((10.6 - 1.5) + (7.2 - 1.5)) * k.pioggiaArea;
+  const eventi = [
+    { id: "1", plantId: "ag", tipo: "umido", data: g(-15), fonte: "app" },
+    { id: "2", plantId: "ag", tipo: "fatto", data: g(-6), litri: 1.2, fonte: "app" },
+    { id: "3", plantId: "ag", tipo: "secco", data: g(-3), fonte: "telegram" },                 // senza litri: contata a parte
+    { id: "4", plantId: "ag", tipo: "fatto", data: g(-3), litri: 0.8, fonte: "presunto" },      // c'è già una risposta quel giorno: non vale
+    { id: "5", plantId: "ag", tipo: "fatto", data: g(-30), litri: 9, fonte: "app" },            // prima dell'inizio: non conta
+    { id: "6", plantId: "xx", tipo: "fatto", data: g(-2), litri: 5, fonte: "app" }];
+  const a = M.acquaVita(aglio, eventi, giorni, oggi, 44);
+  assert.equal(a.dal, g(-15)); assert.equal(a.perche, "semina");
+  assert.deepEqual(a.innaffiature, { litri: 1.2, volte: 3, senzaLitri: 2 }, "1,2 L segnati; l'ultima della pianta e «era secca» senza litri");
+  assert.ok(Math.abs(a.pioggia.litri - attesa) < 0.01 && a.pioggia.giorni === 2, "pioggia sul vaso, meno 1,5 mm al giorno: " + a.pioggia.litri);
+  assert.equal(a.totale, +(1.2 + a.pioggia.litri).toFixed(2));
+  // la pioggia di oggi si conta domani; al coperto niente pioggia, ma quella presa quando l'hai messa fuori sì
+  assert.equal(M.acquaVita(aglio, eventi, [...giorni, { date: oggi, rain: 30, et0: 1 }], oggi, 44).pioggia.litri, a.pioggia.litri);
+  const dentro = { ...aglio, dove: "serra" }, presa = [...eventi, { id: "7", plantId: "ag", tipo: "pioggia", data: g(-1), litri: 0.44, fonte: "app" }];
+  assert.deepEqual([M.acquaVita(dentro, eventi, giorni, oggi, 44).pioggia.litri, M.acquaVita(dentro, presa, giorni, oggi, 44).pioggia.litri], [0, 0.44]);
+  // inizio: da quando è nell'app se la semina è prima; per le piante di prima la prima traccia nel diario
+  assert.deepEqual(M.inizioVita({ ...aglio, data_semina: g(-200) }, eventi, oggi), { data: g(-15), perche: "app" });
+  assert.equal(M.inizioVita({ ...aglio, aggiunta: undefined, data_semina: "" }, eventi, oggi).data, g(-30));
+  // senza archivio del meteo la pioggia non si sa ancora; con l'archivio che comincia dopo, contata da lì
+  assert.ok(M.acquaVita(aglio, eventi, [], oggi, 44).pioggia.sconosciuta);
+  assert.equal(M.acquaVita(aglio, eventi, giorni.slice(10), oggi, 44).pioggia.dal, giorni[10].date);
+  // al riparo da ieri: la pioggia fino a ieri resta quella di prima (prima del cambio il totale si sarebbe azzerato)
+  assert.ok(M.cambiaPioggia(aglio, dentro, oggi, 44) && M.cambiaPioggia(aglio, { ...aglio, diametro: 60 }, oggi, 44) && !M.cambiaPioggia(aglio, { ...aglio, note: "x" }, oggi, 44));
+  assert.ok(!M.cambiaPioggia(dentro, { ...dentro, diametro: 60 }, oggi, 44), "al coperto prima e dopo: niente da fermare");
+  const ferma = { ...dentro, pioggia_vita: M.congelaPioggia(aglio, eventi, giorni, oggi, 44) };
+  assert.equal(M.acquaVita(ferma, eventi, giorni, oggi, 44).totale, a.totale);
+  // di nuovo fuori domani: i giorni passati al coperto non si ricontano come pioggia
+  const fuori = { ...ferma, dove: "aperto", pioggia_vita: M.congelaPioggia(ferma, eventi, giorni, oggi, 44) };
+  assert.equal(M.acquaVita(fuori, eventi, giorni, oggi, 44).totale, a.totale);
+  assert.equal(M.congelaPioggia(aglio, eventi, [], oggi, 44), null, "senza archivio niente da fermare (resta il ricalcolo)");
+  // eventi che escono dal diario del server (tutti quelli fino a un giorno): restano contati nella pianta
+  const tolti = eventi.filter((e) => e.data < g(-2)), resto = eventi.filter((e) => e.data >= g(-2));
+  const vv = M.riportaVita(aglio, tolti, eventi, oggi);
+  assert.deepEqual(vv, { litri: 1.2, volte: 2, senzaLitri: 1, presa: 0 });
+  assert.deepEqual(M.acquaVita({ ...aglio, vita_vecchia: vv }, resto, giorni, oggi, 44), a, "stesso totale dopo la potatura del diario");
+});
+
+test("acqua di tutta la vita: pioggia fermata con l'archivio del meteo corto, i giorni mancanti si riempiono quando arriva", () => {
+  const oggi = "2026-11-18", g = (d) => M.addDays(oggi, d);
+  const tutti = [...Array(30)].map((_, i) => ({ date: g(i - 30), rain: i % 5 === 0 ? 8 : 0, et0: 1, tmin: 5, tmax: 15 }));
+  const p = { id: "r", nome: "Rosa", specie: "rosa", fase: "auto", colt: "vaso", vaso: 20, diametro: 35, num: 1, luce: 6, dove: "aperto", aggiunta: g(-30) };
+  const vero = M.acquaVita(p, [], tutti, oggi, 44).totale, vicino = (a, b) => Math.abs(a - b) < 0.011;
+  // al riparo, quando l'app aveva solo gli ultimi 3 giorni del meteo
+  const pv = M.congelaPioggia(p, [], tutti.slice(-3), oggi, 44);
+  assert.deepEqual(pv.buchi.map((b) => [b.da, b.a]), [[g(-30), g(-4)]], "i giorni senza meteo restano segnati, con l'area di allora");
+  const sotto = { ...p, dove: "riparato", pioggia_vita: pv }, corto = M.acquaVita(sotto, [], tutti.slice(-3), oggi, 44);
+  assert.equal(corto.pioggia.mancano, 27); assert.ok(corto.totale < vero);
+  // arriva l'archivio: quei giorni si contano come se non fossero mai mancati (nell'app subito, nella pianta dal bot)
+  assert.ok(vicino(M.acquaVita(sotto, [], tutti, oggi, 44).totale, vero));
+  const pieno = M.congelaPioggia(sotto, [], tutti, oggi, 44, pv.fino);
+  assert.ok(!pieno.buchi && vicino(M.acquaVita({ ...sotto, pioggia_vita: pieno }, [], [], oggi, 44).totale, vero));
+  // archivio che copre solo una parte: resta la parte prima
+  assert.deepEqual(M.riempiBuchi(pv.buchi, tutti.slice(10)).buchi.map((b) => [b.da, b.a]), [[g(-30), g(-21)]]);
+});

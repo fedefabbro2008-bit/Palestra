@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, pianiOrti, pianoUnito, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, pianiOrti, pianoUnito, messaggioMattina, messaggioSettimana, segnaFatte, trovaZonaOPianta, pulsantiAcqua, doseControllo, esc, TIPI, ETICHETTE, ESITI, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · webhook di Telegram (/api/telegram/<segreto>).
    - /start dalla chat dell'utente: collega il bot a quella chat (solo la prima volta).
@@ -84,15 +84,16 @@ function leggiData(m) {
 
 const BREVE = { fatto: "annaffiata", saltato: "saltata", umido: "umida", secco: "secca, annaffiata", concime: "concimata" };
 // Pulsante «Annulla»: callback g|data|pianta|z + com'erano i pulsanti (c = concime, a = era secca, s = con Salto, n = senza Salto)
-const annullaCb = (data, pid, v) => `g|${data}|${pid}|z${v}`;
+// e i litri del pulsante «Annaffiato», se li aveva (così torna uguale)
+const annullaCb = (data, pid, v, l) => `g|${data}|${pid}|z${v}${+l > 0 ? "|" + l : ""}`;
 
 async function pulsante(st, t, code, cq) {
   // la conferma non blocca mai il resto (parte insieme ai pulsanti nuovi): se Telegram non risponde resta solo nel registro
   const rispondi = (text) => tg(t.token, "answerCallbackQuery", { callback_query_id: cq.id, ...(text ? { text } : {}) }, { ignora: true }).catch((e) => { console.warn("Telegram answerCallbackQuery:", e?.message); return null; });
   if (cq.message?.chat?.id !== t.chat_id) return rispondi();
-  const [k, data, pid, x] = String(cq.data || "").split("|");
+  const [k, data, pid, x, lt] = String(cq.data || "").split("|");
   if (k === "v" && /^[us]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return verifica(st, t, code, cq, rispondi);
-  if (k === "g" && /^z[casn]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return annulla(st, t, code, cq, data, pid, x[1], rispondi);
+  if (k === "g" && /^z[casn]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return annulla(st, t, code, cq, data, pid, x[1], rispondi, lt);
   const tipo = TIPI[x];
   if (k !== "g" || !tipo || !/^\d{4}-\d{2}-\d{2}$/.test(data || "")) return rispondi("Già registrato");
   let nome = pid;
@@ -104,7 +105,12 @@ async function pulsante(st, t, code, cq) {
     const g = d.piano_claude?.data?.piante?.find((y) => y.id === pid)?.giorni?.find((y) => y.data === data);
     // cosa diceva il piano: le piante da innaffiare sono in notificati, le altre coi pulsanti erano da controllare
     const previsto = tipo === "umido" || tipo === "secco" ? ((t.notificati?.[data] || []).some((n) => n.id === pid) ? "innaffia" : "controlla") : null;
-    d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo, data, fonte: "telegram", ts: new Date().toISOString(), ...(previsto ? { previsto } : {}), ...(tipo === "fatto" || tipo === "secco" ? { litri: g?.litri ?? (t.notificati?.[data] || []).find((n) => n.id === pid)?.litri ?? null } : {}) });
+    // litri: la dose del piano di Claude o del messaggio del mattino; senza una dose (pianta da controllare, piano del mattino
+    // spento) la stessa dell'app. Prima un «controlla» di Claude registrava 0 litri e un controllo del calcolo automatico nessuno.
+    const notif = (t.notificati?.[data] || []).find((n) => n.id === pid)?.litri, lat = (M.orti(d).find((o) => o.id === (p.orto || "p"))?.location || d.location)?.lat;
+    const dose = tipo === "fatto" && +lt > 0 && +lt < 1000 ? +lt : null;   // quella scritta nel messaggio
+    const litri = tipo !== "fatto" && tipo !== "secco" ? null : dose ?? (g?.azione === "innaffia" && g.litri > 0 ? g.litri : notif > 0 ? notif : doseControllo(p, data, lat));
+    d.eventi.push({ id: "tg-" + cq.id, plantId: pid, tipo, data, fonte: "telegram", ts: new Date().toISOString(), ...(previsto ? { previsto } : {}), ...(litri != null ? { litri } : {}) });
   });
   // la conferma e i pulsanti nuovi partono insieme (prima una richiesta a Telegram dopo l'altra: il doppio dell'attesa)
   const conferma = rispondi(`Registrato: ${nome} — ${ETICHETTE[tipo]}`);
@@ -114,13 +120,14 @@ async function pulsante(st, t, code, cq) {
     // la conferma e «↩️ Annulla»
     const gruppo = x === "c" ? "c" : "w", cbs = kb.flat().map((b) => b.callback_data || "").filter((c) => c.startsWith(`g|${data}|${pid}|`));
     const v = gruppo === "c" ? "c" : cbs.some((c) => c.endsWith("|a")) ? "a" : cbs.some((c) => c.endsWith("|s")) ? "s" : "n";
+    const lf = gruppo === "c" ? null : cbs.map((c) => c.split("|")).find((a) => a[3] === "f")?.[4];
     let messa = false;
     const nuova = kb.map((row) => {
       const cb = row.map((b) => b.callback_data || "");
       const stessa = cb.some((c) => c.startsWith(`g|${data}|${pid}|`)), suo = cb.some((c) => /\|z?c$/.test(c)) ? "c" : "w";
       if (!(stessa && suo === gruppo)) return row;
       if (messa) return null;
-      messa = true; return [{ text: `✔ ${corto(nome)}: ${BREVE[tipo]}`, callback_data: "x" }, { text: "↩️ Annulla", callback_data: annullaCb(data, pid, v) }];
+      messa = true; return [{ text: `✔ ${corto(nome)}: ${BREVE[tipo]}`, callback_data: "x" }, { text: "↩️ Annulla", callback_data: annullaCb(data, pid, v, lf) }];
     }).filter(Boolean);
     await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: nuova } }, { ignora: true });
   }
@@ -143,7 +150,7 @@ async function verifica(st, t, code, cq, rispondi) {
 }
 
 // Annulla: toglie la risposta data da Telegram per quella pianta e quel giorno e rimette i pulsanti com'erano.
-async function annulla(st, t, code, cq, data, pid, v, rispondi) {
+async function annulla(st, t, code, cq, data, pid, v, rispondi, lt) {
   let p = null, tolte = 0;
   await aggiorna(st, code, (d) => {
     p = d.plants.find((y) => y.id === pid) || null; if (!p) return false;
@@ -158,7 +165,7 @@ async function annulla(st, t, code, cq, data, pid, v, rispondi) {
   if (!kb) return conferma;
   const altre = kb.flat().some((b) => /^g\|/.test(b.callback_data || "") && !(b.callback_data || "").startsWith(`g|${data}|${pid}|`));
   const righe = v === "c" ? [[{ text: "🌱 " + corto(p.nome) + " concimata", callback_data: `g|${data}|${pid}|c` }]]
-    : pulsantiAcqua(p, data, { conNome: altre, salto: v === "s", secca: v === "a" });
+    : pulsantiAcqua(p, data, { conNome: altre, salto: v === "s", secca: v === "a", litri: lt });
   const nuova = kb.flatMap((row) => row.some((b) => b.callback_data === cq.data) ? righe : [row]);
   await tg(t.token, "editMessageReplyMarkup", { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: nuova } }, { ignora: true });
   await conferma;

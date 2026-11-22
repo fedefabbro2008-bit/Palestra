@@ -1,5 +1,6 @@
 // Giardino · prova informativa: il badge «Powered by Netlify» (iframe #nl-badge-frame) sul sito online:
-// posizione e stile, e se resta dove lo mettiamo noi con il CSS dell'app.
+// posizione e stile, e se resta dove lo mettiamo noi con il CSS dell'app. Solo a mano (cd giardino-netlify/test && node
+// badge-online.mjs): nelle prove automatiche apriva il sito vero a ogni push, con richieste e banda contate da Netlify.
 const { chromium } = await import("playwright");
 const b = await chromium.launch(), ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 const page = await ctx.newPage(); await page.goto("https://giardino-fede.netlify.app/", { waitUntil: "networkidle" }); await page.waitForTimeout(5000);

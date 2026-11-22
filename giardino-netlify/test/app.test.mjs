@@ -111,6 +111,7 @@ test("flusso completo a 390 px", async (t) => {
   await page.click("button[type=submit]"); await page.waitForTimeout(200);
   const nuove = await page.evaluate(() => S.plants.slice(-2).map((p) => [p.nome, p.zona, p.specie, p.vaso, p.consociate.length]));
   assert.deepEqual(nuove, [["Aglio", "orto", "aglio", 12, 0], ["Zucchine", "orto", "zucchina", 30, 1]]);
+  assert.deepEqual(await page.evaluate(() => S.plants.slice(-2).map((p) => p.aggiunta)), [OGGI, OGGI], "le piante nuove sanno da quando ci sono (acqua di tutta la vita)");
   assert.deepEqual(await page.locator("#plantList .zhead span").allTextContents(), ["orto", "Senza zona"]);
 
   // pianta in casa: temperature per stagione (solo per chi è in casa), uguali per tutte se richiesto
@@ -169,6 +170,12 @@ test("flusso completo a 390 px", async (t) => {
 
   // Diario a calendario: oggi ha l'icona dell'acqua (Pothos segnata più su)
   await page.click("#tab-diario");
+  // acqua di tutta la vita: una riga per pianta con innaffiature e pioggia; la Pothos (in casa, annaffiata oggi) senza pioggia
+  const vita = await page.locator("#vitaList .lrow").allTextContents();
+  assert.equal(vita.length, await page.evaluate(() => S.plants.length));
+  const pothos = vita.find((t) => t.includes("Pothos"));
+  assert.match(pothos, /Innaffiature [\d,]+ L \(1 volta\)/); assert.match(pothos, /Pioggia: niente \(al coperto\)/); assert.match(pothos, /Da quando è nell'app/);
+  assert.ok(vita.some((t) => /Pioggia [\d,]+ L|Pioggia: in attesa del meteo/.test(t)), "le piante all'aperto con la pioggia");
   assert.equal(await page.locator("#cal [data-giorno]").count(), new Date(+OGGI.slice(0, 4), +OGGI.slice(5, 7), 0).getDate());
   assert.match(await page.textContent(`#cal [data-giorno="${OGGI}"]`), /💧/);
   await page.click(`#cal [data-giorno="${OGGI}"]`);
@@ -190,16 +197,26 @@ test("flusso completo a 390 px", async (t) => {
   assert.deepEqual(await page.evaluate(() => [S.impostazioni.annaffiatoio, S.impostazioni.bicchiere]), [12, 0.3]);
   // Notifiche: un interruttore per tipo, salvato subito sul server; salvare le misure non le cancella
   await page.click("#set-not summary");
-  assert.equal(await page.textContent("#notVal"), "tutte"); assert.equal(await page.locator("#notList input.sw:checked").count(), 8);
+  assert.equal(await page.textContent("#notVal"), "tutte"); assert.equal(await page.locator("#notList input.sw:checked").count(), 9);
   await page.click('#notList [data-not="riepilogo"]'); await page.click('#notList [data-not="mattina"]');
-  assert.equal(await page.textContent("#notVal"), "6 su 8"); assert.match(await page.textContent("#notHint"), /la sera ti scrive lo stesso/);
+  assert.equal(await page.textContent("#notVal"), "7 su 9"); assert.match(await page.textContent("#notHint"), /la sera ti scrive lo stesso/);
   await page.fill("#impA", "11"); await page.click("#impSave");
   assert.deepEqual(await page.evaluate(() => S.impostazioni.notifiche), { riepilogo: false, mattina: false });
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
   { const cod = await page.evaluate(() => window.GiardinoNet.codice()), srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": cod } }))).text()).data.impostazioni;
     assert.equal(srv.annaffiatoio, 11); assert.deepEqual(srv.notifiche, { riepilogo: false, mattina: false }, "sul server: il bot le legge da qui"); }
+  assert.ok(await page.isDisabled('#notList [data-ora="mattina"]'), "notifica spenta: ora non modificabile");
   await page.click('#notList [data-not="mattina"]');
-  assert.equal(await page.textContent("#notVal"), "7 su 8"); assert.ok(await page.isHidden("#notHint"));
+  assert.equal(await page.textContent("#notVal"), "8 su 9"); assert.ok(await page.isHidden("#notHint"));
+  // ogni notifica alla sua ora: di partenza quelle di prima (mattino 7, sera 19), poi quella scelta, salvata sul server
+  assert.equal(await page.locator("#notList select.ora").count(), 8, "tutte tranne i crediti, che arrivano appena succede");
+  assert.deepEqual([await page.inputValue('#notList [data-ora="mattina"]'), await page.inputValue('#notList [data-ora="avvisi"]')], ["7", "19"]);
+  await page.selectOption('#notList [data-ora="avvisi"]', "21");
+  assert.equal(await page.evaluate(() => S.impostazioni.orari.avvisi), 21);
+  await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+  { const cod = await page.evaluate(() => window.GiardinoNet.codice()), srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": cod } }))).text()).data.impostazioni;
+    assert.equal(srv.orari.avvisi, 21, "il bot la legge dal server"); }
+  assert.ok(!(await page.locator("#impM").count()), "le ore non stanno più in Misure");
   await page.click("#set-claude summary"); await page.click("#mcpOn");
   await quando(page, () => document.querySelector("#mcpUrl").textContent.length > 10);
   assert.match(await page.textContent("#mcpUrl"), /\/mcp\/[A-Z2-7]{26}$/);
