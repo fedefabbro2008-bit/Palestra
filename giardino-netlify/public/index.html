@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="f03ef1d99888">
+<meta name="giardino-build" content="a8e73d20baa5">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1017,18 +1017,6 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
       </div>
     </details>
 
-    <details class="set" id="set-crediti"><summary><span class="si">📊</span><span class="st">Crediti Netlify</span><span class="sv" id="credChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
-      <div class="body">
-        <p class="sub">Piano Free di Netlify: 300 crediti al mese. Ogni pubblicazione di una nuova versione dell'app ne costa 15; l'uso normale (app, Telegram, Claude) pochi. Se finiscono, il sito va in pausa fino al mese dopo. Telegram ti avvisa quando ne restano 60 (la tacca).</p>
-        <div id="credBarra"></div>
-        <div class="sub" id="credTesto">Calcolo…</div>
-        <div class="field"><label for="credVeri">Crediti rimasti, letti su Netlify</label>
-          <div class="inrow"><input type="text" id="credVeri" inputmode="numeric" placeholder="Es. 104"><button class="btn" type="button" id="credSalva">Correggi</button></div>
-          <span class="hint">Su app.netlify.com → il tuo team → Usage. Da qui la stima riparte dal valore vero.</span></div>
-        <div><a class="btn ghost" href="https://app.netlify.com/" target="_blank" rel="noopener">Conto esatto su Netlify (Usage)</a></div>
-      </div>
-    </details>
-
     <details class="set" id="set-bk"><summary><span class="si">💾</span><span class="st">Backup</span><span class="sv"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
       <div class="body">
         <p class="sub">Un file con posizione, piante, impostazioni, diario e piano: salvalo prima di cambiare telefono o versione dell'app, poi importalo. Le chiavi non sono incluse.</p>
@@ -1411,7 +1399,6 @@ window.GiardinoNet={
   codice:()=>code,
   usaCodice(c){ c=String(c||'').trim().toUpperCase(); if(!/^[A-Z0-9-]{16,64}$/.test(c)) return false; LSset('code',c); LSset('cache',null); location.reload(); return true; },
   mcp:(action,extra)=>action?api('POST',{action,...(extra||{})},'mcp'):api('GET',null,'mcp'),
-  crediti:(rimasti)=>rimasti==null?api('GET',null,'crediti'):api('POST',{rimasti},'crediti'),
   stato:()=>api('GET',null,'stato'),
   pioggia:()=>api('GET',null,'pioggia&orto='+encodeURIComponent(ortoId())),
   // cambio di orto nell'app: il meteo di quell'orto (dalla copia sul telefono se c'è, poi aggiornato)
@@ -3778,8 +3765,7 @@ const NOTIF=[
   ['verifica','Controllo del sabato',()=>"Una pianta da toccare con il dito: così l'app impara quanto beve"],
   ['riepilogo','Riepilogo della domenica',()=>'Acqua data e piante della settimana'],
   ['backup','Backup mensile',()=>'Il file con tutti i dati, una volta al mese'],
-  ['piano','Fine del piano di Claude',()=>'Quando il piano salvato da Claude sta per finire'],
-  ['crediti','Crediti Netlify',()=>"Se i crediti del mese stanno per finire (sopra l'80%) · appena succede"]];
+  ['piano','Fine del piano di Claude',()=>'Quando il piano salvato da Claude sta per finire']];
 const notAttiva=k=>S.impostazioni.notifiche?.[k]!==false;
 function chipNotifiche(){
   const n=NOTIF.filter(([k])=>notAttiva(k)).length, h=$('#notHint');
@@ -4702,23 +4688,12 @@ function wireNetlify(){
   const N=window.GiardinoNet;
   $('#netCode').textContent=N.codice();
   $('#netCopy').addEventListener('click',async()=>toast(await copyText(N.codice(),$('#netCode'))?'Codice copiato':'Seleziona e copia a mano'));
-  // si mostrano i crediti RIMASTI (quelli che contano: a zero il sito va in pausa); la tacca è all'avviso di Telegram (80% usati)
-  const mostraCrediti=(c,e)=>{ if(!c){ $('#credTesto').textContent=e?.offline?'Senza rete: la stima arriva quando torna la connessione.':'Stima non disponibile: controlla su Netlify.'; return; }
-      const rim=Math.max(0,c.limite-c.stima), pct=Math.max(0,Math.min(100,Math.round(rim/c.limite*100))), alto=c.stima>=240;
-      $('#credChip').textContent='~'+rim+' rimasti'; $('#credChip').className='sv'+(alto?'':' ok');
-      $('#credBarra').innerHTML=`<div class="lev${alto?' basso':''}" role="img" aria-label="Crediti rimasti circa ${pct}%"><i style="width:${pct}%"></i><b style="left:20%"></b></div>`;
-      const giorno=d=>{ const t=new Date(d).toLocaleDateString('it-IT',{day:'numeric',month:'long'}); return (/^(8|11) /.test(t)?"l'":'il ')+t; };
-      $('#credTesto').textContent=c.corretta?'Rimasti ~'+rim+' su '+c.limite+' (usati ~'+c.stima+'): dal valore vero che hai scritto '+giorno(c.corretta.at)+' ('+c.corretta.rimasti+' rimasti), meno 15 per ogni pubblicazione dopo e l\'uso dei giorni passati.'
-        :'Rimasti ~'+rim+' su '+c.limite+' a '+new Date(c.mese+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long'})+': '+c.pubblicazioni+(c.pubblicazioni===1?' pubblicazione':' pubblicazioni')+' × 15 più l\'uso ≈ '+c.stima+' usati. Per il valore esatto scrivi qui sotto quelli che vedi su Netlify.'; };
-  $('#credSalva').addEventListener('click',async()=>{ const n=numOrNull($('#credVeri').value); if(n==null||n<0||n>300){ $('#credVeri').focus(); toast('Scrivi i crediti rimasti (0–300)'); return; }
-    try{ mostraCrediti(await N.crediti(n)); $('#credVeri').value=''; toast('Stima corretta: '+n+' crediti rimasti'); }catch(e){ toast(e.message); } });
-  // Claude, Telegram e crediti in una richiesta sola e solo quando apri Impostazioni (prima: 3 richieste a ogni apertura dell'app)
+  // Claude e Telegram in una richiesta sola e solo quando apri Impostazioni (prima: 3 richieste a ogni apertura dell'app)
   let statoAt=0;
   caricaStato=(forza)=>{ if(!forza&&Date.now()-statoAt<60000) return; statoAt=Date.now();
-    ['#mcpChip','#tgChip','#credChip'].forEach(id=>{ if(!$(id).textContent) $(id).textContent='…'; });
-    N.stato().then(x=>{ renderMcp(x.mcp); renderTg(x.telegram); mostraCrediti(x.crediti); })
-      .catch(e=>{ statoAt=0; const t=e?.offline?'senza rete':'non raggiungibile'; $('#mcpChip').textContent=t; $('#tgChip').textContent=t; if($('#credChip').textContent==='…') $('#credChip').textContent=t; mostraCrediti(null,e); }); };
-  $('#set-crediti').addEventListener('toggle',e=>{ if(e.target.open) N.crediti().then(mostraCrediti).catch(()=>mostraCrediti(null)); });
+    ['#mcpChip','#tgChip'].forEach(id=>{ if(!$(id).textContent) $(id).textContent='…'; });
+    N.stato().then(x=>{ renderMcp(x.mcp); renderTg(x.telegram); })
+      .catch(e=>{ statoAt=0; const t=e?.offline?'senza rete':'non raggiungibile'; $('#mcpChip').textContent=t; $('#tgChip').textContent=t; }); };
   $('#netUse').addEventListener('click',()=>{ if(!N.usaCodice($('#netOther').value)) $('#netStatus').textContent='Codice non valido.'; });
   $('#prompts').innerHTML=PROMPTS.map((t,i)=>`<button class="prompt" type="button" data-prompt="${i}"><span>“${esc(t)}”</span><span class="pc">Copia</span></button>`).join('');
   $('#prompts').addEventListener('click',async e=>{ const b=e.target.closest('[data-prompt]'); if(b) toast(await copyText(PROMPTS[+b.dataset.prompt])?'Copiato: incollalo nella chat di Claude':'Copia non riuscita'); });

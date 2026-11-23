@@ -303,7 +303,6 @@ window.GiardinoNet={
   codice:()=>code,
   usaCodice(c){ c=String(c||'').trim().toUpperCase(); if(!/^[A-Z0-9-]{16,64}$/.test(c)) return false; LSset('code',c); LSset('cache',null); location.reload(); return true; },
   mcp:(action,extra)=>action?api('POST',{action,...(extra||{})},'mcp'):api('GET',null,'mcp'),
-  crediti:(rimasti)=>rimasti==null?api('GET',null,'crediti'):api('POST',{rimasti},'crediti'),
   stato:()=>api('GET',null,'stato'),
   pioggia:()=>api('GET',null,'pioggia&orto='+encodeURIComponent(ortoId())),
   // cambio di orto nell'app: il meteo di quell'orto (dalla copia sul telefono se c'è, poi aggiornato)

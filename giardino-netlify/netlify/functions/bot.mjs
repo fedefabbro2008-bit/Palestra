@@ -1,4 +1,4 @@
-import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, doseControllo, finePiano, messaggioFinePiano, crediti, segnaAvvisoCrediti, notaPioggia, aggiornaPioggiaMisurata, rinnovaPioggia, esc, IMP_DEF, ESITI, notifica, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, doseControllo, finePiano, messaggioFinePiano, notaPioggia, aggiornaPioggiaMisurata, rinnovaPioggia, esc, IMP_DEF, ESITI, notifica, M } from "../lib/core.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Ogni notifica alla sua ora (Impostazioni → Notifiche, impostazioni.orari; senza, il mattino o la sera di prima).
@@ -16,16 +16,10 @@ export const config = { schedule: "@hourly" };
 
 export default async () => {
   const st = store();
-  // crediti Netlify: conta la versione pubblicata; sopra l'80% della stima avvisa una volta al mese
-  // (crediti ed elenco dei bot collegati si leggono insieme: ogni ora, quasi sempre senza altro da fare)
-  const [cr, { blobs }] = await Promise.all([crediti(st).catch((e) => { console.error("crediti", e?.message); return null; }), st.list({ prefix: "t-" })]);
+  const { blobs } = await st.list({ prefix: "t-" });
   // ogni 3 ore: pioggia misurata dalle stazioni ARPAE (solo per le posizioni in Emilia-Romagna)
   if (new Date().getUTCHours() % 3 === 0) { try { await aggiornaPioggiaMisurata(st); } catch (e) { console.error("pioggia misurata", e?.message); } }
-  let avvisati = 0;
-  for (const b of blobs) {
-    try { if (await uno(st, b.key, cr && cr.alto && !cr.avvisato ? cr : null)) avvisati++; } catch (e) { console.error(b.key, e?.message || e); }
-  }
-  if (avvisati) await segnaAvvisoCrediti(st, cr);
+  for (const b of blobs) { try { await uno(st, b.key); } catch (e) { console.error(b.key, e?.message || e); } }
   return new Response("ok");
 };
 
@@ -38,28 +32,23 @@ function fattiOggi(t, oggi) {
   return f;
 }
 
-async function uno(st, tkey, cr) {
+async function uno(st, tkey) {
   const f = await st.getWithMetadata(tkey, { type: "json" }), t = f?.data;
   if (!t?.chat_id) return;
-  // tutte le notifiche di oggi già fatte (e niente avviso dei crediti): niente da leggere né da calcolare fino a domani
-  if (!cr) { const { oggi: g } = oraLocale(t.tz || "Europe/Rome"), fatti = fattiOggi(t, g); if (M.NOTIFICHE_CON_ORA.every((k) => fatti.has(k))) return; }
+  // tutte le notifiche di oggi già fatte: niente da leggere né da calcolare fino a domani
+  { const { oggi: g } = oraLocale(t.tz || "Europe/Rome"), fatti = fattiOggi(t, g); if (M.NOTIFICHE_CON_ORA.every((k) => fatti.has(k))) return; }
   const code = tkey.slice(2);
   const cur = await leggi(st, code);
   if (!M.vistePiene(cur?.data || {}).length) return;   // nessun orto con posizione e piante
   const imp = { ...IMP_DEF, ...(cur.data.impostazioni || {}) }, on = (tipo) => notifica(imp, tipo);   // notifiche spente in Impostazioni
   const { oggi, ora } = oraLocale(t.tz || "Europe/Rome");
-  let avvisoCrediti = false;
-  if (cr && t.chat_id) {
-    if (on("crediti")) await tg(t.token, "sendMessage", { chat_id: t.chat_id, parse_mode: "HTML", text: `📊 <b>Crediti Netlify</b>: stima ${cr.stima} su ${cr.limite} questo mese (${cr.pubblicazioni} pubblicazioni da 15 crediti).\nSe finiscono il sito va in pausa fino al mese prossimo: rimanda gli aggiornamenti dell'app. Il conto esatto è su app.netlify.com → Usage.` }, { ignora: true });
-    avvisoCrediti = true;   // inviato, o spento: per questo mese non si ripropone
-  }
   // ogni notifica alla sua ora (Impostazioni → Notifiche): dovute = da fare adesso; passate = ora finita senza giro del bot
   const fatti = fattiOggi(t, oggi), dovute = new Set(), passate = [];
   for (const k of M.NOTIFICHE_CON_ORA) {
     if (fatti.has(k) || ora < M.oraNotifica(imp, k)) continue;
     if (ora < M.fineNotifica(imp, k)) dovute.add(k); else passate.push(k);
   }
-  if (!dovute.size && !passate.length) return avvisoCrediti;
+  if (!dovute.size && !passate.length) return;
   // prenotazione: segno le notifiche come fatte prima di inviare, solo se nessun altro giro del bot l'ha già fatto
   // (Netlify a volte avvia la funzione pianificata due volte nello stesso minuto: prima arrivavano due messaggi uguali)
   const segnate = {}; for (const [k, g] of Object.entries(t.inviati_il || {})) if (g === oggi) segnate[k] = g;
@@ -67,10 +56,10 @@ async function uno(st, tkey, cr) {
   for (const k of [...dovute, ...passate]) segnate[k] = oggi;
   const pren = { ...t, inviati_il: segnate, ...(segnate.mattina ? { ultimo_invio: oggi } : {}), ...(segnate.sera ? { ultimo_avviso_sera: oggi } : {}) };
   const ok = await st.setJSON(tkey, pren, f.etag ? { onlyIfMatch: f.etag } : {});
-  if (ok && ok.modified === false) return avvisoCrediti;
-  if (!dovute.size) return avvisoCrediti;
+  if (ok && ok.modified === false) return;
+  if (!dovute.size) return;
 
-  try { return await invii(st, tkey, pren, cur, code, imp, on, oggi, dovute, avvisoCrediti); }
+  try { await invii(st, tkey, pren, cur, code, imp, on, oggi, dovute); }
   catch (e) {
     // invio non riuscito: tolgo la prenotazione delle notifiche di questo giro, così ci riprova il giro dell'ora dopo
     const g = await st.getWithMetadata(tkey, { type: "json" }).catch(() => null);
@@ -82,7 +71,7 @@ async function uno(st, tkey, cr) {
   }
 }
 
-async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute, avvisoCrediti) {
+async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
   // ogni orto (città) con il suo meteo e il suo piano; meteo e piano solo se servono a una notifica accesa
   const next = { ...t }, fa = (k) => dovute.has(k) && on(k);
   const invia = (text, extra = {}) => tg(t.token, "sendMessage", { chat_id: t.chat_id, text, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
@@ -183,5 +172,5 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute, avvisoCredit
   const primo = memo.get("p")?.met || [...memo.values()][0]?.met;
   if (primo?.tz) next.tz = primo.tz;
   await st.setJSON(tkey, next);
-  return avvisoCrediti;
+  return;
 }

@@ -42,13 +42,7 @@ test("dati: il codice viaggia nell'intestazione (e ?code= vale ancora per le app
   assert.ok(nuovo.body.data && nuovo.body.rev === ora.rev + 1, "dopo una modifica arrivano i dati nuovi");
   // stato per le Impostazioni in una richiesta sola
   const st = (await call(dati, "/api/dati?op=stato", { headers: H })).body;
-  // crediti veri letti su Netlify: la stima riparte da lì
-  const cor = (await call(dati, "/api/dati?op=crediti", { method: "POST", headers: H, body: { rimasti: 104 } })).body;
-  assert.equal(cor.stima, 196); assert.equal(cor.corretta.rimasti, 104);
-  assert.equal((await call(dati, "/api/dati?op=crediti", { method: "POST", headers: H, body: { rimasti: 999 } })).status, 400);
-  { const g = getStore({ name: "giardino" }), k = "u-" + new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit" }).format(new Date());
-    const u = await g.get(k, { type: "json" }); delete u.correzione; await g.setJSON(k, u); }   // le prove dopo contano le pubblicazioni
-  assert.deepEqual(st.mcp, { active: false }); assert.deepEqual(st.telegram, { configured: false }); assert.ok(st.crediti.limite === 300 && !("key" in st.crediti));
+  assert.deepEqual(st.mcp, { active: false }); assert.deepEqual(st.telegram, { configured: false }); assert.ok(!("crediti" in st), "niente più stima dei crediti");
 });
 
 test("dati: risposte grandi compresse (gzip) se il telefono le accetta, in chiaro se le chiede così", async () => {
@@ -354,7 +348,7 @@ test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della
   assert.ok(tutte.mattino && tutte.sera, "con tutto acceso: mattino e sera");
   const senzaMattino = await giro({ mattina: false, backup: false });
   assert.ok(!senzaMattino.mattino, "mattino spento"); assert.ok(senzaMattino.sera, "la sera arriva lo stesso, con le piante di oggi"); assert.ok(!senzaMattino.backup, "backup spento");
-  const nessuna = await giro(Object.fromEntries(["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"].map((k) => [k, false])));
+  const nessuna = await giro(Object.fromEntries(["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano"].map((k) => [k, false])));
   assert.equal(nessuna.n, 0, "tutto spento: nessun messaggio"); assert.ok(!nessuna.backup);
   const t = await st.get("t-" + CODE, { type: "json" }), oggi = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
   assert.equal(t.ultimo_invio, oggi); assert.equal(t.ultimo_avviso_sera, oggi); assert.deepEqual(t.notificati, {}, "nessuna pianta segnata: domani niente innaffiature presunte");
@@ -363,7 +357,7 @@ test("notifiche spente in Impostazioni: il bot non le manda (il promemoria della
   const r = await strumento("impostazioni", { notifiche: { mattina: true, riepilogo: false } });
   assert.match(r.content[0].text, /notifica mattina accesa.*notifica riepilogo spenta/);
   const n = (await leggiDati()).impostazioni.notifiche;
-  assert.ok(!("mattina" in n) && n.riepilogo === false && n.sera === false && n.crediti === false);
+  assert.ok(!("mattina" in n) && n.riepilogo === false && n.sera === false && n.piano === false);
   assert.ok((await strumento("impostazioni", { notifiche: { boh: false } })).isError, "tipo sconosciuto");
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
   await st.setJSON("t-" + CODE, { ...t0 });
@@ -436,21 +430,6 @@ test("fine del piano di Claude: avviso su Telegram una volta per piano, poi calc
   await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_avviso_sera: null, inviati_il: {} });
   inviati.length = 0; await bot();
   assert.ok(!inviati.some((x) => x[0] === "sendMessage" && x[1].text.includes("Il piano di Claude")), "non si ripete per lo stesso piano");
-});
-
-test("crediti Netlify: una versione contata una volta, avviso su Telegram sopra l'80% una volta al mese", async () => {
-  const c1 = (await call(dati, "/api/dati?op=crediti", { headers: H })).body, c2 = (await call(dati, "/api/dati?op=crediti", { headers: H })).body;
-  assert.equal(c1.pubblicazioni, 1); assert.equal(c2.pubblicazioni, 1); assert.equal(c1.limite, 300); assert.equal(c1.stima, 30);
-  const st = getStore({ name: "giardino" }), key = "u-" + c1.mese, u = await st.get(key, { type: "json" });
-  await st.setJSON(key, { ...u, versioni: [...u.versioni, ...Array.from({ length: 15 }, (_, i) => "v" + i)] });
-  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12), t = await st.get("t-" + CODE, { type: "json" });
-  await st.setJSON("t-" + CODE, { ...t, tz, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null });
-  inviati.length = 0; await bot();
-  assert.ok(inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "avviso crediti");
-  assert.ok(inviati.some((x) => x[0] === "sendMessage" && /Giardino —/.test(x[1].text)), "il messaggio del mattino parte lo stesso");
-  const t2 = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...t2, tz, ultimo_invio: null, ultimo_avviso_sera: null, inviati_il: {}, segnati_il: null });
-  inviati.length = 0; await bot();
-  assert.ok(!inviati.some((x) => x[0] === "sendMessage" && /Crediti Netlify/.test(x[1].text)), "una volta al mese");
 });
 
 test("bot di riserva su GitHub: copia cifrata col sito vivo, messaggio su Telegram col sito fermo", async () => {
@@ -773,7 +752,7 @@ test("orari delle notifiche: ognuna alla sua ora, quelle fatte non si ripetono, 
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
   assert.match((await strumento("impostazioni", { orari: { avvisi: 21 } })).content[0].text, /avvisi alle 21:00/);
   assert.equal((await leggiDati()).impostazioni.orari.avvisi, 21);
-  assert.ok((await strumento("impostazioni", { orari: { crediti: 9 } })).isError, "i crediti arrivano appena succede");
+  assert.ok((await strumento("impostazioni", { orari: { boh: 9 } })).isError, "tipo sconosciuto");
   assert.ok((await strumento("impostazioni", { orari: { sera: 25 } })).isError);
   assert.match((await strumento("giardino")).content[0].text, /avvisi 21:00/);
   // pulizia

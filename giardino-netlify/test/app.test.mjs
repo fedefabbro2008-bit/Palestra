@@ -182,24 +182,23 @@ test("flusso completo a 390 px", async (t) => {
   assert.match(await page.textContent("#calGiorno"), /annaffiata|innaffiata/);
   await page.click("#calPrima"); assert.ok(!(await page.isDisabled("#calDopo")));
 
-  // Impostazioni: crediti
+  // Impostazioni
   RICHIESTE.length = 0;
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
   assert.deepEqual(RICHIESTE, ["GET dati (versione)"], "controllo periodico: chiede solo se è cambiato qualcosa");
   await page.click("#tab-impostazioni");
   await quando(page, () => document.querySelector("#tgChip").textContent && document.querySelector("#tgChip").textContent !== "…");
-  assert.deepEqual(RICHIESTE.slice(1), ["GET stato"], "Claude, Telegram e crediti in una richiesta sola");
-  await page.click("#set-crediti summary");
-  await quando(page, () => /pubblicazion/.test(document.querySelector("#credTesto").textContent));
+  assert.deepEqual(RICHIESTE.slice(1), ["GET stato"], "Claude e Telegram in una richiesta sola");
+  assert.ok(!(await page.locator("#set-crediti").count()), "niente più stima dei crediti Netlify");
 
   await page.click("#tab-impostazioni");
   await page.click("#set-mis summary"); await page.fill("#impA", "12"); await page.fill("#impB", "0,3"); await page.click("#impSave");
   assert.deepEqual(await page.evaluate(() => [S.impostazioni.annaffiatoio, S.impostazioni.bicchiere]), [12, 0.3]);
   // Notifiche: un interruttore per tipo, salvato subito sul server; salvare le misure non le cancella
   await page.click("#set-not summary");
-  assert.equal(await page.textContent("#notVal"), "tutte"); assert.equal(await page.locator("#notList input.sw:checked").count(), 9);
+  assert.equal(await page.textContent("#notVal"), "tutte"); assert.equal(await page.locator("#notList input.sw:checked").count(), 8);
   await page.click('#notList [data-not="riepilogo"]'); await page.click('#notList [data-not="mattina"]');
-  assert.equal(await page.textContent("#notVal"), "7 su 9"); assert.match(await page.textContent("#notHint"), /la sera ti scrive lo stesso/);
+  assert.equal(await page.textContent("#notVal"), "6 su 8"); assert.match(await page.textContent("#notHint"), /la sera ti scrive lo stesso/);
   await page.fill("#impA", "11"); await page.click("#impSave");
   assert.deepEqual(await page.evaluate(() => S.impostazioni.notifiche), { riepilogo: false, mattina: false });
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
@@ -207,9 +206,9 @@ test("flusso completo a 390 px", async (t) => {
     assert.equal(srv.annaffiatoio, 11); assert.deepEqual(srv.notifiche, { riepilogo: false, mattina: false }, "sul server: il bot le legge da qui"); }
   assert.ok(await page.isDisabled('#notList [data-ora="mattina"]'), "notifica spenta: ora non modificabile");
   await page.click('#notList [data-not="mattina"]');
-  assert.equal(await page.textContent("#notVal"), "8 su 9"); assert.ok(await page.isHidden("#notHint"));
+  assert.equal(await page.textContent("#notVal"), "7 su 8"); assert.ok(await page.isHidden("#notHint"));
   // ogni notifica alla sua ora: di partenza quelle di prima (mattino 7, sera 19), poi quella scelta, salvata sul server
-  assert.equal(await page.locator("#notList select.ora").count(), 8, "tutte tranne i crediti, che arrivano appena succede");
+  assert.equal(await page.locator("#notList select.ora").count(), 8, "tutte con la loro ora");
   assert.deepEqual([await page.inputValue('#notList [data-ora="mattina"]'), await page.inputValue('#notList [data-ora="avvisi"]')], ["7", "19"]);
   await page.selectOption('#notList [data-ora="avvisi"]', "21");
   assert.equal(await page.evaluate(() => S.impostazioni.orari.avvisi), 21);
