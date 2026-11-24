@@ -1,5 +1,5 @@
 import { VERSIONE } from "../lib/versione.mjs";
-import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, crediti, correggiCrediti, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, pianiOrti, messaggioMattina, COMANDI, M } from "../lib/core.mjs";
+import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, pianiOrti, messaggioMattina, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
    Il codice di sincronizzazione (lungo e casuale, generato dall'app) è la chiave: chi lo conosce legge e scrive.
@@ -8,7 +8,7 @@ import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, crediti, c
    GET  /api/dati                      → { rev, data }  (data null se non c'è ancora niente)
         con l'intestazione x-giardino-versione = "rev-updatedAt" già in mano all'app → { rev, updatedAt, invariato: true }
         se nel frattempo non è cambiato niente (pochi byte invece di tutti i dati: il controllo ogni 5 minuti costa quasi zero)
-   GET  /api/dati?op=stato            → { mcp, telegram, crediti }  lo stato per le Impostazioni, in una richiesta sola
+   GET  /api/dati?op=stato            → { mcp, telegram }  lo stato per le Impostazioni, in una richiesta sola
    GET  /api/dati?op=pioggia          → pioggia misurata ARPAE (quarti d'ora e ore) della stazione più vicina
    GET  /api/dati?op=meteo            → meteo del server, quando l'app non raggiunge Open-Meteo (anche la riserva MET Norway)
    POST /api/dati  { changes:{campo:valore}, add:[eventi], remove:[id eventi] }
@@ -33,14 +33,6 @@ async function gestisci(request) {
   try {
     if (op === "mcp") return await opMcp(request, st, code);
     if (op === "telegram") return await opTelegram(request, st, code);
-    if (op === "crediti") {
-      if (request.method === "POST") {   // crediti rimasti letti su Netlify: la stima riparte da lì
-        const b = await request.json().catch(() => null), n = Math.round(+b?.rimasti);
-        if (!isFinite(n) || n < 0 || n > 300) return reply({ error: "scrivi i crediti rimasti, da 0 a 300" }, 400);
-        const { key, ...c } = await correggiCrediti(st, n); return reply(c);
-      }
-      const { key, ...c } = await crediti(st); return reply(c);
-    }
     if (op === "riconosci") {   // foto della pianta → specie più probabili (Pl@ntNet)
       if (request.method !== "POST") return reply({ error: "metodo non consentito" }, 405);
       const b = await request.json().catch(() => null), r = await riconosciPianta(b?.immagine);
@@ -62,8 +54,8 @@ async function gestisci(request) {
       return reply({ disponibile: true, stazione: c.stazione.nome, km: c.stazione.km, ore: c.ore, quarti: c.quarti, aggiornato: c.at });
     }
     if (op === "stato") {
-      const [m, t, c] = await Promise.all([st.get("m-" + code, { type: "json" }), st.get("t-" + code, { type: "json" }), crediti(st).catch(() => null)]);
-      return reply({ mcp: statoMcp(m), telegram: statoTelegram(t), crediti: c ? (({ key, ...x }) => x)(c) : null });
+      const [m, t] = await Promise.all([st.get("m-" + code, { type: "json" }), st.get("t-" + code, { type: "json" })]);
+      return reply({ mcp: statoMcp(m), telegram: statoTelegram(t) });
     }
     if (request.method === "GET") {
       const cur = await leggi(st, code);

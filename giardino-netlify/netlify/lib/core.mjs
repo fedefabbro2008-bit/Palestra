@@ -37,7 +37,7 @@ export const siteUrl = (req) => (globalThis.Netlify?.env?.get("URL")) || new URL
 export const IMP_DEF = { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 19 };
 // Notifiche Telegram che si spengono dall'app (Impostazioni → Notifiche): impostazioni.notifiche = { tipo: false }, accese se
 // mancano. Le risposte ai comandi (/oggi, pulsanti) arrivano sempre, e così il messaggio di riserva da GitHub (sito fermo).
-export const NOTIFICHE = ["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano", "crediti"];
+export const NOTIFICHE = ["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano"];
 export const notifica = (imp, tipo) => imp?.notifiche?.[tipo] !== false;
 export const vuoto = () => ({ location: null, plants: [], impostazioni: { ...IMP_DEF }, vacanza: null, eventi: [], piano_claude: null, meteo_manual: null, orti: [] });
 // campi che l'app può scrivere (pioggia_misurata e pioggia_orti li scrive solo il bot)
@@ -465,27 +465,6 @@ export async function riconosciPianta(dataUrl, chiave = globalThis.process?.env?
   return { risultati, rimasti: j.remainingIdentificationRequests ?? null };
 }
 
-/* ---------------- Crediti Netlify (stima) ----------------
-   Piano Free: 300 crediti al mese. Ogni pubblicazione costa 15 crediti; le richieste di app, bot (ogni ora), Claude
-   ne consumano 10-20 al mese, misurati su Netlify (stima: 15). Le pubblicazioni si contano dalle impronte di versione viste. */
-export const CREDITI = { limite: 300, pubblicazione: 15, uso: 15, avviso: 240 };
-export async function crediti(st) {
-  const mese = oraLocale("Europe/Rome").oggi.slice(0, 7), key = "u-" + mese;
-  const u = (await st.get(key, { type: "json" })) || { versioni: [], avvisato: false };
-  if (!u.versioni.includes(VERSIONE)) { u.versioni.push(VERSIONE); await st.setJSON(key, u); }
-  // con il valore vero letto su Netlify (correzione) la stima parte da lì: + 15 per ogni pubblicazione dopo, + l'uso dei giorni passati
-  const k = u.correzione, giorni = k ? Math.max(0, (Date.now() - k.at) / 864e5) : 0;
-  const stima = k ? Math.round(CREDITI.limite - k.rimasti + Math.max(0, u.versioni.length - k.versioni) * CREDITI.pubblicazione + giorni * CREDITI.uso / 30)
-    : u.versioni.length * CREDITI.pubblicazione + CREDITI.uso;
-  return { mese, pubblicazioni: u.versioni.length, stima, limite: CREDITI.limite, alto: stima >= CREDITI.avviso, avvisato: !!u.avvisato, corretta: k ? { rimasti: k.rimasti, at: k.at } : null, key };
-}
-export async function correggiCrediti(st, rimasti) {
-  const c = await crediti(st), u = (await st.get(c.key, { type: "json" })) || { versioni: [] };
-  u.correzione = { rimasti, at: Date.now(), versioni: u.versioni.length };
-  await st.setJSON(c.key, u);
-  return crediti(st);
-}
-export async function segnaAvvisoCrediti(st, c) { const u = (await st.get(c.key, { type: "json" })) || { versioni: [] }; u.avvisato = true; await st.setJSON(c.key, u); }
 export const COMANDI = [
   { command: "oggi", description: "Il piano di oggi, con i pulsanti" },
   { command: "fatto", description: "Segna come annaffiate le piante di oggi (es. /fatto balcone, /fatto aglio)" },
