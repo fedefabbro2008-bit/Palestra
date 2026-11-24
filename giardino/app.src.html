@@ -294,6 +294,9 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .ring .rf{stroke:var(--water);stroke-linecap:round;stroke-dasharray:max(0px,calc(var(--p)*1.948px - 6px)) 400px}
 .ring.basso .rf{stroke:var(--warn)}
 .ring.vuoto .rf{display:none}
+/* tacca: dove l'acqua arriva al punto in cui si innaffia (soglia), sempre visibile */
+.ring .tacca{position:absolute;inset:0;transform:rotate(calc(var(--s)*3.6deg));pointer-events:none}
+.ring .tacca::before{content:'';position:absolute;left:50%;top:-3px;width:3px;height:12px;margin-left:-1.5px;border-radius:2px;background:var(--ink);box-shadow:0 0 0 1.5px var(--surface)}
 .ring>span{position:relative;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:1.7rem;line-height:1}
 #plantList .pinfo{align-items:center}
 #plantList .plant[open] .pinfo{align-items:flex-start}
@@ -1868,7 +1871,7 @@ function renderPiante(AP){
     if(Math.abs(k.calib-1)>0.01) notes.push(['','Imparato '+(pp?.controlli?'da '+pp.controlli+(pp.controlli===1?' controllo':' controlli'):'dalle tue risposte')+': beve il '+Math.round(Math.abs(k.calib-1)*100)+'% '+(k.calib<1?'in meno':'in più')+' del previsto.']);
     (pp?.consigli||[]).forEach(x=>notes.push(['','💬 '+x]));
     if(pp?.valutazione) notes.unshift(['','💬 '+pp.valutazione]);
-    return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ring${pp&&pp.acqua!=null&&pp.acqua<=pp.soglia?' basso':''}${!(pp?.acqua>0.004)?' vuoto':''}" style="--p:${pp?.acqua!=null?Math.round(Math.max(0,Math.min(1,pp.acqua))*100):0}" aria-hidden="true">${ANELLO}<span>${esc(icoDi(p))}</span></span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
+    return testa+`<details class="plant" data-pid="${esc(p.id)}"${aperti.has(p.id)?' open':''}><summary><span class="ring${pp&&pp.acqua!=null&&pp.acqua<=pp.soglia?' basso':''}${!(pp?.acqua>0.004)?' vuoto':''}" style="--p:${pp?.acqua!=null?Math.round(Math.max(0,Math.min(1,pp.acqua))*100):0}" aria-hidden="true">${ANELLO}${pp?.soglia!=null?`<i class="tacca" style="--s:${Math.round(Math.max(0,Math.min(1,pp.soglia))*100)}"></i>`:''}<span>${esc(icoDi(p))}</span></span><span class="pinfo"><span class="pname">${esc(p.nome)}${p.example?' <span class="chip">esempio</span>':''}</span><span class="pmeta">${esc(meta)}</span><span class="pnext ${nx.cls}">${esc(nx.t)}</span></span>${CHEV}</summary>
       <div class="pbody">${livello(pp)}<div class="facts">${facts.map(([a,b])=>`<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div>
       ${notes.length?'<ul class="notes">'+notes.map(([cls,x])=>`<li class="${cls}">${esc(x)}</li>`).join('')+'</ul>':''}
       <div class="pbtn"><button class="btn" type="button" data-ev="fatto" data-pid="${esc(p.id)}">💧 Annaffiata</button>${p.dove!=='aperto'?`<button class="btn" type="button" data-pioggia="${esc(p.id)}">🌧 Sotto la pioggia</button>`:''}</div>
