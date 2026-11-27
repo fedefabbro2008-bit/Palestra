@@ -760,6 +760,64 @@ test("orari delle notifiche: ognuna alla sua ora, quelle fatte non si ripetono, 
   await st.setJSON("t-" + CODE, { ...t0 });
 });
 
+test("torre nell'app: aggiornata a pezzi (invariato o solo la coda), sempre uguale a scaricare tutto", async () => {
+  const C5 = "GRD-PEZZITORRE-ABCDEFGHJK", H5 = { "x-giardino-code": C5 }, MT = await import("../netlify/lib/torre.mjs");
+  const torreFn = (await import("../netlify/functions/torre.mjs")).default;
+  let chiave = (await call(dati, "/api/dati?op=torre", { method: "POST", headers: H5, body: { action: "chiave" } })).body.torre.chiave;
+  const manda = (misure, avvio = 1) => call(torreFn, "/api/torre", { method: "POST", headers: { "x-torre-chiave": chiave }, body: { v: 1, fw: 7, rev: 0, avvio, sec: 99999, stato: { modo: "normale", t: 12, u: 60 }, misure } });
+  const adesso = Math.floor(Date.now() / 1000);
+  const blocco = (da, n, passo = 600, avvio = 1) => Array.from({ length: n }, (_, i) => [da + i * passo, 10 + (i % 7), 60, i % 3 ? 0 : 300, 0, avvio, da + i]);
+  let risposte = [];
+  const leggi = async (q) => { const r = await call(dati, "/api/dati?op=torre&giorni=8" + q, { headers: H5 }); risposte.push(JSON.stringify(r.body).length); return r.body; };
+  const chiedi = async (prima) => { const c = MT.cursoreTorre(prima); return MT.torreAggiornata(prima, await leggi(c ? `&u=${c.u}&da=${c.da}` : ""), 8, adesso); };
+  const tutto = async () => MT.torreAggiornata(null, await leggi(""), 8, adesso);
+  // 1. prima volta: tutto
+  assert.equal((await manda(blocco(adesso - 3 * 86400, 144))).status, 200);
+  let app = await chiedi(null);
+  assert.deepEqual(app, await tutto()); assert.equal(app.misure.length, 144);
+  // 2. niente di nuovo: «invariato», l'app tiene lo stesso oggetto
+  risposte = []; assert.equal(await chiedi(app), app); assert.ok(risposte[0] < 40, "risposta minima: " + risposte[0]);
+  // 3. arretrato in due blocchi con un aggiornamento in mezzo; poi misure fuori ordine (orologio rimesso indietro di 20 minuti)
+  await manda(blocco(adesso - 2 * 86400, 144));
+  app = await chiedi(app);
+  await manda(blocco(adesso - 86400 - 1200, 100, 600, 2));
+  risposte = []; app = await chiedi(app); assert.deepEqual(app, await tutto());
+  assert.ok(risposte[0] < risposte[1] / 2, `solo la coda: ${risposte[0]} byte invece di ${risposte[1]}`);
+  // 4. torre tolta e rifatta: la versione riparte, l'app ricarica tutto
+  await call(dati, "/api/dati?op=torre", { method: "POST", headers: H5, body: { action: "togli" } });
+  chiave = (await call(dati, "/api/dati?op=torre", { method: "POST", headers: H5, body: { action: "chiave" } })).body.torre.chiave;
+  await manda(blocco(adesso - 3600, 6, 600, 9));
+  app = await chiedi(app); assert.deepEqual(app, await tutto()); assert.equal(app.misure.length, 6);
+  // 5. un'app vecchia (senza u e da) riceve tutto
+  const vecchia = await leggi(""); assert.ok(!vecchia.parziale && vecchia.misure.length === 6);
+});
+
+test("torre: a ogni invio dell'ESP32 tre letture e una scrittura; il meteo una volta l'ora (o se cambia la posizione)", async () => {
+  const C6 = "GRD-TORREVELOCE-ABCDEFGHJK", H6 = { "x-giardino-code": C6 }, torreFn = (await import("../netlify/functions/torre.mjs")).default;
+  await call(dati, "/api/dati", { method: "POST", headers: H6, body: { changes: { location: { name: "Castrocaro Terme", lat: 44.18, lon: 11.95 } } } });
+  const chiave = (await call(dati, "/api/dati?op=torre", { method: "POST", headers: H6, body: { action: "chiave" } })).body.torre.chiave;
+  const adesso = Math.floor(Date.now() / 1000);
+  const manda = (i) => call(torreFn, "/api/torre", { method: "POST", headers: { "x-torre-chiave": chiave }, body: { v: 1, fw: 7, rev: 1, avvio: 1, sec: 9999, stato: { modo: "normale", t: 12, u: 60 }, misure: [[adesso - 600 + i, 12, 60, 0, 0, 1, i]] } });
+  let meteo = 0; const vero = globalThis.fetch;
+  globalThis.fetch = async (u, o) => { if (/open-meteo|met\.no/.test(String(u))) meteo++; return vero(u, o); };
+  try {
+    const a = await manda(1); assert.equal(a.status, 200); assert.ok(Array.isArray(a.body.gelo));
+    const s1 = await getStore({ name: "giardino" }).get("s-" + C6, { type: "json" });
+    assert.ok(s1.meteo_torre?.at && Object.keys(s1.meteo_torre.giorni).length > 5, "meteo ridotto nella serie");
+    globalThis.__CONTA_BLOB = {}; meteo = 0;
+    const b = await manda(2);
+    assert.deepEqual(b.body.gelo, a.body.gelo, "ore di gelo dalla serie");
+    assert.deepEqual(globalThis.__CONTA_BLOB, { get: 2, getWithMetadata: 1, setJSON: 1 }, "chiave, dati, serie; poi la serie scritta"); assert.equal(meteo, 0, "niente meteo");
+    // posizione cambiata: il meteo si richiede subito
+    const tr = (await call(dati, "/api/dati", { headers: H6 })).body.data.torre;
+    await call(dati, "/api/dati", { method: "POST", headers: H6, body: { changes: { torre: { ...tr, posizione: "veranda" } } } });
+    globalThis.__CONTA_BLOB = {};
+    await manda(3);
+    assert.ok(globalThis.__CONTA_BLOB.get >= 3, "meteo letto di nuovo (archivio del meteo)");
+    const s3 = await getStore({ name: "giardino" }).get("s-" + C6, { type: "json" }); assert.match(s3.meteo_torre.chiave, /^veranda\|/);
+  } finally { globalThis.fetch = vero; }
+});
+
 test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazioni e accensione una volta sola, avvisi su Telegram, spenta e tolta", async () => {
   const torreFn = (await import("../netlify/functions/torre.mjs")).default;
   const st = getStore({ name: "giardino" }), t0 = await st.get("t-" + CODE, { type: "json" }), d0 = await leggiDati();
@@ -819,6 +877,8 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   assert.equal(cm.config.accesa_min, 12); assert.equal(cm.comando.pompa_s, 30);
   assert.match((await strumento("torre_imposta", { accesa_min: 12 })).content[0].text, /Niente da cambiare/);
   assert.match((await strumento("torre_imposta", { guasto_pausa: 30, guasto_ferma: true })).content[0].text, /pompa ferma: no → sì/);
+  assert.match((await strumento("torre_imposta", { cal_t: -2 })).content[0].text, /correzione del termometro \(°C\): 0 → -2/);
+  assert.match((await strumento("torre")).content[0].text, /correzione del termometro: -2 °C/);
   assert.equal((await leggiDati()).torre.config.guasto_pausa, 30);
   assert.ok((await strumento("torre_imposta", { guasto_ferma: "sì" })).isError);
   tx = (await strumento("torre_imposta", { capacita: 20, nutrienti_ogni: 10, segna: "rabbocco", litri: 4 })).content[0].text;
@@ -826,7 +886,12 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   assert.deepEqual([(await leggiDati()).torre.serbatoio.capacita, (await leggiDati()).torre.lavori.nutrienti.ogni, (await leggiDati()).torre.serbatoio.rabbocchi.at(-1).litri], [20, 10, 4]);
   assert.match((await strumento("torre_imposta", { segna: "pulizia", quando: "2020-01-01" })).content[0].text, /ultimi 60 giorni/);
   tx = (await strumento("torre")).content[0].text;
-  assert.match(tx, /## Serbatoio e manutenzione/); assert.match(tx, /serbatoio 20 L: ultimo rabbocco oggi/); assert.match(tx, /nutrienti: mai segnato \(ogni 10 giorni\)/);
+  assert.match(tx, /## Serbatoio e manutenzione/); assert.match(tx, /serbatoio 20 L, minimo per la pompa 5 L: ultimo rabbocco oggi; beve circa .* L al giorno .*stima prudente .*restano circa 20 L/);
+  tx = (await strumento("torre_imposta", { minimo: 4, anticipo: 2 })).content[0].text;
+  assert.match(tx, /livello minimo per la pompa: un quarto → 4 L/); assert.match(tx, /avviso del serbatoio: 3 → 2 giorni prima/); assert.doesNotMatch(tx, /L'ESP32 le riceve/);
+  assert.deepEqual([(await leggiDati()).torre.serbatoio.minimo, (await leggiDati()).torre.serbatoio.anticipo], [4, 2]);
+  assert.ok((await strumento("torre_imposta", { anticipo: 30 })).isError);
+  tx = (await strumento("torre")).content[0].text; assert.match(tx, /nutrienti: mai segnato \(ogni 10 giorni\)/);
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
   assert.ok((await strumento("torre_imposta", { accesa_min: 11 })).isError, "senza permesso");
   assert.ok(!(await strumento("torre")).isError, "leggere si può sempre");

@@ -1,5 +1,5 @@
 import { VERSIONE } from "../lib/versione.mjs";
-import { nuovaTorre, torreDallApp, serieVuota, GIORNI_TORRE } from "../lib/torre.mjs";
+import { nuovaTorre, torreDallApp, serieVuota, GIORNI_TORRE, giornoTorre } from "../lib/torre.mjs";
 import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, pianiOrti, messaggioMattina, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
@@ -144,8 +144,13 @@ async function opMcp(request, st, code) {
 async function opTorre(request, st, code, url) {
   if (request.method === "GET") {
     const giorni = Math.max(1, Math.min(GIORNI_TORRE, parseInt(url.searchParams.get("giorni")) || 8)), s = (await st.get("s-" + code, { type: "json" })) || serieVuota();
-    const da = Math.floor(Date.now() / 1000) - giorni * 86400;
-    return reply({ stato: s.stato, ultimo: s.ultimo, misure: s.misure.filter((r) => r[0] >= da).map((r) => r.slice(0, 5)), giorni: s.giorni || [], riavvii: (s.riavvii || []).slice(-20), memoria_formattata: s.memoria_formattata || 0 });
+    // l'app manda il suo ultimo contatto (u) e un cursore (da): niente di nuovo → «invariato»; altrimenti solo la coda
+    const u = +url.searchParams.get("u") || 0, cur = +url.searchParams.get("da") || 0, ultimo = s.ultimo || 0, ver = s.ver || 0;
+    if (u && u === ver) return reply({ invariato: true, ver });
+    const finestra = Math.floor(Date.now() / 1000) - giorni * 86400, parziale = cur > 0 && u > 0 && u < ver;
+    const da = parziale ? Math.max(finestra, cur) : finestra, g0 = parziale ? giornoTorre(cur - 86400, s.meteo_torre?.tz || "Europe/Rome") : "";
+    return reply({ stato: s.stato, ultimo, ver, misure: s.misure.filter((r) => r[0] >= da).map((r) => r.slice(0, 5)), giorni: (s.giorni || []).filter((x) => x[0] >= g0),
+      riavvii: (s.riavvii || []).slice(-20), memoria_formattata: s.memoria_formattata || 0, ...(parziale ? { parziale: true, da } : {}) });
   }
   const body = await request.json().catch(() => null), action = body?.action;
   if (action === "chiave") {   // la prima volta crea la torre; poi cambia la chiave (quella vecchia non vale più)

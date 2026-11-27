@@ -308,7 +308,7 @@ window.GiardinoNet={
   // cambio di orto nell'app: il meteo di quell'orto (dalla copia sul telefono se c'è, poi aggiornato)
   cambiaOrto:()=>{ docs.meteo_bot=null; emit('meteo_bot'); return pronto().then(()=>caricaMeteo(false)).then(()=>emit('meteo_bot')).catch(()=>{}); },
   riconosci:immagine=>api('POST',{immagine},'riconosci'),
-  torre:giorni=>api('GET',null,'torre&giorni='+(giorni||8)),
+  torre:(giorni,u,da)=>api('GET',null,'torre&giorni='+(giorni||8)+(u?'&u='+Math.round(u):'')+(da?'&da='+Math.round(da):'')),
   torreAzione:action=>api('POST',{action},'torre'),
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,

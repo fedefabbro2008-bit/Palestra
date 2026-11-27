@@ -2,7 +2,15 @@
 // Consumo ridotto: processore a 80 MHz, riposo leggero tra un evento e l'altro, Wi-Fi solo pochi secondi.
 // Pompa: cicli in base alla temperatura e all'umidità misurate, più lunghi di notte; ferma sotto 2 °C
 // (riparte sopra 4 °C). Misure salvate in memoria e mandate all'app Giardino quando c'è il Wi-Fi.
-// Versione 5: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
+// Versione 8: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
+// Novità della v8: diagnostica per l'app (memoria libera e impulsi del power bank non partiti); se la radio non parte
+// per l'impulso si riprova una volta e intanto il processore resta occupato (consuma lo stesso); dopo un collegamento il
+// prossimo impulso aspetta (la radio ha appena consumato).
+// Novità della v7: correzione del termometro impostabile dall'app (l'umidità si ricalcola di conseguenza); l'impulso che
+// tiene acceso il power bank si allunga da solo se il power bank si spegne lo stesso; dopo un riavvio senza mancanza di
+// corrente l'ora resta quella giusta anche col modem spento.
+// Novità della v6: tiene acceso il power bank (molti si spengono quando l'ESP32 a riposo consuma poco): ogni
+// POWERBANK_OGNI_S secondi accende la radio del Wi-Fi per POWERBANK_PER_MS millisecondi, senza collegarsi al modem.
 // Novità della v5: watchdog (se il programma si blocca l'ESP32 riparte da solo, con la pompa spenta); limite di sicurezza
 // per la pompa accesa; motivo di ogni riavvio mandato all'app (corrente, calo di tensione, blocco); riscaldatore dell'SHT40
 // quando resta a lungo nell'umidità.
@@ -21,6 +29,7 @@
 #include <ArduinoJson.h>
 #include <Adafruit_SHT4x.h>
 #include <time.h>
+#include <sys/time.h>
 #include "esp_sleep.h"
 #include "esp_task_wdt.h"
 #include "driver/gpio.h"
@@ -35,12 +44,18 @@ const char* SITO          = "https://giardino-fede.netlify.app/api/torre";   // 
 // true: l'ESP32 controlla che il sito sia davvero quello giusto (certificato). Mettilo a false solo se nel Monitor
 // seriale compare «certificato non accettato» e la torre non si collega più: vuol dire che il sito ha cambiato certificato.
 const bool VERIFICA_CERTIFICATO = true;
+// Alimentazione da power bank: true lo tiene acceso con un breve consumo ogni tanti secondi (circa 1 Wh al giorno).
+// Se il power bank si spegne lo stesso (nell'app compare «è mancata la corrente»): POWERBANK_OGNI_S più basso
+// (per esempio 8) o POWERBANK_PER_MS più alto (per esempio 3000). Con un alimentatore da muro mettilo a false.
+const bool     TIENI_ACCESO_POWERBANK = true;
+const uint32_t POWERBANK_OGNI_S  = 15;
+const uint32_t POWERBANK_PER_MS  = 1500;
 // ==================================================
 
 const int  PIN_RELE    = 26;
 const bool RELE_ATTIVO = HIGH;                         // High Level Trigger
 const char* FUSO       = "CET-1CEST,M3.5.0,M10.5.0/3"; // ora italiana con ora legale
-const uint32_t VERSIONE_FW = 5;
+const uint32_t VERSIONE_FW = 8;
 const uint32_t WATCHDOG_S = 90;                        // il programma bloccato per 90 s: l'ESP32 riparte da solo
 const uint32_t SVEGLIO_ALL_AVVIO_MS = 180000;          // 3 minuti per i comandi dal Monitor seriale
 
@@ -57,6 +72,7 @@ struct Config {
   uint16_t pausaMax = 120;                         // minuti
   uint16_t misuraOgniMin = 10, wifiOgniMin = 15, wifiMaxMin = 60;
   uint16_t guastoPausa = 20;                       // sensore che non risponde: pausa del ciclo di emergenza (min)
+  float    calT = 0;                               // correzione del termometro (°C), dall'app
   bool     guastoFerma = false;                    // sensore che non risponde: pompa ferma invece del ciclo
   uint32_t rev = 0;                                // versione delle impostazioni (dall'app)
 } cfg;
@@ -72,6 +88,9 @@ uint32_t secondiPompa = 0;
 bool fermaPerFreddo = false;
 uint16_t erroriSensore = 0;                        // misure di fila senza risposta dall'SHT40
 bool memoriaOk = false, memoriaFormattata = false;  // LittleFS; «formattata» si dice al sito una volta
+uint32_t pbOgniS = POWERBANK_OGNI_S, pbPerMs = POWERBANK_PER_MS; uint8_t pbAllungato = 0; bool pbVivoSegnato = false;   // power bank
+uint32_t prossimoImpulsoMs = 0;                   // prossimo impulso per il power bank
+uint16_t impulsiFalliti = 0;                       // impulsi in cui la radio non è partita (diagnostica per l'app)
 uint32_t gelo[6][2]; uint8_t nGelo = 0;            // ore di gelo previste dal meteo (dal sito), usate solo col sensore guasto
 
 enum Modo : uint8_t { NORMALE, NOTTE, UMIDO, FREDDO, SENZA_SENSORE, MANUALE, SICUREZZA };
@@ -107,6 +126,19 @@ void rele(bool on) {
   digitalWrite(PIN_RELE, on ? RELE_ATTIVO : !RELE_ATTIVO);
 }
 
+// ---------- ora: resta giusta dopo un riavvio senza mancanza di corrente (la memoria RTC non si cancella) ----------
+RTC_NOINIT_ATTR uint32_t rtcFirma, rtcOra;
+const uint32_t FIRMA_ORA = 0xC1A0C1A0;
+void ricordaOra() { if (time(nullptr) > 1700000000) { rtcOra = (uint32_t)time(nullptr); rtcFirma = FIRMA_ORA; } }
+void riprendiOra(bool accensione) {
+  if (time(nullptr) > 1700000000) return;                  // già giusta
+  if (!accensione && rtcFirma == FIRMA_ORA && rtcOra > 1700000000) {
+    struct timeval tv = { (time_t)(rtcOra + 2), 0 }; settimeofday(&tv, nullptr);   // al massimo un minuto indietro
+    Serial.println("Ora ripresa da prima del riavvio");
+  }
+  rtcFirma = 0;
+}
+
 // ---------- watchdog: se loop() non lo «tiene vivo» per WATCHDOG_S secondi, l'ESP32 riparte (con la pompa spenta) ----------
 void avviaWatchdog() {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -135,7 +167,15 @@ bool misura(float &t, float &u) {
     if (i < 4) delay(200);
   }
   if (!n) return false;
-  t = st / n; u = su / n; return true;
+  t = st / n; u = su / n;
+  // correzione del termometro: l'umidità relativa si ricalcola alla temperatura corretta, a parità di vapore nell'aria
+  // (un sensore più caldo dell'aria, per esempio vicino all'ESP32, segna anche un'umidità più bassa del vero)
+  if (cfg.calT != 0) {
+    auto es = [](float T) { return 6.112f * expf(17.62f * T / (243.12f + T)); };   // pressione di saturazione (Magnus)
+    float tc = t + cfg.calT, uc = u * es(t) / es(tc);
+    t = tc; u = uc < 0 ? 0 : uc > 100 ? 100 : uc;
+  }
+  return true;
 }
 void avviaSensore() {
   shtOk = sht4.begin();
@@ -286,6 +326,8 @@ void applicaConfig(JsonObject c) {
   cfg.wifiMaxMin    = c["wifi_max_min"]    | cfg.wifiMaxMin;
   cfg.guastoPausa   = c["guasto_pausa"]    | cfg.guastoPausa;
   cfg.guastoFerma   = c["guasto_ferma"]    | cfg.guastoFerma;
+  cfg.calT          = c["cal_t"]           | cfg.calT;
+  if (cfg.calT < -10 || cfg.calT > 10) cfg.calT = 0;
   cfg.rev           = c["rev"]             | cfg.rev;
   salvaConfig();
   Serial.printf("Impostazioni nuove dall'app (versione %lu)\n", cfg.rev);
@@ -557,6 +599,8 @@ bool mandaBlocco(int &comandoPompaS) {
   JsonObject st = doc["stato"].to<JsonObject>();
   st["modo"] = NOMI_MODO[fermaPerFreddo ? FREDDO : modo]; st["pompa"] = pompaAccesa; st["rssi"] = WiFi.RSSI();
   if (erroriSensore) st["sensore_errori"] = erroriSensore;
+  if (TIENI_ACCESO_POWERBANK) { JsonArray pb = st["pb"].to<JsonArray>(); pb.add(pbOgniS); pb.add(pbPerMs); pb.add(pbAllungato); }
+  { JsonArray dg = st["diag"].to<JsonArray>(); dg.add(ESP.getFreeHeap()); dg.add(ESP.getMinFreeHeap()); dg.add(impulsiFalliti); }   // diagnostica
   st["riavvio"] = motivoRiavvio;
   if (oraNota()) {                                          // da quando la pompa è così e quando finisce questa fase (ora vera)
     uint32_t adesso = time(nullptr), ms = millis(), fineMs = manualeFinoMs ? manualeFinoMs : fineFaseMs;
@@ -606,7 +650,7 @@ bool mandaBlocco(int &comandoPompaS) {
 
   // le misure si cancellano solo se il sito conferma di averle ricevute ({"ok": true}); rimandarle è sicuro: il sito toglie i doppioni
   JsonDocument ris;
-  if (deserializeJson(ris, risposta) != DeserializationError::Ok || ris["ok"] != true) { Serial.println("Sito: risposta non valida, le misure restano in memoria"); return false; }
+  if (deserializeJson(ris, risposta) != DeserializationError::Ok || !ris["ok"].as<bool>()) { Serial.println("Sito: risposta non valida, le misure restano in memoria"); return false; }
   applicaConfig(ris["config"].as<JsonObject>());
   applicaGelo(ris["gelo"].as<JsonArray>());
   int c = ris["comando"]["pompa_s"] | 0;                    // arriva una volta sola: non cancellarlo con l'invio dopo
@@ -639,10 +683,51 @@ void collegati() {
   tieniVivo();
   spegniWiFi();
   if (chiaveRifiutata) attesaWiFiMin = cfg.wifiMaxMin;      // chiave sbagliata: riprova di rado, le misure restano in memoria
+  prossimoImpulsoMs = millis() + pbOgniS * 1000UL;         // la radio ha appena consumato: il prossimo impulso aspetta
   if (comando > 0 && comando <= 600 && !pompaVietata()) {   // accensione dall'app, mai col freddo
     rele(true); modo = MANUALE; manualeFinoMs = millis() + comando * 1000UL;
     Serial.printf("Comando dall'app: pompa accesa %d s\n", comando);
   }
+}
+
+// ---------- power bank: un breve consumo ogni tanto, perché non si spenga ----------
+// La radio del Wi-Fi che cerca le reti consuma oltre 100 mA: abbastanza perché il power bank veda un carico.
+// Non serve con la pompa accesa (consuma già lei) né durante un collegamento.
+// Se l'ESP32 riparte per «corrente» dopo essere stato acceso almeno 3 minuti, probabilmente il power bank si è spento:
+// l'impulso diventa più frequente e più lungo (fino a 4 s ogni 5 s) e il programma se lo ricorda. Un programma nuovo riparte
+// dai valori scritti sopra.
+void caricaPowerBank(bool fwNuovo, bool persaCorrente) {
+  prefs.begin("torre", false);
+  if (fwNuovo) { prefs.putUInt("pbOgni", POWERBANK_OGNI_S); prefs.putUInt("pbPer", POWERBANK_PER_MS); prefs.putUChar("pbN", 0); }
+  pbOgniS = prefs.getUInt("pbOgni", POWERBANK_OGNI_S); pbPerMs = prefs.getUInt("pbPer", POWERBANK_PER_MS); pbAllungato = prefs.getUChar("pbN", 0);
+  bool eraVivo = prefs.getBool("pbVivo", false);
+  if (eraVivo) prefs.putBool("pbVivo", false);
+  if (TIENI_ACCESO_POWERBANK && persaCorrente && eraVivo && !fwNuovo && (pbOgniS > 5 || pbPerMs < 4000)) {
+    pbOgniS = max<uint32_t>(5, pbOgniS * 2 / 3); pbPerMs = min<uint32_t>(4000, pbPerMs * 3 / 2); if (pbAllungato < 99) pbAllungato++;
+    prefs.putUInt("pbOgni", pbOgniS); prefs.putUInt("pbPer", pbPerMs); prefs.putUChar("pbN", pbAllungato);
+    Serial.printf("Power bank spento? Impulso allungato: %lu ms ogni %lu s\n", (unsigned long)pbPerMs, (unsigned long)pbOgniS);
+  }
+  prefs.end();
+}
+void segnaVivo() {                                          // acceso da 3 minuti: un riavvio dopo non è un collegamento a mano
+  if (pbVivoSegnato || millis() < 180000UL) return;
+  pbVivoSegnato = true; prefs.begin("torre", false); prefs.putBool("pbVivo", true); prefs.end();
+}
+bool avviaRicerca() { return WiFi.mode(WIFI_STA) && WiFi.scanNetworks(true) != WIFI_SCAN_FAILED; }   // ricerca delle reti in sottofondo
+void impulsoPowerBank() {
+  bool radio = avviaRicerca();
+  if (!radio) { WiFi.mode(WIFI_OFF); delay(20); radio = avviaRicerca(); }   // non partita: si riprova una volta da capo
+  if (!radio && impulsiFalliti < 65535) impulsiFalliti++;
+  uint32_t t0 = millis();
+  // con la radio accesa si aspetta a riposo; senza, il processore resta occupato (consuma meno, ma qualcosa)
+  while (millis() - t0 < pbPerMs) { if (radio) delay(50); tieniVivo(); }
+  WiFi.scanDelete();
+  WiFi.mode(WIFI_OFF);
+}
+void tieniAccesoPowerBank() {
+  if (!TIENI_ACCESO_POWERBANK || (int32_t)(millis() - prossimoImpulsoMs) < 0) return;
+  if (!pompaAccesa) impulsoPowerBank();
+  prossimoImpulsoMs = millis() + pbOgniS * 1000UL;
 }
 
 // ---------- riposo leggero fino al prossimo evento ----------
@@ -655,6 +740,7 @@ void riposa() {
   if (strlen(CHIAVE_TORRE)) piuVicino(prossimoWiFiMs);
   if (manualeFinoMs) piuVicino(manualeFinoMs);
   if (comunicaPompa) piuVicino(quandoComunica());
+  if (TIENI_ACCESO_POWERBANK) piuVicino(prossimoImpulsoMs);
   if (attesa < 50) return;
   if (ora < SVEGLIO_ALL_AVVIO_MS) { delay(min<int32_t>(attesa, 100)); return; }   // primi 3 minuti: sveglio per i comandi
   Serial.flush();
@@ -688,8 +774,11 @@ void setup() {
     case ESP_RST_EXT: motivoRiavvio = "tasto"; break;
     default: motivoRiavvio = "altro";
   }
+  bool accensione = esp_reset_reason() == ESP_RST_POWERON;
   if (fwNuovo) motivoRiavvio = "programma";
   Serial.printf("Riavvio: %s\n", motivoRiavvio);
+  riprendiOra(accensione);
+  caricaPowerBank(fwNuovo, accensione && !fwNuovo);
   // memoria: si riprova prima di formattare; la prima accensione in assoluto la formatta senza dirlo (è vuota)
   for (int i = 0; i < 3 && !memoriaOk; i++) { memoriaOk = LittleFS.begin(false); if (!memoriaOk) delay(300); }
   if (!memoriaOk) {
@@ -709,11 +798,14 @@ void setup() {
   prossimaFase();
   prossimaMisuraMs = millis() + 60000;
   prossimoWiFiMs = millis() + 20000;
+  if (TIENI_ACCESO_POWERBANK) Serial.printf("Power bank tenuto acceso: radio accesa %lu ms ogni %lu s\n", (unsigned long)pbPerMs, (unsigned long)pbOgniS);
+  prossimoImpulsoMs = millis() + pbOgniS * 1000UL;
   Serial.println("Comandi (primi 3 minuti dopo l'accensione): p = pompa 30 s, t = misura, s = stato, w = Wi-Fi, c = cancella misure");
 }
 
 void loop() {
   tieniVivo();
+  ricordaOra(); segnaVivo();
   uint32_t ora = millis();
   // limite di sicurezza: pompa accesa troppo a lungo (errore nel programma): si spegne e lo si registra
   if (pompaAccesa && ora - cambioPompaMs > limitePompaMs()) {
@@ -751,5 +843,6 @@ void loop() {
     else if (c == 'w') { collegati(); }
     else if (c == 'c') { if (memoriaOk) LittleFS.remove(FILE_MISURE); Serial.println("Misure cancellate"); }
   }
+  tieniAccesoPowerBank();
   riposa();
 }

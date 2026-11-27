@@ -1,0 +1,43 @@
+# Giardino · compila il programma dell'ESP32 della torre idroponica a ogni modifica (repository pubblico: minuti gratuiti).
+# Stessa scheda e stesse librerie dell'Arduino IDE; due versioni del pacchetto ESP32 (la 2 e la 3), perché nell'IDE può
+# esserci l'una o l'altra. Così gli errori di compilazione si vedono qui, prima di caricare il programma.
+name: Giardino · programma ESP32
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["giardino/esp32/**", ".github/workflows/giardino-esp32.yml"]
+  pull_request:
+    paths: ["giardino/esp32/**", ".github/workflows/giardino-esp32.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: giardino-esp32-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compila:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        esp32: ["2.0.17", "3.3.0"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Compila torre_esp32 (pacchetto ESP32 ${{ matrix.esp32 }})
+        uses: arduino/compile-sketches@v1
+        with:
+          fqbn: esp32:esp32:esp32:PartitionScheme=default
+          platforms: |
+            - name: esp32:esp32
+              source-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+              version: ${{ matrix.esp32 }}
+          libraries: |
+            - name: Adafruit SHT4x Library
+            - name: ArduinoJson
+          sketch-paths: |
+            - giardino/esp32/torre_esp32
+          enable-warnings-report: true
+          cli-compile-flags: |
+            - --warnings
+            - default
