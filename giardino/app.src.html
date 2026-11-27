@@ -325,6 +325,7 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .seg.tiles3{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}
 .seg.tiles label,.seg.tiles3 label{flex-direction:column;gap:2px;min-height:64px;padding:8px 4px}
 .seg .ti{font-size:1.4rem;line-height:1}
+.seg.tiles4{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row}
 .seg.bussola{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))} .seg.bussola label{min-height:44px} .seg.bussola .tutta{grid-column:1/-1;min-height:36px;font-weight:500}
 .opt{font-weight:400;color:var(--muted)}
 
@@ -748,9 +749,6 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
       <div id="wxNote" class="sub" hidden></div>
     </div>
 
-    <div id="alerts" class="stack"></div>
-
-    <div class="card torre" id="torreBox" role="button" tabindex="0" aria-label="Torre idroponica: apri i dettagli" hidden></div>
 
     <div class="stack" id="todayBox">
       <div class="hero" id="heroBox"><div class="hnum" id="heroNum" aria-hidden="true">·</div><div class="htxt"><div class="eyebrow" id="todayDate"></div><h2 class="headline" id="todayHead">Oggi</h2><div class="sub" id="todaySub"></div></div></div>
@@ -760,12 +758,16 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
       <div class="card stack" id="verBox" hidden></div>
     </div>
 
+    <div class="card torre" id="torreBox" role="button" tabindex="0" aria-label="Torre idroponica: apri i dettagli" hidden></div>
+
     <div class="card" id="weekBox" hidden>
       <h2>Prossimi giorni</h2>
       <div id="weekList" style="margin-top:4px"></div>
       <div class="foot" id="planSrc"></div>
       <div class="row" style="margin-top:8px"><button class="btn small ghost" id="copyBtn" type="button">Copia il piano</button><button class="btn small ghost" id="localBtn" type="button" hidden>Usa il calcolo automatico</button></div>
     </div>
+
+    <div id="alerts" class="stack"></div>
   </section>
 
   <!-- PIANTE -->
@@ -811,7 +813,9 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
             <label><input type="radio" name="colt" value="vaso"><span class="ti" aria-hidden="true">🪴</span>Vaso</label>
             <label><input type="radio" name="colt" value="terra"><span class="ti" aria-hidden="true">🌱</span>Piena terra</label>
             <label><input type="radio" name="colt" value="rialzata"><span class="ti" aria-hidden="true">🧱</span>Aiuola</label>
+            <label id="pf-colt-torre" hidden><input type="radio" name="colt" value="torre"><span class="ti" aria-hidden="true">🌿</span>Torre idroponica</label>
           </div>
+          <span class="hint" id="pf-torre-hint" hidden>Nella torre l'acqua la dà la pompa: l'app non calcola le innaffiature, segue fasi, scheda e raccolto.</span>
         </div>
         <div class="field pf-vaso-only"><label for="pf-vaso">Grandezza del vaso (litri)</label>
           <input type="text" id="pf-vaso" inputmode="decimal">
@@ -841,7 +845,7 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
           <div class="quick" id="pf-luce-q"><button type="button" data-luce="2">🌥️ Ombra · 2 h</button><button type="button" data-luce="4">⛅ Mezz'ombra · 4 h</button><button type="button" data-luce="8">☀️ Pieno sole · 8 h</button></div>
           <span class="hint">In casa: ore di luce forte vicino alla finestra (a sud 6–8, a est o a ovest 3–4, a nord 1).</span>
         </div>
-        <div class="field"><span class="flabel" id="pf-dove-l">Dove sta</span>
+        <div class="field" id="pf-dove-f"><span class="flabel" id="pf-dove-l">Dove sta</span>
           <div class="seg tiles" role="radiogroup" aria-labelledby="pf-dove-l">
             <label><input type="radio" name="dove" value="aperto"><span class="ti" aria-hidden="true">🌦️</span>Fuori, prende la pioggia</label>
             <label><input type="radio" name="dove" value="riparato"><span class="ti" aria-hidden="true">⛱️</span>Fuori, al riparo</label>
@@ -1167,7 +1171,7 @@ const DOVE_BREVE = {aperto:"all'aperto", riparato:'al riparo', serra:'in veranda
 // testi dei campi temperatura: casa o veranda/serra
 const TESTI_T = {interno:['Temperatura in casa (°C)','Uguale per tutte le piante in casa','Nella stanza dove sta la pianta. Più fa caldo più beve: a 26 °C circa il 30% in più che a 20 °C. Vicino a un termosifone conta 2–3 gradi in più.'],
   serra:['Temperatura in veranda / serra (°C)','Uguale per tutte le piante in veranda / serra','Temperature medie di giorno. Non riscaldata: d\'inverno 8–12 °C, d\'estate anche 30–35 °C. Sotto vetro la pioggia non arriva e il sole fa bere di più: arieggia nelle giornate calde.']};
-const COLT = {vaso:'Vaso', terra:'Piena terra', rialzata:'Aiuola rialzata'};
+const COLT = {vaso:'Vaso', terra:'Piena terra', rialzata:'Aiuola rialzata', torre:'Torre idroponica'};
 const IMP_DEF = {bicchiere:0.25, annaffiatoio:5, ora_mattina:7, ora_sera:19};
 const ANELLO='<svg viewBox="0 0 68 68" aria-hidden="true"><circle class="rt" cx="34" cy="34" r="31"/><circle class="rf" cx="34" cy="34" r="31"/></svg>';
 const CHEV = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
@@ -1399,13 +1403,15 @@ const giornoVita = d => dataBreve(d)+(d.slice(0,4)!==today().slice(0,4)?' '+d.sl
 const daQuando = a => a.perche==='semina'?'dalla semina, '+giornoVita(a.dal):a.perche==='trapianto'?'dal trapianto, '+giornoVita(a.dal):'da quando è nell\'app, '+giornoVita(a.dal);
 // «Pioggia 2,3 L in 2 giorni» / «Innaffiature 1,04 L (2 volte, 1 senza litri segnati)»
 function testoPioggiaVita(p, a){
+  if(a.torre) return 'Pioggia: non conta (nella torre)';
   const g=a.pioggia;
   if(g.sconosciuta) return 'Pioggia: in attesa del meteo';
   if(p.dove!=='aperto' && !(g.litri>0)) return 'Pioggia: niente (al coperto)';
   return 'Pioggia '+fmtL(g.litri)+(g.giorni?' in '+(g.giorni===1?'1 giorno':g.giorni+' giorni'):'')+(g.presa>0&&p.dove!=='aperto'?' (messa fuori)':'')+(g.dal?' (contata dal '+giornoVita(g.dal)+')':'')
     +(g.mancano?' (senza il meteo di '+(g.mancano===1?'1 giorno':g.mancano+' giorni')+')':'');
 }
-const testoInnaffiatureVita = a => { const i=a.innaffiature, v=n=>n===1?'1 volta':n+' volte';
+const testoInnaffiatureVita = a => { if(a.torre) return 'Acqua dalla pompa della torre idroponica';
+  const i=a.innaffiature, v=n=>n===1?'1 volta':n+' volte';
   return 'Innaffiature '+fmtL(i.litri)+(!i.volte?'':i.senzaLitri===i.volte?' ('+v(i.volte)+' senza litri segnati)':' ('+v(i.volte)+(i.senzaLitri?', '+i.senzaLitri+' senza litri segnati':'')+')'); };
 
 /* ================= Piano ================= */
@@ -1455,6 +1461,7 @@ function statoOggi(p){
 }
 // prossima azione del piano per una pianta (oggi conta solo se non è già stata segnata)
 function prossima(p, pp){
+  if(inTorre(p)) return {t:'🌿 Acqua dalla pompa della torre', cls:''};
   if(!pp) return {t:futDays().length?'Non nel piano di Claude: chiedigli di rifarlo':'Aspetto il meteo', cls:''};
   const t=today(), fatta=!!statoOggi(p);
   for(const g of pp.giorni){
@@ -1574,7 +1581,7 @@ function renderOggi(AP){
     sub.textContent=S.location?(senzaRete()?'Il piano torna appena c\'è connessione. Intanto puoi segnare innaffiature e controlli: partono dopo.':'Il piano compare appena arrivano le previsioni.'):'Serve per il meteo: impostalo qui sopra o in Impostazioni.';
     setHTML(list,''); $('#weekBox').hidden=true; renderConcime(); return;
   }
-  const items=piante().map(p=>{ const pp=AP.data.piante.find(x=>x.id===p.id); return {p, pp, g:pp?.giorni.find(x=>x.data===t), st:statoOggi(p)}; });
+  const items=piante().filter(p=>!inTorre(p)).map(p=>{ const pp=AP.data.piante.find(x=>x.id===p.id); return {p, pp, g:pp?.giorni.find(x=>x.data===t), st:statoOggi(p)}; });
   // da fare: ciò che il piano chiede oggi, più ciò che hai già segnato (dopo "Fatto" il piano ricalcola la giornata come "non serve")
   const todo=items.filter(x=>x.st || (x.g && (x.g.azione==='innaffia'||x.g.azione==='controlla')));
   const rest=items.filter(x=>!todo.includes(x)), aperte=todo.filter(x=>!x.st);
@@ -1910,23 +1917,24 @@ function renderPiante(AP){
     let testa='';
     if(zone && chiaveZona(p)!==zonaPrima){ zonaPrima=chiaveZona(p); testa=`<div class="zhead"><span>${esc(zonaDi(p)||'Senza zona')}</span></div>`; }
     const {k,uso,giorni}=schedaAcqua(p), pp=AP?.data?.piante.find(x=>x.id===p.id), nx=prossima(p,pp);
-    const meta=[k.sp.nome.replace(/ \(.*\)$/,'')+(k.num>1?' ×'+k.num:''), k.vaso?'vaso '+fmt(k.V,1)+' L':COLT[p.colt]?.toLowerCase(), fmt(k.h,1)+' h di sole', DOVE_BREVE[p.dove]].filter(Boolean).join(' · ');
+    const meta=[k.sp.nome.replace(/ \(.*\)$/,'')+(k.num>1?' ×'+k.num:''), k.vaso?'vaso '+fmt(k.V,1)+' L':COLT[p.colt]?.toLowerCase(), fmt(k.h,1)+' h di sole', inTorre(p)?'':DOVE_BREVE[p.dove]].filter(Boolean).join(' · ');
     const altri=k.membri.slice(1).map(m=>(SPECIE[m.specie]||SPECIE.altro).nome.split(' ')[0]+(m.num>1?' ×'+m.num:'')).join(', ');
     // intervallo tra due innaffiature col consumo di oggi (quanto può perdere ÷ quanto beve al giorno), senza pioggia
     const ogni = giorni==null ? '—' : giorni<1 ? 'anche più volte al giorno' : giorni<=45 ? 'circa ogni '+fmt(giorni,giorni<3?1:0)+' giorni' : giorni<=90 ? 'circa ogni '+fmt(giorni/30,0)+' mesi' : 'più di 3 mesi';
     const u=ultimaInnaffiatura(p,c.eventi);
     const facts=[['Fase',k.faseNome+(k.faseAuto?' (automatica)':'')],[k.vaso?'Il vaso trattiene':'Il terreno trattiene',fmtL(k.tawL)],['Innaffia quando ne ha persi',fmtL(k.rawL)],
       ['Consumo '+(haMeteo?'di oggi':'tipico'),fmt(uso,uso<1?2:1)+' L al giorno'],[k.interno?'Innaffiare, a questo ritmo':'Innaffiare, se non piove',ogni],['Ultima innaffiatura',u?dataBreve(u):'non indicata']];
+    if(inTorre(p)) facts.splice(1,facts.length-1,['Acqua','dalla pompa della torre idroponica'],['Nutrienti','nell\'acqua del serbatoio della torre']);
     if(orientamento(p.orient)) facts.push(['Sole diretto oggi','~'+fmt(k.h,1)+' h · '+nomeOrientamento(p.orient)]);
     if(altri) facts.push(['Nel vaso anche',altri]);
     if(k.vaso) facts.push(['Vaso',{plastica:'plastica',terracotta:'terracotta (+25%)',chiuso:'senza fori: dose esatta'}[k.materiale]+(k.riserva?' · riserva '+fmtL(k.riserva):'')]);
     if(k.interno) facts.push([k.serra?'In veranda/serra oggi':'In casa oggi','≈ '+fmt(tempCasaGiorno(k.tcasa,today(),S.location?.lat),0)+' °C'+(p.tcasa?'':' (valori tipici)')]);
-    if(pp) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
-    facts.push(['Risposte d\'accordo col calcolo',testoPrecisione(precisione(eventsOf(p.id),p.id,today()))]);
-    { const a=acquaVita(p, eventsOf(p.id), passati, today(), S.location?.lat);
+    if(pp&&!inTorre(p)) facts.push(['Acqua nei prossimi giorni',fmt(pp.fabbisogno_settimanale_litri)+' L']);
+    if(!inTorre(p)) facts.push(['Risposte d\'accordo col calcolo',testoPrecisione(precisione(eventsOf(p.id),p.id,today()))]);
+    if(!inTorre(p)){ const a=acquaVita(p, eventsOf(p.id), passati, today(), S.location?.lat);
       const minuscola=t=>t.charAt(0).toLowerCase()+t.slice(1);
       facts.push(['Acqua di tutta la vita',fmtL(a.totale)+' '+daQuando(a)+' · '+minuscola(testoInnaffiatureVita(a))+' · '+minuscola(testoPioggiaVita(p,a))]); }
-    if(pp && 'dal' in pp) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
+    if(pp && 'dal' in pp && !inTorre(p)) facts.push(['Acqua calcolata',pp.dal==='suolo'?'dall\'umidità del terreno (Open-Meteo)':pp.dal?'dal '+dataBreve(pp.dal)+(pp.dal===u?' (innaffiatura)':' (controllo)'):'da 3 giorni fa: segna le innaffiature']);
     const rc=daRaccogliere(p)?totaleRaccolto(eventsOf(p.id),p.id,today().slice(0,4)+'-01-01'):null;
     if(rc?.volte) facts.push(['Raccolto nel '+today().slice(0,4),testoRaccolto(rc)+' ('+rc.volte+(rc.volte===1?' volta':' volte')+', l\'ultima '+dataBreve(rc.ultimo)+')']);
     const cc=concime(p,c), rv=rinvaso(p,c), notes=[];
@@ -2384,7 +2392,10 @@ function syncForm(){
   const vaso=radioVal('colt')==='vaso';
   document.querySelectorAll('.pf-vaso-only').forEach(el=>el.hidden=!vaso);
   $('#pf-mat-hint').textContent={terracotta:'La terracotta perde acqua anche dalle pareti: circa il 25% in più.',chiuso:'Senza fori l\'acqua in più resta sul fondo: l\'app ti dà la dose esatta (niente “finché esce dal foro”) e ti avvisa dopo la pioggia.'}[radioVal('materiale')]||'';
-  const dv=radioVal('dove'), coperto=dv==='interno'||dv==='serra';
+  const torre=radioVal('colt')==='torre';
+  $('#pf-torre-hint').hidden=!torre; $('#pf-dove-f').hidden=torre;
+  $('#pf-colt-torre').closest('.seg').classList.toggle('tiles4',!$('#pf-colt-torre').hidden);
+  const dv=radioVal('dove'), coperto=!torre&&(dv==='interno'||dv==='serra');
   document.querySelectorAll('.pf-casa-only').forEach(el=>el.hidden=!coperto);
   if(coperto){ const [t1,t2,t3]=TESTI_T[dv]; $('#pf-t-titolo').textContent=t1; $('#pf-t-tutte-l').textContent=t2; $('#pf-t-hint').textContent=t3;
     // cambiando posto (casa ↔ veranda/serra) senza aver scritto nulla, propone le temperature di quel posto
@@ -2417,6 +2428,7 @@ function openForm(id){
   const eo=elencoOrti(); $('#pf-orto-f').hidden=eo.length<2;
   $('#pf-orto').innerHTML=eo.map(o=>`<option value="${esc(o.id)}"${o.id===ORTO?' selected':''}>${esc(nomeOrto(o))}${o.location&&o.nome?' ('+esc(o.location.name)+')':''}</option>`).join('');
   $('#pf-semina').value=p.data_semina||''; $('#pf-tipo-data').value=p.tipo_data||'semina'; $('#pf-raccolta').value=p.raccolta||'';
+  $('#pf-colt-torre').hidden=!(torreOn()||p.colt==='torre');
   setRadio('colt',p.colt||'vaso'); setRadio('dove',p.dove||'aperto');
   setRadio('materiale',p.materiale||'plastica'); setOrient(p.orient); $('#pf-riserva').value=+p.riserva>0?numIn(p.riserva):'';
   $('#pf-vaso').value=numIn(p.vaso); $('#pf-diam').value=numIn(p.diametro); $('#pf-area').value=numIn(p.area); $('#pf-num').value=p.num||1;

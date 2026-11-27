@@ -622,3 +622,14 @@ test("torre idroponica: impostazioni controllate, misure unite senza doppioni, r
   assert.ok(tipi(tr, { ...serie, ultimo: adesso - 30 * h }, null).includes("silenzio"), "torre zitta da più di 26 ore");
   assert.match(M.avvisiTorre(tr, serie, met, "2027-01-10", adesso)[0].testo, /Rischio di ghiaccio nel serbatoio/);
 });
+
+test("piante nella torre idroponica: niente calcolo dell'acqua, controlli col dito, avvisi per pianta né concime", () => {
+  const oggi = "2026-11-20", fut = [...Array(7)].map((_, i) => ({ date: M.addDays(oggi, i), tmax: 15, tmin: 1, et0: 1, rain: 0, prob: 0, wind: 5 }));
+  const lat = { id: "la", nome: "Lattuga", specie: "lattuga", fase: "vegetativa", colt: "torre", luce: 6, dove: "aperto" };
+  const pp = M.pianoLocale({ piante: [lat], past: [], fut, eventi: [], oggi, lat: 44 }).piante[0];
+  assert.equal(pp.acqua, null); assert.ok(pp.torre); assert.ok(pp.giorni.every((g) => g.azione === "salta" && /pompa/.test(g.motivo)));
+  assert.equal(M.verificaDaFare([lat], [], "2026-11-21", null), null, "il controllo del sabato non sceglie piante della torre");
+  assert.deepEqual(M.avvisiDomani([lat], fut[1], null), []);
+  assert.match(M.concime(lat, { oggi, lat: 44 }).testo, /serbatoio/);
+  assert.ok(M.acquaVita(lat, [], [], oggi, 44).torre);
+});

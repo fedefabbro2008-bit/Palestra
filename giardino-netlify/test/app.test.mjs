@@ -636,6 +636,11 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   await page.click("#torrePompa");
   assert.equal(await page.evaluate(() => S.torre.comando.pompa_s), 60); assert.ok(await page.isDisabled("#torrePompa"));
   await page.click("#torreChiudi"); await quando(page, () => document.querySelector("#torreSheet").hidden);
+  // nel modulo della pianta c'è la torre (con la torre accesa)
+  await page.click("#tab-piante"); await page.click("#addPlantBtn");
+  assert.ok(await page.isVisible("#pf-colt-torre"), "Torre idroponica tra i posti dove piantare");
+  await page.click("#pf-colt-torre"); assert.ok(await page.isHidden("#pf-dove-f")); assert.ok(await page.isVisible("#pf-torre-hint"));
+  await page.evaluate(() => closeForm());
   // impostazioni della pompa: salvate con una versione nuova (arriveranno all'ESP32)
   await page.click("#tab-impostazioni");
   await page.fill("#torreAccesa", "10"); await page.click('#torrePos label:has(input[value="veranda"])'); await page.click("#torreSalva");
@@ -645,6 +650,7 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   assert.ok(await page.isHidden("#torreSet")); assert.equal(await page.textContent("#torreChip"), "spenta");
   assert.ok(!(await page.locator('#notList [data-not="torre"]').count()));
   await page.click("#tab-oggi"); assert.ok(await page.isHidden("#torreBox"));
+  await page.click("#tab-piante"); await page.click("#addPlantBtn"); assert.ok(await page.isHidden("#pf-colt-torre"), "spenta: niente torre nel modulo"); await page.evaluate(() => closeForm());
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
   { const srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: H }))).text()).data.torre;
     assert.deepEqual([srv.attiva, srv.chiave, srv.config.accesa_min], [false, chiave, 10], "sul server: spenta, stessa chiave, impostazioni salvate"); }

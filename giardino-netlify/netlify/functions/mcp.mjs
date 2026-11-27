@@ -18,7 +18,7 @@ const rpcErr = (id, code, message) => ({ jsonrpc: "2.0", id: id === undefined ? 
 const NF = new Intl.NumberFormat("it-IT");
 const fmt = (n, d = 1) => n == null || !isFinite(n) ? "–" : NF.format(Math.round(n * 10 ** d) / 10 ** d);
 const DOVE = { aperto: "all'aperto", riparato: "all'aperto riparato dalla pioggia", serra: "in veranda o serra (vetri, niente pioggia)", interno: "in casa" };
-const COLT = { vaso: "vaso", terra: "piena terra", rialzata: "aiuola rialzata" };
+const COLT = { vaso: "vaso", terra: "piena terra", rialzata: "aiuola rialzata", torre: "torre idroponica (acqua e nutrienti dalla pompa: niente calcolo dell'acqua)" };
 const NO_WRITE = "Modifiche non permesse: l'utente può attivarle nell'app Giardino (Impostazioni → Claude → «Claude può modificare»).";
 const dl = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
 
@@ -57,13 +57,13 @@ function descrivi(p, data, oggi, met, ap) {
   const c = M.concime(p, { oggi, lat, eventi: data.eventi }), rv = M.rinvaso(p, { oggi, lat });
   const L = [`- **${p.nome}** [id ${p.id}]${M.zonaDi(p) ? " · zona " + M.zonaDi(p) : ""} — ${k.sp.nome}${k.num > 1 ? " ×" + k.num : ""}, ${k.faseNome.toLowerCase()}${k.faseAuto ? " (calcolata" + (p.data_semina ? " da " + (p.tipo_data === "trapianto" ? "trapianto" : "semina") + " del " + p.data_semina : " dal mese") + ")" : ""}`,
     `  ${k.vaso ? `vaso ${fmt(k.V)} L, Ø ${Math.round(k.D * 100)} cm${+p.diametro > 0 ? "" : " (stimato)"}, ${k.materiale === "chiuso" ? "SENZA FORI (dose esatta, niente acqua in più)" : k.materiale}${k.riserva ? `, sottovaso con riserva da ${fmt(k.riserva)} L` : ""}` : COLT[p.colt]}${altri.length ? "; nello stesso vaso: " + altri.join(", ") : ""}; ${fmt(k.h)} h di luce diretta${M.orientamento(p.orient) ? ` oggi (${M.nomeOrientamento(p.orient)}: ${fmt(+p.luce)} h scritte il ${p.luce_data}, scalate con le stagioni)` : ""}; ${DOVE[p.dove] || p.dove}`,
-    `  calcolo: trattiene ${fmt(k.tawL, 2)} L, innaffiare dopo ${fmt(k.rawL, 2)} L consumati, consumo oggi ${fmt(M.consumoL(k, d0), 2)} L/giorno${Math.abs(k.calib - 1) > 0.01 ? `, correzione appresa ×${fmt(k.calib, 2)}` : ""}`,
+    M.inTorre(p) ? "  nella torre idroponica: acqua e nutrienti li dà la pompa; l'app non calcola innaffiature, controlli col dito né concime" : `  calcolo: trattiene ${fmt(k.tawL, 2)} L, innaffiare dopo ${fmt(k.rawL, 2)} L consumati, consumo oggi ${fmt(M.consumoL(k, d0), 2)} L/giorno${Math.abs(k.calib - 1) > 0.01 ? `, correzione appresa ×${fmt(k.calib, 2)}` : ""}`,
     `  ultima innaffiatura: ${M.ultimaInnaffiatura(p, data.eventi) || "non indicata"}; ${c.inStagione ? c.testo.toLowerCase() : c.testo.toLowerCase()}${rv.length ? "; " + rv.join(" ") : ""}${k.faseNota ? "; fase: " + k.faseNota : ""}`];
   const pb = ap?.base?.piante.find((x) => x.id === p.id);
-  L.push(`  risposte d'accordo col calcolo (ultimi 90 giorni, giudicate quando l'utente ha risposto; il dito vede solo errori grandi, oltre un quarto circa): ${M.testoPrecisione(M.precisione(data.eventi, p.id, oggi))}`);
-  { const a = M.acquaVita(p, data.eventi, M.giorniPassati({ ...met, lat: met.lat ?? lat }, data.pioggia_misurata, oggi, M.ARCHIVIO_GIORNI), oggi, lat), i = a.innaffiature, g = a.pioggia;
+  if (!M.inTorre(p)) L.push(`  risposte d'accordo col calcolo (ultimi 90 giorni, giudicate quando l'utente ha risposto; il dito vede solo errori grandi, oltre un quarto circa): ${M.testoPrecisione(M.precisione(data.eventi, p.id, oggi))}`);
+  if (!M.inTorre(p)) { const a = M.acquaVita(p, data.eventi, M.giorniPassati({ ...met, lat: met.lat ?? lat }, data.pioggia_misurata, oggi, M.ARCHIVIO_GIORNI), oggi, lat), i = a.innaffiature, g = a.pioggia;
     L.push(`  acqua ricevuta in tutta la vita (${a.perche === "app" ? "da quando è nell'app" : a.perche === "trapianto" ? "dal trapianto" : "dalla semina"}, dal ${a.dal}): ${fmt(a.totale, 2)} L, di cui innaffiature ${fmt(i.litri, 2)} L (${i.volte} ${i.volte === 1 ? "volta" : "volte"}${i.senzaLitri ? `, ${i.senzaLitri} senza litri` : ""}) e pioggia ${g.sconosciuta ? "non ancora calcolata (manca l'archivio del meteo)" : `${fmt(g.litri, 2)} L arrivata al terriccio${g.presa > 0 ? ` (${fmt(g.presa, 2)} L quando era fuori)` : ""}${g.dal ? ` (contata dal ${g.dal})` : ""}${g.mancano ? ` (senza il meteo di ${g.mancano} giorni)` : ""}`} — acqua ricevuta, non bevuta`); }
-  if (pb) L.push(`  calcolo automatico: acqua nel terriccio a fine giornata ~${fmt(pb.acqua * 100, 0)}% (si innaffia sotto ${fmt(pb.soglia * 100, 0)}%); ${pb.valutazione}`);
+  if (pb && !pb.torre) L.push(`  calcolo automatico: acqua nel terriccio a fine giornata ~${fmt(pb.acqua * 100, 0)}% (si innaffia sotto ${fmt(pb.soglia * 100, 0)}%); ${pb.valutazione}`);
   const cons = M.consigliPianta(p);
   if (cons.length) L.push(`  consigli dell'app per questa pianta: ${cons.join(" ")}`);
   if (k.interno) { const tc = k.tcasa; L.push(`  ${k.serra ? "in veranda/serra" : "in casa"}: oggi ~${fmt(M.tempCasaGiorno(tc, oggi, lat), 0)} °C (inverno ${fmt(tc.inverno, 0)}, primavera ${fmt(tc.primavera, 0)}, estate ${fmt(tc.estate, 0)}, autunno ${fmt(tc.autunno, 0)} °C${p.tcasa ? "" : ", valori tipici"})`); }
@@ -260,7 +260,7 @@ async function toolRegistra(ctx, a) {
   }
   return `Registrato nel diario: ${nome} — ${a.tipo} (${data}).` + (["meno", "piu", "umido", "secco"].includes(a.tipo) ? ` Correzione appresa per questa pianta: ×${fmt(cal, 2)} (${cal < 1 ? "beve meno" : cal > 1 ? "beve di più" : "nessuna"} del calcolo di base).` : "") + dopo;
 }
-const CAMPI_P = { nome: "s", emoji: "emoji", specie: "specie", fase: "fase", data_semina: "data", tipo_data: ["semina", "trapianto"], colt: ["vaso", "terra", "rialzata"], vaso: "n", diametro: "n", num: "n", area: "n", luce: "n",
+const CAMPI_P = { nome: "s", emoji: "emoji", specie: "specie", fase: "fase", data_semina: "data", tipo_data: ["semina", "trapianto"], colt: ["vaso", "terra", "rialzata", "torre"], vaso: "n", diametro: "n", num: "n", area: "n", luce: "n",
   dove: ["aperto", "riparato", "serra", "interno"], ultima: "data", ultima_concime: "data", data_rinvaso: "data", note: "s", consociate: "cons", zona: "s", tcasa: "tcasa", scheda: "scheda", materiale: ["plastica", "terracotta", "chiuso"], riserva: "n", orient: "orient", luce_data: "data", aggiunta: "data", raccolta: "mese", orto: "orto" };
 function valida(campi) {
   const out = {};

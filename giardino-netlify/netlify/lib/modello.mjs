@@ -486,6 +486,10 @@ const ptay = T => { const D=4098*esat(T)/(T+237.3)**2; return D/(D+0.066); };
 export const et0Casa = (h, T=20, serra=false) => 0.8*esat(T)/esat(20) + (serra?0.30:0.15)*Math.min(h,12)*ptay(T)/ptay(20);
 // al coperto (casa, veranda, serra): niente pioggia, temperatura scelta dall'utente
 export const alCoperto = p => p?.dove==='interno' || p?.dove==='serra';
+// Piante nella torre idroponica (colt = 'torre'): l'acqua (e i nutrienti) la dà la pompa. Niente calcolo dell'acqua, niente
+// controllo col dito, niente avvisi meteo per pianta (li dà la torre), niente concime in vaso. Fasi, scheda e raccolto sì.
+export const inTorre = p => p?.colt==='torre';
+export const MOTIVO_TORRE = 'Nella torre idroponica: l\'acqua la dà la pompa';
 
 /* ---------------- Temperatura in casa per stagione ---------------- */
 // valori tipici se l'utente non li indica: riscaldamento d'inverno, caldo d'estate
@@ -626,6 +630,7 @@ export function calibrazione(eventi, plantId, oggi){
 const RISPOSTE=['fatto','secco','umido','saltato','meno','piu','verifica'];
 export function verificaDaFare(piante, eventi, oggi, vacanza){
   const g=new Date(oggi+'T12:00:00Z').getUTCDay();
+  piante=(piante||[]).filter(p=>!inTorre(p));
   if((g!==6 && g!==0) || !piante?.length || inVacanza(vacanza, oggi)) return null;
   if((eventi||[]).some(e=>e.tipo==='verifica' && giorniTra(e.data,oggi)>=0 && giorniTra(e.data,oggi)<7)) return null;
   // ultimo controllo di ogni pianta, letto una volta (prima si rileggeva tutto il diario a ogni confronto)
@@ -828,6 +833,7 @@ function pioggiaMeteo(p, dal, past, fino, lat, oggi){
 const giorniBuchi = buchi => (buchi||[]).reduce((n,b)=>n+giorniTra(b.da,b.a)+1,0);
 // past = giorni passati (giorniPassati con n = ARCHIVIO_GIORNI); la pioggia fino a ieri (quella di oggi si conta domani)
 export function acquaVita(p, eventi, past, oggi, lat){
+  if(inTorre(p)){ const ini=inizioVita(p, eventi, oggi); return {dal:ini.data, perche:ini.perche, torre:true, innaffiature:{litri:0, volte:0, senzaLitri:0}, pioggia:{litri:0, giorni:0, presa:0}, totale:0}; }
   const ini=inizioVita(p, eventi, oggi), dal=ini.data, vv=p.vita_vecchia||{};
   const mie=eventiValidi(eventi, p.id).filter(e=>e.data>=dal && e.data<=oggi);
   const inn=mie.filter(e=>e.tipo==='fatto'||e.tipo==='secco');
@@ -1116,6 +1122,8 @@ export function pianoLocale({piante, past=[], fut=[], eventi=[], oggi, lat, vaca
   if(!fut.length) return out;
   const perPianta=new Map(); for(const e of eventi||[]) if(e&&e.plantId){ const a=perPianta.get(e.plantId); if(a) a.push(e); else perPianta.set(e.plantId,[e]); }
   for(const p of piante){
+    if(inTorre(p)){ out.piante.push({id:p.id, acqua:null, soglia:null, valutazione:MOTIVO_TORRE+'.', fabbisogno_settimanale_litri:0, consigli:[], finestra:null, calibrazione:1, controlli:0, dal:null, acquaSecco:null, seccoOra:false, torre:true,
+      giorni:fut.map(d=>({data:d.date, azione:'salta', litri:0, momento:'indifferente', motivo:MOTIVO_TORRE}))}); continue; }
     const b=bilancioPassato(p, params(p,{oggi,lat}), past, perPianta.get(p.id)||[], oggi), k=b.k, {fatte, presa, oss}=b;
     let dep=b.dep;
     const usaSuolo = suolo!=null && isFinite(suolo) && !k.vaso && p.dove==='aperto' && ![...fatte].some(d=>d>=addDays(oggi,-3));
@@ -1294,6 +1302,7 @@ export function gelo(p){ const sp=SPECIE[p.specie]||SPECIE.altro; return sp.gelo
 // notte (facoltativa) = temperature orarie dalla sera di oggi alla mattina di domani: [{ora:'HH', t}]
 export function avvisiDomani(piante, domani, notte){
   if(!domani) return [];
+  piante=(piante||[]).filter(p=>!inTorre(p));
   const out=[], fuori=piante.filter(p=>!alCoperto(p)), daGelo=piante.filter(p=>p.dove!=='interno');
   const oraria = Array.isArray(notte) && notte.length ? notte : null;
   // la minima è quella del giorno (media dei modelli); le ore della notte servono solo a dire quando, spostate sulla media
@@ -1378,6 +1387,7 @@ export function diagnosi(sintomi, p={}){
 /* ---------------- Concimazione ---------------- */
 export function concime(p, {oggi, lat, eventi}={}){
   oggi=oggi||isoDate(new Date());
+  if(inTorre(p)) return {inStagione:false, testo:'Nella torre: i nutrienti vanno nell\'acqua del serbatoio'};
   const sp=SPECIE[p.specie]||SPECIE.altro, fe=faseEffettiva(p,oggi,lat), freq=sp.conc[FASI[fe.fase].l];
   if(!freq) return {inStagione:false, testo:fe.fase==='riposo'?'Niente concime durante il riposo':'Non serve in questa fase'};
   const date=[...eventiValidi(eventi,p.id).filter(e=>e.tipo==='concime').map(e=>e.data), p.ultima_concime].filter(Boolean).sort();
