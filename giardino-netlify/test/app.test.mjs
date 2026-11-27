@@ -630,7 +630,13 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   await page.evaluate(() => caricaTorre(true));
   await page.click("#tab-oggi");
   await quando(page, () => /16,4°/.test(document.querySelector("#torreBox").textContent));
-  assert.match(await page.textContent("#torreBox"), /pompa accesa fino alle \d\d:\d\d/); assert.equal(await page.locator("#torreBox svg.tr-graf").count(), 1);
+  assert.match(await page.textContent("#torreBox"), /pompa accesa fino alle \d\d:\d\d/);
+  // aggiornamento a pezzi: una misura nuova arriva all'app (solo la coda)
+  const r2 = await torreFn(new Request("https://x/api/torre", { method: "POST", headers: { "x-torre-chiave": chiave }, body: JSON.stringify({ v: 1, fw: 2, rev: 1, avvio: 1, sec: 200, stato: { modo: "normale", pompa: false, t: 17.1, u: 66 }, misure: [[adesso + 60, 17.1, 66, 0, 0, 1, 31]] }) }));
+  assert.equal(r2.status, 200);
+  const prima = await page.evaluate(() => TORRE.misure.length);
+  await page.evaluate(() => caricaTorre(true)); await quando(page, () => /17,1°/.test(document.querySelector("#torreBox").textContent));
+  assert.equal(await page.evaluate(() => TORRE.misure.length), prima + 1); assert.equal(await page.locator("#torreBox svg.tr-graf").count(), 1);
   await page.click("#torreBox"); await quando(page, () => !document.querySelector("#torreSheet").hidden);
   assert.equal(await page.locator("#torreGrafico path.gt").count(), 1); assert.match(await page.textContent("#torreGrid"), /Minima/);
   await page.click("#torrePompa");

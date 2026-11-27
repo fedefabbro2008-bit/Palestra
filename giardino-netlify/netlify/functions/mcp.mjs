@@ -674,7 +674,7 @@ const TOOLS = [
       anticipo: { type: "integer", minimum: 1, maximum: 14, description: "giorni di anticipo dell'avviso «serbatoio da riempire» (predefinito 3)" }, controlla_giorni: { type: "integer", minimum: 0, maximum: 60, description: "promemoria del livello finché l'app non sa stimare il consumo (0 = spento)" },
       nutrienti_ogni: { type: "integer", minimum: 0, maximum: 365, description: "giorni tra un'aggiunta di nutrienti e l'altra (0 = nessun promemoria)" }, soluzione_ogni: { type: "integer", minimum: 0, maximum: 365, description: "giorni tra un cambio della soluzione e l'altro" },
       pulizia_ogni_ore: { type: "integer", minimum: 0, maximum: 5000, description: "ore di pompa tra una pulizia e l'altra" },
-      segna: { type: "string", enum: ["rabbocco", "nutrienti", "soluzione", "pulizia"], description: "segna un lavoro fatto dall'utente (rabbocco: serbatoio riempito; soluzione: cambiata tutta, vale anche come rabbocco)" },
+      segna: { type: "string", enum: ["rabbocco", "nutrienti", "soluzione", "pulizia"], description: "segna un lavoro fatto dall'utente (rabbocco: serbatoio riempito fino in cima, chiedi i litri aggiunti; se l'ha riempito solo in parte non segnarlo; soluzione: cambiata tutta, vale anche come rabbocco)" },
       litri: { type: "number", description: "solo rabbocco: litri aggiunti (da qui l'app impara quanto beve la torre)" }, quando: { type: "string", description: "quando l'ha fatto (AAAA-MM-GG o data e ora); predefinito adesso" } } }, annotations: { ...RW, title: "Imposta torre" }, run: toolTorreImposta },
   { name: "vacanza", title: "Imposta la vacanza", write: true,
     description: "Imposta (dal, al = giorno del rientro) o annulla il periodo in cui l'utente è via.",

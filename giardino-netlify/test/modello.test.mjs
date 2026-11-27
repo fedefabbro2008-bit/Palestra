@@ -726,6 +726,14 @@ test("torre: serbatoio, consumo dalle piante e dal meteo, scala imparata dai rab
   const casa = { ...solo, posizione: "casa" }, umido = { giorni: [[g(t0), 18, 22, 20, 75, 0, 0, 144]], misure: [] }, secco = { giorni: [[g(t0), 18, 22, 20, 30, 0, 0, 144]], misure: [] };
   assert.ok(M.lavoriTorre(casa, secco, t0 + d, "UTC", ctx).serbatoio.rimasti < M.lavoriTorre(casa, umido, t0 + d, "UTC", ctx).serbatoio.rimasti, "aria secca: beve di più");
   vicino(20 - M.lavoriTorre({ ...solo, posizione: "veranda" }, serie, t0 + d, "UTC", ctx).serbatoio.rimasti, 0.7 * (20 - M.lavoriTorre(solo, serie, t0 + d, "UTC", ctx).serbatoio.rimasti), "veranda");
+  // finché non ha imparato da un rabbocco con i litri resta anche il promemoria a giorni
+  assert.match(M.avvisiTorre({ ...solo, serbatoio: { ...solo.serbatoio, controlla: 3 } }, serie, met, g(t0 + 4 * d), t0 + 4 * d, "UTC", [la]).map((a) => a.testo).join(), /Controlla il livello del serbatoio.*non sa ancora quanto beve/);
+  // pioggia tra due rabbocchi: ogni giorno una volta (26 ore a cavallo di due giorni; fine a mezzanotte esclusa)
+  const pi = { lat: 44, archivio: { [g(t0)]: [15, 25, 3, 4], [g(t0 + d)]: [15, 25, 4, 4], [g(t0 + 2 * d)]: [15, 25, 9, 4] }, days: [] };
+  const due = (a, b, litri) => ({ ...tr, serbatoio: { capacita: 20, rabbocchi: [{ at: iso(a) }, { at: iso(b), litri }] } });
+  const sbp = (a, b) => M.lavoriTorre(due(a, b, 2), serie, t0 + 3 * d, "UTC", { met: pi, piante: [la] }).serbatoio;
+  assert.deepEqual([sbp(t0 + 0.5 * d, t0 + 0.5 * d + 26 * 3600).imparati, sbp(t0 + 0.5 * d, t0 + 0.5 * d + 26 * 3600).piovosi], [0, 1], "26 ore: 3 + 4 mm = 7 mm, piovoso");
+  assert.equal(sbp(t0 + 1.5 * d, t0 + 2 * d).imparati, 1, "fino a mezzanotte: solo i 4 mm di quel giorno, non i 9 del giorno dopo");
   // ricordato per minuto sugli stessi oggetti
   const r1 = M.lavoriTorre(tr, serie, t0 + 6 * d, "UTC", ctx), r2 = M.lavoriTorre(tr, serie, t0 + 6 * d + 30, "UTC", ctx);
   assert.equal(r1, r2); assert.notEqual(M.lavoriTorre(tr, serie, t0 + 6 * d + 90, "UTC", ctx), r1); assert.notEqual(M.lavoriTorre({ ...tr }, serie, t0 + 6 * d, "UTC", ctx), r1);

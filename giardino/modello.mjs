@@ -875,7 +875,11 @@ function contestoSerbatoio(torre, serie, tz, ctx = {}) {
     cL.set(k, v); return v;
   };
   const litri = (a, b) => { let tot = 0; for (let t = a; t < b; t += 21600) { const d = giornoTorre(t, tz); tot += (Math.min(b, t + 21600) - t) / 86400 * et(d) * lpm(d); } return tot; };
-  const pioggia = (a, b) => { if (pos !== "fuori") return 0; let mm = 0; for (let t = a; t < b + 86399; t += 86400) mm += wx.get(giornoTorre(Math.min(t, b), tz))?.rain || 0; return mm; };
+  const pioggia = (a, b) => {   // mm caduti tra a e b: ogni giorno locale una volta
+    if (pos !== "fuori" || !(b > a)) return 0; let mm = 0; const fine = giornoTorre(b - 1, tz);
+    for (let d = giornoTorre(a, tz), n = 0; d <= fine && n < 400; d = addDays(d, 1), n++) mm += wx.get(d)?.rain || 0;
+    return mm;
+  };
   return { litri, pioggia, piante: piante.length, pos };
 }
 function stimaSerbatoio(sb, C, adesso) {
@@ -908,9 +912,10 @@ function stimaSerbatoio(sb, C, adesso) {
 const MEMO_LT = new WeakMap();
 export function lavoriTorre(torre, serie, adesso, tz = "Europe/Rome", ctx = {}) {
   const chiave = serie && typeof serie === "object" ? serie : null, min = Math.floor(adesso / 60), m = chiave && MEMO_LT.get(chiave);
-  if (m && m.torre === torre && m.min === min && m.tz === tz && m.met === ctx?.met && m.piante === ctx?.piante) return m.v;
+  const firma = (ctx?.piante || []).filter(inTorre).map((p) => [p.id, p.specie, p.num, p.fase, p.data_semina, p.tipo_data, p.luce, p.area].join(":")).join("|");
+  if (m && m.torre === torre && m.min === min && m.tz === tz && m.met === ctx?.met && m.firma === firma) return m.v;
   const v = calcolaLavori(torre, serie, adesso, tz, ctx || {});
-  if (chiave) MEMO_LT.set(chiave, { torre, min, tz, met: ctx?.met, piante: ctx?.piante, v });
+  if (chiave) MEMO_LT.set(chiave, { torre, min, tz, met: ctx?.met, firma, v });
   return v;
 }
 function calcolaLavori(torre, serie, adesso, tz, ctx) {
@@ -1029,8 +1034,9 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome",
     out.push({ tipo: "serbatoio", urgente: sb.giorniAlMinimo <= 1, testo: `🪣 Serbatoio da riempire: con il meteo previsto arriva al minimo ${sb.giorniAlMinimo < 1 ? "entro domani" : "verso " + giornoIt(sb.alMinimo)}`
       + ` (${stima} restano circa ${nv(sb.rimasti, 0)} L su ${nv(sb.capacita, 0)}, la torre beve fino a ${nv(sb.consumoPrudente, 1)} L al giorno). `
       + (sb.giorniAlMinimo < 1.5 ? "Riempilo oggi." : `Riempilo entro ${giornoIt(sb.alMinimo - 86400)}.`) + " Poi segnalo nell'app." });
-  else if (sb.rimasti == null && sb.ultimo && sb.controlla > 0 && sb.giorni >= sb.controlla)   // senza stima: promemoria a giorni
-    out.push({ tipo: "serbatoio", testo: `🪣 Controlla il livello del serbatoio: l'ultimo rabbocco segnato è di ${Math.floor(sb.giorni)} giorni fa.` });
+  else if ((sb.rimasti == null || !sb.imparati) && sb.ultimo && sb.controlla > 0 && sb.giorni >= sb.controlla)   // senza stima, o non ancora imparata: promemoria a giorni
+    out.push({ tipo: "serbatoio", testo: `🪣 Controlla il livello del serbatoio: l'ultimo rabbocco segnato è di ${Math.floor(sb.giorni)} giorni fa.`
+      + (sb.capacita ? " Finché non segni un rabbocco con i litri aggiunti, l'app non sa ancora quanto beve davvero la torre." : "") });
   for (const v of lav.voci) if (v.scaduto)
     out.push({ tipo: v.tipo, testo: v.tipo === "pulizia" ? `🧽 Pompa: ${Math.round(v.quanto)} ore di lavoro dall'ultima pulizia (ogni ${v.ogni}). Smontala e pulisci la griglia d'ingresso.`
       : v.tipo === "nutrienti" ? `🧪 Nutrienti: l'ultima aggiunta segnata è di ${Math.floor(v.quanto)} giorni fa (ogni ${v.ogni}).` : `🔄 Cambio della soluzione: l'ultimo è di ${Math.floor(v.quanto)} giorni fa (ogni ${v.ogni}). Svuota, pulisci il serbatoio e rifai la soluzione.` });

@@ -1060,7 +1060,7 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
               <div class="field"><label for="torreNutr">Nutrienti ogni (giorni)</label><input type="text" inputmode="numeric" id="torreNutr"></div>
               <div class="field"><label for="torreSol">Cambio soluzione ogni (giorni)</label><input type="text" inputmode="numeric" id="torreSol"></div>
               <div class="field"><label for="torrePul">Pulizia pompa ogni (ore di pompa)</label><input type="text" inputmode="numeric" id="torrePul"></div></div>
-            <span class="hint">Con i litri del serbatoio l'app stima quanta acqua resta: piante della torre, evaporazione del giorno (sole, vento, caldo, umidità) e quanto ha bevuto davvero tra un rabbocco e l'altro (scrivi i litri quando riempi). È prudente: ti avvisa i giorni scelti prima che arrivi al livello minimo (vuoto = un quarto del serbatoio). 0 = nessun promemoria.</span></div>
+            <span class="hint">Con i litri del serbatoio l'app stima quanta acqua resta: piante della torre, evaporazione del giorno (sole, vento, caldo, umidità) e quanto ha bevuto davvero tra un rabbocco e l'altro (riempilo sempre fino in cima e scrivi i litri aggiunti). È prudente: ti avvisa i giorni scelti prima che arrivi al livello minimo (vuoto = un quarto del serbatoio). 0 = nessun promemoria.</span></div>
           <div class="row"><button class="btn primary" type="button" id="torreSalva">Salva</button></div>
           <span class="hint" id="torreRev"></span>
           <div><button class="btn ghost danger" type="button" id="torreTogli">Togli la torre e le sue misure</button></div>
@@ -2169,7 +2169,8 @@ function renderLavori(tr){
     :'Riempito '+gg(sb.giorni)+(sb.rimasti==null?(sb.capacita?'':' · scrivi i litri del serbatoio nelle impostazioni per sapere quanto ne resta')
       :' · restano circa '+fmt(sb.rimasti,0)+' L su '+fmt(sb.capacita,0)+(sb.giorniAlMinimo==null?' · più di '+SERBATOIO.giorniAvanti+' giorni di scorta':sb.giorniAlMinimo<=0?' · al minimo: riempilo':' · al minimo verso '+giorno(sb.alMinimo))
         +' (stima prudente'+(sb.imparati?'':', da affinare con i litri dei prossimi rabbocchi')+')');
-  let h=riga('rabbocco','🪣 Serbatoio',tsb,sb.rimasti!=null?sb.rimasti<=sb.minimo||(sb.giorniAlMinimo!=null&&sb.giorniAlMinimo<=sb.anticipo):sb.ultimo&&sb.controlla>0&&sb.giorni>=sb.controlla,'Riempito');
+  const controlla=sb.ultimo&&sb.controlla>0&&sb.giorni>=sb.controlla&&(sb.rimasti==null||!sb.imparati);   // finché non ha imparato, anche a giorni
+  let h=riga('rabbocco','🪣 Serbatoio',tsb,controlla||(sb.rimasti!=null&&(sb.rimasti<=sb.minimo||(sb.giorniAlMinimo!=null&&sb.giorniAlMinimo<=sb.anticipo))),'Riempito');
   if(sb.ultimo&&sb.capacita) h+=`<div class="hint">La torre beve circa ${fmt(sb.consumo,1)} L al giorno (ultima settimana); per gli avvisi l'app conta fino a ${fmt(sb.consumoPrudente,1)} L nei prossimi giorni, con il meteo previsto${sb.piante?'':' e come se nella torre ci fossero 7 lattughe (segna le piante della torre per una stima migliore)'}. Avviso ${sb.anticipo} ${sb.anticipo===1?'giorno':'giorni'} prima del minimo (${fmt(sb.minimo,0)} L).</div>`;
   const ic={nutrienti:'🧪',soluzione:'🔄',pulizia:'🧽'};
   for(const v of L.voci){
@@ -2184,7 +2185,7 @@ function segnaLavoro(tipo){
   if(!S.torre) return;
   const ora=new Date().toISOString(), sb=serbatoioTorre(S.torre.serbatoio), lv=lavoriTorreDati(S.torre.lavori);
   if(tipo==='rabbocco'){
-    const v=prompt('Quanti litri hai aggiunto? Lascia vuoto se non lo sai (dai litri l\'app impara quanto beve la torre).','');
+    const v=prompt('Riempito fino in cima? Scrivi quanti litri hai aggiunto (vuoto se non lo sai): dai litri l\'app impara quanto beve la torre. Se non l\'hai riempito fino in cima, annulla e segnalo quando lo riempi del tutto.','');
     if(v===null) return;
     const l=numOrNull(v); if(v.trim()&&!(l>0)){ toast('Scrivi i litri, per esempio 5'); return; }
     sb.rabbocchi=[...sb.rabbocchi, {at:ora, litri:l}].slice(-20);
