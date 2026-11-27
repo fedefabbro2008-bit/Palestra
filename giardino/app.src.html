@@ -1038,7 +1038,7 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
             <span class="hint">Nel programma dell'ESP32 incollala in <b>CHIAVE_TORRE</b> e ricaricalo. Con una chiave nuova quella vecchia non vale più.</span></div>
           <div class="field"><span class="flabel">Programma dell'ESP32</span><div class="sub" id="torreFw"></div>
             <div class="row"><label class="btn" for="torreFwFile" id="torreFwL">Carica un programma nuovo (.bin)</label><input type="file" id="torreFwFile" class="solo-lettore" accept=".bin,application/octet-stream"><button class="btn ghost" type="button" id="torreFwTogli" hidden>Togli</button></div>
-            <span class="hint">Nel programma alza <b>VERSIONE_FW_N</b>, poi Arduino IDE: Sketch → Esporta binario compilato, e qui scegli <b>torre_esp32.ino.bin</b> (nella cartella build dello sketch). La torre lo scarica e lo installa da sola al prossimo collegamento, con la pompa spenta; se il programma nuovo non riesce a collegarsi torna a quello di prima.</span></div>
+            <span class="hint">Nel programma alza <b>VERSIONE_FW_N</b>, poi Arduino IDE: Sketch → Esporta binario compilato, e qui scegli <b>torre_esp32.ino.bin</b> (nella cartella build dello sketch). La torre lo scarica e lo installa da sola al prossimo collegamento, con la pompa spenta; installato, il file si cancella dal sito (contiene la password del Wi-Fi). Se la scheda lo permette, un programma nuovo che non riesce a collegarsi torna a quello di prima. Funziona dalla versione 5 in poi: la prima volta col cavo.</span></div>
           <div class="field"><span class="flabel">Pompa</span>
             <div class="grid2"><div class="field"><label for="torreAccesa">Accesa per (minuti)</label><input type="text" inputmode="numeric" id="torreAccesa"></div></div>
             <span class="hint">Pausa dopo ogni accensione, secondo la temperatura misurata dalla torre (minuti):</span>
@@ -2204,7 +2204,7 @@ function renderTorreSet(){
   setVal($('#torreCap'),numIn(sb.capacita)); setVal($('#torreControlla'),sb.controlla); setVal($('#torreNutr'),lv.nutrienti.ogni); setVal($('#torreSol'),lv.soluzione.ogni); setVal($('#torrePul'),lv.pulizia.ogni);
   const st=TORRE?.stato, fw=tr.firmware;
   $('#torreFw').textContent=(st?.fw?'Sulla torre: versione '+st.fw+'.':'La torre non ha ancora detto quale versione ha.')
-    +(fw?(st?.fw>=fw.versione?' Versione '+fw.versione+' caricata e installata.':' Versione '+fw.versione+' caricata ('+fmt(fw.dimensione/1024,0)+' KB): la torre la installa al prossimo collegamento.'):'');
+    +(fw?(fw.installato||st?.fw>=fw.versione?' Versione '+fw.versione+' caricata e installata (il file è stato cancellato dal sito).':' Versione '+fw.versione+' caricata ('+fmt(fw.dimensione/1024,0)+' KB): la torre la installa al prossimo collegamento.'):'');
   $('#torreFwTogli').hidden=!fw;
   $('#torreRev').textContent=!TORRE?.ultimo?'La torre non si è ancora collegata.':st?.rev===tr.rev?'La torre ha le impostazioni di adesso.':'Impostazioni nuove in attesa: arrivano alla torre quando trova il Wi-Fi.';
 }

@@ -672,8 +672,12 @@ test("torre: riassunti per giorno (un anno), riavvii, limite di sicurezza, avvis
   u = M.urgentiTorre(tr, { ...ok, stato: { modo: "freddo: pompa ferma", t: 1.5 } }, adesso, "UTC");
   assert.match(u.testi[0], /Pompa ferma per il freddo \(1,5 °C\): riparte da sola sopra 4 °C/);
   u = M.urgentiTorre(tr, s, adesso, "UTC");
-  assert.match(u.testi.join(), /riavviata per calo di tensione/); assert.equal(u.urgenti.ultimo_riavvio, 7);
+  assert.match(u.testi.join(), /riavviata per calo di tensione/); assert.equal(u.urgenti.riavvio_ora, adesso - 600);
   assert.ok(!M.urgentiTorre(tr, { ...s, urgenti: u.urgenti }, adesso + 2 * h, "UTC").testi.some((x) => /riavviata/.test(x)), "lo stesso riavvio una volta");
+  // due riavvii: un messaggio solo per entrambi, poi più niente (prima si alternavano ogni ora)
+  const due = { ...s, riavvii: [{ avvio: 7, ora: adesso - 2 * h, motivo: "tensione" }, { avvio: 8, ora: adesso - h, motivo: "blocco" }] };
+  u = M.urgentiTorre(tr, due, adesso, "UTC"); assert.match(u.testi.join(), /riavviata 2 volte, l'ultima per blocco/);
+  for (const dopo of [2, 3, 4]) assert.ok(!M.urgentiTorre(tr, { ...due, urgenti: u.urgenti }, adesso + dopo * h, "UTC").testi.length, "non si ripete");
 });
 
 test("torre: serbatoio (consumo imparato dai rabbocchi e dalla temperatura) e manutenzione", () => {

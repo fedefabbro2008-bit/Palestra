@@ -580,7 +580,9 @@ bool aggiornaProgramma() {
   Serial.printf("Programma nuovo v%lu (%lu byte): lo scarico\n", (unsigned long)fwVersione, (unsigned long)fwDimensione);
   WiFiClientSecure client;
   if (VERIFICA_CERTIFICATO) client.setCACert(CERTIFICATI); else client.setInsecure();
-  HTTPClient http; http.setTimeout(15000);
+  client.setHandshakeTimeout(20);
+  HTTPClient http; http.setConnectTimeout(10000); http.setTimeout(15000);
+  tieniVivo();
   if (!http.begin(client, String(SITO) + "?firmware=1")) return false;
   http.addHeader("x-torre-chiave", CHIAVE_TORRE);
   int code = http.GET();
@@ -641,7 +643,9 @@ bool mandaBlocco(int &comandoPompaS) {
 
   WiFiClientSecure client;
   if (VERIFICA_CERTIFICATO) client.setCACert(CERTIFICATI); else client.setInsecure();
-  HTTPClient http; http.setTimeout(10000);
+  client.setHandshakeTimeout(20);                           // connessione 10 s + certificato 20 s + risposta 15 s: sotto il watchdog (90 s)
+  HTTPClient http; http.setConnectTimeout(10000); http.setTimeout(15000);
+  tieniVivo();
   if (!http.begin(client, SITO)) return false;
   http.addHeader("content-type", "application/json");
   http.addHeader("x-torre-chiave", CHIAVE_TORRE);

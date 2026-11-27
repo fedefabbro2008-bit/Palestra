@@ -790,7 +790,8 @@ export function finestreGelo(torre, met, oggi, tz = "Europe/Rome") {
 
 // Un giorno (ora locale) in una riga: [data, minima, massima, media, umidità media, minuti di pompa, minuti fermi per il freddo, misure].
 // Ricalcolati dalle misure a ogni invio; un giorno già riassunto con più misure (il primo, tagliato dai 31 giorni) non si tocca.
-const giornoTorre = (s, tz) => new Date(s * 1000).toLocaleDateString("sv-SE", { timeZone: tz });
+const FMT_GT = new Map();   // un formattatore per fuso: toLocaleDateString ne creava uno a ogni misura
+const giornoTorre = (s, tz) => { let f = FMT_GT.get(tz); if (!f) FMT_GT.set(tz, (f = new Intl.DateTimeFormat("sv-SE", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }))); return f.format(new Date(s * 1000)); };
 export function riassumiGiorni(serie, tz = "Europe/Rome") {
   const per = new Map(), m = serie?.misure || [];
   m.forEach((r, i) => { const g = giornoTorre(r[0], tz); if (!per.has(g)) per.set(g, []); per.get(g).push([r, i]); });
@@ -827,7 +828,7 @@ export function lavoriTorre(torre, serie, adesso, tz = "Europe/Rome") {
   const daPul = lv.pulizia.ultimo || torre?.creata || null;
   let oreP = null;
   if (daPul) { const g0 = giornoTorre(sec(daPul), tz); oreP = (serie?.giorni || []).filter((x) => x[0] > g0).reduce((a, x) => a + x[5], 0) / 60
-    + (serie?.misure || []).filter((r) => r[0] >= sec(daPul) && giornoTorre(r[0], tz) === g0).reduce((a, r) => a + r[3], 0) / 3600; }
+    + (serie?.misure || []).filter((r) => r[0] >= sec(daPul) && r[0] < sec(daPul) + 86400 && giornoTorre(r[0], tz) === g0).reduce((a, r) => a + r[3], 0) / 3600; }
   const voci = Object.entries(LAVORI_TORRE).map(([k, d]) => {
     const x = lv[k], ore = k === "pulizia", quanto = ore ? oreP : x.ultimo ? giorniDa(x.ultimo) : null;
     return { tipo: k, nome: d.nome, ogni: x.ogni, ultimo: x.ultimo, quanto, scaduto: x.ogni > 0 && quanto != null && quanto >= x.ogni && (ore || x.ultimo) };
@@ -877,7 +878,7 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome")
       + (n("blocco") || n("errore") ? " Blocco o errore: l'ESP32 è ripartito da solo con la pompa spenta; se succede spesso dimmelo." : "") });
   } else if (rv.length) out.push({ tipo: "corrente", testo: `🔌 Alla torre è mancata la corrente (${oraIt(rv.at(-1).ora)}): è ripartita da sola.` });
   if ((serie?.misure || []).some((r) => r[4] === 6 && adesso - r[0] < 86400))
-    out.push({ tipo: "sicurezza", testo: `⛔ Nelle ultime 24 ore la pompa è rimasta accesa troppo a lungo e l'ESP32 l'ha fermata (limite di sicurezza: ${2 * cfg.accesa_min} minuti di fila).` });
+    out.push({ tipo: "sicurezza", testo: `⛔ Nelle ultime 24 ore la pompa è rimasta accesa troppo a lungo e l'ESP32 l'ha fermata (limite di sicurezza: ${Math.max(15, 2 * cfg.accesa_min)} minuti di fila).` });
   // serbatoio e manutenzione
   const lav = lavoriTorre(torre, serie, adesso, tz), sb = lav.serbatoio;
   if (sb.rimasti != null && sb.rimasti <= 0.3 * sb.capacita)
@@ -908,11 +909,11 @@ export function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome") {
     if (!attivi.has(k)) { delete gia[k]; continue; }
     if (!gia[k] || adesso - gia[k] >= 12 * 3600) { testi.push(attivi.get(k)); gia[k] = adesso; }
   }
-  const nuovi = (serie?.riavvii || []).filter((r) => ["tensione", "blocco", "errore"].includes(r.motivo) && r.avvio !== gia.ultimo_riavvio && adesso - r.ora < 6 * 3600);
+  const nuovi = (serie?.riavvii || []).filter((r) => ["tensione", "blocco", "errore"].includes(r.motivo) && r.ora > (gia.riavvio_ora || 0) && adesso - r.ora < 6 * 3600);
   if (nuovi.length && (!gia.riavvii || adesso - gia.riavvii >= 3600)) {
     const r = nuovi.at(-1);
-    testi.push(`🔁 La torre si è riavviata per ${RIAVVII_TORRE[r.motivo]} (${new Date(r.ora * 1000).toLocaleTimeString("it-IT", { timeZone: tz, hour: "2-digit", minute: "2-digit" })}): è ripartita con la pompa spenta.`);
-    gia.riavvii = adesso; gia.ultimo_riavvio = r.avvio;
+    testi.push(`🔁 La torre si è riavviata${nuovi.length > 1 ? ` ${nuovi.length} volte, l'ultima` : ""} per ${RIAVVII_TORRE[r.motivo]} (${new Date(r.ora * 1000).toLocaleTimeString("it-IT", { timeZone: tz, hour: "2-digit", minute: "2-digit" })}): è ripartita con la pompa spenta.`);
+    gia.riavvii = adesso; gia.riavvio_ora = Math.max(...nuovi.map((x) => x.ora));   // detti tutti quelli fino a qui
   }
   return { testi, urgenti: gia };
 }

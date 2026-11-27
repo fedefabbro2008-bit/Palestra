@@ -481,7 +481,7 @@ async function toolTorre(ctx, a = {}) {
   const rv = (serie.riavvii || []).slice(-5);
   if (rv.length) L.push(`Ultimi riavvii dell'ESP32: ${rv.map((r) => `${fmtOra(r.ora, tz)} (${M.RIAVVII_TORRE[r.motivo] || r.motivo})`).join(", ")}.`);
   const fw = tr.firmware;
-  L.push(`Programma dell'ESP32: ${st?.fw ? "versione " + st.fw : "versione non ancora nota"}${fw ? `; caricata dall'app la ${fw.versione}${st?.fw >= fw.versione ? " (installata)" : " (la installa al prossimo collegamento)"}` : ""}. Si aggiorna dall'app (Impostazioni → Torre idroponica → Carica un programma nuovo).`);
+  L.push(`Programma dell'ESP32: ${st?.fw ? "versione " + st.fw : "versione non ancora nota"}${fw ? `; caricata dall'app la ${fw.versione}${fw.installato || st?.fw >= fw.versione ? " (installata)" : " (la installa al prossimo collegamento)"}` : ""}. Si aggiorna dall'app (Impostazioni → Torre idroponica → Carica un programma nuovo).`);
   L.push("", `## Impostazioni (versione ${+tr.rev || 1})`, `- pompa accesa ${c.accesa_min} min per ciclo; pause: ${fasce(c)}`,
     `- freddo: pompa ferma sotto ${fmt(c.freddo_stop)} °C, riparte sopra ${fmt(c.freddo_riparte)} °C`,
     `- notte dalle ${c.notte_da} alle ${c.notte_a}: pause ×${fmt(c.notte_fattore)}; umidità da ${fmt(c.umido_soglia, 0)}%: pause ×${fmt(c.umido_fattore)}; pausa massima ${c.pausa_max} min`,

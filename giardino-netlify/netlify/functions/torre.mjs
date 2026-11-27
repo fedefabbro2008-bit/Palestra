@@ -1,4 +1,4 @@
-import { store, leggi, reply, meteo, oraLocale, tg, notifica, esc, M } from "../lib/core.mjs";
+import { store, leggi, aggiorna, reply, meteo, oraLocale, tg, notifica, esc, M } from "../lib/core.mjs";
 import { unisciMisure, configTorre, finestreGelo, urgentiTorre } from "../lib/torre.mjs";
 
 /* Giardino · la torre idroponica (ESP32) manda qui le misure e riceve le impostazioni.
@@ -12,6 +12,8 @@ import { unisciMisure, configTorre, finestreGelo, urgentiTorre } from "../lib/to
    Avvisi urgenti (sensore guasto, pompa ferma per il freddo, limite di sicurezza, riavvii anomali) partono subito su Telegram. */
 export const config = { path: "/api/torre", rateLimit: { windowSize: 60, windowLimit: 30, aggregateBy: ["ip", "domain"] } };
 const MAX = 300 * 1024;
+// l'ESP32 aspetta la risposta 15 secondi: meteo e Telegram hanno al massimo 3 secondi ciascuno
+const entro = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
 
 async function torreDi(st, chiave) {
   if (!/^[A-Z2-7]{26}$/.test(chiave)) return null;
@@ -42,7 +44,7 @@ export default async (request) => {
   const { code, cur, torre } = t, adesso = Math.floor(Date.now() / 1000), sk = "s-" + code;
   // meteo del posto della torre: fuso orario (riassunti per giorno) e ore di gelo previste
   const loc = M.vistaOrto(cur.data, torre.orto || "p").location;
-  const met = loc ? await meteo(loc.lat, loc.lon).catch(() => null) : null, tz = met?.tz || "Europe/Rome";
+  const met = loc ? await entro(meteo(loc.lat, loc.lon).catch(() => null), 3000) : null, tz = met?.tz || "Europe/Rome";
   const { serie, nuove } = unisciMisure(await st.get(sk, { type: "json" }), body, adesso, tz);
   // accensione a mano chiesta dall'app: una volta sola, e solo se chiesta nelle ultime 2 ore
   const c = torre.comando; let comando = null;
@@ -56,8 +58,8 @@ export default async (request) => {
     if (u.testi.length) {
       const tel = await st.get("t-" + code, { type: "json" }).catch(() => null);
       if (tel?.token && tel?.chat_id) {
-        const ok = await tg(tel.token, "sendMessage", { chat_id: tel.chat_id, parse_mode: "HTML", disable_web_page_preview: true,
-          text: `🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + u.testi.map(esc).join("\n") }, { ignora: true });
+        const ok = await entro(tg(tel.token, "sendMessage", { chat_id: tel.chat_id, parse_mode: "HTML", disable_web_page_preview: true,
+          text: `🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + u.testi.map(esc).join("\n") }, { ignora: true }).catch(() => null), 3000);
         if (ok) serie.urgenti = u.urgenti;
       }
     } else serie.urgenti = u.urgenti;
@@ -71,6 +73,11 @@ export default async (request) => {
   else if (met) r.gelo = finestreGelo(torre, met, oraLocale(tz).oggi, tz);
   // programma nuovo caricato dall'app e più recente di quello della torre
   const fw = torre.firmware;
-  if (fw?.versione && +fw.versione > (+body?.fw || 0)) r.firmware = { versione: +fw.versione, dimensione: +fw.dimensione, md5: fw.md5 };
+  if (fw?.versione && !fw.installato && +fw.versione > (+body?.fw || 0)) r.firmware = { versione: +fw.versione, dimensione: +fw.dimensione, md5: fw.md5 };
+  // installato: il file si cancella (contiene nome e password del Wi-Fi e la chiave), resta solo cosa e quando
+  else if (fw?.versione && !fw.installato && +body?.fw >= +fw.versione) {
+    await st.delete("f-" + code);
+    await aggiorna(st, code, (d) => { if (!d.torre?.firmware) return false; d.torre.firmware = { ...d.torre.firmware, installato: new Date().toISOString() }; }).catch(() => null);
+  }
   return reply(r);
 };

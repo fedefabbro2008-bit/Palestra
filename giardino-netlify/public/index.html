@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="ac72ef89c81f">
+<meta name="giardino-build" content="4bb83f7b9e5a">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1057,7 +1057,7 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
             <span class="hint">Nel programma dell'ESP32 incollala in <b>CHIAVE_TORRE</b> e ricaricalo. Con una chiave nuova quella vecchia non vale più.</span></div>
           <div class="field"><span class="flabel">Programma dell'ESP32</span><div class="sub" id="torreFw"></div>
             <div class="row"><label class="btn" for="torreFwFile" id="torreFwL">Carica un programma nuovo (.bin)</label><input type="file" id="torreFwFile" class="solo-lettore" accept=".bin,application/octet-stream"><button class="btn ghost" type="button" id="torreFwTogli" hidden>Togli</button></div>
-            <span class="hint">Nel programma alza <b>VERSIONE_FW_N</b>, poi Arduino IDE: Sketch → Esporta binario compilato, e qui scegli <b>torre_esp32.ino.bin</b> (nella cartella build dello sketch). La torre lo scarica e lo installa da sola al prossimo collegamento, con la pompa spenta; se il programma nuovo non riesce a collegarsi torna a quello di prima.</span></div>
+            <span class="hint">Nel programma alza <b>VERSIONE_FW_N</b>, poi Arduino IDE: Sketch → Esporta binario compilato, e qui scegli <b>torre_esp32.ino.bin</b> (nella cartella build dello sketch). La torre lo scarica e lo installa da sola al prossimo collegamento, con la pompa spenta; installato, il file si cancella dal sito (contiene la password del Wi-Fi). Se la scheda lo permette, un programma nuovo che non riesce a collegarsi torna a quello di prima. Funziona dalla versione 5 in poi: la prima volta col cavo.</span></div>
           <div class="field"><span class="flabel">Pompa</span>
             <div class="grid2"><div class="field"><label for="torreAccesa">Accesa per (minuti)</label><input type="text" inputmode="numeric" id="torreAccesa"></div></div>
             <span class="hint">Pausa dopo ogni accensione, secondo la temperatura misurata dalla torre (minuti):</span>
@@ -2347,7 +2347,8 @@ function finestreGelo(torre, met, oggi, tz = "Europe/Rome") {
 
 // Un giorno (ora locale) in una riga: [data, minima, massima, media, umidità media, minuti di pompa, minuti fermi per il freddo, misure].
 // Ricalcolati dalle misure a ogni invio; un giorno già riassunto con più misure (il primo, tagliato dai 31 giorni) non si tocca.
-const giornoTorre = (s, tz) => new Date(s * 1000).toLocaleDateString("sv-SE", { timeZone: tz });
+const FMT_GT = new Map();   // un formattatore per fuso: toLocaleDateString ne creava uno a ogni misura
+const giornoTorre = (s, tz) => { let f = FMT_GT.get(tz); if (!f) FMT_GT.set(tz, (f = new Intl.DateTimeFormat("sv-SE", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }))); return f.format(new Date(s * 1000)); };
 function riassumiGiorni(serie, tz = "Europe/Rome") {
   const per = new Map(), m = serie?.misure || [];
   m.forEach((r, i) => { const g = giornoTorre(r[0], tz); if (!per.has(g)) per.set(g, []); per.get(g).push([r, i]); });
@@ -2384,7 +2385,7 @@ function lavoriTorre(torre, serie, adesso, tz = "Europe/Rome") {
   const daPul = lv.pulizia.ultimo || torre?.creata || null;
   let oreP = null;
   if (daPul) { const g0 = giornoTorre(sec(daPul), tz); oreP = (serie?.giorni || []).filter((x) => x[0] > g0).reduce((a, x) => a + x[5], 0) / 60
-    + (serie?.misure || []).filter((r) => r[0] >= sec(daPul) && giornoTorre(r[0], tz) === g0).reduce((a, r) => a + r[3], 0) / 3600; }
+    + (serie?.misure || []).filter((r) => r[0] >= sec(daPul) && r[0] < sec(daPul) + 86400 && giornoTorre(r[0], tz) === g0).reduce((a, r) => a + r[3], 0) / 3600; }
   const voci = Object.entries(LAVORI_TORRE).map(([k, d]) => {
     const x = lv[k], ore = k === "pulizia", quanto = ore ? oreP : x.ultimo ? giorniDa(x.ultimo) : null;
     return { tipo: k, nome: d.nome, ogni: x.ogni, ultimo: x.ultimo, quanto, scaduto: x.ogni > 0 && quanto != null && quanto >= x.ogni && (ore || x.ultimo) };
@@ -2434,7 +2435,7 @@ function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome") {
       + (n("blocco") || n("errore") ? " Blocco o errore: l'ESP32 è ripartito da solo con la pompa spenta; se succede spesso dimmelo." : "") });
   } else if (rv.length) out.push({ tipo: "corrente", testo: `🔌 Alla torre è mancata la corrente (${oraIt(rv.at(-1).ora)}): è ripartita da sola.` });
   if ((serie?.misure || []).some((r) => r[4] === 6 && adesso - r[0] < 86400))
-    out.push({ tipo: "sicurezza", testo: `⛔ Nelle ultime 24 ore la pompa è rimasta accesa troppo a lungo e l'ESP32 l'ha fermata (limite di sicurezza: ${2 * cfg.accesa_min} minuti di fila).` });
+    out.push({ tipo: "sicurezza", testo: `⛔ Nelle ultime 24 ore la pompa è rimasta accesa troppo a lungo e l'ESP32 l'ha fermata (limite di sicurezza: ${Math.max(15, 2 * cfg.accesa_min)} minuti di fila).` });
   // serbatoio e manutenzione
   const lav = lavoriTorre(torre, serie, adesso, tz), sb = lav.serbatoio;
   if (sb.rimasti != null && sb.rimasti <= 0.3 * sb.capacita)
@@ -2465,11 +2466,11 @@ function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome") {
     if (!attivi.has(k)) { delete gia[k]; continue; }
     if (!gia[k] || adesso - gia[k] >= 12 * 3600) { testi.push(attivi.get(k)); gia[k] = adesso; }
   }
-  const nuovi = (serie?.riavvii || []).filter((r) => ["tensione", "blocco", "errore"].includes(r.motivo) && r.avvio !== gia.ultimo_riavvio && adesso - r.ora < 6 * 3600);
+  const nuovi = (serie?.riavvii || []).filter((r) => ["tensione", "blocco", "errore"].includes(r.motivo) && r.ora > (gia.riavvio_ora || 0) && adesso - r.ora < 6 * 3600);
   if (nuovi.length && (!gia.riavvii || adesso - gia.riavvii >= 3600)) {
     const r = nuovi.at(-1);
-    testi.push(`🔁 La torre si è riavviata per ${RIAVVII_TORRE[r.motivo]} (${new Date(r.ora * 1000).toLocaleTimeString("it-IT", { timeZone: tz, hour: "2-digit", minute: "2-digit" })}): è ripartita con la pompa spenta.`);
-    gia.riavvii = adesso; gia.ultimo_riavvio = r.avvio;
+    testi.push(`🔁 La torre si è riavviata${nuovi.length > 1 ? ` ${nuovi.length} volte, l'ultima` : ""} per ${RIAVVII_TORRE[r.motivo]} (${new Date(r.ora * 1000).toLocaleTimeString("it-IT", { timeZone: tz, hour: "2-digit", minute: "2-digit" })}): è ripartita con la pompa spenta.`);
+    gia.riavvii = adesso; gia.riavvio_ora = Math.max(...nuovi.map((x) => x.ora));   // detti tutti quelli fino a qui
   }
   return { testi, urgenti: gia };
 }
@@ -4314,7 +4315,7 @@ function renderTorreSet(){
   setVal($('#torreCap'),numIn(sb.capacita)); setVal($('#torreControlla'),sb.controlla); setVal($('#torreNutr'),lv.nutrienti.ogni); setVal($('#torreSol'),lv.soluzione.ogni); setVal($('#torrePul'),lv.pulizia.ogni);
   const st=TORRE?.stato, fw=tr.firmware;
   $('#torreFw').textContent=(st?.fw?'Sulla torre: versione '+st.fw+'.':'La torre non ha ancora detto quale versione ha.')
-    +(fw?(st?.fw>=fw.versione?' Versione '+fw.versione+' caricata e installata.':' Versione '+fw.versione+' caricata ('+fmt(fw.dimensione/1024,0)+' KB): la torre la installa al prossimo collegamento.'):'');
+    +(fw?(fw.installato||st?.fw>=fw.versione?' Versione '+fw.versione+' caricata e installata (il file è stato cancellato dal sito).':' Versione '+fw.versione+' caricata ('+fmt(fw.dimensione/1024,0)+' KB): la torre la installa al prossimo collegamento.'):'');
   $('#torreFwTogli').hidden=!fw;
   $('#torreRev').textContent=!TORRE?.ultimo?'La torre non si è ancora collegata.':st?.rev===tr.rev?'La torre ha le impostazioni di adesso.':'Impostazioni nuove in attesa: arrivano alla torre quando trova il Wi-Fi.';
 }

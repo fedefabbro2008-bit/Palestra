@@ -840,12 +840,15 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   const up = await (await carica(fwFinto)).json(); assert.equal(up.torre.firmware.versione, 9); assert.equal(up.torre.firmware.dimensione, 5000);
   const of = (await manda(chiave, { ...corpo, fw: 5, misure: [] })).body;
   assert.deepEqual(of.firmware, { versione: 9, dimensione: 5000, md5: createHash("md5").update(fwFinto).digest("hex") });
-  assert.ok(!("firmware" in (await manda(chiave, { ...corpo, fw: 9, misure: [] })).body), "già installato: non si offre");
   const scarica = (k) => torreFn(new Request(B + "/api/torre?firmware=1", { headers: { "x-torre-chiave": k } }));
   assert.equal((await scarica("A".repeat(26))).status, 403);
   const giu = await scarica(chiave); assert.equal(giu.status, 200); assert.deepEqual(new Uint8Array(await giu.arrayBuffer()), fwFinto);
+  // installato: non si offre più e il file (con password del Wi-Fi e chiave) si cancella; restano versione e data
+  assert.ok(!("firmware" in (await manda(chiave, { ...corpo, fw: 9, misure: [] })).body), "già installato: non si offre");
+  assert.equal((await scarica(chiave)).status, 404, "file cancellato"); assert.ok((await leggiDati()).torre.firmware.installato);
+  assert.ok(!("firmware" in (await manda(chiave, { ...corpo, fw: 5, misure: [] })).body), "installato una volta: non si riofre");
   assert.equal((await dati(new Request(B + "/api/dati?op=firmware", { method: "DELETE", headers: H }))).status, 200);
-  assert.ok(!(await leggiDati()).torre.firmware); assert.equal((await scarica(chiave)).status, 404);
+  assert.ok(!(await leggiDati()).torre.firmware);
   // avvisi urgenti subito su Telegram (sensore guasto, riavvio per calo di tensione), una volta; riassunti per giorno e riavvii all'app
   const urgenti = () => inviati.filter((x) => x[0] === "sendMessage" && /Torre idroponica/.test(x[1].text)).map((x) => x[1].text).join("\n");
   inviati.length = 0;
