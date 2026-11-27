@@ -601,3 +601,58 @@ test("quiete: ferma da sola le animazioni decorative dopo un po' senza tocchi, r
   assert.equal((await stato()).quieto, false, "lo scorrimento la sveglia");
   assert.deepEqual(errori, []);
 });
+
+test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i dati e il grafico; spenta, l'app è come se non ci fosse", async (t) => {
+  const torreFn = (await import("../netlify/functions/torre.mjs")).default;
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const CODE = "PROVA-TORRE-IDROPONICA-ABCDEF", H = { "x-giardino-code": CODE, "content-type": "application/json" };
+  await dati(new Request("https://x/api/dati", { method: "POST", headers: H, body: JSON.stringify({ changes: { location: { name: "Castrocaro Terme", detail: "Emilia-Romagna, Italia", lat: 44.176, lon: 11.95 },
+    plants: [{ id: "ba", nome: "Basilico", specie: "basilico", fase: "vegetativa", colt: "vaso", vaso: 3, luce: 6, dove: "aperto" }] } }) }));
+  const ctx = await contesto(browser);
+  await ctx.addInitScript((c) => localStorage.setItem("giardino:net:code", c), CODE);
+  const page = await ctx.newPage(), errori = []; page.on("pageerror", (e) => errori.push(e.message));
+  RICHIESTE.length = 0;
+  await page.goto(SITO); await pronta(page); await page.waitForTimeout(300);
+  assert.deepEqual(RICHIESTE, ["GET dati"], "senza torre nessuna richiesta in più");
+  assert.ok(await page.isHidden("#torreBox"));
+  // Impostazioni: senza torre solo l'interruttore
+  await page.click("#tab-impostazioni"); await page.click("#set-torre summary");
+  assert.ok(await page.isHidden("#torreSet")); assert.ok(!(await page.locator('#notList [data-not="torre"]').count()), "niente notifica della torre");
+  await page.click('label[for="torreOn"]');
+  await quando(page, () => /^[A-Z2-7]{26}$/.test(document.querySelector("#torreChiave").textContent));
+  assert.equal(await page.textContent("#torreChip"), "attiva");
+  assert.equal(await page.locator('#notList [data-not="torre"]').count(), 1, "con la torre accesa la sua notifica");
+  // la torre manda le misure; l'app le mostra in Oggi
+  const chiave = await page.textContent("#torreChiave"), adesso = Math.floor(Date.now() / 1000);
+  const misure = []; for (let i = 0; i < 30; i++) misure.push([adesso - (29 - i) * 1800, 14 + 6 * Math.sin(i / 5), 55 + i, i % 3 ? 0 : 900, 0, 1, i]);
+  const r = await torreFn(new Request("https://x/api/torre", { method: "POST", headers: { "x-torre-chiave": chiave }, body: JSON.stringify({ v: 1, fw: 2, rev: 1, avvio: 1, sec: 100, stato: { modo: "normale", pompa: true, t: 16.4, u: 70 }, misure }) }));
+  assert.equal(r.status, 200);
+  await page.evaluate(() => caricaTorre(true));
+  await page.click("#tab-oggi");
+  await quando(page, () => /16,4°/.test(document.querySelector("#torreBox").textContent));
+  assert.match(await page.textContent("#torreBox"), /pompa accesa/); assert.equal(await page.locator("#torreBox svg.tr-graf").count(), 1);
+  await page.click("#torreBox"); await quando(page, () => !document.querySelector("#torreSheet").hidden);
+  assert.equal(await page.locator("#torreGrafico path.gt").count(), 1); assert.match(await page.textContent("#torreGrid"), /Minima/);
+  await page.click("#torrePompa");
+  assert.equal(await page.evaluate(() => S.torre.comando.pompa_s), 60); assert.ok(await page.isDisabled("#torrePompa"));
+  await page.click("#torreChiudi"); await quando(page, () => document.querySelector("#torreSheet").hidden);
+  // nel modulo della pianta c'è la torre (con la torre accesa)
+  await page.click("#tab-piante"); await page.click("#addPlantBtn");
+  assert.ok(await page.isVisible("#pf-colt-torre"), "Torre idroponica tra i posti dove piantare");
+  await page.click("#pf-colt-torre"); assert.ok(await page.isHidden("#pf-dove-f")); assert.ok(await page.isVisible("#pf-torre-hint"));
+  await page.evaluate(() => closeForm());
+  // impostazioni della pompa: salvate con una versione nuova (arriveranno all'ESP32)
+  await page.click("#tab-impostazioni");
+  await page.fill("#torreAccesa", "10"); await page.click('#torrePos label:has(input[value="veranda"])'); await page.click("#torreSalva");
+  assert.deepEqual(await page.evaluate(() => [S.torre.config.accesa_min, S.torre.posizione, S.torre.rev]), [10, "veranda", 2]);
+  // spenta: niente riquadro, niente notifica, solo l'interruttore
+  await page.click('label[for="torreOn"]');
+  assert.ok(await page.isHidden("#torreSet")); assert.equal(await page.textContent("#torreChip"), "spenta");
+  assert.ok(!(await page.locator('#notList [data-not="torre"]').count()));
+  await page.click("#tab-oggi"); assert.ok(await page.isHidden("#torreBox"));
+  await page.click("#tab-piante"); await page.click("#addPlantBtn"); assert.ok(await page.isHidden("#pf-colt-torre"), "spenta: niente torre nel modulo"); await page.evaluate(() => closeForm());
+  await page.evaluate(() => window.GiardinoNet.aggiorna(false));
+  { const srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: H }))).text()).data.torre;
+    assert.deepEqual([srv.attiva, srv.chiave, srv.config.accesa_min], [false, chiave, 10], "sul server: spenta, stessa chiave, impostazioni salvate"); }
+  assert.deepEqual(errori, []);
+});

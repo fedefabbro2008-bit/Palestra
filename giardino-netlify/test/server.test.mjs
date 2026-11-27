@@ -759,3 +759,55 @@ test("orari delle notifiche: ognuna alla sua ora, quelle fatte non si ripetono, 
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants, piano_claude: d0.piano_claude, vacanza: d0.vacanza, impostazioni: d0.impostazioni } } });
   await st.setJSON("t-" + CODE, { ...t0 });
 });
+
+test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazioni e accensione una volta sola, avvisi su Telegram, spenta e tolta", async () => {
+  const torreFn = (await import("../netlify/functions/torre.mjs")).default;
+  const st = getStore({ name: "giardino" }), t0 = await st.get("t-" + CODE, { type: "json" }), d0 = await leggiDati();
+  const manda = (chiave, body) => call(torreFn, "/api/torre", { method: "POST", headers: chiave ? { "x-torre-chiave": chiave } : {}, body });
+  // attivazione dall'app: il server crea la torre e la chiave
+  const r = (await call(dati, "/api/dati?op=torre", { method: "POST", headers: H, body: { action: "chiave" } })).body;
+  const chiave = r.torre.chiave;
+  assert.match(chiave, /^[A-Z2-7]{26}$/); assert.equal(r.torre.attiva, true); assert.equal(r.torre.posizione, "fuori");
+  assert.equal((await manda("", { misure: [] })).status, 403); assert.equal((await manda("A".repeat(26), { misure: [] })).status, 403);
+  // la torre manda misure: quelle della stessa accensione senza ora le data il server; le impostazioni arrivano (rev diverso)
+  const adesso = Math.floor(Date.now() / 1000);
+  const corpo = { v: 1, fw: 2, rev: 0, avvio: 3, sec: 7200, stato: { modo: "normale", pompa: false, t: 18.5, u: 60 },
+    misure: [[null, 17.2, 62, 900, 0, 3, 600], [null, 1.5, 90, 0, 3, 3, 1200], [adesso - 300, 18.4, 61, 0, 0, 3, 6900], [null, 5, 50, 0, 0, 2, 100]] };
+  const a = (await manda(chiave, corpo)).body;
+  assert.equal(a.nuove, 3, "quella di un'accensione passata senza ora si scarta");
+  assert.equal(a.config.rev, 1); assert.deepEqual(a.config.pause, [5, 10, 15, 25, 45, 60]); assert.equal(a.config.freddo_stop, 2);
+  const g = (await call(dati, "/api/dati?op=torre", { headers: H })).body;
+  assert.equal(g.misure.length, 3); assert.ok(Math.abs(g.misure[0][0] - (adesso - 6600)) < 5, "datata con l'orologio del server");
+  assert.deepEqual(g.misure[0].slice(1), [17.2, 62, 900, 0]); assert.equal(g.stato.t, 18.5);
+  // stesso blocco rimandato (risposta persa): niente doppioni; con le impostazioni giuste non le rimanda
+  const b = (await manda(chiave, { ...corpo, rev: 1 })).body;
+  assert.equal(b.nuove, 0); assert.ok(!("config" in b));
+  assert.equal((await call(dati, "/api/dati?op=torre", { headers: H })).body.misure.length, 3);
+  // dall'app: impostazioni nuove e accensione a mano; la chiave resta quella del server anche se l'app non la manda
+  const tr = (await leggiDati()).torre;
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { torre: { ...tr, chiave: "FALSA", posizione: "fuori", rev: 2, config: { ...tr.config, accesa_min: 10, pause: [4, 8, 12, 20, 40, 999] }, comando: { id: "c1", pompa_s: 60, at: new Date().toISOString() } } } } });
+  const tr2 = (await leggiDati()).torre;
+  assert.equal(tr2.chiave, chiave); assert.equal(tr2.config.accesa_min, 10); assert.equal(tr2.config.pause[5], 240, "limitata");
+  const c = (await manda(chiave, { ...corpo, rev: 1, misure: [] })).body;
+  assert.equal(c.config.rev, 2); assert.equal(c.config.accesa_min, 10); assert.deepEqual(c.comando, { pompa_s: 60, id: "c1" });
+  assert.ok(!("comando" in (await manda(chiave, { ...corpo, rev: 2, misure: [] })).body), "l'accensione arriva una volta sola");
+  // Telegram, la sera: torre fuori con stanotte 1 °C (meteo finto) e la pompa ferma per il freddo → avviso
+  const tz = "Etc/GMT" + ((h) => (h >= 0 ? "+" : "") + h)(new Date().getUTCHours() - 12);
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 12 } } } });
+  const giro = async () => { const x = await st.get("t-" + CODE, { type: "json" }); await st.setJSON("t-" + CODE, { ...x, tz, inviati_il: {}, segnati_il: null, ultimo_invio: null, ultimo_avviso_sera: null, ultimo_backup: new Date().toISOString().slice(0, 7) });
+    inviati.length = 0; await bot(); return inviati.filter((x) => x[0] === "sendMessage" && /Torre idroponica/.test(x[1].text)).map((x) => x[1].text); };
+  const [m] = await giro();
+  assert.ok(m, "avviso della torre"); assert.match(m, /Stanotte fino a 1 °C: sotto 2 °C la pompa si ferma da sola/); assert.match(m, /ferma per il freddo/);
+  // spenta: niente avvisi (l'app è come se non ci fosse), la torre può mandare lo stesso
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { torre: { ...tr2, attiva: false } } } });
+  assert.equal((await giro()).length, 0, "spenta: nessun messaggio");
+  assert.equal((await manda(chiave, { ...corpo, misure: [] })).status, 200);
+  // nuova chiave: la vecchia non vale più; tolta: via tutto
+  const nuova = (await call(dati, "/api/dati?op=torre", { method: "POST", headers: H, body: { action: "chiave" } })).body.torre.chiave;
+  assert.notEqual(nuova, chiave); assert.equal((await manda(chiave, corpo)).status, 403); assert.equal((await manda(nuova, { ...corpo, misure: [] })).status, 200);
+  await call(dati, "/api/dati?op=torre", { method: "POST", headers: H, body: { action: "togli" } });
+  assert.ok(!(await leggiDati()).torre); assert.equal((await manda(nuova, corpo)).status, 403);
+  assert.equal((await call(dati, "/api/dati?op=torre", { headers: H })).body.misure.length, 0);
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: d0.impostazioni } } });
+  await st.setJSON("t-" + CODE, { ...t0 });
+});
