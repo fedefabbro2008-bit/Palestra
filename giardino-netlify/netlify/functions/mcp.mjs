@@ -463,7 +463,7 @@ async function toolTorre(ctx, a = {}) {
   else {
     const fa = (adesso - serie.ultimo) / 60;
     L.push(`Ultimo contatto: ${fmtOra(serie.ultimo, tz)} (${minuti(fa)} fa)${fa > M.SILENZIO_ORE * 60 ? " ⚠️ troppo tempo: corrente o Wi-Fi" : ""}. Il modem dell'utente è spento di notte e la mattina: le misure arrivano tutte insieme quando si riaccende.`);
-    if (st) L.push(`Allora: ${st.t != null ? fmt(st.t) + " °C, " : ""}${st.u != null ? fmt(st.u, 0) + "% di umidità, " : ""}pompa ${st.pompa ? "accesa" : "spenta"}, modo «${st.modo || "–"}»${st.rssi != null ? `, Wi-Fi ${fmt(st.rssi, 0)} dBm` : ""}${st.fw ? `, programma v${st.fw}` : ""}.`);
+    if (st) L.push(`Allora: ${st.t != null ? fmt(st.t) + " °C, " : ""}${st.u != null ? fmt(st.u, 0) + "% di umidità, " : ""}pompa ${st.pompa ? "accesa" : "spenta"}${st.da ? " dalle " + oraT(st.da, tz) : ""}${st.fine ? (st.pompa ? ", fino alle " : ", fase finisce alle ") + oraT(st.fine, tz) : ""}, modo «${st.modo || "–"}»${st.rssi != null ? `, Wi-Fi ${fmt(st.rssi, 0)} dBm` : ""}${st.fw ? `, programma v${st.fw}` : ""}.`);
     L.push(st?.rev === (+tr.rev || 1) ? "Impostazioni: l'ESP32 ha quelle di adesso." : "Impostazioni nuove in attesa: arrivano all'ESP32 al prossimo collegamento.");
   }
   const r = M.riepilogoTorre(serie, adesso);

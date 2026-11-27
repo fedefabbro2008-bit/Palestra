@@ -740,7 +740,8 @@ export function unisciMisure(serie, body, adesso) {
   }
   s.misure = s.misure.filter((r) => r[0] >= da).sort((a, b) => a[0] - b[0]);
   const st = body?.stato && typeof body.stato === "object" ? body.stato : {};
-  s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0 };
+  s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0,
+    da: +st.da > adesso - 7 * 86400 && +st.da <= adesso + 600 ? Math.round(+st.da) : null, fine: +st.fine > adesso - 600 && +st.fine < adesso + 86400 ? Math.round(+st.fine) : null };
   if (st.memoria === "formattata") s.memoria_formattata = adesso;   // l'ESP32 lo dice una volta sola: il server se lo ricorda
   s.ultimo = adesso;
   return { serie: s, nuove, scartate };

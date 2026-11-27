@@ -5,7 +5,7 @@
 // Versione 4: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
 // Novità della v4: certificato del sito verificato; misure cancellate solo dopo la conferma del sito; memoria non formattata
 // al primo errore; sensore che non risponde: riprova, avvisa l'app, ciclo di emergenza impostabile e pompa ferma nelle ore di
-// gelo previste dal meteo.
+// gelo previste dal meteo; a ogni accensione e spegnimento della pompa si collega e lo dice all'app (se il modem è acceso).
 // Librerie (Gestione librerie dell'IDE): «Adafruit SHT4x» (con le sue dipendenze) e «ArduinoJson» 7.
 // Scheda: «ESP32 Dev Module». Strumenti → Partition Scheme: «Default 4MB with spiffs» (serve per LittleFS).
 #include <Arduino.h>
@@ -84,7 +84,15 @@ const size_t MAX_RECORD = 3000;           // ~3 settimane
 bool pompaAccesa = false;
 uint32_t fineFaseMs = 0, accesaDaMs = 0, manualeFinoMs = 0, pausaProssimaS = 0;
 
+// la pompa cambia: l'ESP32 si collega e lo dice all'app (3 s dopo, quando l'alimentazione si è assestata; al massimo uno al minuto)
+bool comunicaPompa = false, wifiOk = true;
+uint32_t cambioPompaMs = 0, ultimoInvioPompaMs = 0;
+uint32_t quandoComunica() {
+  uint32_t a = cambioPompaMs + 3000, b = ultimoInvioPompaMs + 60000;
+  return ultimoInvioPompaMs && (int32_t)(b - a) > 0 ? b : a;
+}
 void rele(bool on) {
+  if (on != pompaAccesa) { comunicaPompa = true; cambioPompaMs = millis(); }
   if (on && !pompaAccesa) accesaDaMs = millis();
   if (!on && pompaAccesa) secondiPompa += (millis() - accesaDaMs) / 1000;
   pompaAccesa = on;
@@ -517,6 +525,11 @@ bool mandaBlocco(int &comandoPompaS) {
   JsonObject st = doc["stato"].to<JsonObject>();
   st["modo"] = NOMI_MODO[fermaPerFreddo ? FREDDO : modo]; st["pompa"] = pompaAccesa; st["rssi"] = WiFi.RSSI();
   if (erroriSensore) st["sensore_errori"] = erroriSensore;
+  if (oraNota()) {                                          // da quando la pompa è così e quando finisce questa fase (ora vera)
+    uint32_t adesso = time(nullptr), ms = millis(), fineMs = manualeFinoMs ? manualeFinoMs : fineFaseMs;
+    st["da"] = adesso - (ms - cambioPompaMs) / 1000;
+    if ((int32_t)(fineMs - ms) > 0) st["fine"] = adesso + (fineMs - ms) / 1000;
+  }
   if (memoriaFormattata) st["memoria"] = "formattata";
   if (!memoriaOk) st["memoria"] = "guasta";
   if (!isnan(ultimaT)) { st["t"] = ultimaT; st["u"] = ultimaU; }
@@ -573,11 +586,12 @@ void collegati() {
   if (!strlen(CHIAVE_TORRE)) return;                       // senza chiave il Wi-Fi non si accende mai
   Serial.print("Provo il Wi-Fi... ");
   if (!connettiWiFi()) {
+    wifiOk = false;                                         // modem spento: niente collegamenti a ogni cambio della pompa
     attesaWiFiMin = min<uint32_t>(attesaWiFiMin * 2, cfg.wifiMaxMin);   // modem spento: si riprova più di rado
     Serial.printf("niente, riprovo tra %lu min\n", attesaWiFiMin);
     return;
   }
-  attesaWiFiMin = cfg.wifiOgniMin;
+  attesaWiFiMin = cfg.wifiOgniMin; wifiOk = true;
   Serial.printf("collegata (segnale %d dBm)\n", WiFi.RSSI());
   configTzTime(FUSO, "pool.ntp.org", "time.google.com");
   struct tm tm; if (getLocalTime(&tm, 5000)) Serial.printf("Ora: %02d:%02d\n", tm.tm_hour, tm.tm_min);
@@ -604,6 +618,7 @@ void riposa() {
   piuVicino(fineFaseMs); piuVicino(prossimaMisuraMs);
   if (strlen(CHIAVE_TORRE)) piuVicino(prossimoWiFiMs);
   if (manualeFinoMs) piuVicino(manualeFinoMs);
+  if (comunicaPompa) piuVicino(quandoComunica());
   if (attesa < 50) return;
   if (ora < SVEGLIO_ALL_AVVIO_MS) { delay(min<int32_t>(attesa, 100)); return; }   // primi 3 minuti: sveglio per i comandi
   Serial.flush();
@@ -648,7 +663,15 @@ void loop() {
   if (manualeFinoMs && (int32_t)(ora - manualeFinoMs) >= 0) { manualeFinoMs = 0; rele(false); fineFaseMs = ora; }
   if (!manualeFinoMs && (int32_t)(ora - fineFaseMs) >= 0) prossimaFase();
   if ((int32_t)(ora - prossimaMisuraMs) >= 0) { salvaMisura(); prossimaMisuraMs = millis() + cfg.misuraOgniMin * 60000UL; }
-  if ((int32_t)(ora - prossimoWiFiMs) >= 0) { collegati(); prossimoWiFiMs = millis() + attesaWiFiMin * 60000UL; }
+  if ((int32_t)(ora - prossimoWiFiMs) >= 0) { comunicaPompa = false; collegati(); prossimoWiFiMs = millis() + attesaWiFiMin * 60000UL; }
+  if (comunicaPompa && (int32_t)(millis() - quandoComunica()) >= 0) {
+    comunicaPompa = false;
+    if (strlen(CHIAVE_TORRE) && wifiOk) {                   // modem spento: lo saprà l'app al prossimo collegamento
+      Serial.printf("Pompa %s: lo dico all'app\n", pompaAccesa ? "accesa" : "spenta");
+      ultimoInvioPompaMs = millis(); collegati();
+      prossimoWiFiMs = millis() + attesaWiFiMin * 60000UL;  // il collegamento a orario riparte da qui
+    }
+  }
 
   while (Serial.available()) {
     char c = Serial.read();

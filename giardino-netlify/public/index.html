@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="71216c1d1676">
+<meta name="giardino-build" content="b68206c7870a">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2271,7 +2271,8 @@ function unisciMisure(serie, body, adesso) {
   }
   s.misure = s.misure.filter((r) => r[0] >= da).sort((a, b) => a[0] - b[0]);
   const st = body?.stato && typeof body.stato === "object" ? body.stato : {};
-  s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0 };
+  s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0,
+    da: +st.da > adesso - 7 * 86400 && +st.da <= adesso + 600 ? Math.round(+st.da) : null, fine: +st.fine > adesso - 600 && +st.fine < adesso + 86400 ? Math.round(+st.fine) : null };
   if (st.memoria === "formattata") s.memoria_formattata = adesso;   // l'ESP32 lo dice una volta sola: il server se lo ricorda
   s.ultimo = adesso;
   return { serie: s, nuove, scartate };
@@ -4066,6 +4067,14 @@ function graficoTorre(righe, ore, {w=320, h=150, assi=true}={}){
 }
 function datiTorre(){ const m=TORRE?.misure||[], st=TORRE?.stato||null, ultima=[...m].reverse().find(r=>r[1]!=null);
   return {m, st, ult:TORRE?.ultimo||0, t:st?.t??ultima?.[1]??null, u:st?.u??ultima?.[2]??null}; }
+// stato della pompa: con l'ora di fine fase mandata dall'ESP32 (a ogni accensione e spegnimento, se il modem è acceso)
+function testoPompa(st, ult){
+  if(/freddo/.test(st?.modo||'')) return 'pompa ferma per il freddo';
+  const ora=s=>new Date(s*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}), fine=st?.fine>Date.now()/1000?st.fine:0;
+  if(st?.fine&&!fine&&ult) return (st.pompa?'pompa accesa':'pompa in pausa')+' alle '+ora(ult);   // fase finita da allora: stato vecchio
+  if(st?.pompa) return fine?'pompa accesa fino alle '+ora(fine):'pompa accesa';
+  return fine&&st?.modo!=='senza sensore'?'pompa in pausa, riparte alle '+ora(fine):'pompa in pausa';
+}
 function renderTorre(){
   const box=$('#torreBox'); if(!box) return;
   box.hidden=!torreOn();
@@ -4075,7 +4084,7 @@ function renderTorre(){
   if(!ult) h+=`<div class="sub">In attesa della torre: copia la chiave da Impostazioni → Torre idroponica nel programma dell'ESP32. I dati arrivano quando trova il Wi-Fi.</div>`;
   else {
     const freddo=/freddo/.test(st?.modo||'');
-    h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}</span><span class="pill ${freddo?'':'water'}">${esc(freddo?'pompa ferma per il freddo':st?.pompa?'pompa accesa':'pompa in pausa')}</span></div>`;
+    h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}</span><span class="pill ${freddo?'':'water'}">${esc(testoPompa(st, ult))}</span></div>`;
     h+=graficoTorre(m,24,{w:320,h:46,assi:false});
   }
   const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000);

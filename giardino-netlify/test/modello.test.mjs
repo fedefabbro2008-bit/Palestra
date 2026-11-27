@@ -629,6 +629,11 @@ test("torre idroponica: impostazioni controllate, misure unite senza doppioni, r
   assert.ok(sens); assert.match(sens.testo, /non risponde da .*ciclo di emergenza \(15 min accesa ogni 20 min di pausa\)/); assert.doesNotMatch(sens.testo, /gelo/, "in casa niente gelo");
   assert.match(M.avvisiTorre({ ...tr, config: { guasto_ferma: true } }, guasto, null, "2027-01-10", adesso).find((a) => a.tipo === "sensore").testo, /pompa ferma, come nelle impostazioni/);
   assert.ok(!M.avvisiTorre(tr, serie, null, "2027-01-10", adesso).some((a) => a.tipo === "sensore"), "sensore a posto: niente avviso");
+  // stato della pompa: da quando e fino a quando (ore assurde scartate)
+  const sp = M.unisciMisure(serie, { stato: { pompa: true, da: adesso - 300, fine: adesso + 600 }, misure: [] }, adesso).serie.stato;
+  assert.equal(sp.da, adesso - 300); assert.equal(sp.fine, adesso + 600);
+  const sx = M.unisciMisure(serie, { stato: { da: 5, fine: adesso + 3 * 86400 }, misure: [] }, adesso).serie.stato;
+  assert.equal(sx.da, null); assert.equal(sx.fine, null);
   // memoria dell'ESP32 riformattata: il server se lo ricorda per un giorno
   const form = M.unisciMisure(serie, { stato: { memoria: "formattata" }, misure: [] }, adesso).serie;
   assert.equal(form.memoria_formattata, adesso); assert.ok(tipi(tr, form, null).includes("memoria"));
