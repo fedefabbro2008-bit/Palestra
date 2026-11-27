@@ -1036,7 +1036,8 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome",
       + (sb.giorniAlMinimo < 1.5 ? "Riempilo oggi." : `Riempilo entro ${giornoIt(sb.alMinimo - 86400)}.`) + " Poi segnalo nell'app." });
   else if ((sb.rimasti == null || !sb.imparati) && sb.ultimo && sb.controlla > 0 && sb.giorni >= sb.controlla)   // senza stima, o non ancora imparata: promemoria a giorni
     out.push({ tipo: "serbatoio", testo: `🪣 Controlla il livello del serbatoio: l'ultimo rabbocco segnato è di ${Math.floor(sb.giorni)} giorni fa.`
-      + (sb.capacita ? " Finché non segni un rabbocco con i litri aggiunti, l'app non sa ancora quanto beve davvero la torre." : "") });
+      + (sb.capacita ? sb.piovosi ? " Tra i rabbocchi segnati finora è piovuto: finché non ce n'è uno con i litri e senza pioggia in mezzo, l'app non sa ancora quanto beve davvero la torre."
+        : " Finché non segni un rabbocco con i litri aggiunti, l'app non sa ancora quanto beve davvero la torre." : "") });
   for (const v of lav.voci) if (v.scaduto)
     out.push({ tipo: v.tipo, testo: v.tipo === "pulizia" ? `🧽 Pompa: ${Math.round(v.quanto)} ore di lavoro dall'ultima pulizia (ogni ${v.ogni}). Smontala e pulisci la griglia d'ingresso.`
       : v.tipo === "nutrienti" ? `🧪 Nutrienti: l'ultima aggiunta segnata è di ${Math.floor(v.quanto)} giorni fa (ogni ${v.ogni}).` : `🔄 Cambio della soluzione: l'ultimo è di ${Math.floor(v.quanto)} giorni fa (ogni ${v.ogni}). Svuota, pulisci il serbatoio e rifai la soluzione.` });

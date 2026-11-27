@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="e93e17d9cfef">
+<meta name="giardino-build" content="ed8c95e0a9b4">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -242,6 +242,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--water);outline-o
 .seg label{display:flex;align-items:center;justify-content:center;text-align:center;min-height:42px;padding:6px 4px;border-radius:9px;font-size:.88rem;font-weight:600;color:var(--muted);cursor:pointer;line-height:1.15}
 .seg input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 .seg label.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+@media (max-width:360px){ #torreSheet .seg label{font-size:.8rem;padding:6px 2px;white-space:nowrap} }   /* «30 giorni» su una riga anche a 320 px */
 .quick{display:flex;flex-wrap:wrap;gap:6px}
 .emo-row{display:flex;flex-direction:column;gap:8px}
 .foto-ric{display:flex;flex-direction:column;gap:10px}
@@ -378,7 +379,7 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .set>summary::-webkit-details-marker{display:none}
 .set>summary .chev{margin-top:0}
 .si{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:1.1rem;background:var(--surface-2)}
-.st{flex:1 1 auto;min-width:0;font-weight:700}
+.st{flex:1 1 auto;min-width:min-content;font-weight:700;overflow-wrap:normal;word-break:normal}   /* i titoli vanno a capo tra le parole, mai dentro una parola */
 .sv{flex:0 1 auto;min-width:0;max-width:48%;font-size:.86rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sv.ok{color:var(--leaf);font-weight:600}
 .set .body{padding:2px 14px 16px;display:flex;flex-direction:column;gap:12px}
@@ -2585,7 +2586,8 @@ function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome", piante
       + (sb.giorniAlMinimo < 1.5 ? "Riempilo oggi." : `Riempilo entro ${giornoIt(sb.alMinimo - 86400)}.`) + " Poi segnalo nell'app." });
   else if ((sb.rimasti == null || !sb.imparati) && sb.ultimo && sb.controlla > 0 && sb.giorni >= sb.controlla)   // senza stima, o non ancora imparata: promemoria a giorni
     out.push({ tipo: "serbatoio", testo: `🪣 Controlla il livello del serbatoio: l'ultimo rabbocco segnato è di ${Math.floor(sb.giorni)} giorni fa.`
-      + (sb.capacita ? " Finché non segni un rabbocco con i litri aggiunti, l'app non sa ancora quanto beve davvero la torre." : "") });
+      + (sb.capacita ? sb.piovosi ? " Tra i rabbocchi segnati finora è piovuto: finché non ce n'è uno con i litri e senza pioggia in mezzo, l'app non sa ancora quanto beve davvero la torre."
+        : " Finché non segni un rabbocco con i litri aggiunti, l'app non sa ancora quanto beve davvero la torre." : "") });
   for (const v of lav.voci) if (v.scaduto)
     out.push({ tipo: v.tipo, testo: v.tipo === "pulizia" ? `🧽 Pompa: ${Math.round(v.quanto)} ore di lavoro dall'ultima pulizia (ogni ${v.ogni}). Smontala e pulisci la griglia d'ingresso.`
       : v.tipo === "nutrienti" ? `🧪 Nutrienti: l'ultima aggiunta segnata è di ${Math.floor(v.quanto)} giorni fa (ogni ${v.ogni}).` : `🔄 Cambio della soluzione: l'ultimo è di ${Math.floor(v.quanto)} giorni fa (ogni ${v.ogni}). Svuota, pulisci il serbatoio e rifai la soluzione.` });

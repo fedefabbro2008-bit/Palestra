@@ -225,6 +225,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--water);outline-o
 .seg label{display:flex;align-items:center;justify-content:center;text-align:center;min-height:42px;padding:6px 4px;border-radius:9px;font-size:.88rem;font-weight:600;color:var(--muted);cursor:pointer;line-height:1.15}
 .seg input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 .seg label.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+@media (max-width:360px){ #torreSheet .seg label{font-size:.8rem;padding:6px 2px;white-space:nowrap} }   /* «30 giorni» su una riga anche a 320 px */
 .quick{display:flex;flex-wrap:wrap;gap:6px}
 .emo-row{display:flex;flex-direction:column;gap:8px}
 .foto-ric{display:flex;flex-direction:column;gap:10px}
@@ -361,7 +362,7 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .set>summary::-webkit-details-marker{display:none}
 .set>summary .chev{margin-top:0}
 .si{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:1.1rem;background:var(--surface-2)}
-.st{flex:1 1 auto;min-width:0;font-weight:700}
+.st{flex:1 1 auto;min-width:min-content;font-weight:700;overflow-wrap:normal;word-break:normal}   /* i titoli vanno a capo tra le parole, mai dentro una parola */
 .sv{flex:0 1 auto;min-width:0;max-width:48%;font-size:.86rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sv.ok{color:var(--leaf);font-weight:600}
 .set .body{padding:2px 14px 16px;display:flex;flex-direction:column;gap:12px}
