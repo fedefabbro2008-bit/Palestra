@@ -484,6 +484,7 @@ async function toolTorre(ctx, a = {}) {
     `- rabbocchi: ${sb.rabbocchi.length ? sb.rabbocchi.slice(-6).map((r) => fmtOra(Date.parse(r.at) / 1000, tz) + (r.litri ? " " + fmt(r.litri) + " L" : "")).join(", ") : "–"}`,
     ...lav.voci.map((v) => `- ${v.nome.toLowerCase()}: ${v.tipo === "pulizia" ? (v.quanto != null ? Math.round(v.quanto) + " ore di pompa " + (v.ultimo ? "dall'ultima" : "finora") : "–") : v.ultimo ? gg(v.quanto) : "mai segnato"}${v.ogni ? ` (ogni ${v.ogni}${v.tipo === "pulizia" ? " ore di pompa" : " giorni"})` : " (promemoria spento)"}${v.scaduto ? " ⚠️ da fare" : ""}`));
   if (st?.pb) L.push(`Power bank tenuto acceso dall'ESP32: radio accesa ${fmt(st.pb[1] / 1000)} s ogni ${st.pb[0]} s${st.pb[2] ? ` (allungato da solo ${st.pb[2]} volte dopo spegnimenti)` : ""}.`);
+  if (st?.diag) L.push(`Diagnostica dell'ESP32: memoria libera ${st.diag[0] != null ? Math.round(st.diag[0] / 1024) + " KB" : "–"} (la più bassa dall'accensione ${st.diag[1] != null ? Math.round(st.diag[1] / 1024) + " KB" : "–"}), impulsi del power bank con la radio non partita ${st.diag[2] ?? 0}. Se la memoria minima scende sotto 30 KB o gli impulsi falliti crescono, dillo all'utente.`);
   const rv = (serie.riavvii || []).slice(-5);
   if (rv.length) L.push(`Ultimi riavvii dell'ESP32: ${rv.map((r) => `${fmtOra(r.ora, tz)} (${M.RIAVVII_TORRE[r.motivo] || r.motivo})`).join(", ")}.`);
   if (st?.fw) L.push(`Programma dell'ESP32: versione ${st.fw}.`);

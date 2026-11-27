@@ -762,6 +762,9 @@ test("torre: stato della pompa stimato quando il modem è spento, avviso «corre
   assert.match(M.avvisiTorre(tr, { ...rv, stato: { pb: [10, 2250, 1] } }, null, "2027-01-20", t0, "UTC").find((a) => a.tipo === "corrente").testo, /ora 2,25 s ogni 10 s/);
   assert.match(M.avvisiTorre(tr, { ...rv, stato: { pb: [5, 4000, 4] } }, null, "2027-01-20", t0, "UTC").find((a) => a.tipo === "corrente").testo, /già al massimo/);
   assert.deepEqual(M.unisciMisure(null, { stato: { pb: [15, 1500, 2] }, misure: [] }, t0).serie.stato.pb, [15, 1500, 2]);
+  assert.deepEqual(M.unisciMisure(null, { stato: { diag: [123456.7, 98000, 3, 99] }, misure: [] }, t0).serie.stato.diag, [123457, 98000, 3]);
+  assert.deepEqual(M.unisciMisure(null, { stato: { diag: [-1, "x"] }, misure: [] }, t0).serie.stato.diag, [null, null]);
+  assert.equal(M.unisciMisure(null, { stato: {}, misure: [] }, t0).serie.stato.diag, null, "programma vecchio: niente diagnostica");
   assert.equal(M.unisciMisure(null, { stato: { pb: [0, 1500] }, misure: [] }, t0).serie.stato.pb, null);
 });
 

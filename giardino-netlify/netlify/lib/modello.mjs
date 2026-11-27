@@ -763,6 +763,8 @@ export function unisciMisure(serie, body, adesso, tz = "Europe/Rome") {
   s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0,
     da: +st.da > adesso - 7 * 86400 && +st.da <= adesso + 600 ? Math.round(+st.da) : null, fine: +st.fine > adesso - 600 && +st.fine < adesso + 86400 ? Math.round(+st.fine) : null,
     // power bank tenuto acceso: [ogni quanti secondi, per quanti millisecondi, quante volte il programma l'ha accorciato da solo]
+    // diagnostica dell'ESP32 (dalla v8): [memoria libera, memoria libera minima, impulsi del power bank non partiti]
+    diag: Array.isArray(st.diag) ? st.diag.slice(0, 3).map((n) => (n != null && isFinite(+n) && +n >= 0 ? Math.round(+n) : null)) : null,
     pb: Array.isArray(st.pb) && +st.pb[0] >= 1 && +st.pb[0] <= 600 && +st.pb[1] >= 50 && +st.pb[1] <= 20000 ? [Math.round(+st.pb[0]), Math.round(+st.pb[1]), Math.max(0, Math.min(99, Math.round(+st.pb[2] || 0)))] : null };
   if (st.memoria === "formattata") s.memoria_formattata = adesso;   // l'ESP32 lo dice una volta sola: il server se lo ricorda
   // riavvii: uno per accensione (numero «avvio»), con il motivo e l'ora (adesso meno i secondi da allora)
