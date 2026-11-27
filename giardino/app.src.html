@@ -1054,11 +1054,13 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
               <div class="field"><label for="torreNotteX">Pausa × (volte)</label><input type="text" inputmode="decimal" id="torreNotteX"></div></div></div>
           <div class="field"><span class="flabel">Serbatoio e manutenzione</span>
             <div class="grid2 allinea"><div class="field"><label for="torreCap">Serbatoio (litri)</label><input type="text" inputmode="decimal" id="torreCap"></div>
-              <div class="field"><label for="torreControlla">Controlla il livello ogni (giorni)</label><input type="text" inputmode="numeric" id="torreControlla"></div>
+              <div class="field"><label for="torreMin">Livello minimo per la pompa (litri)</label><input type="text" inputmode="decimal" id="torreMin" placeholder="un quarto"></div>
+              <div class="field"><label for="torreAnt">Avvisa quanti giorni prima</label><input type="text" inputmode="numeric" id="torreAnt"></div>
+              <div class="field"><label for="torreControlla">Senza litri: controlla ogni (giorni)</label><input type="text" inputmode="numeric" id="torreControlla"></div>
               <div class="field"><label for="torreNutr">Nutrienti ogni (giorni)</label><input type="text" inputmode="numeric" id="torreNutr"></div>
               <div class="field"><label for="torreSol">Cambio soluzione ogni (giorni)</label><input type="text" inputmode="numeric" id="torreSol"></div>
               <div class="field"><label for="torrePul">Pulizia pompa ogni (ore di pompa)</label><input type="text" inputmode="numeric" id="torrePul"></div></div>
-            <span class="hint">0 = nessun promemoria. Con i litri del serbatoio e quelli che aggiungi a ogni rabbocco l'app impara quanto beve la torre (più col caldo) e avvisa quando ne resta meno di un terzo; finché non lo sa, ti ricorda di controllare ogni tanti giorni.</span></div>
+            <span class="hint">Con i litri del serbatoio l'app stima quanta acqua resta: piante della torre, evaporazione del giorno (sole, vento, caldo, umidità) e quanto ha bevuto davvero tra un rabbocco e l'altro (scrivi i litri quando riempi). È prudente: ti avvisa i giorni scelti prima che arrivi al livello minimo (vuoto = un quarto del serbatoio). 0 = nessun promemoria.</span></div>
           <div class="row"><button class="btn primary" type="button" id="torreSalva">Salva</button></div>
           <span class="hint" id="torreRev"></span>
           <div><button class="btn ghost danger" type="button" id="torreTogli">Togli la torre e le sue misure</button></div>
@@ -2062,7 +2064,10 @@ function quandoTorre(s){
   return g===today()?'oggi alle '+hh:g===addDays(today(),-1)?'ieri alle '+hh:dataBreve(g)+' alle '+hh;
 }
 // meteo per gli avvisi della torre: quello dell'orto dove si trova (se è quello aperto, l'unico che l'app ha in mano)
-const meteoTorre=()=>{ const w=activeWeather(); return (S.torre?.orto||'p')===ORTO&&w?{notte:w.notte||null, days:wxDays()}:null; };
+let METEO_T=null;
+const meteoTorre=()=>{ const w=activeWeather(); if(!((S.torre?.orto||'p')===ORTO&&w)) return null;
+  const k=[w, W.bot, today()]; if(METEO_T&&METEO_T.k.every((x,i)=>x===k[i])) return METEO_T.v;
+  const v={notte:w.notte||null, days:wxDays(), archivio:w.archivio||W.bot?.archivio||null, lat:S.location?.lat}; METEO_T={k,v}; return v; };
 // grafico: temperatura (linea), umidità (tratteggio, scala 0-100) e pompa (barre in basso); linea rossa al freddo che ferma la pompa
 // riassunti per giorno come misure (a mezzogiorno): [ora, media, umidità, secondi di pompa, 0]
 const righeGiorni=()=>(TORRE?.giorni||[]).map(x=>[Date.parse(x[0]+'T12:00:00')/1000, x[3], x[4], (x[5]||0)*60, 0]);
@@ -2116,7 +2121,7 @@ function renderTorre(){
     h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}</span><span class="pill ${freddo?'':'water'}">${esc(testoPompa(st, ult))}</span></div>`;
     h+=graficoTorre(m,24,{w:320,h:46,assi:false});
   }
-  const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000);
+  const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000, undefined, S.plants);
   if(avv.length) h+=avv.map(a=>`<div class="sub">${esc(a.testo)}</div>`).join('');
   setHTML(box,h);
 }
@@ -2136,7 +2141,7 @@ function renderTorreSheet(){
     c('Umidità media',r.umidita!=null?r.umidita+' %':'–'),
     c('Pompa',r.pompaMin>=120?fmt(r.pompaMin/60,r.pompaMin>=6000?0:1)+' h':r.pompaMin+' min',PERIODI_TORRE[torreOre]),
     c('Ferma per freddo',r.freddoMin?(r.freddoMin>=90?fmt(r.freddoMin/60,1)+' h':r.freddoMin+' min'):'mai')].join(''));
-  const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000);
+  const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000, undefined, S.plants);
   setHTML($('#torreAvvisi'),avv.map(a=>`<div class="alert ${a.tipo==='pioggia'?'info':''}">${a.tipo==='pioggia'?ICON.info:ICON.warn}<div>${esc(a.testo)}</div></div>`).join(''));
   renderLavori(tr);
   const c2=tr.comando, attesa=c2&&Date.parse(c2.at)>Date.now()-2*3600e3;
@@ -2153,11 +2158,16 @@ function riepilogoGiorni(g){
 }
 // Serbatoio e manutenzione: come stanno, e un pulsante per segnare il lavoro fatto
 function renderLavori(tr){
-  const L=lavoriTorre(tr, TORRE||{}, Date.now()/1000), sb=L.serbatoio, gg=g=>{ const n=Math.floor(g); return n<1?'oggi':n===1?'ieri':n+' giorni fa'; };
+  const L=lavoriTorre(tr, TORRE||{}, Date.now()/1000, undefined, {met:meteoTorre(), piante:S.plants}), sb=L.serbatoio, gg=g=>{ const n=Math.floor(g); return n<1?'oggi':n===1?'ieri':n+' giorni fa'; };
+  const giorno=s=>new Date(s*1000).toLocaleDateString('it-IT',{weekday:'long',day:'numeric'});
   const riga=(tipo,nome,testo,scad,btn)=>`<div class="tl-row${scad?' scad':''}"><div class="tl-t"><b>${esc(nome)}</b><span>${esc(testo)}</span></div><button class="btn small" type="button" data-lavoro="${tipo}">${esc(btn)}</button></div>`;
-  const tsb=!sb.ultimo?'Segna quando lo riempi: l\'app impara quanto beve la torre.'
-    :'Riempito '+gg(sb.giorni)+(sb.rimasti!=null?' · restano circa '+fmt(sb.rimasti,0)+' L su '+fmt(sb.capacita,0):sb.consumo?' · beve circa '+fmt(sb.consumo,1)+' L al giorno (a 20 °C)':'');
-  let h=riga('rabbocco','🪣 Serbatoio',tsb,sb.rimasti!=null?sb.rimasti<=0.3*sb.capacita:sb.ultimo&&sb.controlla>0&&sb.giorni>=sb.controlla,'Riempito');
+  // serbatoio: litri rimasti e quando arriva al minimo (stima prudente), o cosa manca per calcolarli
+  const tsb=!sb.ultimo?'Segna quando lo riempi: da lì l\'app calcola quanto ne resta.'
+    :'Riempito '+gg(sb.giorni)+(sb.rimasti==null?(sb.capacita?'':' · scrivi i litri del serbatoio nelle impostazioni per sapere quanto ne resta')
+      :' · restano circa '+fmt(sb.rimasti,0)+' L su '+fmt(sb.capacita,0)+(sb.giorniAlMinimo==null?' · più di '+SERBATOIO.giorniAvanti+' giorni di scorta':sb.giorniAlMinimo<=0?' · al minimo: riempilo':' · al minimo verso '+giorno(sb.alMinimo))
+        +' (stima prudente'+(sb.imparati?'':', ancora senza rabbocchi con i litri')+')');
+  let h=riga('rabbocco','🪣 Serbatoio',tsb,sb.rimasti!=null?sb.rimasti<=sb.minimo||(sb.giorniAlMinimo!=null&&sb.giorniAlMinimo<=sb.anticipo):sb.ultimo&&sb.controlla>0&&sb.giorni>=sb.controlla,'Riempito');
+  if(sb.ultimo&&sb.capacita) h+=`<div class="hint">La torre beve circa ${fmt(sb.consumo,1)} L al giorno (ultima settimana); per gli avvisi l'app conta fino a ${fmt(sb.consumoPrudente,1)} L nei prossimi giorni, con il meteo previsto${sb.piante?'':' e come se nella torre ci fossero 7 lattughe (segna le piante della torre per una stima migliore)'}. Avviso ${sb.anticipo} ${sb.anticipo===1?'giorno':'giorni'} prima del minimo (${fmt(sb.minimo,0)} L).</div>`;
   const ic={nutrienti:'🧪',soluzione:'🔄',pulizia:'🧽'};
   for(const v of L.voci){
     const ogni=v.ogni>0?(v.tipo==='pulizia'?' (ogni '+v.ogni+' ore)':' (ogni '+v.ogni+' giorni)'):'';
@@ -2202,7 +2212,7 @@ function renderTorreSet(){
   setVal($('#torreCal'),numIn(c.cal_t)); setVal($('#torreGuastoP'),c.guasto_pausa); $('#torreGuastoFerma').checked=!!c.guasto_ferma;
   setVal($('#torreNotteDa'),c.notte_da); setVal($('#torreNotteA'),c.notte_a); setVal($('#torreNotteX'),numIn(c.notte_fattore));
   const sb=serbatoioTorre(tr.serbatoio), lv=lavoriTorreDati(tr.lavori);
-  setVal($('#torreCap'),numIn(sb.capacita)); setVal($('#torreControlla'),sb.controlla); setVal($('#torreNutr'),lv.nutrienti.ogni); setVal($('#torreSol'),lv.soluzione.ogni); setVal($('#torrePul'),lv.pulizia.ogni);
+  setVal($('#torreCap'),numIn(sb.capacita)); setVal($('#torreMin'),numIn(sb.minimo)); setVal($('#torreAnt'),sb.anticipo); setVal($('#torreControlla'),sb.controlla); setVal($('#torreNutr'),lv.nutrienti.ogni); setVal($('#torreSol'),lv.soluzione.ogni); setVal($('#torrePul'),lv.pulizia.ogni);
   const st=TORRE?.stato;
   $('#torreRev').textContent=!TORRE?.ultimo?'La torre non si è ancora collegata.':st?.rev===tr.rev?'La torre ha le impostazioni di adesso.':'Impostazioni nuove in attesa: arrivano alla torre quando trova il Wi-Fi.';
 }
@@ -2241,7 +2251,7 @@ function wireTorre(){
       notte_da:n('#torreNotteDa'), notte_a:n('#torreNotteA'), notte_fattore:n('#torreNotteX'), guasto_pausa:n('#torreGuastoP'), guasto_ferma:$('#torreGuastoFerma').checked, cal_t:numOrNull(String($('#torreCal').value).replace('−','-'))??0});
     const cambiata=JSON.stringify(nuova)!==JSON.stringify(c);
     const sb=serbatoioTorre(S.torre.serbatoio), lv=lavoriTorreDati(S.torre.lavori), ogni=(id,d)=>n(id)??d;
-    sb.capacita=n('#torreCap'); sb.controlla=ogni('#torreControlla',sb.controlla);
+    sb.capacita=n('#torreCap'); sb.minimo=n('#torreMin'); sb.anticipo=ogni('#torreAnt',sb.anticipo); sb.controlla=ogni('#torreControlla',sb.controlla);
     for(const [k,id] of [['nutrienti','#torreNutr'],['soluzione','#torreSol'],['pulizia','#torrePul']]) lv[k]={...lv[k], ogni:ogni(id,lv[k].ogni)};
     S.torre={...S.torre, serbatoio:serbatoioTorre(sb), lavori:lavoriTorreDati(lv), nome:$('#torreNome').value.trim().slice(0,40)||'Torre idroponica', posizione:pos, orto:$('#torreOrtoF').hidden?(S.torre.orto||'p'):$('#torreOrto').value, config:nuova, rev:(S.torre.rev||1)+(cambiata?1:0)};
     document.querySelectorAll('#torreSet input').forEach(x=>{ x.blur(); x._last=undefined; });

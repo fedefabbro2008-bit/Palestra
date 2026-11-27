@@ -681,27 +681,67 @@ test("torre: riassunti per giorno (un anno), riavvii, limite di sicurezza, avvis
   for (const dopo of [2, 3, 4]) assert.ok(!M.urgentiTorre(tr, { ...due, urgenti: u.urgenti }, adesso + dopo * h, "UTC").testi.length, "non si ripete");
 });
 
-test("torre: serbatoio (consumo imparato dai rabbocchi e dalla temperatura) e manutenzione", () => {
+test("torre: giorno locale veloce uguale a Intl ogni 10 minuti per un anno (anche nei cambi dell'ora)", () => {
+  const ref = new Map(), intl = (s, tz) => { let f = ref.get(tz); if (!f) ref.set(tz, (f = new Intl.DateTimeFormat("sv-SE", { timeZone: tz }))); return f.format(new Date(s * 1000)); };
+  const da = Date.UTC(2027, 0, 1) / 1000, a = Date.UTC(2028, 0, 1) / 1000;
+  for (const tz of ["Europe/Rome", "UTC"]) for (let t = da; t < a; t += 600) if (M.giornoTorre(t, tz) !== intl(t, tz)) assert.fail(`${tz} ${t}: ${M.giornoTorre(t, tz)} invece di ${intl(t, tz)}`);
+  for (const tz of ["America/New_York", "Australia/Lord_Howe", "Asia/Kolkata"]) for (let t = da + 1234; t < a; t += 3600) if (M.giornoTorre(t, tz) !== intl(t, tz)) assert.fail(`${tz} ${t}`);
+  // l'ora locale per la stima della pompa: le 23:30 del 26 ottobre 2027 a Roma (ora solare dal 31)
+  assert.equal(new Date((Date.UTC(2027, 9, 26, 21, 30) / 1000 + M.scartoTorre(Date.UTC(2027, 9, 26, 21, 30) / 1000, "Europe/Rome")) * 1000).getUTCHours(), 23);
+});
+
+test("torre: serbatoio, consumo dalle piante e dal meteo, scala imparata dai rabbocchi, avviso prudente prima del minimo", () => {
+  const d = 86400, t0 = Date.UTC(2027, 5, 1) / 1000, iso = (s) => new Date(s * 1000).toISOString(), g = (s) => iso(s).slice(0, 10);
+  const arch = {}; for (let i = -40; i < 10; i++) arch[g(t0 + i * d)] = [15, 25, i === -3 ? 12 : 0, 4];   // ET0 4 mm; 12 mm di pioggia il 29 maggio
+  const met = { lat: 44, archivio: arch, days: [] }, la = { id: "la", nome: "Lattuga", specie: "lattuga", fase: "vegetativa", colt: "torre", num: 6, luce: 8 };
+  const lpm = M.params(la, { oggi: "2027-06-01", lat: 44 }).lPerMm + 0.05, perGiorno = lpm * 4, litri = +(1.2 * perGiorno * 4).toFixed(1);
+  const tr = { posizione: "fuori", config: {}, creata: iso(t0 - 60 * d), lavori: {},
+    serbatoio: { capacita: 20, rabbocchi: [{ at: iso(t0 - 5 * d) }, { at: iso(t0), litri: 1 }, { at: iso(t0 + 4 * d), litri }] } };
+  const serie = { giorni: [], misure: [] }, ctx = { met, piante: [la] }, vicino = (a, b, m) => assert.ok(Math.abs(a - b) < 0.02 * Math.max(1, Math.abs(b)), `${m}: ${a} invece di ${b}`);
+  let sb = M.lavoriTorre(tr, serie, t0 + 6 * d, "UTC", ctx).serbatoio;
+  // l'intervallo con la pioggia non conta; dall'altro: litri = 1,2 × calcolato; prudente = 1,2 × 1,25
+  assert.equal(sb.imparati, 1); vicino(sb.scala, litri / (perGiorno * 4), "scala"); vicino(sb.scalaPrudente, 1.25 * sb.scala, "prudente");
+  vicino(sb.consumo, sb.scala * perGiorno, "consumo dell'ultima settimana"); vicino(sb.rimasti, 20 - sb.scalaPrudente * perGiorno * 2, "litri rimasti");
+  assert.equal(sb.minimo, 5, "minimo: un quarto"); assert.equal(sb.anticipo, 3); vicino(sb.giorniAlMinimo, (sb.rimasti - 5) / (sb.scalaPrudente * perGiorno), "giorni al minimo");
+  const tipi = (ora, t = tr) => M.avvisiTorre(t, serie, met, g(ora), ora, "UTC", [la]).filter((a) => a.tipo === "serbatoio");
+  const presto = Math.ceil(4 + sb.giorniAlMinimo - 3 + 2) + 0.5;   // da quando mancano meno di 3 giorni al minimo
+  assert.equal(tipi(t0 + 6 * d).length, 0, "più di 3 giorni di scorta: niente avviso");
+  const [a1] = tipi(t0 + presto * d); assert.ok(a1 && !a1.urgente); assert.match(a1.testo, /Serbatoio da riempire: con il meteo previsto arriva al minimo verso .* Riempilo entro /);
+  const [a2] = tipi(t0 + (presto + 2) * d); assert.ok(a2?.urgente, "entro un giorno: urgente");
+  const [a3] = tipi(t0 + 14 * d); assert.match(a3.testo, /Serbatoio al minimo/); assert.ok(a3.urgente);
+  assert.ok(M.urgentiTorre(tr, { ...serie, ultimo: t0 + 14 * d }, t0 + 14 * d, "UTC", met, [la]).testi.some((x) => /Serbatoio al minimo/.test(x)), "subito su Telegram");
+  assert.equal(tipi(t0 + presto * d, { ...tr, serbatoio: { ...tr.serbatoio, anticipo: 1 } }).length, 0, "anticipo di un giorno: non ancora");
+  // senza rabbocchi con i litri: scala 1,5; senza piante: come 7 lattughe
+  const solo = { ...tr, serbatoio: { capacita: 20, rabbocchi: [{ at: iso(t0) }] } };
+  sb = M.lavoriTorre(solo, serie, t0 + d, "UTC", { met, piante: [] }).serbatoio;
+  assert.equal(sb.imparati, 0); assert.equal(sb.scalaPrudente, 1.5); assert.equal(sb.piante, 0); vicino(sb.rimasti, 20 - 1.5 * (0.05 + 0.42) * 4, "senza piante");
+  // oltre le previsioni: il giorno più assetato degli ultimi tre previsti
+  const corto = { lat: 44, archivio: Object.fromEntries(Object.entries(arch).filter(([k]) => k <= g(t0 + 2 * d)).map(([k, v]) => [k, k === g(t0 + 2 * d) ? [20, 35, 0, 7] : v])), days: [] };
+  vicino(M.lavoriTorre(solo, serie, t0 + d, "UTC", { met: corto, piante: [la] }).serbatoio.consumoPrudente, 1.5 * lpm * (4 + 7 + 7) / 3, "dopo le previsioni");
+  // in casa: temperatura e umidità misurate dalla torre (aria secca, più consumo); in veranda il 70%
+  const casa = { ...solo, posizione: "casa" }, umido = { giorni: [[g(t0), 18, 22, 20, 75, 0, 0, 144]], misure: [] }, secco = { giorni: [[g(t0), 18, 22, 20, 30, 0, 0, 144]], misure: [] };
+  assert.ok(M.lavoriTorre(casa, secco, t0 + d, "UTC", ctx).serbatoio.rimasti < M.lavoriTorre(casa, umido, t0 + d, "UTC", ctx).serbatoio.rimasti, "aria secca: beve di più");
+  vicino(20 - M.lavoriTorre({ ...solo, posizione: "veranda" }, serie, t0 + d, "UTC", ctx).serbatoio.rimasti, 0.7 * (20 - M.lavoriTorre(solo, serie, t0 + d, "UTC", ctx).serbatoio.rimasti), "veranda");
+  // ricordato per minuto sugli stessi oggetti
+  const r1 = M.lavoriTorre(tr, serie, t0 + 6 * d, "UTC", ctx), r2 = M.lavoriTorre(tr, serie, t0 + 6 * d + 30, "UTC", ctx);
+  assert.equal(r1, r2); assert.notEqual(M.lavoriTorre(tr, serie, t0 + 6 * d + 90, "UTC", ctx), r1); assert.notEqual(M.lavoriTorre({ ...tr }, serie, t0 + 6 * d, "UTC", ctx), r1);
+});
+
+test("torre: manutenzione (nutrienti, soluzione, pulizia) e promemoria senza litri", () => {
   const d = 86400, t0 = Date.UTC(2027, 5, 1) / 1000, iso = (s) => new Date(s * 1000).toISOString();
-  const giorni = []; for (let i = -2; i < 20; i++) giorni.push([new Date((t0 + i * d) * 1000).toISOString().slice(0, 10), 15, 25, 20, 60, 120, 0, 144]);   // 20 °C di media: un giorno vale 1
+  const giorni = []; for (let i = -2; i < 20; i++) giorni.push([new Date((t0 + i * d) * 1000).toISOString().slice(0, 10), 15, 25, 20, 60, 120, 0, 144]);
   const serie = { giorni, misure: [] };
-  const tr = { posizione: "casa", config: {}, creata: iso(t0 - d), serbatoio: { capacita: 10, controlla: 3, rabbocchi: [{ at: iso(t0) }, { at: iso(t0 + 4 * d), litri: 8 }] },
+  const tr = { posizione: "casa", config: {}, creata: iso(t0 - d), serbatoio: { controlla: 3, rabbocchi: [{ at: iso(t0) }] },
     lavori: { nutrienti: { ogni: 7, ultimo: iso(t0) }, soluzione: { ogni: 14, ultimo: iso(t0) }, pulizia: { ogni: 20, ultimo: iso(t0 + 2 * d) } } };
-  let l = M.lavoriTorre(tr, serie, t0 + 7 * d, "UTC");
-  assert.ok(Math.abs(l.serbatoio.consumo - 2) < 0.01, "8 litri in 4 giorni a 20 °C: 2 L al giorno"); assert.ok(Math.abs(l.serbatoio.rimasti - 4) < 0.01);
-  const tipi = (ora) => M.avvisiTorre(tr, serie, null, "2027-06-01", ora, "UTC").map((a) => a.tipo);
-  assert.ok(tipi(t0 + 7 * d).includes("nutrienti")); assert.ok(!tipi(t0 + 7 * d).includes("serbatoio"), "4 L su 10: ancora abbastanza");
-  assert.match(M.avvisiTorre(tr, serie, null, "2027-06-01", t0 + 8 * d, "UTC").find((a) => a.tipo === "serbatoio").testo, /restano circa 2 L su 10/);
-  // pulizia: 2 ore di pompa al giorno dal giorno dopo la pulizia
-  const pul = l.voci.find((v) => v.tipo === "pulizia"); assert.equal(Math.round(pul.quanto), 2 * 17, "dal 4 al 20 giugno"); assert.ok(pul.scaduto);
-  assert.ok(!l.voci.find((v) => v.tipo === "soluzione").scaduto);
+  const l = M.lavoriTorre(tr, serie, t0 + 7 * d, "UTC");
+  const pul = l.voci.find((v) => v.tipo === "pulizia"); assert.equal(Math.round(pul.quanto), 2 * 17, "2 ore di pompa al giorno dal 4 al 20 giugno"); assert.ok(pul.scaduto);
+  assert.ok(!l.voci.find((v) => v.tipo === "soluzione").scaduto); assert.ok(l.voci.find((v) => v.tipo === "nutrienti").scaduto);
   // senza capacità: solo il promemoria a giorni; mai segnato: niente avviso
-  const senza = { ...tr, serbatoio: { controlla: 3, rabbocchi: [{ at: iso(t0) }] }, lavori: { nutrienti: { ogni: 7 } } };
-  assert.match(M.avvisiTorre(senza, serie, null, "2027-06-01", t0 + 4 * d, "UTC").find((a) => a.tipo === "serbatoio").testo, /ultimo rabbocco segnato è di 4 giorni fa/);
-  assert.ok(!M.avvisiTorre(senza, serie, null, "2027-06-01", t0 + 30 * d, "UTC").some((a) => a.tipo === "nutrienti"), "mai segnati: niente avviso");
+  assert.match(M.avvisiTorre(tr, serie, null, "2027-06-01", t0 + 4 * d, "UTC").find((a) => a.tipo === "serbatoio").testo, /ultimo rabbocco segnato è di 4 giorni fa/);
+  assert.ok(!M.avvisiTorre({ ...tr, lavori: { nutrienti: { ogni: 7 } } }, serie, null, "2027-06-01", t0 + 30 * d, "UTC").some((a) => a.tipo === "nutrienti"), "mai segnati: niente avviso");
   // dati dall'app controllati
-  const x = M.torreDallApp({ serbatoio: { capacita: "abc", controlla: 999, rabbocchi: [{ at: "boh" }, { at: iso(t0), litri: -3 }] }, lavori: { pulizia: { ogni: 1e9 } } }, { rev: 1, chiave: "K" });
-  assert.deepEqual(x.serbatoio, { capacita: null, controlla: 60, rabbocchi: [{ at: iso(t0), litri: null }] }); assert.equal(x.lavori.pulizia.ogni, 5000); assert.equal(x.lavori.nutrienti.ogni, 7);
+  const x = M.torreDallApp({ serbatoio: { capacita: "abc", controlla: 999, minimo: -1, anticipo: 99, rabbocchi: [{ at: "boh" }, { at: iso(t0), litri: -3 }] }, lavori: { pulizia: { ogni: 1e9 } } }, { rev: 1, chiave: "K" });
+  assert.deepEqual(x.serbatoio, { capacita: null, controlla: 60, minimo: 0, anticipo: 14, rabbocchi: [{ at: iso(t0), litri: null }] }); assert.equal(x.lavori.pulizia.ogni, 5000); assert.equal(x.lavori.nutrienti.ogni, 7);
 });
 
 test("torre: stato della pompa stimato quando il modem è spento, avviso «corrente» col power bank", () => {

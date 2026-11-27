@@ -174,7 +174,7 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
     if (fa("torre") && torre && torre.attiva !== false) {
       try {
         const v = M.vistaOrto(data, torre.orto || "p"), met = v.location ? await meteoDi(v) : null, serie = await st.get("s-" + code, { type: "json" });
-        const avv = avvisiTorre(torre, serie, met, oggi, Math.floor(Date.now() / 1000), met?.tz || t.tz || "Europe/Rome");
+        const avv = avvisiTorre(torre, serie, met, oggi, Math.floor(Date.now() / 1000), met?.tz || t.tz || "Europe/Rome", data.plants);
         if (avv.length) await invia(`🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + avv.map((a) => esc(a.testo)).join("\n"));
       } catch (e) { console.warn("torre:", e?.message); }
     }

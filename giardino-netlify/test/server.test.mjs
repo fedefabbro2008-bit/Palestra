@@ -828,7 +828,12 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   assert.deepEqual([(await leggiDati()).torre.serbatoio.capacita, (await leggiDati()).torre.lavori.nutrienti.ogni, (await leggiDati()).torre.serbatoio.rabbocchi.at(-1).litri], [20, 10, 4]);
   assert.match((await strumento("torre_imposta", { segna: "pulizia", quando: "2020-01-01" })).content[0].text, /ultimi 60 giorni/);
   tx = (await strumento("torre")).content[0].text;
-  assert.match(tx, /## Serbatoio e manutenzione/); assert.match(tx, /serbatoio 20 L: ultimo rabbocco oggi/); assert.match(tx, /nutrienti: mai segnato \(ogni 10 giorni\)/);
+  assert.match(tx, /## Serbatoio e manutenzione/); assert.match(tx, /serbatoio 20 L, minimo per la pompa 5 L: ultimo rabbocco oggi; beve circa .* L al giorno .*stima prudente .*restano circa 20 L/);
+  tx = (await strumento("torre_imposta", { minimo: 4, anticipo: 2 })).content[0].text;
+  assert.match(tx, /livello minimo per la pompa: un quarto → 4 L/); assert.match(tx, /avviso del serbatoio: 3 → 2 giorni prima/); assert.doesNotMatch(tx, /L'ESP32 le riceve/);
+  assert.deepEqual([(await leggiDati()).torre.serbatoio.minimo, (await leggiDati()).torre.serbatoio.anticipo], [4, 2]);
+  assert.ok((await strumento("torre_imposta", { anticipo: 30 })).isError);
+  tx = (await strumento("torre")).content[0].text; assert.match(tx, /nutrienti: mai segnato \(ogni 10 giorni\)/);
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
   assert.ok((await strumento("torre_imposta", { accesa_min: 11 })).isError, "senza permesso");
   assert.ok(!(await strumento("torre")).isError, "leggere si può sempre");
