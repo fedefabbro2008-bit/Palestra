@@ -621,6 +621,98 @@ test("torre idroponica: impostazioni controllate, misure unite senza doppioni, r
   assert.deepEqual(tipi({ ...tr, posizione: "veranda" }, serie, { notte: [{ ora: "03", t: 1 }], days: [] }), ["freddo"], "in veranda solo il gelo vero");
   assert.ok(tipi(tr, { ...serie, ultimo: adesso - 30 * h }, null).includes("silenzio"), "torre zitta da più di 26 ore");
   assert.match(M.avvisiTorre(tr, serie, met, "2027-01-10", adesso)[0].testo, /Rischio di ghiaccio nel serbatoio/);
+  // sensore che non risponde: ciclo di emergenza impostabile, avviso con l'ora da cui manca la temperatura
+  assert.equal(M.configTorre({}).guasto_pausa, 20); assert.equal(M.configTorre({}).guasto_ferma, false);
+  assert.equal(M.configTorre({ guasto_pausa: 1, guasto_ferma: "sì" }).guasto_pausa, 5); assert.equal(M.configTorre({ guasto_ferma: "sì" }).guasto_ferma, false, "solo true vero");
+  const guasto = M.unisciMisure(serie, { avvio: 1, sec: 10 * h, stato: { modo: "senza sensore" }, misure: [[adesso - h, null, null, 900, 4, 1, 9 * h]] }, adesso).serie;
+  const sens = M.avvisiTorre({ ...tr, posizione: "casa" }, guasto, null, "2027-01-10", adesso).find((a) => a.tipo === "sensore");
+  assert.ok(sens); assert.match(sens.testo, /non risponde da .*ciclo di emergenza \(15 min accesa ogni 20 min di pausa\)/); assert.doesNotMatch(sens.testo, /gelo/, "in casa niente gelo");
+  assert.match(M.avvisiTorre({ ...tr, config: { guasto_ferma: true } }, guasto, null, "2027-01-10", adesso).find((a) => a.tipo === "sensore").testo, /pompa ferma, come nelle impostazioni/);
+  assert.ok(!M.avvisiTorre(tr, serie, null, "2027-01-10", adesso).some((a) => a.tipo === "sensore"), "sensore a posto: niente avviso");
+  // stato della pompa: da quando e fino a quando (ore assurde scartate)
+  const sp = M.unisciMisure(serie, { stato: { pompa: true, da: adesso - 300, fine: adesso + 600 }, misure: [] }, adesso).serie.stato;
+  assert.equal(sp.da, adesso - 300); assert.equal(sp.fine, adesso + 600);
+  const sx = M.unisciMisure(serie, { stato: { da: 5, fine: adesso + 3 * 86400 }, misure: [] }, adesso).serie.stato;
+  assert.equal(sx.da, null); assert.equal(sx.fine, null);
+  // memoria dell'ESP32 riformattata: il server se lo ricorda per un giorno
+  const form = M.unisciMisure(serie, { stato: { memoria: "formattata" }, misure: [] }, adesso).serie;
+  assert.equal(form.memoria_formattata, adesso); assert.ok(tipi(tr, form, null).includes("memoria"));
+  assert.ok(!tipi(tr, form, null, adesso + 25 * h).includes("memoria"));
+});
+
+test("torre: riassunti per giorno (un anno), riavvii, limite di sicurezza, avvisi urgenti una volta", () => {
+  const h = 3600, adesso = Date.UTC(2027, 0, 10, 12) / 1000;
+  // due giorni di misure (UTC): riassunto per giorno; il primo giorno già riassunto con più misure resta quello
+  const misure = [[adesso - 26 * h, 4, 80, 600, 0, 1, 1], [adesso - 25 * h, 6, 70, 0, 3, 1, 2], [adesso - 2 * h, 10, 60, 900, 0, 1, 3], [adesso - h, 12, 50, 300, 0, 1, 4]];
+  const g = M.riassumiGiorni({ misure, giorni: [["2027-01-08", 1, 2, 1.5, 90, 10, 0, 100]] }, "UTC");
+  assert.deepEqual(g.map((x) => x[0]), ["2027-01-08", "2027-01-09", "2027-01-10"]);
+  assert.deepEqual(g[1], ["2027-01-09", 4, 6, 5, 75, 10, 30, 2]); assert.deepEqual(g[2], ["2027-01-10", 10, 12, 11, 55, 20, 0, 2]);
+  assert.equal(M.riassumiGiorni({ misure, giorni: [["2027-01-09", 0, 1, 0.5, 50, 0, 0, 99]] }, "UTC")[0][7], 99, "riassunto più completo tenuto");
+  // unisciMisure: riassunti aggiornati, un riavvio per accensione con il motivo
+  let s = M.unisciMisure(null, { avvio: 7, sec: 600, stato: { riavvio: "tensione" }, misure: [[adesso - 300, 10, 60, 0, 0, 7, 300]] }, adesso, "UTC").serie;
+  assert.equal(s.giorni.length, 1); assert.deepEqual(s.riavvii, [{ avvio: 7, ora: adesso - 600, motivo: "tensione" }]);
+  s = M.unisciMisure(s, { avvio: 7, sec: 1200, stato: { riavvio: "tensione" }, misure: [] }, adesso + 600, "UTC").serie;
+  assert.equal(s.riavvii.length, 1, "stessa accensione: un riavvio solo");
+  assert.equal(M.unisciMisure(s, { avvio: 8, sec: 5, stato: { riavvio: "boh" }, misure: [] }, adesso, "UTC").serie.riavvii.length, 1, "motivo sconosciuto scartato");
+  const tr = { posizione: "casa", config: {} }, av = (se, ora = adesso) => M.avvisiTorre(tr, se, null, "2027-01-10", ora, "UTC");
+  assert.match(av(s).find((a) => a.tipo === "riavvii").testo, /una volta nelle ultime 24 ore \(1 calo di tensione.*Alimentatore più potente/);
+  const corrente = { ...s, riavvii: [{ avvio: 9, ora: adesso - h, motivo: "corrente" }] };
+  assert.ok(av(corrente).some((a) => a.tipo === "corrente")); assert.ok(!av(corrente).some((a) => a.tipo === "riavvii"));
+  assert.ok(!av({ ...s, riavvii: [{ avvio: 9, ora: adesso - h, motivo: "programma" }] }).some((a) => /riavvii|corrente/.test(a.tipo)), "aggiornamento: niente avviso");
+  // limite di sicurezza: misura col modo 6
+  assert.match(av({ ...s, misure: [[adesso - h, 20, 50, 1800, 6, 7, 9]] }).find((a) => a.tipo === "sicurezza").testo, /30 minuti di fila/);
+  // urgenti: il sensore quando comincia, poi non prima di 12 ore; finito, si dimentica; riavvio anomalo una volta
+  const guasto = { ...s, riavvii: [], ultimo: adesso, stato: { modo: "senza sensore", t: null }, misure: [[adesso - 600, null, null, 0, 4, 7, 9]] };
+  let u = M.urgentiTorre(tr, guasto, adesso, "UTC");
+  assert.equal(u.testi.length, 1); assert.match(u.testi[0], /sensore della torre non risponde/);
+  assert.equal(M.urgentiTorre(tr, { ...guasto, urgenti: u.urgenti }, adesso + 2 * h, "UTC").testi.length, 0);
+  assert.equal(M.urgentiTorre(tr, { ...guasto, urgenti: u.urgenti }, adesso + 13 * h, "UTC").testi.length, 1, "dopo 12 ore lo ripete");
+  const ok = { ...s, riavvii: [], ultimo: adesso, stato: { modo: "normale", t: 10 }, misure: [[adesso - 600, 10, 50, 0, 0, 7, 9]] };
+  assert.ok(!("sensore" in M.urgentiTorre(tr, { ...ok, urgenti: u.urgenti }, adesso, "UTC").urgenti), "finito: si dimentica");
+  u = M.urgentiTorre(tr, { ...ok, stato: { modo: "freddo: pompa ferma", t: 1.5 } }, adesso, "UTC");
+  assert.match(u.testi[0], /Pompa ferma per il freddo \(1,5 °C\): riparte da sola sopra 4 °C/);
+  u = M.urgentiTorre(tr, s, adesso, "UTC");
+  assert.match(u.testi.join(), /riavviata per calo di tensione/); assert.equal(u.urgenti.riavvio_ora, adesso - 600);
+  assert.ok(!M.urgentiTorre(tr, { ...s, urgenti: u.urgenti }, adesso + 2 * h, "UTC").testi.some((x) => /riavviata/.test(x)), "lo stesso riavvio una volta");
+  // due riavvii: un messaggio solo per entrambi, poi più niente (prima si alternavano ogni ora)
+  const due = { ...s, riavvii: [{ avvio: 7, ora: adesso - 2 * h, motivo: "tensione" }, { avvio: 8, ora: adesso - h, motivo: "blocco" }] };
+  u = M.urgentiTorre(tr, due, adesso, "UTC"); assert.match(u.testi.join(), /riavviata 2 volte, l'ultima per blocco/);
+  for (const dopo of [2, 3, 4]) assert.ok(!M.urgentiTorre(tr, { ...due, urgenti: u.urgenti }, adesso + dopo * h, "UTC").testi.length, "non si ripete");
+});
+
+test("torre: serbatoio (consumo imparato dai rabbocchi e dalla temperatura) e manutenzione", () => {
+  const d = 86400, t0 = Date.UTC(2027, 5, 1) / 1000, iso = (s) => new Date(s * 1000).toISOString();
+  const giorni = []; for (let i = -2; i < 20; i++) giorni.push([new Date((t0 + i * d) * 1000).toISOString().slice(0, 10), 15, 25, 20, 60, 120, 0, 144]);   // 20 °C di media: un giorno vale 1
+  const serie = { giorni, misure: [] };
+  const tr = { posizione: "casa", config: {}, creata: iso(t0 - d), serbatoio: { capacita: 10, controlla: 3, rabbocchi: [{ at: iso(t0) }, { at: iso(t0 + 4 * d), litri: 8 }] },
+    lavori: { nutrienti: { ogni: 7, ultimo: iso(t0) }, soluzione: { ogni: 14, ultimo: iso(t0) }, pulizia: { ogni: 20, ultimo: iso(t0 + 2 * d) } } };
+  let l = M.lavoriTorre(tr, serie, t0 + 7 * d, "UTC");
+  assert.ok(Math.abs(l.serbatoio.consumo - 2) < 0.01, "8 litri in 4 giorni a 20 °C: 2 L al giorno"); assert.ok(Math.abs(l.serbatoio.rimasti - 4) < 0.01);
+  const tipi = (ora) => M.avvisiTorre(tr, serie, null, "2027-06-01", ora, "UTC").map((a) => a.tipo);
+  assert.ok(tipi(t0 + 7 * d).includes("nutrienti")); assert.ok(!tipi(t0 + 7 * d).includes("serbatoio"), "4 L su 10: ancora abbastanza");
+  assert.match(M.avvisiTorre(tr, serie, null, "2027-06-01", t0 + 8 * d, "UTC").find((a) => a.tipo === "serbatoio").testo, /restano circa 2 L su 10/);
+  // pulizia: 2 ore di pompa al giorno dal giorno dopo la pulizia
+  const pul = l.voci.find((v) => v.tipo === "pulizia"); assert.equal(Math.round(pul.quanto), 2 * 17, "dal 4 al 20 giugno"); assert.ok(pul.scaduto);
+  assert.ok(!l.voci.find((v) => v.tipo === "soluzione").scaduto);
+  // senza capacità: solo il promemoria a giorni; mai segnato: niente avviso
+  const senza = { ...tr, serbatoio: { controlla: 3, rabbocchi: [{ at: iso(t0) }] }, lavori: { nutrienti: { ogni: 7 } } };
+  assert.match(M.avvisiTorre(senza, serie, null, "2027-06-01", t0 + 4 * d, "UTC").find((a) => a.tipo === "serbatoio").testo, /ultimo rabbocco segnato è di 4 giorni fa/);
+  assert.ok(!M.avvisiTorre(senza, serie, null, "2027-06-01", t0 + 30 * d, "UTC").some((a) => a.tipo === "nutrienti"), "mai segnati: niente avviso");
+  // dati dall'app controllati
+  const x = M.torreDallApp({ serbatoio: { capacita: "abc", controlla: 999, rabbocchi: [{ at: "boh" }, { at: iso(t0), litri: -3 }] }, lavori: { pulizia: { ogni: 1e9 } } }, { rev: 1, chiave: "K" });
+  assert.deepEqual(x.serbatoio, { capacita: null, controlla: 60, rabbocchi: [{ at: iso(t0), litri: null }] }); assert.equal(x.lavori.pulizia.ogni, 5000); assert.equal(x.lavori.nutrienti.ogni, 7);
+});
+
+test("torre: ore di gelo previste stanotte per l'ESP32 col sensore guasto (ora italiana → secondi, ore vicine unite)", () => {
+  const notte = [{ ora: "18", t: 5 }, { ora: "02", t: 1 }, { ora: "03", t: 2.5 }, { ora: "05", t: 4 }], tr = { posizione: "fuori", config: { freddo_stop: 2 } };
+  const ore = (y, m, d, hh) => Date.UTC(y, m - 1, d, hh) / 1000;
+  // gennaio, ora solare (UTC+1): le 02 italiane sono l'01 UTC; un'ora di margine prima e dopo; 02 e 03 unite
+  assert.deepEqual(M.finestreGelo(tr, { notte }, "2027-01-10", "Europe/Rome"), [[ore(2027, 1, 11, 0), ore(2027, 1, 11, 3)]]);
+  // luglio, ora legale (UTC+2), gelo alle 22 di sera (stesso giorno)
+  assert.deepEqual(M.finestreGelo(tr, { notte: [{ ora: "22", t: 0 }] }, "2027-07-10", "Europe/Rome"), [[ore(2027, 7, 10, 19), ore(2027, 7, 10, 21)]]);
+  assert.deepEqual(M.finestreGelo({ ...tr, posizione: "casa" }, { notte }, "2027-01-10"), []);
+  assert.deepEqual(M.finestreGelo({ ...tr, posizione: "veranda" }, { notte }, "2027-01-10"), [], "in veranda solo sotto 0 °C fuori");
+  assert.deepEqual(M.finestreGelo(tr, null, "2027-01-10"), []);
 });
 
 test("piante nella torre idroponica: niente calcolo dell'acqua, controlli col dito, avvisi per pianta né concime", () => {

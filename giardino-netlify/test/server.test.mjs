@@ -147,7 +147,7 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   KEY = (await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "on" } })).body.token;
   assert.match(KEY, /^[A-Z2-7]{26}$/);
   assert.equal((await rpc("initialize", { protocolVersion: "2025-06-18" })).result.serverInfo.name, "giardino");
-  assert.equal((await rpc("tools/list")).result.tools.length, 12);
+  assert.equal((await rpc("tools/list")).result.tools.length, 14);
   assert.equal((await rpc("initialize", {})).result.serverInfo.version, "2.0.0");
   const g = (await strumento("giardino")).content[0].text;
   const ordine = ["Basilico", "Pomodoro", "Zucchine", "Aglio"].map((n) => g.indexOf("**" + n + "**"));
@@ -776,6 +776,7 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   const a = (await manda(chiave, corpo)).body;
   assert.equal(a.nuove, 3, "quella di un'accensione passata senza ora si scarta");
   assert.equal(a.config.rev, 1); assert.deepEqual(a.config.pause, [5, 10, 15, 25, 45, 60]); assert.equal(a.config.freddo_stop, 2);
+  assert.equal(a.config.guasto_pausa, 20); assert.equal(a.config.guasto_ferma, false); assert.ok(Array.isArray(a.gelo), "ore di gelo sempre mandate (anche vuote)");
   const g = (await call(dati, "/api/dati?op=torre", { headers: H })).body;
   assert.equal(g.misure.length, 3); assert.ok(Math.abs(g.misure[0][0] - (adesso - 6600)) < 5, "datata con l'orologio del server");
   assert.deepEqual(g.misure[0].slice(1), [17.2, 62, 900, 0]); assert.equal(g.stato.t, 18.5);
@@ -798,8 +799,51 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
     inviati.length = 0; await bot(); return inviati.filter((x) => x[0] === "sendMessage" && /Torre idroponica/.test(x[1].text)).map((x) => x[1].text); };
   const [m] = await giro();
   assert.ok(m, "avviso della torre"); assert.match(m, /Stanotte fino a 1 °C: sotto 2 °C la pompa si ferma da sola/); assert.match(m, /ferma per il freddo/);
+  // dal connettore: stato, storico e impostazioni; la chiave dell'ESP32 non esce mai
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  let tx = (await strumento("torre")).content[0].text;
+  assert.match(tx, /Ultimo contatto/); assert.match(tx, /pompa accesa 10 min per ciclo/); assert.match(tx, /Ultime 24 ore: minima 1,5 °C/); assert.ok(!tx.includes(chiave), "niente chiave");
+  assert.match((await strumento("torre", { storico: "misure", giorni: 31 })).content[0].text, /;17,2;62;900;normale\n.*;1,5;90;0;freddo: pompa ferma/);
+  assert.match((await strumento("torre", { storico: "giorni" })).content[0].text, /giorno;minima °C \(ora\)/);
+  assert.match((await strumento("torre", { storico: "ore", giorni: 2 })).content[0].text, /giorno ora;°C media/);
+  assert.match((await strumento("giardino", { compatto: true })).content[0].text, /Torre idroponica \(fuori\): ultimo contatto/);
+  tx = (await strumento("torre_imposta", { accesa_min: 12, pause: [3, 6, 10, 20, 40, 60], notte_fattore: 3 })).content[0].text;
+  assert.match(tx, /versione 3/); assert.match(tx, /pompa accesa per ciclo \(min\): 10 → 12/);
+  assert.equal((await leggiDati()).torre.config.accesa_min, 12); assert.equal((await leggiDati()).torre.chiave, chiave);
+  assert.ok((await strumento("torre_imposta", { freddo_stop: 20 })).isError, "fuori dai limiti");
+  assert.ok((await strumento("torre_imposta", { soglie: [30, 31, 20, 12, 5] })).isError, "soglie in ordine");
+  assert.ok((await strumento("torre_imposta", { freddo_stop: 3, freddo_riparte: 3.5 })).isError, "riparte almeno 1 °C sopra");
+  assert.equal((await leggiDati()).torre.rev, 3, "gli errori non salvano niente");
+  assert.match((await strumento("torre_imposta", { pompa_s: 30 })).content[0].text, /accensione a mano per 30 s/);
+  const cm = (await manda(chiave, { ...corpo, rev: 2, misure: [] })).body;
+  assert.equal(cm.config.accesa_min, 12); assert.equal(cm.comando.pompa_s, 30);
+  assert.match((await strumento("torre_imposta", { accesa_min: 12 })).content[0].text, /Niente da cambiare/);
+  assert.match((await strumento("torre_imposta", { guasto_pausa: 30, guasto_ferma: true })).content[0].text, /pompa ferma: no → sì/);
+  assert.equal((await leggiDati()).torre.config.guasto_pausa, 30);
+  assert.ok((await strumento("torre_imposta", { guasto_ferma: "sì" })).isError);
+  tx = (await strumento("torre_imposta", { capacita: 20, nutrienti_ogni: 10, segna: "rabbocco", litri: 4 })).content[0].text;
+  assert.match(tx, /serbatoio: – → 20 L/); assert.match(tx, /rabbocco segnato \(4 L\)/); assert.doesNotMatch(tx, /L'ESP32 le riceve/, "non riguarda l'ESP32");
+  assert.deepEqual([(await leggiDati()).torre.serbatoio.capacita, (await leggiDati()).torre.lavori.nutrienti.ogni, (await leggiDati()).torre.serbatoio.rabbocchi.at(-1).litri], [20, 10, 4]);
+  assert.match((await strumento("torre_imposta", { segna: "pulizia", quando: "2020-01-01" })).content[0].text, /ultimi 60 giorni/);
+  tx = (await strumento("torre")).content[0].text;
+  assert.match(tx, /## Serbatoio e manutenzione/); assert.match(tx, /serbatoio 20 L: ultimo rabbocco oggi/); assert.match(tx, /nutrienti: mai segnato \(ogni 10 giorni\)/);
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
+  assert.ok((await strumento("torre_imposta", { accesa_min: 11 })).isError, "senza permesso");
+  assert.ok(!(await strumento("torre")).isError, "leggere si può sempre");
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  // avvisi urgenti subito su Telegram (sensore guasto, riavvio per calo di tensione), una volta; riassunti per giorno e riavvii all'app
+  const urgenti = () => inviati.filter((x) => x[0] === "sendMessage" && /Torre idroponica/.test(x[1].text)).map((x) => x[1].text).join("\n");
+  inviati.length = 0;
+  await manda(chiave, { ...corpo, avvio: 4, sec: 100, stato: { modo: "senza sensore", pompa: false, riavvio: "tensione" }, misure: [[null, null, null, 0, 4, 4, 90]] });
+  assert.match(urgenti(), /sensore della torre non risponde/); assert.match(urgenti(), /riavviata per calo di tensione/);
+  inviati.length = 0;
+  await manda(chiave, { ...corpo, avvio: 4, sec: 200, stato: { modo: "senza sensore", riavvio: "tensione" }, misure: [[null, null, null, 0, 4, 4, 190]] });
+  assert.equal(urgenti(), "", "lo stesso avviso non si ripete subito");
+  const gt = (await call(dati, "/api/dati?op=torre", { headers: H })).body;
+  assert.ok(gt.giorni.length >= 1 && gt.giorni.at(-1).length === 8); assert.equal(gt.riavvii.at(-1).motivo, "tensione");
+  const tr3 = (await leggiDati()).torre;
   // spenta: niente avvisi (l'app è come se non ci fosse), la torre può mandare lo stesso
-  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { torre: { ...tr2, attiva: false } } } });
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { torre: { ...tr3, attiva: false } } } });
   assert.equal((await giro()).length, 0, "spenta: nessun messaggio");
   assert.equal((await manda(chiave, { ...corpo, misure: [] })).status, 200);
   // nuova chiave: la vecchia non vale più; tolta: via tutto

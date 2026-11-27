@@ -132,6 +132,12 @@ section.view{display:flex;flex-direction:column;gap:14px}
 /* torre idroponica */
 .torre{cursor:pointer;display:flex;flex-direction:column;gap:6px}
 .tr-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.tl-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.tl-row:first-of-type{border-top:0}
+.tl-row .tl-t{min-width:0}.tl-row .tl-t b{display:block}.tl-row .tl-t span{color:var(--muted);font-size:.9rem}
+.tl-row.scad .tl-t span{color:var(--warn);font-weight:600}
+.tl-row .btn{flex-shrink:0;white-space:nowrap}
+.grid2.allinea{align-items:end}
 .tr-head .sub{white-space:nowrap}
 .tr-val{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .tr-val b{font-size:1.9rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -1036,10 +1042,21 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
             <div class="grid2"><div class="field"><label for="torreStop">Pompa ferma sotto (°C)</label><input type="text" inputmode="decimal" id="torreStop"></div>
               <div class="field"><label for="torreRiparte">Riparte sopra (°C)</label><input type="text" inputmode="decimal" id="torreRiparte"></div></div>
             <span class="hint">Se l'acqua gela la pompa si rompe: sotto questa temperatura la torre non la accende.</span></div>
+          <div class="field"><span class="flabel">Se il sensore non risponde</span>
+            <div class="grid2"><div class="field"><label for="torreGuastoP">Pausa di emergenza (minuti)</label><input type="text" inputmode="numeric" id="torreGuastoP"></div></div>
+            <label class="check"><input type="checkbox" id="torreGuastoFerma"><span>Pompa ferma invece del ciclo di emergenza</span></label>
+            <span class="hint">Ciclo di emergenza: la pompa resta accesa i minuti di sopra, poi si ferma per questa pausa; nelle ore di gelo previste dal meteo resta ferma. Ferma del tutto: con il caldo le radici seccano in poche ore.</span></div>
           <div class="field"><span class="flabel">Notte (pause più lunghe)</span>
             <div class="grid2"><div class="field"><label for="torreNotteDa">Dalle (ora)</label><input type="text" inputmode="numeric" id="torreNotteDa"></div>
               <div class="field"><label for="torreNotteA">Alle (ora)</label><input type="text" inputmode="numeric" id="torreNotteA"></div>
               <div class="field"><label for="torreNotteX">Pausa × (volte)</label><input type="text" inputmode="decimal" id="torreNotteX"></div></div></div>
+          <div class="field"><span class="flabel">Serbatoio e manutenzione</span>
+            <div class="grid2 allinea"><div class="field"><label for="torreCap">Serbatoio (litri)</label><input type="text" inputmode="decimal" id="torreCap"></div>
+              <div class="field"><label for="torreControlla">Controlla il livello ogni (giorni)</label><input type="text" inputmode="numeric" id="torreControlla"></div>
+              <div class="field"><label for="torreNutr">Nutrienti ogni (giorni)</label><input type="text" inputmode="numeric" id="torreNutr"></div>
+              <div class="field"><label for="torreSol">Cambio soluzione ogni (giorni)</label><input type="text" inputmode="numeric" id="torreSol"></div>
+              <div class="field"><label for="torrePul">Pulizia pompa ogni (ore di pompa)</label><input type="text" inputmode="numeric" id="torrePul"></div></div>
+            <span class="hint">0 = nessun promemoria. Con i litri del serbatoio e quelli che aggiungi a ogni rabbocco l'app impara quanto beve la torre (più col caldo) e avvisa quando ne resta meno di un terzo; finché non lo sa, ti ricorda di controllare ogni tanti giorni.</span></div>
           <div class="row"><button class="btn primary" type="button" id="torreSalva">Salva</button></div>
           <span class="hint" id="torreRev"></span>
           <div><button class="btn ghost danger" type="button" id="torreTogli">Togli la torre e le sue misure</button></div>
@@ -1137,11 +1154,12 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
 <div class="sheet-bg" id="torreBg" hidden></div>
 <div class="sheet card stack" id="torreSheet" role="dialog" aria-modal="true" aria-labelledby="torreTit" hidden>
   <div><h2 id="torreTit">Torre idroponica</h2><p class="sub" id="torreSub"></p></div>
-  <div class="seg" role="radiogroup" aria-label="Periodo"><label class="on"><input type="radio" name="torreOre" value="24" checked>24 ore</label><label><input type="radio" name="torreOre" value="168">7 giorni</label></div>
+  <div class="seg" role="radiogroup" aria-label="Periodo"><label class="on"><input type="radio" name="torreOre" value="24" checked>24 ore</label><label><input type="radio" name="torreOre" value="168">7 giorni</label><label><input type="radio" name="torreOre" value="720">30 giorni</label><label><input type="radio" name="torreOre" value="8760">12 mesi</label></div>
   <div id="torreGrafico"></div>
   <div class="tr-leg"><span><i class="tr-lt"></i>temperatura</span><span><i class="tr-lu"></i>umidità</span><span><i class="tr-lp"></i>pompa</span></div>
   <div class="wxd-grid" id="torreGrid"></div>
   <div id="torreAvvisi" class="stack"></div>
+  <div><h3 class="eyebrow">Serbatoio e manutenzione</h3><div id="torreLavori"></div></div>
   <div class="row"><button class="btn" type="button" id="torrePompa">💧 Accendi la pompa 1 minuto</button></div>
   <span class="hint" id="torrePompaH"></span>
   <div class="row"><button class="btn ghost" type="button" id="torreChiudi">Chiudi</button></div>
@@ -2027,6 +2045,7 @@ function renderNotifiche(){
 const torreOn=()=>!!(S.torre&&S.torre.attiva!==false);
 let TORRE=(()=>{ try{ return JSON.parse(localStorage.getItem('giardino:torre')||'null'); }catch(e){ return null; } })();
 let torreChiesta=0, torreOre=24;
+const PERIODI_TORRE={24:'nelle ultime 24 ore',168:'negli ultimi 7 giorni',720:'negli ultimi 30 giorni',8760:'negli ultimi 12 mesi'};
 function caricaTorre(forza){
   const N=window.GiardinoNet; if(!torreOn()||!N?.torre||!ready) return;
   if(!forza&&Date.now()-torreChiesta<5*60e3) return; torreChiesta=Date.now();
@@ -2043,6 +2062,8 @@ function quandoTorre(s){
 // meteo per gli avvisi della torre: quello dell'orto dove si trova (se è quello aperto, l'unico che l'app ha in mano)
 const meteoTorre=()=>{ const w=activeWeather(); return (S.torre?.orto||'p')===ORTO&&w?{notte:w.notte||null, days:wxDays()}:null; };
 // grafico: temperatura (linea), umidità (tratteggio, scala 0-100) e pompa (barre in basso); linea rossa al freddo che ferma la pompa
+// riassunti per giorno come misure (a mezzogiorno): [ora, media, umidità, secondi di pompa, 0]
+const righeGiorni=()=>(TORRE?.giorni||[]).map(x=>[Date.parse(x[0]+'T12:00:00')/1000, x[3], x[4], (x[5]||0)*60, 0]);
 function graficoTorre(righe, ore, {w=320, h=150, assi=true}={}){
   const fine=Date.now()/1000, inizio=fine-ore*3600, r=righe.filter(x=>x[0]>=inizio);
   if(!r.length) return '<div class="empty">Ancora nessuna misura in questo periodo.</div>';
@@ -2051,14 +2072,15 @@ function graficoTorre(righe, ore, {w=320, h=150, assi=true}={}){
   lo=Math.floor(lo-1); hi=Math.ceil(hi+1);
   const L=assi?22:2, R=w-4, top=6, bas=h-(assi?28:6), pb=assi?14:0;
   const X=t=>L+(t-inizio)/(fine-inizio)*(R-L), Yt=v=>top+(hi-v)/(hi-lo)*(bas-top), Yu=v=>top+(100-v)/100*(bas-top);
-  const linea=(i,Y)=>{ let d='', prima=null; for(const x of r){ if(x[i]==null){ prima=null; continue; } const salto=prima&&x[0]-prima>45*60; d+=(prima&&!salto?'L':'M')+X(x[0]).toFixed(1)+' '+Y(x[i]).toFixed(1); prima=x[0]; } return d; };
-  let svg=`<svg class="tr-graf" viewBox="0 0 ${w} ${h}" role="img" aria-label="Temperatura e umidità della torre, ultime ${ore===24?'24 ore':'7 giorni'}">`;
+  const buco=ore>168?36*3600:45*60;   // oltre: un buco nei dati (la linea si interrompe)
+  const linea=(i,Y)=>{ let d='', prima=null; for(const x of r){ if(x[i]==null){ prima=null; continue; } const salto=prima&&x[0]-prima>buco; d+=(prima&&!salto?'L':'M')+X(x[0]).toFixed(1)+' '+Y(x[i]).toFixed(1); prima=x[0]; } return d; };
+  let svg=`<svg class="tr-graf" viewBox="0 0 ${w} ${h}" role="img" aria-label="Temperatura e umidità della torre, ${PERIODI_TORRE[ore]||''}">`;
   if(assi){ for(const v of [lo,(lo+hi)/2,hi]){ const y=Yt(v); svg+=`<line class="gg" x1="${L}" x2="${R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text x="0" y="${(y+3).toFixed(1)}">${fmt(v,0)}°</text>`; }
-    const passo=ore<=24?6*3600:86400; for(let t=Math.ceil(inizio/passo)*passo; t<fine; t+=passo){ const x=X(t), d=new Date(t*1000);
-      svg+=`<text x="${(x-8).toFixed(1)}" y="${h-2}">${ore<=24?String(d.getHours()).padStart(2,'0')+':00':d.toLocaleDateString('it-IT',{weekday:'short'})}</text>`; } }
+    const passo=ore<=24?6*3600:ore<=168?86400:ore<=720?7*86400:61*86400; for(let t=Math.ceil(inizio/passo)*passo; t<fine; t+=passo){ const x=X(t), d=new Date(t*1000);
+      svg+=`<text x="${(x-8).toFixed(1)}" y="${h-2}">${ore<=24?String(d.getHours()).padStart(2,'0')+':00':ore<=168?d.toLocaleDateString('it-IT',{weekday:'short'}):ore<=720?d.getDate()+'/'+(d.getMonth()+1):d.toLocaleDateString('it-IT',{month:'short'})}</text>`; } }
   if(stop>lo&&stop<hi){ const y=Yt(stop); svg+=`<line class="gf" x1="${L}" x2="${R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }
-  // pompa: minuti accesa per ogni ora (24 ore) o ogni 4 ore (7 giorni), in proporzione al tempo
-  if(pb){ const base=h-16, B=(ore<=24?1:4)*3600, gruppi=new Map();
+  // pompa: minuti accesa per ogni ora (24 ore), 4 ore (7 giorni), giorno (30 giorni) o settimana (12 mesi), in proporzione al tempo
+  if(pb){ const base=h-16, B=(ore<=24?1:ore<=168?4:ore<=720?24:168)*3600, gruppi=new Map();
     for(const x of r) if(x[3]>0){ const k=Math.floor(x[0]/B)*B; gruppi.set(k,(gruppi.get(k)||0)+x[3]); }
     for(const [k,sec] of gruppi){ const x0=X(Math.max(inizio,k)), x1=X(Math.min(fine,k+B)), hh=Math.max(1.5,Math.min(1,sec/B)*pb);
       svg+=`<rect class="gp" x="${(x0+.5).toFixed(1)}" y="${(base-hh).toFixed(1)}" width="${Math.max(1,x1-x0-1).toFixed(1)}" height="${hh.toFixed(1)}" rx="1"/>`; } }
@@ -2068,6 +2090,14 @@ function graficoTorre(righe, ore, {w=320, h=150, assi=true}={}){
 }
 function datiTorre(){ const m=TORRE?.misure||[], st=TORRE?.stato||null, ultima=[...m].reverse().find(r=>r[1]!=null);
   return {m, st, ult:TORRE?.ultimo||0, t:st?.t??ultima?.[1]??null, u:st?.u??ultima?.[2]??null}; }
+// stato della pompa: con l'ora di fine fase mandata dall'ESP32 (a ogni accensione e spegnimento, se il modem è acceso)
+function testoPompa(st, ult){
+  if(/freddo/.test(st?.modo||'')) return 'pompa ferma per il freddo';
+  const ora=s=>new Date(s*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}), fine=st?.fine>Date.now()/1000?st.fine:0;
+  if(st?.fine&&!fine&&ult) return (st.pompa?'pompa accesa':'pompa in pausa')+' alle '+ora(ult);   // fase finita da allora: stato vecchio
+  if(st?.pompa) return fine?'pompa accesa fino alle '+ora(fine):'pompa accesa';
+  return fine&&st?.modo!=='senza sensore'?'pompa in pausa, riparte alle '+ora(fine):'pompa in pausa';
+}
 function renderTorre(){
   const box=$('#torreBox'); if(!box) return;
   box.hidden=!torreOn();
@@ -2077,7 +2107,7 @@ function renderTorre(){
   if(!ult) h+=`<div class="sub">In attesa della torre: copia la chiave da Impostazioni → Torre idroponica nel programma dell'ESP32. I dati arrivano quando trova il Wi-Fi.</div>`;
   else {
     const freddo=/freddo/.test(st?.modo||'');
-    h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}</span><span class="pill ${freddo?'':'water'}">${esc(freddo?'pompa ferma per il freddo':st?.pompa?'pompa accesa':'pompa in pausa')}</span></div>`;
+    h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}</span><span class="pill ${freddo?'':'water'}">${esc(testoPompa(st, ult))}</span></div>`;
     h+=graficoTorre(m,24,{w:320,h:46,assi:false});
   }
   const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000);
@@ -2086,25 +2116,65 @@ function renderTorre(){
 }
 function renderTorreSheet(){
   const tr=S.torre; if(!tr) return;
-  const {m, st, ult, t, u}=datiTorre(), r=riepilogoTorre({misure:m, ultimo:ult}, Date.now()/1000, torreOre);
+  const {m, st, ult, t, u}=datiTorre(), lungo=torreOre>168, adesso=Date.now()/1000;
+  const r=lungo?riepilogoGiorni((TORRE?.giorni||[]).filter(x=>Date.parse(x[0]+'T23:59:59')/1000>=adesso-torreOre*3600)):riepilogoTorre({misure:m, ultimo:ult}, adesso, torreOre);
   $('#torreTit').textContent=tr.nome||'Torre idroponica';
   $('#torreSub').textContent=(POS_TORRE[tr.posizione]?POS_TORRE[tr.posizione][0].toUpperCase()+POS_TORRE[tr.posizione].slice(1):'')+' · ultimo contatto '+quandoTorre(ult)+(st?.modo?' · '+st.modo:'');
-  setHTML($('#torreGrafico'),graficoTorre(m,torreOre));
+  setHTML($('#torreGrafico'),graficoTorre(lungo?righeGiorni():m,torreOre));
   const c=(et,v,nota)=>`<div class="wxd-c"><span class="eyebrow">${esc(et)}</span><b>${v}</b>${nota?`<small>${esc(nota)}</small>`:''}</div>`;
-  const oraDi=s=>s?new Date(s*1000).toLocaleString('it-IT',{weekday:'short',hour:'2-digit',minute:'2-digit'}):'';
+  const oraDi=s=>!s?'':lungo?new Date(s*1000).toLocaleDateString('it-IT',{day:'numeric',month:'short'}):new Date(s*1000).toLocaleString('it-IT',{weekday:'short',hour:'2-digit',minute:'2-digit'});
   setHTML($('#torreGrid'),[
     c('Adesso',t!=null?fmt(t,1)+'°':'–',u!=null?fmt(u,0)+' % umidità':''),
     c('Minima',r.min!=null?fmt(r.min,1)+'°':'–',oraDi(r.minOra)),
     c('Massima',r.max!=null?fmt(r.max,1)+'°':'–',oraDi(r.maxOra)),
     c('Umidità media',r.umidita!=null?r.umidita+' %':'–'),
-    c('Pompa',r.pompaMin+' min',torreOre===24?'nelle ultime 24 ore':'negli ultimi 7 giorni'),
+    c('Pompa',r.pompaMin>=120?fmt(r.pompaMin/60,r.pompaMin>=6000?0:1)+' h':r.pompaMin+' min',PERIODI_TORRE[torreOre]),
     c('Ferma per freddo',r.freddoMin?(r.freddoMin>=90?fmt(r.freddoMin/60,1)+' h':r.freddoMin+' min'):'mai')].join(''));
   const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000);
   setHTML($('#torreAvvisi'),avv.map(a=>`<div class="alert ${a.tipo==='pioggia'?'info':''}">${a.tipo==='pioggia'?ICON.info:ICON.warn}<div>${esc(a.testo)}</div></div>`).join(''));
+  renderLavori(tr);
   const c2=tr.comando, attesa=c2&&Date.parse(c2.at)>Date.now()-2*3600e3;
   $('#torrePompa').disabled=!!attesa;
   $('#torrePompaH').textContent=attesa?'Accensione chiesta '+quandoTorre(Date.parse(c2.at)/1000)+': arriva alla torre quando trova il Wi-Fi (vale 2 ore).'
     :'L\'accensione arriva alla torre quando trova il Wi-Fi. Con il freddo resta ferma.';
+}
+// periodi lunghi: minima e massima (col giorno), umidità media, pompa e freddo sommati dai riassunti per giorno
+function riepilogoGiorni(g){
+  const t=g.filter(x=>x[1]!=null), u=g.filter(x=>x[4]!=null), giorno=x=>Date.parse(x[0]+'T12:00:00')/1000;
+  const min=t.reduce((a,x)=>!a||x[1]<a[1]?x:a,null), max=t.reduce((a,x)=>!a||x[2]>a[2]?x:a,null);
+  return {n:g.length, min:min?.[1]??null, minOra:min?giorno(min):null, max:max?.[2]??null, maxOra:max?giorno(max):null,
+    umidita:u.length?Math.round(u.reduce((a,x)=>a+x[4],0)/u.length):null, pompaMin:g.reduce((a,x)=>a+(x[5]||0),0), freddoMin:g.reduce((a,x)=>a+(x[6]||0),0)};
+}
+// Serbatoio e manutenzione: come stanno, e un pulsante per segnare il lavoro fatto
+function renderLavori(tr){
+  const L=lavoriTorre(tr, TORRE||{}, Date.now()/1000), sb=L.serbatoio, gg=g=>{ const n=Math.floor(g); return n<1?'oggi':n===1?'ieri':n+' giorni fa'; };
+  const riga=(tipo,nome,testo,scad,btn)=>`<div class="tl-row${scad?' scad':''}"><div class="tl-t"><b>${esc(nome)}</b><span>${esc(testo)}</span></div><button class="btn small" type="button" data-lavoro="${tipo}">${esc(btn)}</button></div>`;
+  const tsb=!sb.ultimo?'Segna quando lo riempi: l\'app impara quanto beve la torre.'
+    :'Riempito '+gg(sb.giorni)+(sb.rimasti!=null?' · restano circa '+fmt(sb.rimasti,0)+' L su '+fmt(sb.capacita,0):sb.consumo?' · beve circa '+fmt(sb.consumo,1)+' L al giorno (a 20 °C)':'');
+  let h=riga('rabbocco','🪣 Serbatoio',tsb,sb.rimasti!=null?sb.rimasti<=0.3*sb.capacita:sb.ultimo&&sb.controlla>0&&sb.giorni>=sb.controlla,'Riempito');
+  const ic={nutrienti:'🧪',soluzione:'🔄',pulizia:'🧽'};
+  for(const v of L.voci){
+    const ogni=v.ogni>0?(v.tipo==='pulizia'?' (ogni '+v.ogni+' ore)':' (ogni '+v.ogni+' giorni)'):'';
+    const testo=v.tipo==='pulizia'?(v.quanto!=null?Math.round(v.quanto)+' ore di pompa '+(v.ultimo?'dall\'ultima':'finora')+ogni:'Ore di pompa dall\'ultima pulizia'+ogni)
+      :v.ultimo?(v.tipo==='nutrienti'?'Aggiunti ':'Cambiata ')+gg(v.quanto)+ogni:'Mai segnato'+ogni;
+    h+=riga(v.tipo,ic[v.tipo]+' '+v.nome,testo,v.scaduto,'Fatto');
+  }
+  setHTML($('#torreLavori'),h);
+}
+function segnaLavoro(tipo){
+  if(!S.torre) return;
+  const ora=new Date().toISOString(), sb=serbatoioTorre(S.torre.serbatoio), lv=lavoriTorreDati(S.torre.lavori);
+  if(tipo==='rabbocco'){
+    const v=prompt('Quanti litri hai aggiunto? Lascia vuoto se non lo sai (dai litri l\'app impara quanto beve la torre).','');
+    if(v===null) return;
+    const l=numOrNull(v); if(v.trim()&&!(l>0)){ toast('Scrivi i litri, per esempio 5'); return; }
+    sb.rabbocchi=[...sb.rabbocchi, {at:ora, litri:l}].slice(-20);
+  } else {
+    lv[tipo]={...lv[tipo], ultimo:ora};
+    if(tipo==='soluzione') sb.rabbocchi=[...sb.rabbocchi, {at:ora, litri:null}].slice(-20);   // soluzione nuova: serbatoio pieno
+  }
+  S.torre={...S.torre, serbatoio:sb, lavori:lv}; saveMain(); renderTorreSheet(); renderTorre();
+  toast({rabbocco:'Rabbocco segnato',nutrienti:'Nutrienti segnati',soluzione:'Cambio della soluzione segnato',pulizia:'Pulizia segnata'}[tipo]);
 }
 function apriTorre(){ renderTorreSheet(); apriFinestra($('#torreSheet'),$('#torreBg')); caricaTorre(); $('#torreChiudi').focus({preventScroll:true}); }
 function chiudiTorre(){ chiudiFinestra($('#torreSheet'),$('#torreBg')); }
@@ -2123,7 +2193,10 @@ function renderTorreSet(){
   setVal($('#torreAccesa'),c.accesa_min);
   const pz=$('#torrePause'); if(!pz.contains(document.activeElement)) setHTML(pz,FASCE_TORRE(c).map((f,i)=>`<div class="field"><label for="torreP${i}">${esc(f)}</label><input type="text" inputmode="numeric" id="torreP${i}" value="${c.pause[i]}"></div>`).join(''));
   setVal($('#torreStop'),numIn(c.freddo_stop)); setVal($('#torreRiparte'),numIn(c.freddo_riparte));
+  setVal($('#torreGuastoP'),c.guasto_pausa); $('#torreGuastoFerma').checked=!!c.guasto_ferma;
   setVal($('#torreNotteDa'),c.notte_da); setVal($('#torreNotteA'),c.notte_a); setVal($('#torreNotteX'),numIn(c.notte_fattore));
+  const sb=serbatoioTorre(tr.serbatoio), lv=lavoriTorreDati(tr.lavori);
+  setVal($('#torreCap'),numIn(sb.capacita)); setVal($('#torreControlla'),sb.controlla); setVal($('#torreNutr'),lv.nutrienti.ogni); setVal($('#torreSol'),lv.soluzione.ogni); setVal($('#torrePul'),lv.pulizia.ogni);
   const st=TORRE?.stato;
   $('#torreRev').textContent=!TORRE?.ultimo?'La torre non si è ancora collegata.':st?.rev===tr.rev?'La torre ha le impostazioni di adesso.':'Impostazioni nuove in attesa: arrivano alla torre quando trova il Wi-Fi.';
 }
@@ -2137,6 +2210,7 @@ function wireTorre(){
   $('#torreChiudi').addEventListener('click',chiudiTorre); $('#torreBg').addEventListener('click',chiudiTorre);
   document.querySelectorAll('#torreSheet input[name=torreOre]').forEach(x=>x.addEventListener('change',()=>{ torreOre=+x.value;
     document.querySelectorAll('#torreSheet .seg label').forEach(l=>l.classList.toggle('on',!!l.querySelector('input:checked'))); renderTorreSheet(); }));
+  $('#torreLavori').addEventListener('click',e=>{ const b=e.target.closest('[data-lavoro]'); if(b) segnaLavoro(b.dataset.lavoro); });
   $('#torrePompa').addEventListener('click',()=>{ if(!S.torre) return;
     S.torre={...S.torre, comando:{id:uid(), pompa_s:60, at:new Date().toISOString()}}; saveMain(); renderTorreSheet(); toast('Pompa: arriva alla torre quando trova il Wi-Fi'); });
   $('#torreOn').addEventListener('change',async e=>{
@@ -2158,9 +2232,12 @@ function wireTorre(){
     if(!S.torre) return;
     const c=configTorre(S.torre.config), n=id=>numOrNull($(id).value), pos=document.querySelector('#torrePos input:checked')?.value||S.torre.posizione;
     const nuova=configTorre({...c, accesa_min:n('#torreAccesa'), pause:c.pause.map((p,i)=>n('#torreP'+i)??p), freddo_stop:n('#torreStop'), freddo_riparte:n('#torreRiparte'),
-      notte_da:n('#torreNotteDa'), notte_a:n('#torreNotteA'), notte_fattore:n('#torreNotteX')});
+      notte_da:n('#torreNotteDa'), notte_a:n('#torreNotteA'), notte_fattore:n('#torreNotteX'), guasto_pausa:n('#torreGuastoP'), guasto_ferma:$('#torreGuastoFerma').checked});
     const cambiata=JSON.stringify(nuova)!==JSON.stringify(c);
-    S.torre={...S.torre, nome:$('#torreNome').value.trim().slice(0,40)||'Torre idroponica', posizione:pos, orto:$('#torreOrtoF').hidden?(S.torre.orto||'p'):$('#torreOrto').value, config:nuova, rev:(S.torre.rev||1)+(cambiata?1:0)};
+    const sb=serbatoioTorre(S.torre.serbatoio), lv=lavoriTorreDati(S.torre.lavori), ogni=(id,d)=>n(id)??d;
+    sb.capacita=n('#torreCap'); sb.controlla=ogni('#torreControlla',sb.controlla);
+    for(const [k,id] of [['nutrienti','#torreNutr'],['soluzione','#torreSol'],['pulizia','#torrePul']]) lv[k]={...lv[k], ogni:ogni(id,lv[k].ogni)};
+    S.torre={...S.torre, serbatoio:serbatoioTorre(sb), lavori:lavoriTorreDati(lv), nome:$('#torreNome').value.trim().slice(0,40)||'Torre idroponica', posizione:pos, orto:$('#torreOrtoF').hidden?(S.torre.orto||'p'):$('#torreOrto').value, config:nuova, rev:(S.torre.rev||1)+(cambiata?1:0)};
     document.querySelectorAll('#torreSet input').forEach(x=>{ x.blur(); x._last=undefined; });
     saveMain(); renderAll(); toast(cambiata?'Salvato: arriva alla torre quando trova il Wi-Fi':'Salvato');
   });

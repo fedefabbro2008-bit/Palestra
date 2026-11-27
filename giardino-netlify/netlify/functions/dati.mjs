@@ -145,7 +145,7 @@ async function opTorre(request, st, code, url) {
   if (request.method === "GET") {
     const giorni = Math.max(1, Math.min(GIORNI_TORRE, parseInt(url.searchParams.get("giorni")) || 8)), s = (await st.get("s-" + code, { type: "json" })) || serieVuota();
     const da = Math.floor(Date.now() / 1000) - giorni * 86400;
-    return reply({ stato: s.stato, ultimo: s.ultimo, misure: s.misure.filter((r) => r[0] >= da).map((r) => r.slice(0, 5)) });
+    return reply({ stato: s.stato, ultimo: s.ultimo, misure: s.misure.filter((r) => r[0] >= da).map((r) => r.slice(0, 5)), giorni: s.giorni || [], riavvii: (s.riavvii || []).slice(-20), memoria_formattata: s.memoria_formattata || 0 });
   }
   const body = await request.json().catch(() => null), action = body?.action;
   if (action === "chiave") {   // la prima volta crea la torre; poi cambia la chiave (quella vecchia non vale più)
