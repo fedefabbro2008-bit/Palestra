@@ -1,4 +1,4 @@
-// Netlify Blobs in memoria, per i test: stesse funzioni usate dal sito (get, getWithMetadata, setJSON con onlyIfMatch/onlyIfNew, delete, list).
+// Netlify Blobs in memoria, per i test: stesse funzioni usate dal sito (get, getWithMetadata, setJSON con onlyIfMatch/onlyIfNew, set per i binari, delete, list).
 const mem = (globalThis.__BLOBS ??= new Map());
 let n = 0;
 export function getStore() {
@@ -11,6 +11,7 @@ export function getStore() {
       if (o.onlyIfMatch && (!cur || cur.etag !== o.onlyIfMatch)) return { modified: false };
       const etag = "e" + ++n; mem.set(k, { val: structuredClone(val), etag }); return { modified: true, etag };
     },
+    async set(k, val) { const etag = "e" + ++n; mem.set(k, { val: val instanceof ArrayBuffer ? val.slice(0) : val, etag }); return { modified: true, etag }; },   // binari (programma della torre)
     async delete(k) { mem.delete(k); },
     async list({ prefix = "" } = {}) { return { blobs: [...mem.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }; }
   };

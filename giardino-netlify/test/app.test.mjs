@@ -648,6 +648,21 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   assert.equal(await page.inputValue("#torreGuastoP"), "20"); assert.ok(!(await page.isChecked("#torreGuastoFerma")));
   await page.fill("#torreGuastoP", "35"); await page.check("#torreGuastoFerma"); await page.click("#torreSalva");
   assert.deepEqual(await page.evaluate(() => [S.torre.config.guasto_pausa, S.torre.config.guasto_ferma, S.torre.rev]), [35, true, 3]);
+  // serbatoio e manutenzione: impostazioni (non cambiano la versione per l'ESP32), rabbocco coi litri, lavori fatti
+  await page.fill("#torreCap", "12"); await page.fill("#torreNutr", "10"); await page.fill("#torrePul", "0"); await page.click("#torreSalva");
+  assert.deepEqual(await page.evaluate(() => [S.torre.serbatoio.capacita, S.torre.lavori.nutrienti.ogni, S.torre.lavori.pulizia.ogni, S.torre.rev]), [12, 10, 0, 3]);
+  await page.click("#tab-oggi"); await page.click("#torreBox"); await quando(page, () => !document.querySelector("#torreSheet").hidden);
+  assert.match(await page.textContent("#torreLavori"), /Segna quando lo riempi.*Mai segnato \(ogni 10 giorni\)/s);
+  page.once("dialog", (d) => d.accept("6,5"));
+  await page.click('#torreLavori [data-lavoro="rabbocco"]');
+  await page.click('#torreLavori [data-lavoro="soluzione"]');
+  assert.deepEqual(await page.evaluate(() => [S.torre.serbatoio.rabbocchi.map((r) => r.litri), !!S.torre.lavori.soluzione.ultimo]), [[6.5, null], true]);
+  assert.match(await page.textContent("#torreLavori"), /Riempito oggi.*Cambiata oggi \(ogni 14 giorni\)/s);
+  // periodi lunghi: grafico dai riassunti per giorno
+  await page.click('#torreSheet label:has(input[value="8760"])');
+  assert.equal(await page.locator("#torreGrafico svg.tr-graf").count(), 1); assert.match(await page.textContent("#torreGrid"), /negli ultimi 12 mesi/);
+  await page.click('#torreSheet label:has(input[value="24"])'); await page.click("#torreChiudi");
+  await page.click("#tab-impostazioni");
   // spenta: niente riquadro, niente notifica, solo l'interruttore
   await page.click('label[for="torreOn"]');
   assert.ok(await page.isHidden("#torreSet")); assert.equal(await page.textContent("#torreChip"), "spenta");

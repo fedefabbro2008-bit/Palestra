@@ -472,6 +472,16 @@ async function toolTorre(ctx, a = {}) {
   if (avv.length) L.push(...avv.map((x) => x.testo));
   const piante = d.plants.filter(M.inTorre);
   L.push(`Piante nella torre: ${piante.length ? piante.map((p) => `${p.nome} [${p.id}]`).join(", ") : "nessuna (con modifica_pianta, campi.colt = torre)"}. Per loro l'app non calcola innaffiature, controlli né concime.`);
+  // serbatoio e manutenzione (segnati dall'utente nell'app o con torre_imposta.segna)
+  const lav = M.lavoriTorre(tr, serie, adesso, tz), sb = lav.serbatoio, gg = (x) => (x < 1 ? "oggi" : Math.floor(x) === 1 ? "ieri" : Math.floor(x) + " giorni fa");
+  L.push("", "## Serbatoio e manutenzione",
+    `- serbatoio${sb.capacita ? " " + fmt(sb.capacita, 0) + " L" : " (capacità non indicata)"}: ${sb.ultimo ? "ultimo rabbocco " + gg(sb.giorni) : "nessun rabbocco segnato"}${sb.consumo ? `; beve circa ${fmt(sb.consumo)} L al giorno a 20 °C (imparato dai rabbocchi)` : ""}${sb.rimasti != null ? `; restano circa ${fmt(sb.rimasti, 0)} L` : ""}${sb.controlla ? `; promemoria se non sa stimare: ogni ${sb.controlla} giorni` : ""}`,
+    `- rabbocchi: ${sb.rabbocchi.length ? sb.rabbocchi.slice(-6).map((r) => fmtOra(Date.parse(r.at) / 1000, tz) + (r.litri ? " " + fmt(r.litri) + " L" : "")).join(", ") : "–"}`,
+    ...lav.voci.map((v) => `- ${v.nome.toLowerCase()}: ${v.tipo === "pulizia" ? (v.quanto != null ? Math.round(v.quanto) + " ore di pompa " + (v.ultimo ? "dall'ultima" : "finora") : "–") : v.ultimo ? gg(v.quanto) : "mai segnato"}${v.ogni ? ` (ogni ${v.ogni}${v.tipo === "pulizia" ? " ore di pompa" : " giorni"})` : " (promemoria spento)"}${v.scaduto ? " ⚠️ da fare" : ""}`));
+  const rv = (serie.riavvii || []).slice(-5);
+  if (rv.length) L.push(`Ultimi riavvii dell'ESP32: ${rv.map((r) => `${fmtOra(r.ora, tz)} (${M.RIAVVII_TORRE[r.motivo] || r.motivo})`).join(", ")}.`);
+  const fw = tr.firmware;
+  L.push(`Programma dell'ESP32: ${st?.fw ? "versione " + st.fw : "versione non ancora nota"}${fw ? `; caricata dall'app la ${fw.versione}${st?.fw >= fw.versione ? " (installata)" : " (la installa al prossimo collegamento)"}` : ""}. Si aggiorna dall'app (Impostazioni → Torre idroponica → Carica un programma nuovo).`);
   L.push("", `## Impostazioni (versione ${+tr.rev || 1})`, `- pompa accesa ${c.accesa_min} min per ciclo; pause: ${fasce(c)}`,
     `- freddo: pompa ferma sotto ${fmt(c.freddo_stop)} °C, riparte sopra ${fmt(c.freddo_riparte)} °C`,
     `- notte dalle ${c.notte_da} alle ${c.notte_a}: pause ×${fmt(c.notte_fattore)}; umidità da ${fmt(c.umido_soglia, 0)}%: pause ×${fmt(c.umido_fattore)}; pausa massima ${c.pausa_max} min`,
@@ -481,11 +491,12 @@ async function toolTorre(ctx, a = {}) {
   // storico
   const vista = ["giorni", "ore", "misure"].includes(a.storico) ? a.storico : a.giorni || a.dal ? "giorni" : null;
   if (vista) {
-    const giorni = Math.min(M.GIORNI_TORRE, Math.max(1, Math.round(+a.giorni || (vista === "misure" ? 1 : 7))));
+    const giorni = Math.min(vista === "giorni" ? M.RIASSUNTI_GIORNI : M.GIORNI_TORRE, Math.max(1, Math.round(+a.giorni || (vista === "misure" ? 1 : 7))));
     const dal = ISO.test(a.dal || "") ? a.dal : M.addDays(oggi, -(giorni - 1)), al = ISO.test(a.al || "") ? a.al : oggi;
     const righe = (serie.misure || []).filter((x) => { const g = giornoT(x[0], tz); return g >= dal && g <= al; });
-    L.push("", `## Storico dal ${dal} al ${al} (${righe.length} misure; il server tiene ${M.GIORNI_TORRE} giorni)`);
-    if (!righe.length) L.push("Nessuna misura in questo periodo.");
+    const vecchi = vista === "giorni" ? (serie.giorni || []).filter((x) => x[0] >= dal && x[0] <= al && !righe.some((r) => giornoT(r[0], tz) === x[0])) : [];
+    L.push("", `## Storico dal ${dal} al ${al} (${righe.length} misure${vecchi.length ? ` e ${vecchi.length} giorni più vecchi riassunti` : ""}; il server tiene le misure ${M.GIORNI_TORRE} giorni e i riassunti per giorno ${M.RIASSUNTI_GIORNI})`);
+    if (!righe.length && !vecchi.length) L.push("Nessuna misura in questo periodo.");
     else if (vista === "misure") {
       const MAX = 1400, mostra = righe.slice(-MAX);
       if (righe.length > MAX) L.push(`Troppe: qui le ultime ${MAX}. Per le altre restringi con dal/al.`);
@@ -496,6 +507,7 @@ async function toolTorre(ctx, a = {}) {
       L.push("giorno ora;°C media;min;max;umidità %;pompa min;fermo per freddo min", ...gr.slice(-MAX).map((x) => `${x.k};${x.tMedia == null ? "" : fmt(x.tMedia)};${x.min ? fmt(x.min[1]) : ""};${x.max ? fmt(x.max[1]) : ""};${x.u == null ? "" : fmt(x.u, 0)};${fmt(x.pompa, 0)};${fmt(x.freddo, 0)}`));
     } else {
       L.push("giorno;minima °C (ora);massima °C (ora);media °C;umidità %;pompa accesa;fermo per freddo;misure",
+        ...vecchi.map((x) => `${x[0]};${x[1] == null ? "" : fmt(x[1])};${x[2] == null ? "" : fmt(x[2])};${x[3] == null ? "" : fmt(x[3])};${x[4] ?? ""};${minuti(x[5])};${x[6] ? minuti(x[6]) : "0"};${x[7]}`),
         ...gruppiTorre(righe, (s) => giornoT(s, tz), tz).map((x) => `${x.k};${x.min ? fmt(x.min[1]) + " (" + x.oraMin + ")" : ""};${x.max ? fmt(x.max[1]) + " (" + x.oraMax + ")" : ""};${x.tMedia == null ? "" : fmt(x.tMedia)};${x.u == null ? "" : fmt(x.u, 0)};${minuti(x.pompa)};${x.freddo ? minuti(x.freddo) : "0"};${x.n}`));
     }
   } else L.push("", "Storico: chiama «torre» con storico = giorni (riepilogo per giorno), ore (medie orarie) o misure (tutte, ogni ~10 min), e giorni o dal/al.");
@@ -527,7 +539,19 @@ async function toolTorreImposta(ctx, a = {}) {
   if (a.attiva != null) { if (typeof a.attiva !== "boolean") throw new Error("attiva: true o false"); altro.attiva = a.attiva; }
   let pompa = null;
   if (a.pompa_s != null) pompa = numeroT("pompa_s", a.pompa_s, 5, 600, true);
-  if (!Object.keys(nuove).length && !Object.keys(altro).length && !pompa && !a.ripristina) throw new Error("Indica almeno un'impostazione da cambiare, pompa_s o ripristina.");
+  // serbatoio e manutenzione: non cambiano le impostazioni dell'ESP32
+  const man = {};
+  if (a.capacita != null) man.capacita = numeroT("capacita", a.capacita, 1, 1000);
+  if (a.controlla_giorni != null) man.controlla = numeroT("controlla_giorni", a.controlla_giorni, 0, 60, true);
+  for (const [k, lim] of [["nutrienti_ogni", 365], ["soluzione_ogni", 365], ["pulizia_ogni_ore", 5000]]) if (a[k] != null) man[k] = numeroT(k, a[k], 0, lim, true);
+  let segna = null;
+  if (a.segna != null) {
+    if (!["rabbocco", "nutrienti", "soluzione", "pulizia"].includes(a.segna)) throw new Error("segna: rabbocco, nutrienti, soluzione o pulizia");
+    const quando = a.quando == null ? new Date() : new Date(ISO.test(a.quando) ? a.quando + "T12:00:00" : a.quando);
+    if (isNaN(quando) || quando > new Date(Date.now() + 3600e3) || quando < new Date(Date.now() - 60 * 864e5)) throw new Error("quando: una data degli ultimi 60 giorni (AAAA-MM-GG o data e ora)");
+    segna = { tipo: a.segna, at: quando.toISOString(), litri: a.litri == null ? null : numeroT("litri", a.litri, 0.1, 1000) };
+  }
+  if (!Object.keys(nuove).length && !Object.keys(altro).length && !pompa && !a.ripristina && !Object.keys(man).length && !segna) throw new Error("Indica almeno un'impostazione da cambiare, pompa_s, segna o ripristina.");
   let fatto = [], rev = 0;
   const out = await aggiorna(ctx.store, ctx.code, (d) => {
     const tr = d.torre; if (!tr) throw new Error("Nessuna torre.");
@@ -540,11 +564,22 @@ async function toolTorreImposta(ctx, a = {}) {
     for (const k of Object.keys(conf)) if (JSON.stringify(conf[k]) !== JSON.stringify(prima[k])) { const v = (x) => (typeof x === "boolean" ? (x ? "sì" : "no") : [].concat(x).join("/")); fatto.push(`${NOMI_CFG[k] || k}: ${v(prima[k])} → ${v(conf[k])}`); }
     for (const [k, v] of Object.entries(altro)) if (tr[k] !== v) fatto.push(k === "attiva" ? (v ? "torre riattivata nell'app" : "torre spenta nell'app") : `${k}: ${tr[k] ?? "–"} → ${v}`);
     if (pompa) fatto.push(`accensione a mano per ${pompa} s (arriva all'ESP32 al prossimo collegamento, entro 2 ore; mai sotto il freddo)`);
+    if (Object.keys(man).length || segna) {
+      const sb = M.serbatoioTorre(tr.serbatoio), lv = M.lavoriTorreDati(tr.lavori);
+      if (man.capacita != null && man.capacita !== sb.capacita) { fatto.push(`serbatoio: ${sb.capacita ?? "–"} → ${man.capacita} L`); sb.capacita = man.capacita; }
+      if (man.controlla != null && man.controlla !== sb.controlla) { fatto.push(`controlla il livello ogni: ${sb.controlla} → ${man.controlla} giorni`); sb.controlla = man.controlla; }
+      for (const [k, t] of [["nutrienti_ogni", "nutrienti"], ["soluzione_ogni", "soluzione"], ["pulizia_ogni_ore", "pulizia"]])
+        if (man[k] != null && man[k] !== lv[t].ogni) { fatto.push(`${M.LAVORI_TORRE[t].nome.toLowerCase()} ogni: ${lv[t].ogni} → ${man[k]}${t === "pulizia" ? " ore di pompa" : " giorni"}`); lv[t] = { ...lv[t], ogni: man[k] }; }
+      if (segna?.tipo === "rabbocco") { sb.rabbocchi = [...sb.rabbocchi, { at: segna.at, litri: segna.litri }]; fatto.push(`rabbocco segnato${segna.litri ? ` (${fmt(segna.litri)} L)` : ""}`); }
+      else if (segna) { lv[segna.tipo] = { ...lv[segna.tipo], ultimo: segna.at }; if (segna.tipo === "soluzione") sb.rabbocchi = [...sb.rabbocchi, { at: segna.at, litri: null }];
+        fatto.push(`${M.LAVORI_TORRE[segna.tipo].nome.toLowerCase()} segnato`); }
+      d.torre.serbatoio = M.serbatoioTorre(sb); d.torre.lavori = M.lavoriTorreDati(lv);
+    }
     if (!fatto.length) return false;
   });
   if (out?.data) ctx.saved(out);
   if (!fatto.length) return "Niente da cambiare: la torre ha già queste impostazioni.";
-  return "Torre aggiornata (impostazioni versione " + rev + "):\n- " + fatto.join("\n- ") + (fatto.some((x) => x.includes("→") && !x.startsWith("nome") && !x.startsWith("posizione") && !x.startsWith("orto")) ? "\nL'ESP32 le riceve al prossimo collegamento (ogni 15 minuti circa quando il modem è acceso)." : "");
+  return "Torre aggiornata (impostazioni versione " + rev + "):\n- " + fatto.join("\n- ") + (fatto.some((x) => x.includes("→") && !/^(nome|posizione|orto|serbatoio|controlla|nutrienti|cambio|pulizia)/.test(x)) ? "\nL'ESP32 le riceve al prossimo collegamento (ogni 15 minuti circa quando il modem è acceso)." : "");
 }
 
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -607,11 +642,11 @@ const TOOLS = [
       orari: { type: "object", description: "ora di ogni notifica, 0-23 (ora intera)", properties: Object.fromEntries(M.NOTIFICHE_CON_ORA.map((k) => [k, { type: "integer", minimum: 0, maximum: 23 }])), additionalProperties: false },
       notifiche: { type: "object", properties: Object.fromEntries(NOTIFICHE.map((k) => [k, { type: "boolean" }])), additionalProperties: false } } }, annotations: { ...RW, title: "Impostazioni" }, run: toolImpostazioni },
   { name: "torre", title: "Torre idroponica",
-    description: "La torre idroponica dell'utente (ESP32 + pompa + sensore SHT40): ultimo contatto, temperatura e umidità, pompa, impostazioni e se l'ESP32 le ha già, ultime 24 ore, avvisi (gelo, pioggia, freddo, silenzio), piante nella torre. Con «storico» tutto lo storico che il server tiene (31 giorni): giorni (riepilogo per giorno), ore (medie orarie) o misure (ogni misura, ~ogni 10 minuti), per gli ultimi «giorni» o da «dal» ad «al».",
-    inputSchema: { type: "object", properties: { storico: { type: "string", enum: ["giorni", "ore", "misure"] }, giorni: { type: "integer", minimum: 1, maximum: 31, description: "ultimi N giorni (predefinito 7; 1 per misure)" },
+    description: "La torre idroponica dell'utente (ESP32 + pompa + sensore SHT40): ultimo contatto, temperatura e umidità, pompa, impostazioni e se l'ESP32 le ha già, ultime 24 ore, avvisi (gelo, pioggia, freddo, silenzio, sensore, riavvii, serbatoio, manutenzione), piante nella torre, serbatoio (rabbocchi, consumo imparato, litri rimasti) e manutenzione (nutrienti, cambio della soluzione, pulizia della pompa), riavvii dell'ESP32 e versione del programma. Con «storico»: giorni (riepilogo per giorno, fino a 400 giorni), ore (medie orarie) o misure (ogni misura, ~ogni 10 minuti) fino a 31 giorni, per gli ultimi «giorni» o da «dal» ad «al».",
+    inputSchema: { type: "object", properties: { storico: { type: "string", enum: ["giorni", "ore", "misure"] }, giorni: { type: "integer", minimum: 1, maximum: 400, description: "ultimi N giorni (predefinito 7; 1 per misure). Per giorno fino a 400 (riassunti), per ora e misure fino a 31" },
       dal: { type: "string", description: "AAAA-MM-GG" }, al: { type: "string", description: "AAAA-MM-GG" } } }, annotations: { ...RO, title: "Torre" }, run: toolTorre },
   { name: "torre_imposta", title: "Impostazioni della torre", write: true,
-    description: "Cambia le impostazioni della torre idroponica (le stesse dell'app; arrivano all'ESP32 al prossimo collegamento) o chiede un'accensione a mano della pompa. Prima leggi «torre», proponi e cambia solo con l'accordo dell'utente. La pompa: dopo ogni ciclo di «accesa_min» minuti fa una pausa che dipende dalla temperatura dell'aria: soglie = 5 temperature decrescenti, pause = 6 minuti (sopra soglie[0], sopra soglie[1], … sopra soglie[4], e l'ultima tra freddo_stop e soglie[4]); di notte (notte_da–notte_a) le pause × notte_fattore, con umidità ≥ umido_soglia × umido_fattore, mai oltre pausa_max. Sotto freddo_stop la pompa è ferma, riparte sopra freddo_riparte (almeno 1 °C in più). Se il sensore non risponde: ciclo di emergenza (accesa_min accesa, guasto_pausa ferma) o pompa ferma (guasto_ferma); nelle ore di gelo previste dal meteo, ferma. ripristina: true torna ai valori iniziali (poi applica gli altri campi). La chiave dell'ESP32 non si vede né si cambia da qui.",
+    description: "Cambia le impostazioni della torre idroponica (le stesse dell'app; arrivano all'ESP32 al prossimo collegamento) o chiede un'accensione a mano della pompa. Prima leggi «torre», proponi e cambia solo con l'accordo dell'utente. La pompa: dopo ogni ciclo di «accesa_min» minuti fa una pausa che dipende dalla temperatura dell'aria: soglie = 5 temperature decrescenti, pause = 6 minuti (sopra soglie[0], sopra soglie[1], … sopra soglie[4], e l'ultima tra freddo_stop e soglie[4]); di notte (notte_da–notte_a) le pause × notte_fattore, con umidità ≥ umido_soglia × umido_fattore, mai oltre pausa_max. Sotto freddo_stop la pompa è ferma, riparte sopra freddo_riparte (almeno 1 °C in più). Se il sensore non risponde: ciclo di emergenza (accesa_min accesa, guasto_pausa ferma) o pompa ferma (guasto_ferma); nelle ore di gelo previste dal meteo, ferma. ripristina: true torna ai valori iniziali (poi applica gli altri campi). Con «segna» registra un lavoro fatto dall'utente (rabbocco con i litri, nutrienti, cambio della soluzione, pulizia della pompa) e con capacita, controlla_giorni, nutrienti_ogni, soluzione_ogni, pulizia_ogni_ore regola serbatoio e promemoria: questi non cambiano l'ESP32. La chiave dell'ESP32 non si vede né si cambia da qui.",
     inputSchema: { type: "object", properties: {
       accesa_min: { type: "integer", minimum: 1, maximum: 60 }, soglie: { type: "array", items: { type: "number" }, minItems: 5, maxItems: 5 }, pause: { type: "array", items: { type: "integer", minimum: 1, maximum: 240 }, minItems: 6, maxItems: 6 },
       freddo_stop: { type: "number", minimum: 0, maximum: 10 }, freddo_riparte: { type: "number", minimum: 1, maximum: 15 }, notte_da: { type: "integer", minimum: 0, maximum: 23 }, notte_a: { type: "integer", minimum: 0, maximum: 23 },
@@ -622,7 +657,12 @@ const TOOLS = [
       nome: { type: "string" }, posizione: { type: "string", enum: ["fuori", "veranda", "casa"], description: "dove sta: conta per gli avvisi di gelo e pioggia" }, orto: { type: "string", description: "id dell'orto (per il meteo degli avvisi)" },
       attiva: { type: "boolean", description: "false = spenta nell'app (l'utente non la vede, niente avvisi; l'ESP32 continua da solo)" },
       pompa_s: { type: "integer", minimum: 5, maximum: 600, description: "accende la pompa a mano per questi secondi al prossimo collegamento (entro 2 ore; non col freddo)" },
-      ripristina: { type: "boolean" } } }, annotations: { ...RW, title: "Imposta torre" }, run: toolTorreImposta },
+      ripristina: { type: "boolean" },
+      capacita: { type: "number", description: "litri del serbatoio (per stimare quanto ne resta)" }, controlla_giorni: { type: "integer", minimum: 0, maximum: 60, description: "promemoria del livello finché l'app non sa stimare il consumo (0 = spento)" },
+      nutrienti_ogni: { type: "integer", minimum: 0, maximum: 365, description: "giorni tra un'aggiunta di nutrienti e l'altra (0 = nessun promemoria)" }, soluzione_ogni: { type: "integer", minimum: 0, maximum: 365, description: "giorni tra un cambio della soluzione e l'altro" },
+      pulizia_ogni_ore: { type: "integer", minimum: 0, maximum: 5000, description: "ore di pompa tra una pulizia e l'altra" },
+      segna: { type: "string", enum: ["rabbocco", "nutrienti", "soluzione", "pulizia"], description: "segna un lavoro fatto dall'utente (rabbocco: serbatoio riempito; soluzione: cambiata tutta, vale anche come rabbocco)" },
+      litri: { type: "number", description: "solo rabbocco: litri aggiunti (da qui l'app impara quanto beve la torre)" }, quando: { type: "string", description: "quando l'ha fatto (AAAA-MM-GG o data e ora); predefinito adesso" } } }, annotations: { ...RW, title: "Imposta torre" }, run: toolTorreImposta },
   { name: "vacanza", title: "Imposta la vacanza", write: true,
     description: "Imposta (dal, al = giorno del rientro) o annulla il periodo in cui l'utente è via.",
     inputSchema: { type: "object", properties: { dal: { type: "string" }, al: { type: "string" }, annulla: { type: "boolean" } } }, annotations: { ...RW, title: "Vacanza" }, run: toolVacanza }

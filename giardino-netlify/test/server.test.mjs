@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // Funzioni del sito: dati, connettore per Claude, Telegram (webhook e bot orario).
 // Si lancia con:  node --import ./test/registra-finto.mjs --test test/server.test.mjs   (dalla cartella giardino-netlify)
 import { test } from "node:test";
@@ -821,10 +822,40 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   assert.match((await strumento("torre_imposta", { guasto_pausa: 30, guasto_ferma: true })).content[0].text, /pompa ferma: no → sì/);
   assert.equal((await leggiDati()).torre.config.guasto_pausa, 30);
   assert.ok((await strumento("torre_imposta", { guasto_ferma: "sì" })).isError);
+  tx = (await strumento("torre_imposta", { capacita: 20, nutrienti_ogni: 10, segna: "rabbocco", litri: 4 })).content[0].text;
+  assert.match(tx, /serbatoio: – → 20 L/); assert.match(tx, /rabbocco segnato \(4 L\)/); assert.doesNotMatch(tx, /L'ESP32 le riceve/, "non riguarda l'ESP32");
+  assert.deepEqual([(await leggiDati()).torre.serbatoio.capacita, (await leggiDati()).torre.lavori.nutrienti.ogni, (await leggiDati()).torre.serbatoio.rabbocchi.at(-1).litri], [20, 10, 4]);
+  assert.match((await strumento("torre_imposta", { segna: "pulizia", quando: "2020-01-01" })).content[0].text, /ultimi 60 giorni/);
+  tx = (await strumento("torre")).content[0].text;
+  assert.match(tx, /## Serbatoio e manutenzione/); assert.match(tx, /serbatoio 20 L: ultimo rabbocco oggi/); assert.match(tx, /nutrienti: mai segnato \(ogni 10 giorni\)/);
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
   assert.ok((await strumento("torre_imposta", { accesa_min: 11 })).isError, "senza permesso");
   assert.ok(!(await strumento("torre")).isError, "leggere si può sempre");
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  // programma nuovo dall'app: controllato, offerto all'ESP32 se più recente, scaricato solo con la chiave, tolto
+  const fwFinto = new Uint8Array(5000); fwFinto[0] = 0xe9; fwFinto.set(new TextEncoder().encode("GIARDINO-TORRE-FW:9:"), 100);
+  const carica = (bin) => dati(new Request(B + "/api/dati?op=firmware", { method: "POST", headers: { ...H, "content-type": "application/octet-stream" }, body: bin }));
+  assert.equal((await carica(new Uint8Array([1, 2, 3]))).status, 400, "non è un programma per ESP32");
+  const senzaFirma = new Uint8Array(100); senzaFirma[0] = 0xe9; assert.equal((await carica(senzaFirma)).status, 400, "non è quello della torre");
+  const up = await (await carica(fwFinto)).json(); assert.equal(up.torre.firmware.versione, 9); assert.equal(up.torre.firmware.dimensione, 5000);
+  const of = (await manda(chiave, { ...corpo, fw: 5, misure: [] })).body;
+  assert.deepEqual(of.firmware, { versione: 9, dimensione: 5000, md5: createHash("md5").update(fwFinto).digest("hex") });
+  assert.ok(!("firmware" in (await manda(chiave, { ...corpo, fw: 9, misure: [] })).body), "già installato: non si offre");
+  const scarica = (k) => torreFn(new Request(B + "/api/torre?firmware=1", { headers: { "x-torre-chiave": k } }));
+  assert.equal((await scarica("A".repeat(26))).status, 403);
+  const giu = await scarica(chiave); assert.equal(giu.status, 200); assert.deepEqual(new Uint8Array(await giu.arrayBuffer()), fwFinto);
+  assert.equal((await dati(new Request(B + "/api/dati?op=firmware", { method: "DELETE", headers: H }))).status, 200);
+  assert.ok(!(await leggiDati()).torre.firmware); assert.equal((await scarica(chiave)).status, 404);
+  // avvisi urgenti subito su Telegram (sensore guasto, riavvio per calo di tensione), una volta; riassunti per giorno e riavvii all'app
+  const urgenti = () => inviati.filter((x) => x[0] === "sendMessage" && /Torre idroponica/.test(x[1].text)).map((x) => x[1].text).join("\n");
+  inviati.length = 0;
+  await manda(chiave, { ...corpo, avvio: 4, sec: 100, stato: { modo: "senza sensore", pompa: false, riavvio: "tensione" }, misure: [[null, null, null, 0, 4, 4, 90]] });
+  assert.match(urgenti(), /sensore della torre non risponde/); assert.match(urgenti(), /riavviata per calo di tensione/);
+  inviati.length = 0;
+  await manda(chiave, { ...corpo, avvio: 4, sec: 200, stato: { modo: "senza sensore", riavvio: "tensione" }, misure: [[null, null, null, 0, 4, 4, 190]] });
+  assert.equal(urgenti(), "", "lo stesso avviso non si ripete subito");
+  const gt = (await call(dati, "/api/dati?op=torre", { headers: H })).body;
+  assert.ok(gt.giorni.length >= 1 && gt.giorni.at(-1).length === 8); assert.equal(gt.riavvii.at(-1).motivo, "tensione");
   const tr3 = (await leggiDati()).torre;
   // spenta: niente avvisi (l'app è come se non ci fosse), la torre può mandare lo stesso
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { torre: { ...tr3, attiva: false } } } });
