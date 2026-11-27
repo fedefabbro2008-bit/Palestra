@@ -1,4 +1,5 @@
 import { VERSIONE } from "../lib/versione.mjs";
+import { nuovaTorre, torreDallApp, serieVuota, GIORNI_TORRE } from "../lib/torre.mjs";
 import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, pianiOrti, messaggioMattina, COMANDI, M } from "../lib/core.mjs";
 
 /* Giardino · dati dell'app, chiave del connettore per Claude, bot Telegram.
@@ -17,6 +18,8 @@ import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, misureArpa
    GET/POST /api/dati?op=mcp          { action: on | new | off | write, on }   chiave per Claude
    GET/POST /api/dati?op=telegram     { action: token, token } | { action: test } | { action: off }
    POST /api/dati?op=riconosci       { immagine: data URL JPEG } → { risultati:[{nome, scientifico, specie, probabilita}] } (Pl@ntNet)
+   GET  /api/dati?op=torre&giorni=8   → { stato, ultimo, misure:[[ora, t, u, pompaS, modo], …] }  misure della torre idroponica
+   POST /api/dati?op=torre            { action: chiave | togli }  crea (o cambia) la chiave della torre, oppure la toglie con le misure
    GET  /api/dati?op=versione         → { versione }  impronta della versione online, senza codice (per il controllo dopo la pubblicazione) */
 
 export const config = { path: "/api/dati", rateLimit: { windowSize: 60, windowLimit: 120, aggregateBy: ["ip", "domain"] } };
@@ -33,6 +36,7 @@ async function gestisci(request) {
   try {
     if (op === "mcp") return await opMcp(request, st, code);
     if (op === "telegram") return await opTelegram(request, st, code);
+    if (op === "torre") return await opTorre(request, st, code, url);
     if (op === "riconosci") {   // foto della pianta → specie più probabili (Pl@ntNet)
       if (request.method !== "POST") return reply({ error: "metodo non consentito" }, 405);
       const b = await request.json().catch(() => null), r = await riconosciPianta(b?.immagine);
@@ -70,7 +74,7 @@ async function gestisci(request) {
     const add = Array.isArray(body?.add) ? body.add : [], remove = new Set(Array.isArray(body?.remove) ? body.remove.map(String) : []);
     const piante = body && typeof body.piante === "object" && body.piante ? body.piante : null;
     const out = await aggiorna(st, code, (d) => {
-      for (const k of CAMPI) if (Object.prototype.hasOwnProperty.call(changes, k)) d[k] = k === "plants" ? conSchede(changes.plants, d.plants) : changes[k];
+      for (const k of CAMPI) if (Object.prototype.hasOwnProperty.call(changes, k)) d[k] = k === "plants" ? conSchede(changes.plants, d.plants) : k === "torre" ? torreDallApp(changes.torre, d.torre) : changes[k];
       if (piante) d.plants = unisciPiante(d.plants, piante);
       if (remove.size) d.eventi = d.eventi.filter((e) => !(remove.has(String(e.id)) && e.fonte === "app"));
       for (const e of add) if (e && e.id && !d.eventi.some((x) => x.id === e.id)) d.eventi.push({ ...e, fonte: "app" });
@@ -134,6 +138,31 @@ async function opMcp(request, st, code) {
   await st.setJSON(mkey, next);
   if (on) await st.delete("r-" + cur.token);
   return reply(stato(next));
+}
+
+// Torre idroponica: misure (lette qui, fuori dai dati dell'app) e chiave per l'ESP32
+async function opTorre(request, st, code, url) {
+  if (request.method === "GET") {
+    const giorni = Math.max(1, Math.min(GIORNI_TORRE, parseInt(url.searchParams.get("giorni")) || 8)), s = (await st.get("s-" + code, { type: "json" })) || serieVuota();
+    const da = Math.floor(Date.now() / 1000) - giorni * 86400;
+    return reply({ stato: s.stato, ultimo: s.ultimo, misure: s.misure.filter((r) => r[0] >= da).map((r) => r.slice(0, 5)) });
+  }
+  const body = await request.json().catch(() => null), action = body?.action;
+  if (action === "chiave") {   // la prima volta crea la torre; poi cambia la chiave (quella vecchia non vale più)
+    const chiave = newToken(); let vecchia = null;
+    await st.setJSON("k-" + chiave, { code });
+    const out = await aggiorna(st, code, (d) => { vecchia = d.torre?.chiave || null; d.torre = d.torre ? { ...d.torre, chiave, attiva: true } : nuovaTorre(chiave); });
+    if (vecchia && vecchia !== chiave) await st.delete("k-" + vecchia);
+    return reply({ torre: out.data.torre, rev: out.rev, updatedAt: out.updatedAt });
+  }
+  if (action === "togli") {
+    let vecchia = null;
+    const out = await aggiorna(st, code, (d) => { vecchia = d.torre?.chiave || null; if (!d.torre) return false; delete d.torre; });
+    if (vecchia) await st.delete("k-" + vecchia);
+    await st.delete("s-" + code);
+    return reply({ torre: null, rev: out?.rev });
+  }
+  return reply({ error: "azione non valida" }, 400);
 }
 
 async function opTelegram(request, st, code) {

@@ -1,4 +1,5 @@
 import { store, leggi, aggiorna, tg, meteo, oraLocale, pianoAttivo, messaggioMattina, presunti, riepilogoSettimana, backup, inviaFile, pulsantiAcqua, doseControllo, finePiano, messaggioFinePiano, notaPioggia, aggiornaPioggiaMisurata, rinnovaPioggia, esc, IMP_DEF, ESITI, notifica, M } from "../lib/core.mjs";
+import { avvisiTorre } from "../lib/torre.mjs";
 
 /* Giardino · bot pianificato, ogni ora (funzione pianificata di Netlify).
    Ogni notifica alla sua ora (Impostazioni → Notifiche, impostazioni.orari; senza, il mattino o la sera di prima).
@@ -122,7 +123,7 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
     if (segnare) { next.notificati = { ...(next.notificati || {}) }; if (oggiN.length) next.notificati[oggi] = oggiN; next.segnati_il = oggi; }
   }
 
-  const SERALI = ["sera", "controllo", "avvisi", "riepilogo", "backup", "piano"];
+  const SERALI = ["sera", "controllo", "avvisi", "riepilogo", "backup", "piano", "torre"];
   if (SERALI.some(fa)) {
     data = (await leggi(st, code))?.data || data;
     for (const o of orti()) {
@@ -167,6 +168,15 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
       const m = messaggioFinePiano(fine, oggi);
       await invia(m.testo, { reply_markup: m.tastiera });
       next.avviso_piano = idPiano;
+    }
+    // 7. torre idroponica (solo se attiva): silenzio, gelo e pioggia previsti dove si trova, freddo misurato
+    const torre = data.torre;
+    if (fa("torre") && torre && torre.attiva !== false) {
+      try {
+        const v = M.vistaOrto(data, torre.orto || "p"), met = v.location ? await meteoDi(v) : null, serie = await st.get("s-" + code, { type: "json" });
+        const avv = avvisiTorre(torre, serie, met, oggi, Math.floor(Date.now() / 1000), met?.tz || t.tz || "Europe/Rome");
+        if (avv.length) await invia(`🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + avv.map((a) => esc(a.testo)).join("\n"));
+      } catch (e) { console.warn("torre:", e?.message); }
     }
   }
   const primo = memo.get("p")?.met || [...memo.values()][0]?.met;

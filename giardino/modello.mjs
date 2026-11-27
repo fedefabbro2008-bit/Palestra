@@ -662,13 +662,110 @@ export function testoPrecisione(pr){
    controllo del sabato, la sera per le altre. Il bot gira ogni ora: la notifica parte al primo giro da quell'ora in poi, finché
    ha senso (il mattino fino alle 21, le altre fino alle 23, sempre almeno 3 ore); dopo si salta fino a domani. */
 export const NOTIFICHE_MATTINO = ['mattina','verifica'];
-export const NOTIFICHE_CON_ORA = ['mattina','sera','controllo','avvisi','verifica','riepilogo','backup','piano'];
+export const NOTIFICHE_CON_ORA = ['mattina','sera','controllo','avvisi','verifica','riepilogo','backup','piano','torre'];
 export function oraNotifica(imp, tipo){
   const o=imp?.orari?.[tipo]; if(Number.isInteger(o) && o>=0 && o<=23) return o;
   const m=NOTIFICHE_MATTINO.includes(tipo), d=Number(m?imp?.ora_mattina:imp?.ora_sera);
   return Number.isInteger(d) && d>=0 && d<=23 ? d : (m?7:19);
 }
 export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));
+
+/* ---------------- Torre idroponica (ESP32 + pompa + SHT40) ----------------
+   Nei dati dell'app: torre = { attiva, chiave, nome, posizione (fuori|veranda|casa), orto, config, rev, comando }.
+   Le misure stanno a parte sul server (s-<codice>). Qui le parti che usano sia l'app sia il server. */
+// impostazioni della pompa: gli stessi nomi del programma dell'ESP32
+export const TORRE_DEF = { accesa_min: 15, soglie: [30, 27, 20, 12, 5], pause: [5, 10, 15, 25, 45, 60], freddo_stop: 2, freddo_riparte: 4,
+  notte_da: 22, notte_a: 6, notte_fattore: 2, umido_soglia: 92, umido_fattore: 1.5, pausa_max: 120, misura_ogni_min: 10, wifi_ogni_min: 15, wifi_max_min: 60 };
+export const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale"];
+export const POSIZIONI_TORRE = ["fuori", "veranda", "casa"];
+export const GIORNI_TORRE = 31;          // misure tenute sul server
+export const SILENZIO_ORE = 26;          // il modem è spento di notte e la mattina: oltre, la torre ha un problema
+
+const numTorre = (v, lo, hi, d) => { const n = +v; return v != null && v !== "" && isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+export function configTorre(c = {}) {
+  const d = TORRE_DEF, o = {};
+  o.accesa_min = Math.round(numTorre(c.accesa_min, 1, 60, d.accesa_min));
+  o.soglie = d.soglie.map((x, i) => numTorre(c.soglie?.[i], -10, 45, x));
+  o.pause = d.pause.map((x, i) => Math.round(numTorre(c.pause?.[i], 1, 240, x)));
+  o.freddo_stop = numTorre(c.freddo_stop, 0, 10, d.freddo_stop);
+  o.freddo_riparte = Math.max(o.freddo_stop + 1, numTorre(c.freddo_riparte, 1, 15, d.freddo_riparte));
+  o.notte_da = Math.round(numTorre(c.notte_da, 0, 23, d.notte_da));
+  o.notte_a = Math.round(numTorre(c.notte_a, 0, 23, d.notte_a));
+  o.notte_fattore = numTorre(c.notte_fattore, 1, 4, d.notte_fattore);
+  o.umido_soglia = numTorre(c.umido_soglia, 50, 100, d.umido_soglia);
+  o.umido_fattore = numTorre(c.umido_fattore, 1, 3, d.umido_fattore);
+  o.pausa_max = Math.round(numTorre(c.pausa_max, 10, 360, d.pausa_max));
+  o.misura_ogni_min = Math.round(numTorre(c.misura_ogni_min, 5, 60, d.misura_ogni_min));
+  o.wifi_ogni_min = Math.round(numTorre(c.wifi_ogni_min, 5, 120, d.wifi_ogni_min));
+  o.wifi_max_min = Math.round(numTorre(c.wifi_max_min, 15, 240, d.wifi_max_min));
+  return o;
+}
+export const nuovaTorre = (chiave) => ({ attiva: true, chiave, nome: "Torre idroponica", posizione: "fuori", orto: "p", config: configTorre(), rev: 1, creata: new Date().toISOString() });
+// la torre che arriva dall'app: la chiave la decide solo il server, le impostazioni si controllano
+export function torreDallApp(nuova, vecchia) {
+  if (!vecchia || !nuova || typeof nuova !== "object") return vecchia || null;
+  const c = nuova.comando, rev = Math.max(+vecchia.rev || 1, Math.round(+nuova.rev || 0));
+  return { ...vecchia, attiva: nuova.attiva !== false, nome: String(nuova.nome || vecchia.nome || "Torre idroponica").slice(0, 40),
+    posizione: POSIZIONI_TORRE.includes(nuova.posizione) ? nuova.posizione : vecchia.posizione || "fuori", orto: typeof nuova.orto === "string" ? nuova.orto.slice(0, 20) : vecchia.orto || "p",
+    config: configTorre(nuova.config || vecchia.config), rev,
+    comando: c && typeof c === "object" && c.id && +c.pompa_s > 0 ? { id: String(c.id).slice(0, 20), pompa_s: Math.min(600, Math.round(+c.pompa_s)), at: String(c.at || new Date().toISOString()).slice(0, 30) } : null };
+}
+
+export const serieVuota = () => ({ misure: [], stato: null, ultimo: 0, fatti: [] });
+const numMisura = (v, lo, hi) => (v == null || v === "" || !isFinite(+v) || +v < lo || +v > hi ? null : Math.round(+v * 100) / 100);
+// Misure dall'ESP32: [ora|null, t, u, secondi di pompa, modo, avvio, secondi dall'avvio]. Quelle senza ora ma della stessa
+// accensione si datano con l'orologio del server (così servono anche quando l'ESP32 non ha mai visto internet);
+// quelle di accensioni passate senza ora si scartano. Doppioni (invio ripetuto dopo una risposta persa) tolti.
+export function unisciMisure(serie, body, adesso) {
+  const s = { ...serieVuota(), ...(serie || {}) }, visti = new Set(s.misure.map((r) => r[5] + ":" + r[6])), da = adesso - GIORNI_TORRE * 86400;
+  s.misure = [...s.misure]; let nuove = 0, scartate = 0;
+  for (const x of Array.isArray(body?.misure) ? body.misure.slice(0, 500) : []) {
+    if (!Array.isArray(x)) { scartate++; continue; }
+    let [ora, t, u, p, m, avvio, sec] = x;
+    if (!(+ora > 0) && avvio != null && avvio === body.avvio && +sec >= 0 && +body.sec >= +sec) ora = adesso - (+body.sec - +sec);
+    ora = Math.round(+ora);
+    if (!(ora >= da) || ora > adesso + 600) { scartate++; continue; }
+    const k = avvio + ":" + sec;
+    if (avvio != null && sec != null) { if (visti.has(k)) continue; visti.add(k); }
+    s.misure.push([ora, numMisura(t, -40, 125), numMisura(u, 0, 100), Math.max(0, Math.min(65535, Math.round(+p || 0))), Math.max(0, Math.min(9, Math.round(+m || 0))), avvio ?? null, sec ?? null]);
+    nuove++;
+  }
+  s.misure = s.misure.filter((r) => r[0] >= da).sort((a, b) => a[0] - b[0]);
+  const st = body?.stato && typeof body.stato === "object" ? body.stato : {};
+  s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0 };
+  s.ultimo = adesso;
+  return { serie: s, nuove, scartate };
+}
+
+// Ultime ore: minima e massima (con l'ora), umidità media, minuti di pompa e di pompa ferma per il freddo
+export function riepilogoTorre(serie, adesso, ore = 24) {
+  const r = (serie?.misure || []).filter((x) => x[0] >= adesso - ore * 3600), t = r.filter((x) => x[1] != null), u = r.filter((x) => x[2] != null);
+  const min = t.reduce((a, x) => (!a || x[1] < a[1] ? x : a), null), max = t.reduce((a, x) => (!a || x[1] > a[1] ? x : a), null);
+  let freddo = 0; r.forEach((x, i) => { if (x[4] === 3) freddo += Math.min(30, i + 1 < r.length ? (r[i + 1][0] - x[0]) / 60 : 10); });
+  return { n: r.length, min: min?.[1] ?? null, minOra: min?.[0] ?? null, max: max?.[1] ?? null, maxOra: max?.[0] ?? null,
+    umidita: u.length ? Math.round(u.reduce((a, x) => a + x[2], 0) / u.length) : null, pompaMin: Math.round(r.reduce((a, x) => a + x[3], 0) / 60), freddoMin: Math.round(freddo), ultimo: serie?.ultimo || 0 };
+}
+
+// Avvisi della sera per Telegram (e per l'app): silenzio della torre, gelo e pioggia previsti dove si trova, freddo misurato
+export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome") {
+  const out = [], cfg = configTorre(torre?.config), oraIt = (s) => new Date(s * 1000).toLocaleString("it-IT", { timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const nv = (n, d = 1) => String(Math.round(n * 10 ** d) / 10 ** d).replace(".", ",");
+  if (serie?.ultimo && adesso - serie.ultimo > SILENZIO_ORE * 3600)
+    out.push({ tipo: "silenzio", testo: `📡 Nessuna notizia dalla torre da ${Math.round((adesso - serie.ultimo) / 3600)} ore (ultimo contatto ${oraIt(serie.ultimo)}): controlla corrente e Wi-Fi.` });
+  if (met && (torre?.posizione === "fuori" || torre?.posizione === "veranda")) {
+    const notte = Array.isArray(met.notte) && met.notte.length ? Math.min(...met.notte.map((x) => x.t)) : met.days?.find((d) => d.date === addDays(oggi, 1))?.tmin;
+    const soglia = torre.posizione === "veranda" ? 0 : cfg.freddo_stop + 1;
+    if (notte != null && notte <= soglia) out.push({ tipo: "gelo", testo: `🥶 Stanotte fino a ${nv(notte)} °C${torre.posizione === "veranda" ? " fuori (in veranda qualche grado in più)" : ""}: sotto ${nv(cfg.freddo_stop)} °C la pompa si ferma da sola.`
+      + (notte <= 0 ? " Rischio di ghiaccio nel serbatoio: porta dentro la torre o copri e isola il serbatoio." : " Copri il serbatoio.") });
+  }
+  if (met && torre?.posizione === "fuori") {
+    const dom = met.days?.find((d) => d.date === addDays(oggi, 1));
+    if (dom && (dom.rain || 0) >= 5) out.push({ tipo: "pioggia", testo: `🌧 Domani ${nv(dom.rain, 0)} mm di pioggia: copri il serbatoio, la pioggia diluisce i nutrienti e può farlo traboccare.` });
+  }
+  const r = riepilogoTorre(serie, adesso);
+  if (r.freddoMin >= 10) out.push({ tipo: "freddo", testo: `❄️ Nelle ultime 24 ore la pompa è rimasta ferma per il freddo circa ${r.freddoMin >= 90 ? Math.round(r.freddoMin / 60) + " ore" : r.freddoMin + " minuti"}${r.min != null ? ` (minima ${nv(r.min)} °C ${oraIt(r.minOra)})` : ""}.` });
+  return out;
+}
 
 /* ---------------- Acqua di tutta la vita ----------------
    Quanta acqua ha ricevuto una pianta da quando la segui (o dalla semina/trapianto, se è dopo): innaffiature segnate nel

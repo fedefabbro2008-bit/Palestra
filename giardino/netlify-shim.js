@@ -79,7 +79,7 @@ const emit=n=>(subs[n]||[]).forEach(f=>{ try{ f(snap(n)); }catch(e){ console.err
 function dalServer(){
   const d={...VUOTO,...(server?.data||{})};
   const ev=Array.isArray(d.eventi)?d.eventi:[];
-  docs.giardino={location:d.location,plants:d.plants||[],impostazioni:d.impostazioni||undefined,vacanza:d.vacanza,eventi_app:ev.filter(e=>e.fonte==='app'),orti:Array.isArray(d.orti)?d.orti:[],updatedAt:server?.updatedAt?new Date(server.updatedAt).toISOString():null};
+  docs.giardino={location:d.location,plants:d.plants||[],impostazioni:d.impostazioni||undefined,vacanza:d.vacanza,eventi_app:ev.filter(e=>e.fonte==='app'),orti:Array.isArray(d.orti)?d.orti:[],torre:d.torre||null,updatedAt:server?.updatedAt?new Date(server.updatedAt).toISOString():null};
   docs.meteo=d.meteo_manual||null;
   docs.piano=d.piano_claude||null;
   docs.eventi_bot={aggiornato:server?.updatedAt?new Date(server.updatedAt).toISOString():null,eventi:ev.filter(e=>e.fonte!=='app')};
@@ -189,7 +189,7 @@ function svuota(keepalive){
 }
 function diffGiardino(nuovo){
   const prima=base||docs.giardino||{}, changes={};
-  for(const f of ['location','impostazioni','vacanza','orti']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
+  for(const f of ['location','impostazioni','vacanza','orti','torre']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
   // piante: solo quelle aggiunte, cambiate o tolte, e l'ordine (prima l'intero elenco, che cancellava quelle aggiunte
   // da Claude o da un altro telefono mentre questo era senza rete)
   let piante=null;
@@ -308,6 +308,8 @@ window.GiardinoNet={
   // cambio di orto nell'app: il meteo di quell'orto (dalla copia sul telefono se c'è, poi aggiornato)
   cambiaOrto:()=>{ docs.meteo_bot=null; emit('meteo_bot'); return pronto().then(()=>caricaMeteo(false)).then(()=>emit('meteo_bot')).catch(()=>{}); },
   riconosci:immagine=>api('POST',{immagine},'riconosci'),
+  torre:giorni=>api('GET',null,'torre&giorni='+(giorni||8)),
+  torreAzione:action=>api('POST',{action},'torre'),
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
   async geocodifica(q){

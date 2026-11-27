@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="a2b788ffae19">
+<meta name="giardino-build" content="e74e2071809b">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -146,6 +146,25 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .lrow .li b{font-weight:700;font-size:.95rem}
 .lrow .li span{font-size:.84rem;color:var(--muted)}
 .lrow .btn{flex:none}
+/* torre idroponica */
+.torre{cursor:pointer;display:flex;flex-direction:column;gap:6px}
+.tr-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.tr-head .sub{white-space:nowrap}
+.tr-val{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.tr-val b{font-size:1.9rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tr-val .u{font-size:1.05rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.tr-graf{width:100%;height:auto;display:block}
+.tr-graf .gt{fill:none;stroke:var(--warn);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.tr-graf .gu{fill:none;stroke:var(--water);stroke-width:1.5;stroke-dasharray:4 3;opacity:.85}
+.tr-graf .gp{fill:var(--leaf);opacity:.55}
+.tr-graf .gf{stroke:var(--danger);stroke-width:1;stroke-dasharray:2 3}
+.tr-graf text{font-size:9px;fill:var(--muted);font-family:var(--font)}
+.tr-graf .gg{stroke:var(--line);stroke-width:1}
+.tr-leg{display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--muted)}
+.tr-leg span{display:inline-flex;align-items:center;gap:5px}
+.tr-leg i{display:block;width:14px;height:3px;border-radius:2px}
+#torrePos{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-flow:row}
+.tr-lt{background:var(--warn)} .tr-lu{background:var(--water)} .tr-lp{background:var(--leaf);height:8px!important;opacity:.6}
 /* acqua di tutta la vita: innaffiature (blu pieno) e pioggia (blu chiaro) su una barra lunga quanto il totale */
 .lrow.vita{align-items:flex-start}
 .vita .ri{padding-top:1px}
@@ -750,6 +769,8 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
 
     <div id="alerts" class="stack"></div>
 
+    <div class="card torre" id="torreBox" role="button" tabindex="0" aria-label="Torre idroponica: apri i dettagli" hidden></div>
+
     <div class="stack" id="todayBox">
       <div class="hero" id="heroBox"><div class="hnum" id="heroNum" aria-hidden="true">·</div><div class="htxt"><div class="eyebrow" id="todayDate"></div><h2 class="headline" id="todayHead">Oggi</h2><div class="sub" id="todaySub"></div></div></div>
       <div id="todayList" class="stack"></div>
@@ -1005,6 +1026,40 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
         <div class="stack" id="prompts"></div>
       </div>
     </details>
+    <details class="set" id="set-torre"><summary><span class="si">🌱</span><span class="st">Torre idroponica</span><span class="sv" id="torreChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="body">
+        <div class="sw-row"><label class="sw-t" for="torreOn"><b>Usa la torre</b><span>Spenta, l'app è come se la torre non ci fosse. La torre continua a lavorare da sola.</span></label><input type="checkbox" role="switch" class="sw" id="torreOn" aria-label="Usa la torre"></div>
+        <div class="stack" id="torreSet" hidden>
+          <div class="field"><label for="torreNome">Nome</label><input type="text" id="torreNome" maxlength="40"></div>
+          <div class="field"><span class="flabel" id="torrePosL">Dove si trova adesso</span>
+            <div class="seg tiles" role="radiogroup" aria-labelledby="torrePosL" id="torrePos">
+              <label><input type="radio" name="torrePos" value="fuori"><span class="ti" aria-hidden="true">🌦️</span>Fuori</label>
+              <label><input type="radio" name="torrePos" value="veranda"><span class="ti" aria-hidden="true">🪟</span>Veranda</label>
+              <label><input type="radio" name="torrePos" value="casa"><span class="ti" aria-hidden="true">🏠</span>In casa</label>
+            </div>
+            <span class="hint">Fuori: avvisi per gelo e pioggia previsti. Veranda: solo per il gelo forte. In casa: nessun avviso meteo.</span></div>
+          <div class="field" id="torreOrtoF" hidden><label for="torreOrto">Orto (per il meteo)</label><select id="torreOrto"></select></div>
+          <div class="field"><span class="flabel">Chiave per l'ESP32</span><div class="code" id="torreChiave"></div>
+            <div class="row"><button class="btn primary" type="button" id="torreCopia">Copia la chiave</button><button class="btn ghost" type="button" id="torreNuovaChiave">Nuova chiave</button></div>
+            <span class="hint">Nel programma dell'ESP32 incollala in <b>CHIAVE_TORRE</b> e ricaricalo. Con una chiave nuova quella vecchia non vale più.</span></div>
+          <div class="field"><span class="flabel">Pompa</span>
+            <div class="grid2"><div class="field"><label for="torreAccesa">Accesa per (minuti)</label><input type="text" inputmode="numeric" id="torreAccesa"></div></div>
+            <span class="hint">Pausa dopo ogni accensione, secondo la temperatura misurata dalla torre (minuti):</span>
+            <div class="grid2" id="torrePause"></div></div>
+          <div class="field"><span class="flabel">Freddo</span>
+            <div class="grid2"><div class="field"><label for="torreStop">Pompa ferma sotto (°C)</label><input type="text" inputmode="decimal" id="torreStop"></div>
+              <div class="field"><label for="torreRiparte">Riparte sopra (°C)</label><input type="text" inputmode="decimal" id="torreRiparte"></div></div>
+            <span class="hint">Se l'acqua gela la pompa si rompe: sotto questa temperatura la torre non la accende.</span></div>
+          <div class="field"><span class="flabel">Notte (pause più lunghe)</span>
+            <div class="grid2"><div class="field"><label for="torreNotteDa">Dalle (ora)</label><input type="text" inputmode="numeric" id="torreNotteDa"></div>
+              <div class="field"><label for="torreNotteA">Alle (ora)</label><input type="text" inputmode="numeric" id="torreNotteA"></div>
+              <div class="field"><label for="torreNotteX">Pausa × (volte)</label><input type="text" inputmode="decimal" id="torreNotteX"></div></div></div>
+          <div class="row"><button class="btn primary" type="button" id="torreSalva">Salva</button></div>
+          <span class="hint" id="torreRev"></span>
+          <div><button class="btn ghost danger" type="button" id="torreTogli">Togli la torre e le sue misure</button></div>
+        </div>
+      </div>
+    </details>
 
     <div class="set-gruppo">Sistema</div>
     <details class="set" id="set-sync"><summary><span class="si">🔄</span><span class="st">Sincronizzazione</span><span class="sv" id="syncChip"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></summary>
@@ -1093,6 +1148,18 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
   <div id="wxExtra" class="stack"></div>
   <div class="row"><button class="btn ghost" type="button" id="wxChiudi">Chiudi</button></div>
 </div>
+<div class="sheet-bg" id="torreBg" hidden></div>
+<div class="sheet card stack" id="torreSheet" role="dialog" aria-modal="true" aria-labelledby="torreTit" hidden>
+  <div><h2 id="torreTit">Torre idroponica</h2><p class="sub" id="torreSub"></p></div>
+  <div class="seg" role="radiogroup" aria-label="Periodo"><label class="on"><input type="radio" name="torreOre" value="24" checked>24 ore</label><label><input type="radio" name="torreOre" value="168">7 giorni</label></div>
+  <div id="torreGrafico"></div>
+  <div class="tr-leg"><span><i class="tr-lt"></i>temperatura</span><span><i class="tr-lu"></i>umidità</span><span><i class="tr-lp"></i>pompa</span></div>
+  <div class="wxd-grid" id="torreGrid"></div>
+  <div id="torreAvvisi" class="stack"></div>
+  <div class="row"><button class="btn" type="button" id="torrePompa">💧 Accendi la pompa 1 minuto</button></div>
+  <span class="hint" id="torrePompaH"></span>
+  <div class="row"><button class="btn ghost" type="button" id="torreChiudi">Chiudi</button></div>
+</div>
 <div id="sfondo" aria-hidden="true"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -1178,7 +1245,7 @@ const emit=n=>(subs[n]||[]).forEach(f=>{ try{ f(snap(n)); }catch(e){ console.err
 function dalServer(){
   const d={...VUOTO,...(server?.data||{})};
   const ev=Array.isArray(d.eventi)?d.eventi:[];
-  docs.giardino={location:d.location,plants:d.plants||[],impostazioni:d.impostazioni||undefined,vacanza:d.vacanza,eventi_app:ev.filter(e=>e.fonte==='app'),orti:Array.isArray(d.orti)?d.orti:[],updatedAt:server?.updatedAt?new Date(server.updatedAt).toISOString():null};
+  docs.giardino={location:d.location,plants:d.plants||[],impostazioni:d.impostazioni||undefined,vacanza:d.vacanza,eventi_app:ev.filter(e=>e.fonte==='app'),orti:Array.isArray(d.orti)?d.orti:[],torre:d.torre||null,updatedAt:server?.updatedAt?new Date(server.updatedAt).toISOString():null};
   docs.meteo=d.meteo_manual||null;
   docs.piano=d.piano_claude||null;
   docs.eventi_bot={aggiornato:server?.updatedAt?new Date(server.updatedAt).toISOString():null,eventi:ev.filter(e=>e.fonte!=='app')};
@@ -1288,7 +1355,7 @@ function svuota(keepalive){
 }
 function diffGiardino(nuovo){
   const prima=base||docs.giardino||{}, changes={};
-  for(const f of ['location','impostazioni','vacanza','orti']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
+  for(const f of ['location','impostazioni','vacanza','orti','torre']) if(JSON.stringify(nuovo[f]??null)!==JSON.stringify(prima[f]??null)) changes[f]=nuovo[f]??null;
   // piante: solo quelle aggiunte, cambiate o tolte, e l'ordine (prima l'intero elenco, che cancellava quelle aggiunte
   // da Claude o da un altro telefono mentre questo era senza rete)
   let piante=null;
@@ -1407,6 +1474,8 @@ window.GiardinoNet={
   // cambio di orto nell'app: il meteo di quell'orto (dalla copia sul telefono se c'è, poi aggiornato)
   cambiaOrto:()=>{ docs.meteo_bot=null; emit('meteo_bot'); return pronto().then(()=>caricaMeteo(false)).then(()=>emit('meteo_bot')).catch(()=>{}); },
   riconosci:immagine=>api('POST',{immagine},'riconosci'),
+  torre:giorni=>api('GET',null,'torre&giorni='+(giorni||8)),
+  torreAzione:action=>api('POST',{action},'torre'),
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
   async geocodifica(q){
@@ -2115,13 +2184,110 @@ function testoPrecisione(pr){
    controllo del sabato, la sera per le altre. Il bot gira ogni ora: la notifica parte al primo giro da quell'ora in poi, finché
    ha senso (il mattino fino alle 21, le altre fino alle 23, sempre almeno 3 ore); dopo si salta fino a domani. */
 const NOTIFICHE_MATTINO = ['mattina','verifica'];
-const NOTIFICHE_CON_ORA = ['mattina','sera','controllo','avvisi','verifica','riepilogo','backup','piano'];
+const NOTIFICHE_CON_ORA = ['mattina','sera','controllo','avvisi','verifica','riepilogo','backup','piano','torre'];
 function oraNotifica(imp, tipo){
   const o=imp?.orari?.[tipo]; if(Number.isInteger(o) && o>=0 && o<=23) return o;
   const m=NOTIFICHE_MATTINO.includes(tipo), d=Number(m?imp?.ora_mattina:imp?.ora_sera);
   return Number.isInteger(d) && d>=0 && d<=23 ? d : (m?7:19);
 }
 const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));
+
+/* ---------------- Torre idroponica (ESP32 + pompa + SHT40) ----------------
+   Nei dati dell'app: torre = { attiva, chiave, nome, posizione (fuori|veranda|casa), orto, config, rev, comando }.
+   Le misure stanno a parte sul server (s-<codice>). Qui le parti che usano sia l'app sia il server. */
+// impostazioni della pompa: gli stessi nomi del programma dell'ESP32
+const TORRE_DEF = { accesa_min: 15, soglie: [30, 27, 20, 12, 5], pause: [5, 10, 15, 25, 45, 60], freddo_stop: 2, freddo_riparte: 4,
+  notte_da: 22, notte_a: 6, notte_fattore: 2, umido_soglia: 92, umido_fattore: 1.5, pausa_max: 120, misura_ogni_min: 10, wifi_ogni_min: 15, wifi_max_min: 60 };
+const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale"];
+const POSIZIONI_TORRE = ["fuori", "veranda", "casa"];
+const GIORNI_TORRE = 31;          // misure tenute sul server
+const SILENZIO_ORE = 26;          // il modem è spento di notte e la mattina: oltre, la torre ha un problema
+
+const numTorre = (v, lo, hi, d) => { const n = +v; return v != null && v !== "" && isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+function configTorre(c = {}) {
+  const d = TORRE_DEF, o = {};
+  o.accesa_min = Math.round(numTorre(c.accesa_min, 1, 60, d.accesa_min));
+  o.soglie = d.soglie.map((x, i) => numTorre(c.soglie?.[i], -10, 45, x));
+  o.pause = d.pause.map((x, i) => Math.round(numTorre(c.pause?.[i], 1, 240, x)));
+  o.freddo_stop = numTorre(c.freddo_stop, 0, 10, d.freddo_stop);
+  o.freddo_riparte = Math.max(o.freddo_stop + 1, numTorre(c.freddo_riparte, 1, 15, d.freddo_riparte));
+  o.notte_da = Math.round(numTorre(c.notte_da, 0, 23, d.notte_da));
+  o.notte_a = Math.round(numTorre(c.notte_a, 0, 23, d.notte_a));
+  o.notte_fattore = numTorre(c.notte_fattore, 1, 4, d.notte_fattore);
+  o.umido_soglia = numTorre(c.umido_soglia, 50, 100, d.umido_soglia);
+  o.umido_fattore = numTorre(c.umido_fattore, 1, 3, d.umido_fattore);
+  o.pausa_max = Math.round(numTorre(c.pausa_max, 10, 360, d.pausa_max));
+  o.misura_ogni_min = Math.round(numTorre(c.misura_ogni_min, 5, 60, d.misura_ogni_min));
+  o.wifi_ogni_min = Math.round(numTorre(c.wifi_ogni_min, 5, 120, d.wifi_ogni_min));
+  o.wifi_max_min = Math.round(numTorre(c.wifi_max_min, 15, 240, d.wifi_max_min));
+  return o;
+}
+const nuovaTorre = (chiave) => ({ attiva: true, chiave, nome: "Torre idroponica", posizione: "fuori", orto: "p", config: configTorre(), rev: 1, creata: new Date().toISOString() });
+// la torre che arriva dall'app: la chiave la decide solo il server, le impostazioni si controllano
+function torreDallApp(nuova, vecchia) {
+  if (!vecchia || !nuova || typeof nuova !== "object") return vecchia || null;
+  const c = nuova.comando, rev = Math.max(+vecchia.rev || 1, Math.round(+nuova.rev || 0));
+  return { ...vecchia, attiva: nuova.attiva !== false, nome: String(nuova.nome || vecchia.nome || "Torre idroponica").slice(0, 40),
+    posizione: POSIZIONI_TORRE.includes(nuova.posizione) ? nuova.posizione : vecchia.posizione || "fuori", orto: typeof nuova.orto === "string" ? nuova.orto.slice(0, 20) : vecchia.orto || "p",
+    config: configTorre(nuova.config || vecchia.config), rev,
+    comando: c && typeof c === "object" && c.id && +c.pompa_s > 0 ? { id: String(c.id).slice(0, 20), pompa_s: Math.min(600, Math.round(+c.pompa_s)), at: String(c.at || new Date().toISOString()).slice(0, 30) } : null };
+}
+
+const serieVuota = () => ({ misure: [], stato: null, ultimo: 0, fatti: [] });
+const numMisura = (v, lo, hi) => (v == null || v === "" || !isFinite(+v) || +v < lo || +v > hi ? null : Math.round(+v * 100) / 100);
+// Misure dall'ESP32: [ora|null, t, u, secondi di pompa, modo, avvio, secondi dall'avvio]. Quelle senza ora ma della stessa
+// accensione si datano con l'orologio del server (così servono anche quando l'ESP32 non ha mai visto internet);
+// quelle di accensioni passate senza ora si scartano. Doppioni (invio ripetuto dopo una risposta persa) tolti.
+function unisciMisure(serie, body, adesso) {
+  const s = { ...serieVuota(), ...(serie || {}) }, visti = new Set(s.misure.map((r) => r[5] + ":" + r[6])), da = adesso - GIORNI_TORRE * 86400;
+  s.misure = [...s.misure]; let nuove = 0, scartate = 0;
+  for (const x of Array.isArray(body?.misure) ? body.misure.slice(0, 500) : []) {
+    if (!Array.isArray(x)) { scartate++; continue; }
+    let [ora, t, u, p, m, avvio, sec] = x;
+    if (!(+ora > 0) && avvio != null && avvio === body.avvio && +sec >= 0 && +body.sec >= +sec) ora = adesso - (+body.sec - +sec);
+    ora = Math.round(+ora);
+    if (!(ora >= da) || ora > adesso + 600) { scartate++; continue; }
+    const k = avvio + ":" + sec;
+    if (avvio != null && sec != null) { if (visti.has(k)) continue; visti.add(k); }
+    s.misure.push([ora, numMisura(t, -40, 125), numMisura(u, 0, 100), Math.max(0, Math.min(65535, Math.round(+p || 0))), Math.max(0, Math.min(9, Math.round(+m || 0))), avvio ?? null, sec ?? null]);
+    nuove++;
+  }
+  s.misure = s.misure.filter((r) => r[0] >= da).sort((a, b) => a[0] - b[0]);
+  const st = body?.stato && typeof body.stato === "object" ? body.stato : {};
+  s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0 };
+  s.ultimo = adesso;
+  return { serie: s, nuove, scartate };
+}
+
+// Ultime ore: minima e massima (con l'ora), umidità media, minuti di pompa e di pompa ferma per il freddo
+function riepilogoTorre(serie, adesso, ore = 24) {
+  const r = (serie?.misure || []).filter((x) => x[0] >= adesso - ore * 3600), t = r.filter((x) => x[1] != null), u = r.filter((x) => x[2] != null);
+  const min = t.reduce((a, x) => (!a || x[1] < a[1] ? x : a), null), max = t.reduce((a, x) => (!a || x[1] > a[1] ? x : a), null);
+  let freddo = 0; r.forEach((x, i) => { if (x[4] === 3) freddo += Math.min(30, i + 1 < r.length ? (r[i + 1][0] - x[0]) / 60 : 10); });
+  return { n: r.length, min: min?.[1] ?? null, minOra: min?.[0] ?? null, max: max?.[1] ?? null, maxOra: max?.[0] ?? null,
+    umidita: u.length ? Math.round(u.reduce((a, x) => a + x[2], 0) / u.length) : null, pompaMin: Math.round(r.reduce((a, x) => a + x[3], 0) / 60), freddoMin: Math.round(freddo), ultimo: serie?.ultimo || 0 };
+}
+
+// Avvisi della sera per Telegram (e per l'app): silenzio della torre, gelo e pioggia previsti dove si trova, freddo misurato
+function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome") {
+  const out = [], cfg = configTorre(torre?.config), oraIt = (s) => new Date(s * 1000).toLocaleString("it-IT", { timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const nv = (n, d = 1) => String(Math.round(n * 10 ** d) / 10 ** d).replace(".", ",");
+  if (serie?.ultimo && adesso - serie.ultimo > SILENZIO_ORE * 3600)
+    out.push({ tipo: "silenzio", testo: `📡 Nessuna notizia dalla torre da ${Math.round((adesso - serie.ultimo) / 3600)} ore (ultimo contatto ${oraIt(serie.ultimo)}): controlla corrente e Wi-Fi.` });
+  if (met && (torre?.posizione === "fuori" || torre?.posizione === "veranda")) {
+    const notte = Array.isArray(met.notte) && met.notte.length ? Math.min(...met.notte.map((x) => x.t)) : met.days?.find((d) => d.date === addDays(oggi, 1))?.tmin;
+    const soglia = torre.posizione === "veranda" ? 0 : cfg.freddo_stop + 1;
+    if (notte != null && notte <= soglia) out.push({ tipo: "gelo", testo: `🥶 Stanotte fino a ${nv(notte)} °C${torre.posizione === "veranda" ? " fuori (in veranda qualche grado in più)" : ""}: sotto ${nv(cfg.freddo_stop)} °C la pompa si ferma da sola.`
+      + (notte <= 0 ? " Rischio di ghiaccio nel serbatoio: porta dentro la torre o copri e isola il serbatoio." : " Copri il serbatoio.") });
+  }
+  if (met && torre?.posizione === "fuori") {
+    const dom = met.days?.find((d) => d.date === addDays(oggi, 1));
+    if (dom && (dom.rain || 0) >= 5) out.push({ tipo: "pioggia", testo: `🌧 Domani ${nv(dom.rain, 0)} mm di pioggia: copri il serbatoio, la pioggia diluisce i nutrienti e può farlo traboccare.` });
+  }
+  const r = riepilogoTorre(serie, adesso);
+  if (r.freddoMin >= 10) out.push({ tipo: "freddo", testo: `❄️ Nelle ultime 24 ore la pompa è rimasta ferma per il freddo circa ${r.freddoMin >= 90 ? Math.round(r.freddoMin / 60) + " ore" : r.freddoMin + " minuti"}${r.min != null ? ` (minima ${nv(r.min)} °C ${oraIt(r.minOra)})` : ""}.` });
+  return out;
+}
 
 /* ---------------- Acqua di tutta la vita ----------------
    Quanta acqua ha ricevuto una pianta da quando la segui (o dalla semina/trapianto, se è dopo): innaffiature segnate nel
@@ -3077,7 +3243,7 @@ function applyMain(d){
   if(!ids.has(ORTO)) ORTO='p';
   const tutte=Array.isArray(d.plants)?d.plants:[], mia=p=>(p.orto&&ids.has(p.orto)?p.orto:'p')===ORTO;
   ALTRI={location:d.location||null, orti:elenco, plants:tutte.filter(p=>!mia(p)), ordine:tutte.map(p=>p.id)};
-  S={location:ORTO==='p'?(d.location||null):(elenco.find(o=>o.id===ORTO)?.location||null), plants:tutte.filter(mia), impostazioni:{...IMP_DEF,...(d.impostazioni||{})}, vacanza:d.vacanza||null, eventi_app:Array.isArray(d.eventi_app)?d.eventi_app:[]};
+  S={location:ORTO==='p'?(d.location||null):(elenco.find(o=>o.id===ORTO)?.location||null), plants:tutte.filter(mia), impostazioni:{...IMP_DEF,...(d.impostazioni||{})}, vacanza:d.vacanza||null, eventi_app:Array.isArray(d.eventi_app)?d.eventi_app:[], torre:d.torre||null};
   return d;
 }
 async function boot(){
@@ -3341,7 +3507,7 @@ function taskCard({p,g,st,pp}){
   return `<div class="task"><div class="task-top"><span class="ic ${inn?'water':'check'}" aria-hidden="true">${esc(icoDi(p))}</span><div class="info"><div class="name">${esc(p.nome)}</div><div class="what">${esc(what)}</div>${np}${livello(pp)}</div>${inn?`<div class="amt">${esc(fmtL(g.litri))}</div>`:''}</div>${acts}</div>`;
 }
 function renderOggi(AP){
-  renderWeather(); renderAlerts(AP);
+  renderWeather(); renderAlerts(AP); renderTorre(); caricaTorre();
   const t=today(), head=$('#todayHead'), sub=$('#todaySub'), list=$('#todayList');
   $('#todayDate').textContent=new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'});
   $('#todayBox').hidden=ready && !S.plants.length;
@@ -3749,6 +3915,7 @@ function renderSync(){
   $('#syncChip').textContent=t?'alle '+new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}):'';
 }
 function renderImpostazioni(){
+  renderTorreSet();
   const l=S.location, tanti=elencoOrti().length>1;
   $('#locVal').textContent=l?(tanti?nomeOrto(ortoCorrente())+' · ':'')+l.name:'da impostare';
   if(document.activeElement!==$('#ortoNome')) $('#ortoNome').value=ortoCorrente()?.nome||'';
@@ -3768,11 +3935,13 @@ const NOTIF=[
   ['verifica','Controllo del sabato',()=>"Una pianta da toccare con il dito: così l'app impara quanto beve"],
   ['riepilogo','Riepilogo della domenica',()=>'Acqua data e piante della settimana'],
   ['backup','Backup mensile',()=>'Il file con tutti i dati, una volta al mese'],
-  ['piano','Fine del piano di Claude',()=>'Quando il piano salvato da Claude sta per finire']];
+  ['piano','Fine del piano di Claude',()=>'Quando il piano salvato da Claude sta per finire'],
+  ['torre','Torre idroponica',()=>'Gelo e pioggia previsti dove si trova, freddo misurato, torre che non si fa sentire']];
+const notifVisibili=()=>NOTIF.filter(([k])=>k!=='torre'||torreOn());
 const notAttiva=k=>S.impostazioni.notifiche?.[k]!==false;
 function chipNotifiche(){
-  const n=NOTIF.filter(([k])=>notAttiva(k)).length, h=$('#notHint');
-  $('#notVal').textContent=n===NOTIF.length?'tutte':n?n+' su '+NOTIF.length:'nessuna';
+  const V=notifVisibili(), n=V.filter(([k])=>notAttiva(k)).length, h=$('#notHint');
+  $('#notVal').textContent=n===V.length?'tutte':n?n+' su '+V.length:'nessuna';
   const cp=$('#set-not .campana'); if(cp) cp.textContent=n?'🔔':'🔕';
   const t=!n?'Nessuna notifica: il bot risponde solo ai tuoi comandi.':!notAttiva('mattina')&&(notAttiva('sera')||notAttiva('controllo'))?'Senza il piano del mattino, la sera ti scrive lo stesso le piante '+(notAttiva('sera')&&notAttiva('controllo')?'da innaffiare o da controllare':notAttiva('sera')?'da innaffiare':'da controllare')+' ancora senza risposta.':'';
   h.textContent=t; h.hidden=!t;
@@ -3785,8 +3954,152 @@ function selettoreOra(k, t){
 }
 function renderNotifiche(){
   const i=S.impostazioni;
-  setHTML($('#notList'),NOTIF.map(([k,t,d])=>`<div class="sw-row"><label class="sw-t" for="not-${k}"><b>${t}</b><span>${esc(d(i))}</span></label>${NOTIFICHE_CON_ORA.includes(k)?selettoreOra(k,t):''}<input type="checkbox" role="switch" class="sw" id="not-${k}" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></div>`).join(''));
+  setHTML($('#notList'),notifVisibili().map(([k,t,d])=>`<div class="sw-row"><label class="sw-t" for="not-${k}"><b>${t}</b><span>${esc(d(i))}</span></label>${NOTIFICHE_CON_ORA.includes(k)?selettoreOra(k,t):''}<input type="checkbox" role="switch" class="sw" id="not-${k}" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></div>`).join(''));
   chipNotifiche();
+}
+/* ================= Torre idroponica =================
+   L'ESP32 manda le misure al sito quando trova il Wi-Fi; l'app le chiede solo con la torre attiva (al più ogni 5 minuti)
+   e tiene l'ultima copia sul telefono. Spenta (o mai attivata), l'app è come se la torre non ci fosse. */
+const torreOn=()=>!!(S.torre&&S.torre.attiva!==false);
+let TORRE=(()=>{ try{ return JSON.parse(localStorage.getItem('giardino:torre')||'null'); }catch(e){ return null; } })();
+let torreChiesta=0, torreOre=24;
+function caricaTorre(forza){
+  const N=window.GiardinoNet; if(!torreOn()||!N?.torre||!ready) return;
+  if(!forza&&Date.now()-torreChiesta<5*60e3) return; torreChiesta=Date.now();
+  N.torre(8).then(x=>{ TORRE={...x, at:Date.now()}; try{ localStorage.setItem('giardino:torre',JSON.stringify(TORRE)); }catch(e){}
+    renderTorre(); if(!$('#torreSheet').hidden) renderTorreSheet(); }).catch(()=>{});
+}
+const POS_TORRE={fuori:'fuori',veranda:'in veranda',casa:'in casa'};
+function quandoTorre(s){
+  if(!s) return 'mai';
+  const d=Date.now()/1000-s; if(d<90) return 'adesso'; if(d<3600) return Math.round(d/60)+' min fa'; if(d<6*3600) return Math.round(d/3600)+' h fa';
+  const x=new Date(s*1000), hh=String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0'), g=isoDate(x);
+  return g===today()?'oggi alle '+hh:g===addDays(today(),-1)?'ieri alle '+hh:dataBreve(g)+' alle '+hh;
+}
+// meteo per gli avvisi della torre: quello dell'orto dove si trova (se è quello aperto, l'unico che l'app ha in mano)
+const meteoTorre=()=>{ const w=activeWeather(); return (S.torre?.orto||'p')===ORTO&&w?{notte:w.notte||null, days:wxDays()}:null; };
+// grafico: temperatura (linea), umidità (tratteggio, scala 0-100) e pompa (barre in basso); linea rossa al freddo che ferma la pompa
+function graficoTorre(righe, ore, {w=320, h=150, assi=true}={}){
+  const fine=Date.now()/1000, inizio=fine-ore*3600, r=righe.filter(x=>x[0]>=inizio);
+  if(!r.length) return '<div class="empty">Ancora nessuna misura in questo periodo.</div>';
+  const T=r.filter(x=>x[1]!=null).map(x=>x[1]), stop=configTorre(S.torre?.config).freddo_stop;
+  let lo=Math.min(...T, stop+2), hi=Math.max(...T, stop+6); if(hi-lo<6){ const m=(hi+lo)/2; lo=m-3; hi=m+3; }
+  lo=Math.floor(lo-1); hi=Math.ceil(hi+1);
+  const L=assi?22:2, R=w-4, top=6, bas=h-(assi?28:6), pb=assi?14:0;
+  const X=t=>L+(t-inizio)/(fine-inizio)*(R-L), Yt=v=>top+(hi-v)/(hi-lo)*(bas-top), Yu=v=>top+(100-v)/100*(bas-top);
+  const linea=(i,Y)=>{ let d='', prima=null; for(const x of r){ if(x[i]==null){ prima=null; continue; } const salto=prima&&x[0]-prima>45*60; d+=(prima&&!salto?'L':'M')+X(x[0]).toFixed(1)+' '+Y(x[i]).toFixed(1); prima=x[0]; } return d; };
+  let svg=`<svg class="tr-graf" viewBox="0 0 ${w} ${h}" role="img" aria-label="Temperatura e umidità della torre, ultime ${ore===24?'24 ore':'7 giorni'}">`;
+  if(assi){ for(const v of [lo,(lo+hi)/2,hi]){ const y=Yt(v); svg+=`<line class="gg" x1="${L}" x2="${R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text x="0" y="${(y+3).toFixed(1)}">${fmt(v,0)}°</text>`; }
+    const passo=ore<=24?6*3600:86400; for(let t=Math.ceil(inizio/passo)*passo; t<fine; t+=passo){ const x=X(t), d=new Date(t*1000);
+      svg+=`<text x="${(x-8).toFixed(1)}" y="${h-2}">${ore<=24?String(d.getHours()).padStart(2,'0')+':00':d.toLocaleDateString('it-IT',{weekday:'short'})}</text>`; } }
+  if(stop>lo&&stop<hi){ const y=Yt(stop); svg+=`<line class="gf" x1="${L}" x2="${R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }
+  // pompa: minuti accesa per ogni ora (24 ore) o ogni 4 ore (7 giorni), in proporzione al tempo
+  if(pb){ const base=h-16, B=(ore<=24?1:4)*3600, gruppi=new Map();
+    for(const x of r) if(x[3]>0){ const k=Math.floor(x[0]/B)*B; gruppi.set(k,(gruppi.get(k)||0)+x[3]); }
+    for(const [k,sec] of gruppi){ const x0=X(Math.max(inizio,k)), x1=X(Math.min(fine,k+B)), hh=Math.max(1.5,Math.min(1,sec/B)*pb);
+      svg+=`<rect class="gp" x="${(x0+.5).toFixed(1)}" y="${(base-hh).toFixed(1)}" width="${Math.max(1,x1-x0-1).toFixed(1)}" height="${hh.toFixed(1)}" rx="1"/>`; } }
+  if(assi) svg+=`<path class="gu" d="${linea(2,Yu)}"/>`;
+  svg+=`<path class="gt" d="${linea(1,Yt)}"/></svg>`;
+  return svg;
+}
+function datiTorre(){ const m=TORRE?.misure||[], st=TORRE?.stato||null, ultima=[...m].reverse().find(r=>r[1]!=null);
+  return {m, st, ult:TORRE?.ultimo||0, t:st?.t??ultima?.[1]??null, u:st?.u??ultima?.[2]??null}; }
+function renderTorre(){
+  const box=$('#torreBox'); if(!box) return;
+  box.hidden=!torreOn();
+  if(box.hidden){ if(!$('#torreSheet').hidden) chiudiFinestra($('#torreSheet'),$('#torreBg')); return; }
+  const tr=S.torre, {m, st, ult, t, u}=datiTorre();
+  let h=`<div class="tr-head"><span class="eyebrow">🌱 ${esc(tr.nome||'Torre idroponica')} · ${esc(POS_TORRE[tr.posizione]||'')}</span><span class="sub">${esc(ult?quandoTorre(ult):'')}</span></div>`;
+  if(!ult) h+=`<div class="sub">In attesa della torre: copia la chiave da Impostazioni → Torre idroponica nel programma dell'ESP32. I dati arrivano quando trova il Wi-Fi.</div>`;
+  else {
+    const freddo=/freddo/.test(st?.modo||'');
+    h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}</span><span class="pill ${freddo?'':'water'}">${esc(freddo?'pompa ferma per il freddo':st?.pompa?'pompa accesa':'pompa in pausa')}</span></div>`;
+    h+=graficoTorre(m,24,{w:320,h:46,assi:false});
+  }
+  const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000);
+  if(avv.length) h+=avv.map(a=>`<div class="sub">${esc(a.testo)}</div>`).join('');
+  setHTML(box,h);
+}
+function renderTorreSheet(){
+  const tr=S.torre; if(!tr) return;
+  const {m, st, ult, t, u}=datiTorre(), r=riepilogoTorre({misure:m, ultimo:ult}, Date.now()/1000, torreOre);
+  $('#torreTit').textContent=tr.nome||'Torre idroponica';
+  $('#torreSub').textContent=(POS_TORRE[tr.posizione]?POS_TORRE[tr.posizione][0].toUpperCase()+POS_TORRE[tr.posizione].slice(1):'')+' · ultimo contatto '+quandoTorre(ult)+(st?.modo?' · '+st.modo:'');
+  setHTML($('#torreGrafico'),graficoTorre(m,torreOre));
+  const c=(et,v,nota)=>`<div class="wxd-c"><span class="eyebrow">${esc(et)}</span><b>${v}</b>${nota?`<small>${esc(nota)}</small>`:''}</div>`;
+  const oraDi=s=>s?new Date(s*1000).toLocaleString('it-IT',{weekday:'short',hour:'2-digit',minute:'2-digit'}):'';
+  setHTML($('#torreGrid'),[
+    c('Adesso',t!=null?fmt(t,1)+'°':'–',u!=null?fmt(u,0)+' % umidità':''),
+    c('Minima',r.min!=null?fmt(r.min,1)+'°':'–',oraDi(r.minOra)),
+    c('Massima',r.max!=null?fmt(r.max,1)+'°':'–',oraDi(r.maxOra)),
+    c('Umidità media',r.umidita!=null?r.umidita+' %':'–'),
+    c('Pompa',r.pompaMin+' min',torreOre===24?'nelle ultime 24 ore':'negli ultimi 7 giorni'),
+    c('Ferma per freddo',r.freddoMin?(r.freddoMin>=90?fmt(r.freddoMin/60,1)+' h':r.freddoMin+' min'):'mai')].join(''));
+  const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000);
+  setHTML($('#torreAvvisi'),avv.map(a=>`<div class="alert ${a.tipo==='pioggia'?'info':''}">${a.tipo==='pioggia'?ICON.info:ICON.warn}<div>${esc(a.testo)}</div></div>`).join(''));
+  const c2=tr.comando, attesa=c2&&Date.parse(c2.at)>Date.now()-2*3600e3;
+  $('#torrePompa').disabled=!!attesa;
+  $('#torrePompaH').textContent=attesa?'Accensione chiesta '+quandoTorre(Date.parse(c2.at)/1000)+': arriva alla torre quando trova il Wi-Fi (vale 2 ore).'
+    :'L\'accensione arriva alla torre quando trova il Wi-Fi. Con il freddo resta ferma.';
+}
+function apriTorre(){ renderTorreSheet(); apriFinestra($('#torreSheet'),$('#torreBg')); caricaTorre(); $('#torreChiudi').focus({preventScroll:true}); }
+function chiudiTorre(){ chiudiFinestra($('#torreSheet'),$('#torreBg')); }
+// Impostazioni → Torre idroponica
+const FASCE_TORRE=c=>{ const s=c.soglie; return ['sopra '+fmt(s[0],0)+' °C', fmt(s[1],0)+'–'+fmt(s[0],0)+' °C', fmt(s[2],0)+'–'+fmt(s[1],0)+' °C', fmt(s[3],0)+'–'+fmt(s[2],0)+' °C', fmt(s[4],0)+'–'+fmt(s[3],0)+' °C', fmt(c.freddo_stop,0)+'–'+fmt(s[4],0)+' °C']; };
+function renderTorreSet(){
+  const on=torreOn(), tr=S.torre;
+  $('#torreOn').checked=on; $('#torreChip').textContent=on?'attiva':tr?'spenta':'';
+  $('#torreSet').hidden=!on; if(!on) return;
+  const c=configTorre(tr.config);
+  setVal($('#torreNome'),tr.nome||'');
+  document.querySelectorAll('#torrePos input').forEach(x=>{ x.checked=x.value===tr.posizione; x.closest('label').classList.toggle('on',x.checked); });
+  const orti=elencoOrti(); $('#torreOrtoF').hidden=orti.length<2;
+  if(orti.length>1 && document.activeElement!==$('#torreOrto')) setHTML($('#torreOrto'),orti.map(o=>`<option value="${esc(o.id)}"${o.id===(tr.orto||'p')?' selected':''}>${esc(nomeOrto(o))}</option>`).join(''));
+  $('#torreChiave').textContent=tr.chiave||'';
+  setVal($('#torreAccesa'),c.accesa_min);
+  const pz=$('#torrePause'); if(!pz.contains(document.activeElement)) setHTML(pz,FASCE_TORRE(c).map((f,i)=>`<div class="field"><label for="torreP${i}">${esc(f)}</label><input type="text" inputmode="numeric" id="torreP${i}" value="${c.pause[i]}"></div>`).join(''));
+  setVal($('#torreStop'),numIn(c.freddo_stop)); setVal($('#torreRiparte'),numIn(c.freddo_riparte));
+  setVal($('#torreNotteDa'),c.notte_da); setVal($('#torreNotteA'),c.notte_a); setVal($('#torreNotteX'),numIn(c.notte_fattore));
+  const st=TORRE?.stato;
+  $('#torreRev').textContent=!TORRE?.ultimo?'La torre non si è ancora collegata.':st?.rev===tr.rev?'La torre ha le impostazioni di adesso.':'Impostazioni nuove in attesa: arrivano alla torre quando trova il Wi-Fi.';
+}
+async function torreAzione(action){
+  const N=window.GiardinoNet; await N.torreAzione(action); await N.aggiorna(false); renderAll();
+}
+function wireTorre(){
+  const box=$('#torreBox');
+  box.addEventListener('click',apriTorre);
+  box.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); apriTorre(); } });
+  $('#torreChiudi').addEventListener('click',chiudiTorre); $('#torreBg').addEventListener('click',chiudiTorre);
+  document.querySelectorAll('#torreSheet input[name=torreOre]').forEach(x=>x.addEventListener('change',()=>{ torreOre=+x.value;
+    document.querySelectorAll('#torreSheet .seg label').forEach(l=>l.classList.toggle('on',!!l.querySelector('input:checked'))); renderTorreSheet(); }));
+  $('#torrePompa').addEventListener('click',()=>{ if(!S.torre) return;
+    S.torre={...S.torre, comando:{id:uid(), pompa_s:60, at:new Date().toISOString()}}; saveMain(); renderTorreSheet(); toast('Pompa: arriva alla torre quando trova il Wi-Fi'); });
+  $('#torreOn').addEventListener('change',async e=>{
+    const x=e.target;
+    if(!x.checked){ if(S.torre){ S.torre={...S.torre, attiva:false}; saveMain(); } renderAll(); toast('Torre spenta: nell\'app non compare più'); return; }
+    if(S.torre){ S.torre={...S.torre, attiva:true}; saveMain(); renderAll(); caricaTorre(true); toast('Torre attiva'); return; }
+    x.disabled=true;   // la prima volta la chiave la crea il server
+    try{ await torreAzione('chiave'); caricaTorre(true); toast('Torre attiva: copia la chiave nel programma dell\'ESP32'); }
+    catch(err){ x.checked=false; toast(err?.offline?'Serve la rete per creare la chiave':'Non riuscito: '+(err?.message||err)); }
+    finally{ x.disabled=false; }
+  });
+  document.querySelectorAll('#torrePos input').forEach(x=>x.addEventListener('change',()=>document.querySelectorAll('#torrePos label').forEach(l=>l.classList.toggle('on',!!l.querySelector('input:checked')))));
+  $('#torreCopia').addEventListener('click',async()=>toast(await copyText(S.torre?.chiave||'',$('#torreChiave'))?'Chiave copiata':'Seleziona e copia a mano'));
+  $('#torreNuovaChiave').addEventListener('click',async()=>{ if(!confirm('Creare una chiave nuova? Quella di adesso smette di funzionare: dovrai rimetterla nel programma dell\'ESP32.')) return;
+    try{ await torreAzione('chiave'); toast('Chiave nuova: rimettila nel programma dell\'ESP32'); }catch(err){ toast(err?.offline?'Serve la rete':'Non riuscito: '+(err?.message||err)); } });
+  $('#torreTogli').addEventListener('click',async()=>{ if(!confirm('Togliere la torre e tutte le sue misure? La chiave smette di funzionare.')) return;
+    try{ await torreAzione('togli'); TORRE=null; try{ localStorage.removeItem('giardino:torre'); }catch(e){} renderAll(); toast('Torre tolta'); }catch(err){ toast(err?.offline?'Serve la rete':'Non riuscito: '+(err?.message||err)); } });
+  $('#torreSalva').addEventListener('click',()=>{
+    if(!S.torre) return;
+    const c=configTorre(S.torre.config), n=id=>numOrNull($(id).value), pos=document.querySelector('#torrePos input:checked')?.value||S.torre.posizione;
+    const nuova=configTorre({...c, accesa_min:n('#torreAccesa'), pause:c.pause.map((p,i)=>n('#torreP'+i)??p), freddo_stop:n('#torreStop'), freddo_riparte:n('#torreRiparte'),
+      notte_da:n('#torreNotteDa'), notte_a:n('#torreNotteA'), notte_fattore:n('#torreNotteX')});
+    const cambiata=JSON.stringify(nuova)!==JSON.stringify(c);
+    S.torre={...S.torre, nome:$('#torreNome').value.trim().slice(0,40)||'Torre idroponica', posizione:pos, orto:$('#torreOrtoF').hidden?(S.torre.orto||'p'):$('#torreOrto').value, config:nuova, rev:(S.torre.rev||1)+(cambiata?1:0)};
+    document.querySelectorAll('#torreSet input').forEach(x=>{ x.blur(); x._last=undefined; });
+    saveMain(); renderAll(); toast(cambiata?'Salvato: arriva alla torre quando trova il Wi-Fi':'Salvato');
+  });
 }
 const EV_LABEL={fatto:['💧','innaffiata'],secco:['🏜','era secca, innaffiata'],umido:['💦','era ancora umida'],saltato:['⏭','saltata'],concime:['🌱','concimata'],diagnosi:['📷','valutata da foto'],raccolto:['🧺','raccolta'],meno:['➖','meno acqua (diagnosi)'],piu:['➕','più acqua (diagnosi)'],verifica:['🔍','controllo con il dito'],pioggia:['🌧','presa la pioggia']};
 const FONTE_LABEL={app:'app',telegram:'Telegram',presunto:'data per fatta',claude:'Claude',siri:'Siri'};
@@ -4717,7 +5030,7 @@ function wireNetlify(){
 // il badge di Netlify arriva dopo il caricamento: quando c'è, l'app gli lascia lo spazio in cima
 function badgeNetlify(){ document.documentElement.classList.toggle('con-badge', !!document.getElementById('nl-badge-frame')); }
 new MutationObserver(badgeNetlify).observe(document.body,{childList:true}); badgeNetlify();
-wire(); wireNetlify(); boot();
+wire(); wireTorre(); wireNetlify(); boot();
 </script>
 
 </body>

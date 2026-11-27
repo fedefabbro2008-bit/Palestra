@@ -5,6 +5,8 @@
 //   r-<chiave>    { code }                   dalla chiave del connettore al codice
 //   t-<codice>    { token, secret, chat_id, username, tz, ultimo_invio, ultimo_avviso_sera, notificati }   bot Telegram
 //   w-<segreto>   { code }                   dal webhook di Telegram al codice
+//   k-<chiave>    { code }                   dalla chiave della torre idroponica al codice
+//   s-<codice>    { misure, stato, ultimo }  misure della torre idroponica (31 giorni), fuori dai dati dell'app
 import { getStore } from "@netlify/blobs";
 import { gzipSync } from "node:zlib";
 import * as M from "./modello.mjs";
@@ -37,11 +39,11 @@ export const siteUrl = (req) => (globalThis.Netlify?.env?.get("URL")) || new URL
 export const IMP_DEF = { bicchiere: 0.25, annaffiatoio: 5, ora_mattina: 7, ora_sera: 19 };
 // Notifiche Telegram che si spengono dall'app (Impostazioni → Notifiche): impostazioni.notifiche = { tipo: false }, accese se
 // mancano. Le risposte ai comandi (/oggi, pulsanti) arrivano sempre, e così il messaggio di riserva da GitHub (sito fermo).
-export const NOTIFICHE = ["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano"];
+export const NOTIFICHE = ["mattina", "sera", "controllo", "avvisi", "verifica", "riepilogo", "backup", "piano", "torre"];
 export const notifica = (imp, tipo) => imp?.notifiche?.[tipo] !== false;
 export const vuoto = () => ({ location: null, plants: [], impostazioni: { ...IMP_DEF }, vacanza: null, eventi: [], piano_claude: null, meteo_manual: null, orti: [] });
 // campi che l'app può scrivere (pioggia_misurata e pioggia_orti li scrive solo il bot)
-export const CAMPI = ["location", "plants", "impostazioni", "vacanza", "meteo_manual", "piano_claude", "orti"];
+export const CAMPI = ["location", "plants", "impostazioni", "vacanza", "meteo_manual", "piano_claude", "orti", "torre"];
 
 export async function leggi(st, code) {
   const f = await st.getWithMetadata("d-" + code, { type: "json" });

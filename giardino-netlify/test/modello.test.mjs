@@ -604,3 +604,21 @@ test("acqua di tutta la vita: pioggia fermata con l'archivio del meteo corto, i 
   // archivio che copre solo una parte: resta la parte prima
   assert.deepEqual(M.riempiBuchi(pv.buchi, tutti.slice(10)).buchi.map((b) => [b.da, b.a]), [[g(-30), g(-21)]]);
 });
+
+test("torre idroponica: impostazioni controllate, misure unite senza doppioni, riepilogo e avvisi", () => {
+  const c = M.configTorre({ accesa_min: 0, pause: [1, 2, 3], freddo_stop: 3, freddo_riparte: 2, notte_da: 30 });
+  assert.equal(c.accesa_min, 1); assert.deepEqual(c.pause, [1, 2, 3, 25, 45, 60]); assert.equal(c.freddo_riparte, 4, "riparte almeno 1 °C sopra"); assert.equal(c.notte_da, 23);
+  const adesso = 1_800_000_000, h = 3600;
+  const { serie } = M.unisciMisure(null, { avvio: 1, sec: 10 * h, misure: [[adesso - 5 * h, 1.2, 90, 0, 3, 1, 5 * h], [adesso - 4.9 * h, 1.4, 91, 0, 3, 1, 5.1 * h], [null, 15, 60, 600, 0, 1, 8 * h]] }, adesso);
+  assert.equal(serie.misure.length, 3); assert.equal(serie.misure[2][0], adesso - 2 * h);
+  assert.equal(M.unisciMisure(serie, { avvio: 1, sec: 10 * h, misure: [[adesso - 5 * h, 1.2, 90, 0, 3, 1, 5 * h]] }, adesso).nuove, 0, "doppione");
+  const r = M.riepilogoTorre(serie, adesso);
+  assert.equal(r.min, 1.2); assert.equal(r.max, 15); assert.equal(r.pompaMin, 10); assert.ok(r.freddoMin >= 10);
+  const tr = { posizione: "fuori", config: {} }, met = { notte: [{ ora: "03", t: -1 }], days: [{ date: "2027-01-11", rain: 8 }] };
+  const tipi = (torre, s, m, ora = adesso) => M.avvisiTorre(torre, s, m, "2027-01-10", ora).map((a) => a.tipo);
+  assert.deepEqual(tipi(tr, serie, met), ["gelo", "pioggia", "freddo"]);
+  assert.deepEqual(tipi({ ...tr, posizione: "casa" }, serie, met), ["freddo"], "in casa niente meteo");
+  assert.deepEqual(tipi({ ...tr, posizione: "veranda" }, serie, { notte: [{ ora: "03", t: 1 }], days: [] }), ["freddo"], "in veranda solo il gelo vero");
+  assert.ok(tipi(tr, { ...serie, ultimo: adesso - 30 * h }, null).includes("silenzio"), "torre zitta da più di 26 ore");
+  assert.match(M.avvisiTorre(tr, serie, met, "2027-01-10", adesso)[0].testo, /Rischio di ghiaccio nel serbatoio/);
+});
