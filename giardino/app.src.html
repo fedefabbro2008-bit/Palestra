@@ -1038,7 +1038,7 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
             <span class="hint">Nel programma dell'ESP32 incollala in <b>CHIAVE_TORRE</b> e ricaricalo. Con una chiave nuova quella vecchia non vale più.</span></div>
           <div class="field"><span class="flabel">Programma dell'ESP32</span><div class="sub" id="torreFw"></div>
             <div class="row"><label class="btn" for="torreFwFile" id="torreFwL">Carica un programma nuovo (.bin)</label><input type="file" id="torreFwFile" class="solo-lettore" accept=".bin,application/octet-stream"><button class="btn ghost" type="button" id="torreFwTogli" hidden>Togli</button></div>
-            <span class="hint">Arduino IDE: Sketch → Esporta binario compilato, poi scegli <b>torre_esp32.ino.bin</b> (nella cartella build dello sketch). La torre lo scarica e lo installa da sola al prossimo collegamento, con la pompa spenta; se il programma nuovo non riesce a collegarsi torna a quello di prima.</span></div>
+            <span class="hint">Nel programma alza <b>VERSIONE_FW_N</b>, poi Arduino IDE: Sketch → Esporta binario compilato, e qui scegli <b>torre_esp32.ino.bin</b> (nella cartella build dello sketch). La torre lo scarica e lo installa da sola al prossimo collegamento, con la pompa spenta; se il programma nuovo non riesce a collegarsi torna a quello di prima.</span></div>
           <div class="field"><span class="flabel">Pompa</span>
             <div class="grid2"><div class="field"><label for="torreAccesa">Accesa per (minuti)</label><input type="text" inputmode="numeric" id="torreAccesa"></div></div>
             <span class="hint">Pausa dopo ogni accensione, secondo la temperatura misurata dalla torre (minuti):</span>
