@@ -623,6 +623,7 @@ test("torre idroponica: impostazioni controllate, misure unite senza doppioni, r
   assert.match(M.avvisiTorre(tr, serie, met, "2027-01-10", adesso)[0].testo, /Rischio di ghiaccio nel serbatoio/);
   // sensore che non risponde: ciclo di emergenza impostabile, avviso con l'ora da cui manca la temperatura
   assert.equal(M.configTorre({}).guasto_pausa, 20); assert.equal(M.configTorre({}).guasto_ferma, false);
+  assert.equal(M.configTorre({}).cal_t, 0); assert.equal(M.configTorre({ cal_t: -2 }).cal_t, -2); assert.equal(M.configTorre({ cal_t: -25 }).cal_t, -10); assert.equal(M.configTorre({ cal_t: "1,5" }).cal_t, 0);
   assert.equal(M.configTorre({ guasto_pausa: 1, guasto_ferma: "sì" }).guasto_pausa, 5); assert.equal(M.configTorre({ guasto_ferma: "sì" }).guasto_ferma, false, "solo true vero");
   const guasto = M.unisciMisure(serie, { avvio: 1, sec: 10 * h, stato: { modo: "senza sensore" }, misure: [[adesso - h, null, null, 900, 4, 1, 9 * h]] }, adesso).serie;
   const sens = M.avvisiTorre({ ...tr, posizione: "casa" }, guasto, null, "2027-01-10", adesso).find((a) => a.tipo === "sensore");
@@ -701,6 +702,35 @@ test("torre: serbatoio (consumo imparato dai rabbocchi e dalla temperatura) e ma
   // dati dall'app controllati
   const x = M.torreDallApp({ serbatoio: { capacita: "abc", controlla: 999, rabbocchi: [{ at: "boh" }, { at: iso(t0), litri: -3 }] }, lavori: { pulizia: { ogni: 1e9 } } }, { rev: 1, chiave: "K" });
   assert.deepEqual(x.serbatoio, { capacita: null, controlla: 60, rabbocchi: [{ at: iso(t0), litri: null }] }); assert.equal(x.lavori.pulizia.ogni, 5000); assert.equal(x.lavori.nutrienti.ogni, 7);
+});
+
+test("torre: energia (consumo, autonomia, pannello) e stato della pompa stimato quando il modem è spento", () => {
+  const d = 86400, t0 = Date.UTC(2027, 0, 20, 12) / 1000;   // gennaio: sole utile 2,2 h
+  const giorni = []; for (let i = 7; i >= 1; i--) giorni.push([new Date((t0 - i * d) * 1000).toISOString().slice(0, 10), 2, 9, 5, 70, 120, 0, 144]);
+  const serie = { giorni, misure: [], stato: { pb: [15, 1500, 0] } };
+  assert.equal(M.energiaTorre({}, serie, t0, "UTC").totale, null, "senza i watt della pompa niente calcolo");
+  const e = M.energiaTorre({ energia: { pompa_w: 2.5, batteria_wh: 37 } }, serie, t0, "UTC");
+  // pompa: 120 min × (2,5 + 0,35 W) = 5,7 Wh; ESP32 0,12 W × 24 = 2,88 Wh; impulsi 0,6 W × 1,5/15 × 24 = 1,44 Wh
+  assert.ok(Math.abs(e.totale - (5.7 + 2.88 + 1.44)) < 0.01); assert.equal(e.giorni, 7);
+  assert.ok(Math.abs(e.autonomiaOre - 37 * 0.85 / (e.totale / 24)) < 0.01); assert.ok(Math.abs(e.pannelloW - e.totale / (2.2 * 0.6)) < 0.01);
+  assert.deepEqual(M.energiaTorreDati({ pompa_w: "x", batteria_wh: 99999 }), { pompa_w: null, batteria_wh: 2000 });
+  // stima: pompa spenta alle 12:00 UTC con 20 °C (pausa 25 min), accesa 15 min, poi di nuovo pausa
+  const st = { pompa: false, fine: t0, t: 20, u: 60, modo: "normale" }, cfg = { notte_da: 22, notte_a: 6 };
+  assert.deepEqual(M.pompaStimata(st, cfg, t0 - 60, "UTC"), { pompa: false, fine: t0, stima: false }, "fase in corso: non è una stima");
+  assert.deepEqual(M.pompaStimata(st, cfg, t0 + 10 * 60, "UTC"), { pompa: true, fine: t0 + 15 * 60, stima: true });
+  assert.deepEqual(M.pompaStimata(st, cfg, t0 + 20 * 60, "UTC"), { pompa: false, fine: t0 + 40 * 60, stima: true });
+  // di notte la pausa raddoppia
+  const notte = { ...st, fine: Date.UTC(2027, 0, 20, 23) / 1000 };
+  assert.equal(M.pompaStimata(notte, cfg, notte.fine + 20 * 60, "UTC").fine, notte.fine + 15 * 60 + 50 * 60);
+  assert.equal(M.pompaStimata({ ...st, modo: "freddo: pompa ferma" }, cfg, t0 + 600, "UTC"), null, "col freddo non si stima");
+  assert.equal(M.pompaStimata(st, cfg, t0 + 13 * 3600, "UTC"), null, "oltre 12 ore non si stima");
+  // avviso «corrente» col power bank
+  const rv = { ...serie, riavvii: [{ avvio: 3, ora: t0 - 3600, motivo: "corrente" }] }, tr = { posizione: "casa", config: {} };
+  assert.match(M.avvisiTorre(tr, rv, null, "2027-01-20", t0, "UTC").find((a) => a.tipo === "corrente").testo, /allunga da solo l'impulso/);
+  assert.match(M.avvisiTorre(tr, { ...rv, stato: { pb: [10, 2250, 1] } }, null, "2027-01-20", t0, "UTC").find((a) => a.tipo === "corrente").testo, /ora 2,25 s ogni 10 s/);
+  assert.match(M.avvisiTorre(tr, { ...rv, stato: { pb: [5, 4000, 4] } }, null, "2027-01-20", t0, "UTC").find((a) => a.tipo === "corrente").testo, /già al massimo/);
+  assert.deepEqual(M.unisciMisure(null, { stato: { pb: [15, 1500, 2] }, misure: [] }, t0).serie.stato.pb, [15, 1500, 2]);
+  assert.equal(M.unisciMisure(null, { stato: { pb: [0, 1500] }, misure: [] }, t0).serie.stato.pb, null);
 });
 
 test("torre: ore di gelo previste stanotte per l'ESP32 col sensore guasto (ora italiana → secondi, ore vicine unite)", () => {

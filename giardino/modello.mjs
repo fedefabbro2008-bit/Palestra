@@ -681,7 +681,7 @@ export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp
 // impostazioni della pompa: gli stessi nomi del programma dell'ESP32
 export const TORRE_DEF = { accesa_min: 15, soglie: [30, 27, 20, 12, 5], pause: [5, 10, 15, 25, 45, 60], freddo_stop: 2, freddo_riparte: 4,
   notte_da: 22, notte_a: 6, notte_fattore: 2, umido_soglia: 92, umido_fattore: 1.5, pausa_max: 120, misura_ogni_min: 10, wifi_ogni_min: 15, wifi_max_min: 60,
-  guasto_pausa: 20, guasto_ferma: false };   // sensore che non risponde: ciclo di emergenza (o pompa ferma)
+  guasto_pausa: 20, guasto_ferma: false, cal_t: 0 };   // cal_t: correzione del termometro (°C)   // sensore che non risponde: ciclo di emergenza (o pompa ferma)
 export const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale", "sicurezza: pompa fermata"];
 // perché l'ESP32 si è riavviato (esp_reset_reason): quelli da segnalare sono tensione, blocco ed errore
 export const RIAVVII_TORRE = { corrente: "è mancata la corrente", tensione: "calo di tensione", blocco: "blocco (watchdog)", errore: "errore del programma", programma: "programma aggiornato", tasto: "tasto EN", altro: "altro" };
@@ -709,6 +709,7 @@ export function configTorre(c = {}) {
   o.wifi_max_min = Math.round(numTorre(c.wifi_max_min, 15, 240, d.wifi_max_min));
   o.guasto_pausa = Math.round(numTorre(c.guasto_pausa, 5, 240, d.guasto_pausa));
   o.guasto_ferma = c.guasto_ferma === true;
+  o.cal_t = Math.round(numTorre(c.cal_t, -10, 10, d.cal_t) * 10) / 10;
   return o;
 }
 export const nuovaTorre = (chiave) => ({ attiva: true, chiave, nome: "Torre idroponica", posizione: "fuori", orto: "p", config: configTorre(), rev: 1, creata: new Date().toISOString() });
@@ -729,7 +730,7 @@ export function lavoriTorreDati(x = {}) {
 export function torreDallApp(nuova, vecchia) {
   if (!vecchia || !nuova || typeof nuova !== "object") return vecchia || null;
   const c = nuova.comando, rev = Math.max(+vecchia.rev || 1, Math.round(+nuova.rev || 0));
-  return { ...vecchia, serbatoio: serbatoioTorre(nuova.serbatoio || vecchia.serbatoio), lavori: lavoriTorreDati(nuova.lavori || vecchia.lavori), attiva: nuova.attiva !== false, nome: String(nuova.nome || vecchia.nome || "Torre idroponica").slice(0, 40),
+  return { ...vecchia, serbatoio: serbatoioTorre(nuova.serbatoio || vecchia.serbatoio), lavori: lavoriTorreDati(nuova.lavori || vecchia.lavori), energia: energiaTorreDati(nuova.energia || vecchia.energia), attiva: nuova.attiva !== false, nome: String(nuova.nome || vecchia.nome || "Torre idroponica").slice(0, 40),
     posizione: POSIZIONI_TORRE.includes(nuova.posizione) ? nuova.posizione : vecchia.posizione || "fuori", orto: typeof nuova.orto === "string" ? nuova.orto.slice(0, 20) : vecchia.orto || "p",
     config: configTorre(nuova.config || vecchia.config), rev,
     comando: c && typeof c === "object" && c.id && +c.pompa_s > 0 ? { id: String(c.id).slice(0, 20), pompa_s: Math.min(600, Math.round(+c.pompa_s)), at: String(c.at || new Date().toISOString()).slice(0, 30) } : null };
@@ -757,7 +758,9 @@ export function unisciMisure(serie, body, adesso, tz = "Europe/Rome") {
   s.misure = s.misure.filter((r) => r[0] >= da).sort((a, b) => a[0] - b[0]);
   const st = body?.stato && typeof body.stato === "object" ? body.stato : {};
   s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0,
-    da: +st.da > adesso - 7 * 86400 && +st.da <= adesso + 600 ? Math.round(+st.da) : null, fine: +st.fine > adesso - 600 && +st.fine < adesso + 86400 ? Math.round(+st.fine) : null };
+    da: +st.da > adesso - 7 * 86400 && +st.da <= adesso + 600 ? Math.round(+st.da) : null, fine: +st.fine > adesso - 600 && +st.fine < adesso + 86400 ? Math.round(+st.fine) : null,
+    // power bank tenuto acceso: [ogni quanti secondi, per quanti millisecondi, quante volte il programma l'ha accorciato da solo]
+    pb: Array.isArray(st.pb) && +st.pb[0] >= 1 && +st.pb[0] <= 600 && +st.pb[1] >= 50 && +st.pb[1] <= 20000 ? [Math.round(+st.pb[0]), Math.round(+st.pb[1]), Math.max(0, Math.min(99, Math.round(+st.pb[2] || 0)))] : null };
   if (st.memoria === "formattata") s.memoria_formattata = adesso;   // l'ESP32 lo dice una volta sola: il server se lo ricorda
   // riavvii: uno per accensione (numero «avvio»), con il motivo e l'ora (adesso meno i secondi da allora)
   const mot = Object.hasOwn(RIAVVII_TORRE, st.riavvio) ? st.riavvio : null;
@@ -836,6 +839,45 @@ export function lavoriTorre(torre, serie, adesso, tz = "Europe/Rome") {
   return { serbatoio: serb, voci };
 }
 
+// Energia: watt della pompa e Wh del power bank (dall'utente); consumo dai minuti di pompa misurati (media degli ultimi
+// 7 giorni interi), autonomia e pannello che serve questo mese. Stime: ESP32 a riposo con la sua scheda ~0,12 W, relè
+// acceso 0,35 W, radio del Wi-Fi per gli impulsi del power bank 0,6 W; dal power bank esce l'85% dei Wh scritti; dal
+// pannello USB arriva alla batteria circa il 60%. Sole utile: ore equivalenti di pieno sole per mese, nord Italia (~44°),
+// pannello verso sud inclinato.
+export function energiaTorreDati(x = {}) { return { pompa_w: numTorre(x?.pompa_w, 0.1, 100, null), batteria_wh: numTorre(x?.batteria_wh, 1, 2000, null) }; }
+export const SOLE_MESE = [2.2, 3.0, 4.0, 4.8, 5.5, 6.0, 6.3, 5.6, 4.5, 3.3, 2.3, 1.9];
+export function energiaTorre(torre, serie, adesso, tz = "Europe/Rome") {
+  const e = energiaTorreDati(torre?.energia), oggiG = giornoTorre(adesso, tz);
+  const interi = (serie?.giorni || []).filter((x) => x[0] < oggiG && x[7] >= 100).slice(-7);
+  const pompaMin = interi.length ? interi.reduce((a, x) => a + x[5], 0) / interi.length : null;
+  const pb = serie?.stato?.pb, impulsiWh = pb ? 0.6 * (pb[1] / 1000) / pb[0] * 24 : 0, baseWh = 0.12 * 24;
+  const mese = +giornoTorre(adesso, tz).slice(5, 7) - 1, sole = SOLE_MESE[mese];
+  if (e.pompa_w == null || pompaMin == null) return { ...e, giorni: interi.length, pompaMin, totale: null, autonomiaOre: null, pannelloW: null, sole, mese };
+  const pompaWh = pompaMin / 60 * (e.pompa_w + 0.35), totale = pompaWh + baseWh + impulsiWh;
+  return { ...e, giorni: interi.length, pompaMin, pompaWh, baseWh, impulsiWh, totale, sole, mese,
+    autonomiaOre: e.batteria_wh ? e.batteria_wh * 0.85 / (totale / 24) : null, pannelloW: totale / (sole * 0.6) };
+}
+// Stato della pompa quando l'ultimo contatto è vecchio (modem spento): dalla fine della fase che l'ESP32 ha detto, i cicli
+// che fa da solo con le impostazioni e l'ultima temperatura e umidità. Una stima, fino a 12 ore; null se non si può.
+export function pompaStimata(stato, config, adesso, tz = "Europe/Rome") {
+  if (!stato?.fine) return null;
+  if (stato.fine > adesso) return { pompa: !!stato.pompa, fine: stato.fine, stima: false };
+  if (adesso - stato.fine > 12 * 3600 || /freddo|sicurezza/.test(stato.modo || "")) return null;
+  const c = configTorre(config), T = stato.t, U = stato.u, ore = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hourCycle: "h23" });
+  if (T == null && c.guasto_ferma) return null;
+  const pausa = (t) => {
+    if (T == null) return c.guasto_pausa * 60;
+    let p = c.pause[5]; for (let i = 0; i < 5; i++) if (T > c.soglie[i]) { p = c.pause[i]; break; }
+    if (U != null && U >= c.umido_soglia) p *= c.umido_fattore;
+    const h = +ore.format(new Date(t * 1000));
+    if (c.notte_da > c.notte_a ? h >= c.notte_da || h < c.notte_a : h >= c.notte_da && h < c.notte_a) p *= c.notte_fattore;
+    return Math.min(p, c.pausa_max) * 60;
+  };
+  let on = !stato.pompa, t = stato.fine;
+  for (let i = 0; i < 400; i++) { const d = on ? c.accesa_min * 60 : pausa(t); if (t + d > adesso) return { pompa: on, fine: Math.round(t + d), stima: true }; t += d; on = !on; }
+  return null;
+}
+
 // Ultime ore: minima e massima (con l'ora), umidità media, minuti di pompa e di pompa ferma per il freddo
 export function riepilogoTorre(serie, adesso, ore = 24) {
   const r = (serie?.misure || []).filter((x) => x[0] >= adesso - ore * 3600), t = r.filter((x) => x[1] != null), u = r.filter((x) => x[2] != null);
@@ -876,7 +918,13 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome")
     out.push({ tipo: "riavvii", testo: `🔁 La torre si è riavviata ${rv.length === 1 ? "una volta" : rv.length + " volte"} nelle ultime 24 ore (${parti.join(", ")}; ultimo ${oraIt(rv.at(-1).ora)}).`
       + (n("tensione") ? " Calo di tensione: quasi sempre la pompa che parte e abbassa l'alimentazione dell'ESP32. Alimentatore più potente, o ESP32 e pompa su alimentatori diversi." : "")
       + (n("blocco") || n("errore") ? " Blocco o errore: l'ESP32 è ripartito da solo con la pompa spenta; se succede spesso dimmelo." : "") });
-  } else if (rv.length) out.push({ tipo: "corrente", testo: `🔌 Alla torre è mancata la corrente (${oraIt(rv.at(-1).ora)}): è ripartita da sola.` });
+  } else if (rv.length) {
+    const pb = serie?.stato?.pb;
+    out.push({ tipo: "corrente", testo: `🔌 Alla torre è mancata la corrente (${oraIt(rv.at(-1).ora)}): è ripartita da sola.`
+      + (pb ? pb[0] <= 5 && pb[1] >= 4000 ? " Col power bank: l'impulso che lo tiene acceso è già al massimo e non basta; serve un alimentatore che resti sempre acceso."
+        : pb[2] ? ` Col power bank: probabilmente si è spento; il programma ha già allungato da solo l'impulso che lo tiene acceso (ora ${String(pb[1] / 1000).replace(".", ",")} s ogni ${pb[0]} s).`
+        : " Se è alimentata dal power bank e succede di nuovo, il programma allunga da solo l'impulso che lo tiene acceso." : "") });
+  }
   if ((serie?.misure || []).some((r) => r[4] === 6 && adesso - r[0] < 86400))
     out.push({ tipo: "sicurezza", testo: `⛔ Nelle ultime 24 ore la pompa è rimasta accesa troppo a lungo e l'ESP32 l'ha fermata (limite di sicurezza: ${Math.max(15, 2 * cfg.accesa_min)} minuti di fila).` });
   // serbatoio e manutenzione

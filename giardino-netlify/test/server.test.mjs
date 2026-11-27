@@ -819,12 +819,17 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   assert.equal(cm.config.accesa_min, 12); assert.equal(cm.comando.pompa_s, 30);
   assert.match((await strumento("torre_imposta", { accesa_min: 12 })).content[0].text, /Niente da cambiare/);
   assert.match((await strumento("torre_imposta", { guasto_pausa: 30, guasto_ferma: true })).content[0].text, /pompa ferma: no → sì/);
+  assert.match((await strumento("torre_imposta", { cal_t: -2 })).content[0].text, /correzione del termometro \(°C\): 0 → -2/);
+  assert.match((await strumento("torre")).content[0].text, /correzione del termometro: -2 °C/);
   assert.equal((await leggiDati()).torre.config.guasto_pausa, 30);
   assert.ok((await strumento("torre_imposta", { guasto_ferma: "sì" })).isError);
   tx = (await strumento("torre_imposta", { capacita: 20, nutrienti_ogni: 10, segna: "rabbocco", litri: 4 })).content[0].text;
   assert.match(tx, /serbatoio: – → 20 L/); assert.match(tx, /rabbocco segnato \(4 L\)/); assert.doesNotMatch(tx, /L'ESP32 le riceve/, "non riguarda l'ESP32");
   assert.deepEqual([(await leggiDati()).torre.serbatoio.capacita, (await leggiDati()).torre.lavori.nutrienti.ogni, (await leggiDati()).torre.serbatoio.rabbocchi.at(-1).litri], [20, 10, 4]);
   assert.match((await strumento("torre_imposta", { segna: "pulizia", quando: "2020-01-01" })).content[0].text, /ultimi 60 giorni/);
+  tx = (await strumento("torre_imposta", { pompa_w: 2.5, batteria_wh: 37 })).content[0].text;
+  assert.match(tx, /pompa: – → 2.5 W/); assert.match(tx, /power bank: – → 37 Wh/); assert.doesNotMatch(tx, /L'ESP32 le riceve/);
+  assert.deepEqual((await leggiDati()).torre.energia, { pompa_w: 2.5, batteria_wh: 37 });
   tx = (await strumento("torre")).content[0].text;
   assert.match(tx, /## Serbatoio e manutenzione/); assert.match(tx, /serbatoio 20 L: ultimo rabbocco oggi/); assert.match(tx, /nutrienti: mai segnato \(ogni 10 giorni\)/);
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
