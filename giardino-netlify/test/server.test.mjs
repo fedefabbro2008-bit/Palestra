@@ -792,6 +792,32 @@ test("torre nell'app: aggiornata a pezzi (invariato o solo la coda), sempre ugua
   const vecchia = await leggi(""); assert.ok(!vecchia.parziale && vecchia.misure.length === 6);
 });
 
+test("torre: a ogni invio dell'ESP32 tre letture e una scrittura; il meteo una volta l'ora (o se cambia la posizione)", async () => {
+  const C6 = "GRD-TORREVELOCE-ABCDEFGHJK", H6 = { "x-giardino-code": C6 }, torreFn = (await import("../netlify/functions/torre.mjs")).default;
+  await call(dati, "/api/dati", { method: "POST", headers: H6, body: { changes: { location: { name: "Castrocaro Terme", lat: 44.18, lon: 11.95 } } } });
+  const chiave = (await call(dati, "/api/dati?op=torre", { method: "POST", headers: H6, body: { action: "chiave" } })).body.torre.chiave;
+  const adesso = Math.floor(Date.now() / 1000);
+  const manda = (i) => call(torreFn, "/api/torre", { method: "POST", headers: { "x-torre-chiave": chiave }, body: { v: 1, fw: 7, rev: 1, avvio: 1, sec: 9999, stato: { modo: "normale", t: 12, u: 60 }, misure: [[adesso - 600 + i, 12, 60, 0, 0, 1, i]] } });
+  let meteo = 0; const vero = globalThis.fetch;
+  globalThis.fetch = async (u, o) => { if (/open-meteo|met\.no/.test(String(u))) meteo++; return vero(u, o); };
+  try {
+    const a = await manda(1); assert.equal(a.status, 200); assert.ok(Array.isArray(a.body.gelo));
+    const s1 = await getStore({ name: "giardino" }).get("s-" + C6, { type: "json" });
+    assert.ok(s1.meteo_torre?.at && Object.keys(s1.meteo_torre.giorni).length > 5, "meteo ridotto nella serie");
+    globalThis.__CONTA_BLOB = {}; meteo = 0;
+    const b = await manda(2);
+    assert.deepEqual(b.body.gelo, a.body.gelo, "ore di gelo dalla serie");
+    assert.deepEqual(globalThis.__CONTA_BLOB, { get: 2, getWithMetadata: 1, setJSON: 1 }, "chiave, dati, serie; poi la serie scritta"); assert.equal(meteo, 0, "niente meteo");
+    // posizione cambiata: il meteo si richiede subito
+    const tr = (await call(dati, "/api/dati", { headers: H6 })).body.data.torre;
+    await call(dati, "/api/dati", { method: "POST", headers: H6, body: { changes: { torre: { ...tr, posizione: "veranda" } } } });
+    globalThis.__CONTA_BLOB = {};
+    await manda(3);
+    assert.ok(globalThis.__CONTA_BLOB.get >= 3, "meteo letto di nuovo (archivio del meteo)");
+    const s3 = await getStore({ name: "giardino" }).get("s-" + C6, { type: "json" }); assert.match(s3.meteo_torre.chiave, /^veranda\|/);
+  } finally { globalThis.fetch = vero; }
+});
+
 test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazioni e accensione una volta sola, avvisi su Telegram, spenta e tolta", async () => {
   const torreFn = (await import("../netlify/functions/torre.mjs")).default;
   const st = getStore({ name: "giardino" }), t0 = await st.get("t-" + CODE, { type: "json" }), d0 = await leggiDati();

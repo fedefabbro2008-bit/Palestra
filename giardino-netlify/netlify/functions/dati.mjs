@@ -148,7 +148,7 @@ async function opTorre(request, st, code, url) {
     const u = +url.searchParams.get("u") || 0, cur = +url.searchParams.get("da") || 0, ultimo = s.ultimo || 0, ver = s.ver || 0;
     if (u && u === ver) return reply({ invariato: true, ver });
     const finestra = Math.floor(Date.now() / 1000) - giorni * 86400, parziale = cur > 0 && u > 0 && u < ver;
-    const da = parziale ? Math.max(finestra, cur) : finestra, g0 = parziale ? giornoTorre(cur - 86400, s.tz || "Europe/Rome") : "";
+    const da = parziale ? Math.max(finestra, cur) : finestra, g0 = parziale ? giornoTorre(cur - 86400, s.meteo_torre?.tz || "Europe/Rome") : "";
     return reply({ stato: s.stato, ultimo, ver, misure: s.misure.filter((r) => r[0] >= da).map((r) => r.slice(0, 5)), giorni: (s.giorni || []).filter((x) => x[0] >= g0),
       riavvii: (s.riavvii || []).slice(-20), memoria_formattata: s.memoria_formattata || 0, ...(parziale ? { parziale: true, da } : {}) });
   }

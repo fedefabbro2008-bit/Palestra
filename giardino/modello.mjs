@@ -757,7 +757,8 @@ export function unisciMisure(serie, body, adesso, tz = "Europe/Rome") {
     s.misure.push([ora, numMisura(t, -40, 125), numMisura(u, 0, 100), Math.max(0, Math.min(65535, Math.round(+p || 0))), Math.max(0, Math.min(9, Math.round(+m || 0))), avvio ?? null, sec ?? null]);
     nuove++;
   }
-  s.misure = s.misure.filter((r) => r[0] >= da).sort((a, b) => a[0] - b[0]);
+  s.misure = s.misure.filter((r) => r[0] >= da);
+  if (nuove) s.misure.sort((a, b) => a[0] - b[0]);   // senza misure nuove sono già in ordine
   const st = body?.stato && typeof body.stato === "object" ? body.stato : {};
   s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0,
     da: +st.da > adesso - 7 * 86400 && +st.da <= adesso + 600 ? Math.round(+st.da) : null, fine: +st.fine > adesso - 600 && +st.fine < adesso + 86400 ? Math.round(+st.fine) : null,
