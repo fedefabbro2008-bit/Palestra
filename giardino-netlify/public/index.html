@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="edbd703ec4bf">
+<meta name="giardino-build" content="516789992ccb">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -4255,7 +4255,7 @@ function testoPompa(st, ult){
   const ora=s=>new Date(s*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}), fine=st?.fine>Date.now()/1000?st.fine:0;
   if(st?.fine&&!fine){   // fase finita dall'ultimo contatto (modem spento): stima dai cicli che la torre fa da sola
     const e=pompaStimata(st, S.torre?.config, Date.now()/1000);
-    if(e) return e.pompa?'probabilmente accesa fino alle '+ora(e.fine)+' (stima)':'probabilmente in pausa, riparte verso le '+ora(e.fine)+' (stima)';
+    if(e) return e.pompa?'pompa probabilmente accesa fino alle '+ora(e.fine)+' (stima)':'pompa probabilmente in pausa, riparte verso le '+ora(e.fine)+' (stima)';
     return ult?(st.pompa?'pompa accesa':'pompa in pausa')+' alle '+ora(ult):'pompa: stato non noto';
   }
   if(st?.pompa) return fine?'pompa accesa fino alle '+ora(fine):'pompa accesa';

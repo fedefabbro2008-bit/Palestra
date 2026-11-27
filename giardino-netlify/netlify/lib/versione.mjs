@@ -1,2 +1,2 @@
 // generato da giardino/build-app.mjs: impronta della versione pubblicata
-export const VERSIONE = "c757f03c7d25";
+export const VERSIONE = "8c3e129678ff";
