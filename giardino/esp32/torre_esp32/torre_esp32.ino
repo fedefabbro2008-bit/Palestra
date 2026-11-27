@@ -2,7 +2,9 @@
 // Consumo ridotto: processore a 80 MHz, riposo leggero tra un evento e l'altro, Wi-Fi solo pochi secondi.
 // Pompa: cicli in base alla temperatura e all'umidità misurate, più lunghi di notte; ferma sotto 2 °C
 // (riparte sopra 4 °C). Misure salvate in memoria e mandate all'app Giardino quando c'è il Wi-Fi.
-// Versione 5: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
+// Versione 6: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
+// Novità della v6: tiene acceso il power bank (molti si spengono quando l'ESP32 a riposo consuma poco): ogni
+// POWERBANK_OGNI_S secondi accende la radio del Wi-Fi per POWERBANK_PER_MS millisecondi, senza collegarsi al modem.
 // Novità della v5: watchdog (se il programma si blocca l'ESP32 riparte da solo, con la pompa spenta); limite di sicurezza
 // per la pompa accesa; motivo di ogni riavvio mandato all'app (corrente, calo di tensione, blocco); riscaldatore dell'SHT40
 // quando resta a lungo nell'umidità.
@@ -35,12 +37,18 @@ const char* SITO          = "https://giardino-fede.netlify.app/api/torre";   // 
 // true: l'ESP32 controlla che il sito sia davvero quello giusto (certificato). Mettilo a false solo se nel Monitor
 // seriale compare «certificato non accettato» e la torre non si collega più: vuol dire che il sito ha cambiato certificato.
 const bool VERIFICA_CERTIFICATO = true;
+// Alimentazione da power bank: true lo tiene acceso con un breve consumo ogni tanti secondi (circa 1 Wh al giorno).
+// Se il power bank si spegne lo stesso (nell'app compare «è mancata la corrente»): POWERBANK_OGNI_S più basso
+// (per esempio 8) o POWERBANK_PER_MS più alto (per esempio 3000). Con un alimentatore da muro mettilo a false.
+const bool     TIENI_ACCESO_POWERBANK = true;
+const uint32_t POWERBANK_OGNI_S  = 15;
+const uint32_t POWERBANK_PER_MS  = 1500;
 // ==================================================
 
 const int  PIN_RELE    = 26;
 const bool RELE_ATTIVO = HIGH;                         // High Level Trigger
 const char* FUSO       = "CET-1CEST,M3.5.0,M10.5.0/3"; // ora italiana con ora legale
-const uint32_t VERSIONE_FW = 5;
+const uint32_t VERSIONE_FW = 6;
 const uint32_t WATCHDOG_S = 90;                        // il programma bloccato per 90 s: l'ESP32 riparte da solo
 const uint32_t SVEGLIO_ALL_AVVIO_MS = 180000;          // 3 minuti per i comandi dal Monitor seriale
 
@@ -645,6 +653,24 @@ void collegati() {
   }
 }
 
+// ---------- power bank: un breve consumo ogni tanto, perché non si spenga ----------
+// La radio del Wi-Fi che cerca le reti consuma oltre 100 mA: abbastanza perché il power bank veda un carico.
+// Non serve con la pompa accesa (consuma già lei) né durante un collegamento.
+uint32_t prossimoImpulsoMs = 0;
+void impulsoPowerBank() {
+  WiFi.mode(WIFI_STA);
+  WiFi.scanNetworks(true);                                  // ricerca delle reti in sottofondo: la radio resta accesa
+  uint32_t t0 = millis();
+  while (millis() - t0 < POWERBANK_PER_MS) { delay(50); tieniVivo(); }
+  WiFi.scanDelete();
+  WiFi.mode(WIFI_OFF);
+}
+void tieniAccesoPowerBank() {
+  if (!TIENI_ACCESO_POWERBANK || (int32_t)(millis() - prossimoImpulsoMs) < 0) return;
+  if (!pompaAccesa) impulsoPowerBank();
+  prossimoImpulsoMs = millis() + POWERBANK_OGNI_S * 1000UL;
+}
+
 // ---------- riposo leggero fino al prossimo evento ----------
 uint32_t prossimaMisuraMs = 0, prossimoWiFiMs = 0;
 void riposa() {
@@ -655,6 +681,7 @@ void riposa() {
   if (strlen(CHIAVE_TORRE)) piuVicino(prossimoWiFiMs);
   if (manualeFinoMs) piuVicino(manualeFinoMs);
   if (comunicaPompa) piuVicino(quandoComunica());
+  if (TIENI_ACCESO_POWERBANK) piuVicino(prossimoImpulsoMs);
   if (attesa < 50) return;
   if (ora < SVEGLIO_ALL_AVVIO_MS) { delay(min<int32_t>(attesa, 100)); return; }   // primi 3 minuti: sveglio per i comandi
   Serial.flush();
@@ -709,6 +736,8 @@ void setup() {
   prossimaFase();
   prossimaMisuraMs = millis() + 60000;
   prossimoWiFiMs = millis() + 20000;
+  if (TIENI_ACCESO_POWERBANK) Serial.printf("Power bank tenuto acceso: radio accesa %lu ms ogni %lu s\n", (unsigned long)POWERBANK_PER_MS, (unsigned long)POWERBANK_OGNI_S);
+  prossimoImpulsoMs = millis() + POWERBANK_OGNI_S * 1000UL;
   Serial.println("Comandi (primi 3 minuti dopo l'accensione): p = pompa 30 s, t = misura, s = stato, w = Wi-Fi, c = cancella misure");
 }
 
@@ -751,5 +780,6 @@ void loop() {
     else if (c == 'w') { collegati(); }
     else if (c == 'c') { if (memoriaOk) LittleFS.remove(FILE_MISURE); Serial.println("Misure cancellate"); }
   }
+  tieniAccesoPowerBank();
   riposa();
 }
