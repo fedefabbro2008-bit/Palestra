@@ -85,6 +85,7 @@ uint32_t secondiPompa = 0;
 bool fermaPerFreddo = false;
 uint16_t erroriSensore = 0;                        // misure di fila senza risposta dall'SHT40
 bool memoriaOk = false, memoriaFormattata = false;  // LittleFS; «formattata» si dice al sito una volta
+uint32_t pbOgniS = POWERBANK_OGNI_S, pbPerMs = POWERBANK_PER_MS; uint8_t pbAllungato = 0; bool pbVivoSegnato = false;   // power bank
 uint32_t gelo[6][2]; uint8_t nGelo = 0;            // ore di gelo previste dal meteo (dal sito), usate solo col sensore guasto
 
 enum Modo : uint8_t { NORMALE, NOTTE, UMIDO, FREDDO, SENZA_SENSORE, MANUALE, SICUREZZA };
@@ -686,7 +687,6 @@ void collegati() {
 // La radio del Wi-Fi che cerca le reti consuma oltre 100 mA: abbastanza perché il power bank veda un carico.
 // Non serve con la pompa accesa (consuma già lei) né durante un collegamento.
 uint32_t prossimoImpulsoMs = 0;
-uint32_t pbOgniS = POWERBANK_OGNI_S, pbPerMs = POWERBANK_PER_MS; uint8_t pbAllungato = 0; bool pbVivoSegnato = false;
 // Se l'ESP32 riparte per «corrente» dopo essere stato acceso almeno 3 minuti, probabilmente il power bank si è spento:
 // l'impulso diventa più frequente e più lungo (fino a 4 s ogni 5 s) e il programma se lo ricorda. Un programma nuovo riparte
 // dai valori scritti sopra.
