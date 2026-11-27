@@ -769,6 +769,7 @@ export function unisciMisure(serie, body, adesso, tz = "Europe/Rome") {
   if (mot && body?.avvio != null && +body.sec >= 0 && !(s.riavvii || []).some((r) => r.avvio === body.avvio))
     s.riavvii = [...(s.riavvii || []), { avvio: body.avvio, ora: Math.round(adesso - +body.sec), motivo: mot }].slice(-50);
   if (nuove) s.giorni = riassumiGiorni(s, tz);
+  s.ver = (s.ver || 0) + 1;   // versione: l'app chiede solo se è cambiata (due invii nello stesso secondo restano distinti)
   s.ultimo = adesso;
   return { serie: s, nuove, scartate };
 }
@@ -941,6 +942,26 @@ export function pompaStimata(stato, config, adesso, tz = "Europe/Rome") {
   let on = !stato.pompa, t = stato.fine;
   for (let i = 0; i < 400; i++) { const d = on ? c.accesa_min * 60 : pausa(t); if (t + d > adesso) return { pompa: on, fine: Math.round(t + d), stima: true }; t += d; on = !on; }
   return null;
+}
+
+// L'app tiene una copia della torre e chiede solo cosa è cambiato: con la sua versione (u) il server risponde
+// «invariato» se non è arrivato niente; col cursore (da = ultima misura che ha meno 3 ore, per le misure arrivate fuori
+// ordine) manda solo le misure da lì e i riassunti dal giorno prima; senza (prima volta, o copia vecchia) manda tutto.
+export const MARGINE_TORRE = 3 * 3600;
+export function cursoreTorre(prima) {
+  const m = prima?.misure; if (!(prima?.ver > 0)) return null;
+  return { u: prima.ver, da: Array.isArray(m) && m.length ? Math.max(...m.slice(-50).map((x) => x[0])) - MARGINE_TORRE : 0 };
+}
+export function torreAggiornata(prima, r, giorni = 8, adesso = Date.now() / 1000) {
+  if (!r || r.invariato) return prima;
+  const finestra = adesso - giorni * 86400;
+  let misure, gg;
+  if (r.parziale && Array.isArray(prima?.misure)) {
+    misure = [...prima.misure.filter((x) => x[0] < r.da), ...(r.misure || [])];
+    const per = new Map((prima.giorni || []).map((x) => [x[0], x])); for (const x of r.giorni || []) per.set(x[0], x);
+    gg = [...per.values()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-RIASSUNTI_GIORNI);
+  } else { misure = r.misure || []; gg = r.giorni || []; }
+  return { stato: r.stato ?? null, ultimo: r.ultimo || 0, ver: r.ver || 0, misure: misure.filter((x) => x[0] >= finestra), giorni: gg, riavvii: r.riavvii || [], memoria_formattata: r.memoria_formattata || 0 };
 }
 
 // Ultime ore: minima e massima (con l'ora), umidità media, minuti di pompa e di pompa ferma per il freddo

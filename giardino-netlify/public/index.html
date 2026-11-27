@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="f07cbef715bc">
+<meta name="giardino-build" content="47330f6862ec">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1501,7 +1501,7 @@ window.GiardinoNet={
   // cambio di orto nell'app: il meteo di quell'orto (dalla copia sul telefono se c'è, poi aggiornato)
   cambiaOrto:()=>{ docs.meteo_bot=null; emit('meteo_bot'); return pronto().then(()=>caricaMeteo(false)).then(()=>emit('meteo_bot')).catch(()=>{}); },
   riconosci:immagine=>api('POST',{immagine},'riconosci'),
-  torre:giorni=>api('GET',null,'torre&giorni='+(giorni||8)),
+  torre:(giorni,u,da)=>api('GET',null,'torre&giorni='+(giorni||8)+(u?'&u='+Math.round(u):'')+(da?'&da='+Math.round(da):'')),
   torreAzione:action=>api('POST',{action},'torre'),
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
@@ -2318,6 +2318,7 @@ function unisciMisure(serie, body, adesso, tz = "Europe/Rome") {
   if (mot && body?.avvio != null && +body.sec >= 0 && !(s.riavvii || []).some((r) => r.avvio === body.avvio))
     s.riavvii = [...(s.riavvii || []), { avvio: body.avvio, ora: Math.round(adesso - +body.sec), motivo: mot }].slice(-50);
   if (nuove) s.giorni = riassumiGiorni(s, tz);
+  s.ver = (s.ver || 0) + 1;   // versione: l'app chiede solo se è cambiata (due invii nello stesso secondo restano distinti)
   s.ultimo = adesso;
   return { serie: s, nuove, scartate };
 }
@@ -2490,6 +2491,26 @@ function pompaStimata(stato, config, adesso, tz = "Europe/Rome") {
   let on = !stato.pompa, t = stato.fine;
   for (let i = 0; i < 400; i++) { const d = on ? c.accesa_min * 60 : pausa(t); if (t + d > adesso) return { pompa: on, fine: Math.round(t + d), stima: true }; t += d; on = !on; }
   return null;
+}
+
+// L'app tiene una copia della torre e chiede solo cosa è cambiato: con la sua versione (u) il server risponde
+// «invariato» se non è arrivato niente; col cursore (da = ultima misura che ha meno 3 ore, per le misure arrivate fuori
+// ordine) manda solo le misure da lì e i riassunti dal giorno prima; senza (prima volta, o copia vecchia) manda tutto.
+const MARGINE_TORRE = 3 * 3600;
+function cursoreTorre(prima) {
+  const m = prima?.misure; if (!(prima?.ver > 0)) return null;
+  return { u: prima.ver, da: Array.isArray(m) && m.length ? Math.max(...m.slice(-50).map((x) => x[0])) - MARGINE_TORRE : 0 };
+}
+function torreAggiornata(prima, r, giorni = 8, adesso = Date.now() / 1000) {
+  if (!r || r.invariato) return prima;
+  const finestra = adesso - giorni * 86400;
+  let misure, gg;
+  if (r.parziale && Array.isArray(prima?.misure)) {
+    misure = [...prima.misure.filter((x) => x[0] < r.da), ...(r.misure || [])];
+    const per = new Map((prima.giorni || []).map((x) => [x[0], x])); for (const x of r.giorni || []) per.set(x[0], x);
+    gg = [...per.values()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-RIASSUNTI_GIORNI);
+  } else { misure = r.misure || []; gg = r.giorni || []; }
+  return { stato: r.stato ?? null, ultimo: r.ultimo || 0, ver: r.ver || 0, misure: misure.filter((x) => x[0] >= finestra), giorni: gg, riavvii: r.riavvii || [], memoria_formattata: r.memoria_formattata || 0 };
 }
 
 // Ultime ore: minima e massima (con l'ora), umidità media, minuti di pompa e di pompa ferma per il freddo
@@ -4278,7 +4299,10 @@ const PERIODI_TORRE={24:'nelle ultime 24 ore',168:'negli ultimi 7 giorni',720:'n
 function caricaTorre(forza){
   const N=window.GiardinoNet; if(!torreOn()||!N?.torre||!ready) return;
   if(!forza&&Date.now()-torreChiesta<5*60e3) return; torreChiesta=Date.now();
-  N.torre(8).then(x=>{ TORRE={...x, at:Date.now()}; try{ localStorage.setItem('giardino:torre',JSON.stringify(TORRE)); }catch(e){}
+  // solo quello che è cambiato dall'ultima volta (niente, se la torre non si è fatta sentire)
+  const c=cursoreTorre(TORRE);
+  N.torre(8, c?.u, c?.da).then(x=>{ const nuovo=torreAggiornata(TORRE, x, 8, Date.now()/1000); if(nuovo===TORRE) return;
+    TORRE=nuovo; try{ localStorage.setItem('giardino:torre',JSON.stringify(TORRE)); }catch(e){}
     renderTorre(); if(!$('#torreSheet').hidden) renderTorreSheet(); }).catch(()=>{});
 }
 const POS_TORRE={fuori:'fuori',veranda:'in veranda',casa:'in casa'};

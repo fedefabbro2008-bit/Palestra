@@ -760,6 +760,38 @@ test("orari delle notifiche: ognuna alla sua ora, quelle fatte non si ripetono, 
   await st.setJSON("t-" + CODE, { ...t0 });
 });
 
+test("torre nell'app: aggiornata a pezzi (invariato o solo la coda), sempre uguale a scaricare tutto", async () => {
+  const C5 = "GRD-PEZZITORRE-ABCDEFGHJK", H5 = { "x-giardino-code": C5 }, MT = await import("../netlify/lib/torre.mjs");
+  const torreFn = (await import("../netlify/functions/torre.mjs")).default;
+  let chiave = (await call(dati, "/api/dati?op=torre", { method: "POST", headers: H5, body: { action: "chiave" } })).body.torre.chiave;
+  const manda = (misure, avvio = 1) => call(torreFn, "/api/torre", { method: "POST", headers: { "x-torre-chiave": chiave }, body: { v: 1, fw: 7, rev: 0, avvio, sec: 99999, stato: { modo: "normale", t: 12, u: 60 }, misure } });
+  const adesso = Math.floor(Date.now() / 1000);
+  const blocco = (da, n, passo = 600, avvio = 1) => Array.from({ length: n }, (_, i) => [da + i * passo, 10 + (i % 7), 60, i % 3 ? 0 : 300, 0, avvio, da + i]);
+  let risposte = [];
+  const leggi = async (q) => { const r = await call(dati, "/api/dati?op=torre&giorni=8" + q, { headers: H5 }); risposte.push(JSON.stringify(r.body).length); return r.body; };
+  const chiedi = async (prima) => { const c = MT.cursoreTorre(prima); return MT.torreAggiornata(prima, await leggi(c ? `&u=${c.u}&da=${c.da}` : ""), 8, adesso); };
+  const tutto = async () => MT.torreAggiornata(null, await leggi(""), 8, adesso);
+  // 1. prima volta: tutto
+  assert.equal((await manda(blocco(adesso - 3 * 86400, 144))).status, 200);
+  let app = await chiedi(null);
+  assert.deepEqual(app, await tutto()); assert.equal(app.misure.length, 144);
+  // 2. niente di nuovo: «invariato», l'app tiene lo stesso oggetto
+  risposte = []; assert.equal(await chiedi(app), app); assert.ok(risposte[0] < 40, "risposta minima: " + risposte[0]);
+  // 3. arretrato in due blocchi con un aggiornamento in mezzo; poi misure fuori ordine (orologio rimesso indietro di 20 minuti)
+  await manda(blocco(adesso - 2 * 86400, 144));
+  app = await chiedi(app);
+  await manda(blocco(adesso - 86400 - 1200, 100, 600, 2));
+  risposte = []; app = await chiedi(app); assert.deepEqual(app, await tutto());
+  assert.ok(risposte[0] < risposte[1] / 2, `solo la coda: ${risposte[0]} byte invece di ${risposte[1]}`);
+  // 4. torre tolta e rifatta: la versione riparte, l'app ricarica tutto
+  await call(dati, "/api/dati?op=torre", { method: "POST", headers: H5, body: { action: "togli" } });
+  chiave = (await call(dati, "/api/dati?op=torre", { method: "POST", headers: H5, body: { action: "chiave" } })).body.torre.chiave;
+  await manda(blocco(adesso - 3600, 6, 600, 9));
+  app = await chiedi(app); assert.deepEqual(app, await tutto()); assert.equal(app.misure.length, 6);
+  // 5. un'app vecchia (senza u e da) riceve tutto
+  const vecchia = await leggi(""); assert.ok(!vecchia.parziale && vecchia.misure.length === 6);
+});
+
 test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazioni e accensione una volta sola, avvisi su Telegram, spenta e tolta", async () => {
   const torreFn = (await import("../netlify/functions/torre.mjs")).default;
   const st = getStore({ name: "giardino" }), t0 = await st.get("t-" + CODE, { type: "json" }), d0 = await leggiDati();

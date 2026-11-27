@@ -2053,7 +2053,10 @@ const PERIODI_TORRE={24:'nelle ultime 24 ore',168:'negli ultimi 7 giorni',720:'n
 function caricaTorre(forza){
   const N=window.GiardinoNet; if(!torreOn()||!N?.torre||!ready) return;
   if(!forza&&Date.now()-torreChiesta<5*60e3) return; torreChiesta=Date.now();
-  N.torre(8).then(x=>{ TORRE={...x, at:Date.now()}; try{ localStorage.setItem('giardino:torre',JSON.stringify(TORRE)); }catch(e){}
+  // solo quello che è cambiato dall'ultima volta (niente, se la torre non si è fatta sentire)
+  const c=cursoreTorre(TORRE);
+  N.torre(8, c?.u, c?.da).then(x=>{ const nuovo=torreAggiornata(TORRE, x, 8, Date.now()/1000); if(nuovo===TORRE) return;
+    TORRE=nuovo; try{ localStorage.setItem('giardino:torre',JSON.stringify(TORRE)); }catch(e){}
     renderTorre(); if(!$('#torreSheet').hidden) renderTorreSheet(); }).catch(()=>{});
 }
 const POS_TORRE={fuori:'fuori',veranda:'in veranda',casa:'in casa'};
