@@ -632,4 +632,6 @@ test("piante nella torre idroponica: niente calcolo dell'acqua, controlli col di
   assert.deepEqual(M.avvisiDomani([lat], fut[1], null), []);
   assert.match(M.concime(lat, { oggi, lat: 44 }).testo, /serbatoio/);
   assert.ok(M.acquaVita(lat, [], [], oggi, 44).torre);
+  const sint = M.sintesiSettimana({ piante: [pp] }, fut, [lat]);
+  assert.match(sint, /Nella torre: Lattuga/); assert.doesNotMatch(sint, /niente acqua/);
 });

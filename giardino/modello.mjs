@@ -1215,11 +1215,14 @@ export function sintesiSettimana(piano, fut, piante){
   let t='Prossimi '+fut.length+' giorni: '+fmtN(rain)+' mm di pioggia'+((max.rain||0)>=5?' (la più forte '+giornoBreve(max.date)+', '+fmtN(max.rain,0)+' mm)':'')+', temperature tra '+fmtN(minT,0)+' e '+fmtN(maxT,0)+' °C.';
   const nome=id=>piante.find(p=>p.id===id)?.nome||'';
   const si=[], no=[];
+  const torre=[];
   for(const pp of piano.piante){ const g=pp.giorni.filter(x=>x.azione==='innaffia'); if(!nome(pp.id)) continue;
+    if(pp.torre){ torre.push(nome(pp.id)); continue; }
     if(g.length) si.push(nome(pp.id)+' '+g.map(x=>giornoBreve(x.data)).join(', ')); else no.push(nome(pp.id)); }
   const it=(a,b)=>a.localeCompare(b,'it'); si.sort(it); no.sort(it);
   if(si.length) t+=' Da innaffiare: '+si.join('; ')+'.';
   if(no.length) t+=' '+(no.length===1?no[0]+': niente acqua':no.slice(0,-1).join(', ')+' e '+no.at(-1)+': niente acqua')+(rain>=10&&piante.some(p=>!alCoperto(p)&&no.includes(p.nome))?', basta la pioggia o la riserva.':', basta la riserva.');
+  if(torre.length) t+=' Nella torre: '+torre.sort(it).join(', ')+' (l\'acqua la dà la pompa).';
   return t;
 }
 const NF=[]; const nf=d=>NF[d]||(NF[d]=new Intl.NumberFormat('it-IT',{maximumFractionDigits:Math.max(d,3)}));   // un formattatore per tipo, creato una volta
