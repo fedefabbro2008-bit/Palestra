@@ -776,6 +776,7 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   const a = (await manda(chiave, corpo)).body;
   assert.equal(a.nuove, 3, "quella di un'accensione passata senza ora si scarta");
   assert.equal(a.config.rev, 1); assert.deepEqual(a.config.pause, [5, 10, 15, 25, 45, 60]); assert.equal(a.config.freddo_stop, 2);
+  assert.equal(a.config.guasto_pausa, 20); assert.equal(a.config.guasto_ferma, false); assert.ok(Array.isArray(a.gelo), "ore di gelo sempre mandate (anche vuote)");
   const g = (await call(dati, "/api/dati?op=torre", { headers: H })).body;
   assert.equal(g.misure.length, 3); assert.ok(Math.abs(g.misure[0][0] - (adesso - 6600)) < 5, "datata con l'orologio del server");
   assert.deepEqual(g.misure[0].slice(1), [17.2, 62, 900, 0]); assert.equal(g.stato.t, 18.5);
@@ -817,6 +818,9 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   const cm = (await manda(chiave, { ...corpo, rev: 2, misure: [] })).body;
   assert.equal(cm.config.accesa_min, 12); assert.equal(cm.comando.pompa_s, 30);
   assert.match((await strumento("torre_imposta", { accesa_min: 12 })).content[0].text, /Niente da cambiare/);
+  assert.match((await strumento("torre_imposta", { guasto_pausa: 30, guasto_ferma: true })).content[0].text, /pompa ferma: no → sì/);
+  assert.equal((await leggiDati()).torre.config.guasto_pausa, 30);
+  assert.ok((await strumento("torre_imposta", { guasto_ferma: "sì" })).isError);
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
   assert.ok((await strumento("torre_imposta", { accesa_min: 11 })).isError, "senza permesso");
   assert.ok(!(await strumento("torre")).isError, "leggere si può sempre");

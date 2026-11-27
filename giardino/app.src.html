@@ -1036,6 +1036,10 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
             <div class="grid2"><div class="field"><label for="torreStop">Pompa ferma sotto (°C)</label><input type="text" inputmode="decimal" id="torreStop"></div>
               <div class="field"><label for="torreRiparte">Riparte sopra (°C)</label><input type="text" inputmode="decimal" id="torreRiparte"></div></div>
             <span class="hint">Se l'acqua gela la pompa si rompe: sotto questa temperatura la torre non la accende.</span></div>
+          <div class="field"><span class="flabel">Se il sensore non risponde</span>
+            <div class="grid2"><div class="field"><label for="torreGuastoP">Pausa di emergenza (minuti)</label><input type="text" inputmode="numeric" id="torreGuastoP"></div></div>
+            <label class="check"><input type="checkbox" id="torreGuastoFerma"><span>Pompa ferma invece del ciclo di emergenza</span></label>
+            <span class="hint">Ciclo di emergenza: la pompa resta accesa i minuti di sopra, poi si ferma per questa pausa; nelle ore di gelo previste dal meteo resta ferma. Ferma del tutto: con il caldo le radici seccano in poche ore.</span></div>
           <div class="field"><span class="flabel">Notte (pause più lunghe)</span>
             <div class="grid2"><div class="field"><label for="torreNotteDa">Dalle (ora)</label><input type="text" inputmode="numeric" id="torreNotteDa"></div>
               <div class="field"><label for="torreNotteA">Alle (ora)</label><input type="text" inputmode="numeric" id="torreNotteA"></div>
@@ -2123,6 +2127,7 @@ function renderTorreSet(){
   setVal($('#torreAccesa'),c.accesa_min);
   const pz=$('#torrePause'); if(!pz.contains(document.activeElement)) setHTML(pz,FASCE_TORRE(c).map((f,i)=>`<div class="field"><label for="torreP${i}">${esc(f)}</label><input type="text" inputmode="numeric" id="torreP${i}" value="${c.pause[i]}"></div>`).join(''));
   setVal($('#torreStop'),numIn(c.freddo_stop)); setVal($('#torreRiparte'),numIn(c.freddo_riparte));
+  setVal($('#torreGuastoP'),c.guasto_pausa); $('#torreGuastoFerma').checked=!!c.guasto_ferma;
   setVal($('#torreNotteDa'),c.notte_da); setVal($('#torreNotteA'),c.notte_a); setVal($('#torreNotteX'),numIn(c.notte_fattore));
   const st=TORRE?.stato;
   $('#torreRev').textContent=!TORRE?.ultimo?'La torre non si è ancora collegata.':st?.rev===tr.rev?'La torre ha le impostazioni di adesso.':'Impostazioni nuove in attesa: arrivano alla torre quando trova il Wi-Fi.';
@@ -2158,7 +2163,7 @@ function wireTorre(){
     if(!S.torre) return;
     const c=configTorre(S.torre.config), n=id=>numOrNull($(id).value), pos=document.querySelector('#torrePos input:checked')?.value||S.torre.posizione;
     const nuova=configTorre({...c, accesa_min:n('#torreAccesa'), pause:c.pause.map((p,i)=>n('#torreP'+i)??p), freddo_stop:n('#torreStop'), freddo_riparte:n('#torreRiparte'),
-      notte_da:n('#torreNotteDa'), notte_a:n('#torreNotteA'), notte_fattore:n('#torreNotteX')});
+      notte_da:n('#torreNotteDa'), notte_a:n('#torreNotteA'), notte_fattore:n('#torreNotteX'), guasto_pausa:n('#torreGuastoP'), guasto_ferma:$('#torreGuastoFerma').checked});
     const cambiata=JSON.stringify(nuova)!==JSON.stringify(c);
     S.torre={...S.torre, nome:$('#torreNome').value.trim().slice(0,40)||'Torre idroponica', posizione:pos, orto:$('#torreOrtoF').hidden?(S.torre.orto||'p'):$('#torreOrto').value, config:nuova, rev:(S.torre.rev||1)+(cambiata?1:0)};
     document.querySelectorAll('#torreSet input').forEach(x=>{ x.blur(); x._last=undefined; });

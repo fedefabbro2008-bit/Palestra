@@ -645,6 +645,9 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   await page.click("#tab-impostazioni");
   await page.fill("#torreAccesa", "10"); await page.click('#torrePos label:has(input[value="veranda"])'); await page.click("#torreSalva");
   assert.deepEqual(await page.evaluate(() => [S.torre.config.accesa_min, S.torre.posizione, S.torre.rev]), [10, "veranda", 2]);
+  assert.equal(await page.inputValue("#torreGuastoP"), "20"); assert.ok(!(await page.isChecked("#torreGuastoFerma")));
+  await page.fill("#torreGuastoP", "35"); await page.check("#torreGuastoFerma"); await page.click("#torreSalva");
+  assert.deepEqual(await page.evaluate(() => [S.torre.config.guasto_pausa, S.torre.config.guasto_ferma, S.torre.rev]), [35, true, 3]);
   // spenta: niente riquadro, niente notifica, solo l'interruttore
   await page.click('label[for="torreOn"]');
   assert.ok(await page.isHidden("#torreSet")); assert.equal(await page.textContent("#torreChip"), "spenta");

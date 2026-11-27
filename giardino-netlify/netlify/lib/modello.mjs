@@ -680,7 +680,8 @@ export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp
    Le misure stanno a parte sul server (s-<codice>). Qui le parti che usano sia l'app sia il server. */
 // impostazioni della pompa: gli stessi nomi del programma dell'ESP32
 export const TORRE_DEF = { accesa_min: 15, soglie: [30, 27, 20, 12, 5], pause: [5, 10, 15, 25, 45, 60], freddo_stop: 2, freddo_riparte: 4,
-  notte_da: 22, notte_a: 6, notte_fattore: 2, umido_soglia: 92, umido_fattore: 1.5, pausa_max: 120, misura_ogni_min: 10, wifi_ogni_min: 15, wifi_max_min: 60 };
+  notte_da: 22, notte_a: 6, notte_fattore: 2, umido_soglia: 92, umido_fattore: 1.5, pausa_max: 120, misura_ogni_min: 10, wifi_ogni_min: 15, wifi_max_min: 60,
+  guasto_pausa: 20, guasto_ferma: false };   // sensore che non risponde: ciclo di emergenza (o pompa ferma)
 export const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale"];
 export const POSIZIONI_TORRE = ["fuori", "veranda", "casa"];
 export const GIORNI_TORRE = 31;          // misure tenute sul server
@@ -703,6 +704,8 @@ export function configTorre(c = {}) {
   o.misura_ogni_min = Math.round(numTorre(c.misura_ogni_min, 5, 60, d.misura_ogni_min));
   o.wifi_ogni_min = Math.round(numTorre(c.wifi_ogni_min, 5, 120, d.wifi_ogni_min));
   o.wifi_max_min = Math.round(numTorre(c.wifi_max_min, 15, 240, d.wifi_max_min));
+  o.guasto_pausa = Math.round(numTorre(c.guasto_pausa, 5, 240, d.guasto_pausa));
+  o.guasto_ferma = c.guasto_ferma === true;
   return o;
 }
 export const nuovaTorre = (chiave) => ({ attiva: true, chiave, nome: "Torre idroponica", posizione: "fuori", orto: "p", config: configTorre(), rev: 1, creata: new Date().toISOString() });
@@ -737,9 +740,30 @@ export function unisciMisure(serie, body, adesso) {
   }
   s.misure = s.misure.filter((r) => r[0] >= da).sort((a, b) => a[0] - b[0]);
   const st = body?.stato && typeof body.stato === "object" ? body.stato : {};
-  s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0 };
+  s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0 };
+  if (st.memoria === "formattata") s.memoria_formattata = adesso;   // l'ESP32 lo dice una volta sola: il server se lo ricorda
   s.ultimo = adesso;
   return { serie: s, nuove, scartate };
+}
+
+// Ore di gelo previste stanotte dove sta la torre ([[da, a], …] in secondi): servono all'ESP32 solo se il suo sensore non
+// risponde, per fermare lo stesso la pompa. Fuori: alla temperatura di stop + 1 °C di margine; in veranda: a 0 °C fuori; in casa mai.
+const secondiLocali = (iso, ora, tz) => {   // AAAA-MM-GG e ora locale → secondi UTC
+  const g = Date.parse(iso + "T" + String(ora).padStart(2, "0") + ":00:00Z") / 1000;
+  const parti = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(g * 1000)).map((p) => [p.type, p.value]));
+  const vista = Date.parse(`${parti.year}-${parti.month}-${parti.day}T${parti.hour}:${parti.minute}:00Z`) / 1000;
+  return g - (vista - g);
+};
+export function finestreGelo(torre, met, oggi, tz = "Europe/Rome") {
+  if (!met || !Array.isArray(met.notte) || !["fuori", "veranda"].includes(torre?.posizione)) return [];
+  const soglia = torre.posizione === "veranda" ? 0 : configTorre(torre.config).freddo_stop + 1, out = [];
+  for (const x of met.notte) {
+    if (!(x.t <= soglia)) continue;
+    const h = +x.ora, da = secondiLocali(h >= 12 ? oggi : addDays(oggi, 1), h, tz) - 3600, a = da + 2 * 3600;   // un'ora di margine prima e dopo
+    const ultima = out.at(-1);
+    if (ultima && da <= ultima[1]) ultima[1] = Math.max(ultima[1], a); else out.push([da, a]);
+  }
+  return out.slice(0, 6);
 }
 
 // Ultime ore: minima e massima (con l'ora), umidità media, minuti di pompa e di pompa ferma per il freddo
@@ -767,6 +791,18 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome")
     const dom = met.days?.find((d) => d.date === addDays(oggi, 1));
     if (dom && (dom.rain || 0) >= 5) out.push({ tipo: "pioggia", testo: `🌧 Domani ${nv(dom.rain, 0)} mm di pioggia: copri il serbatoio, la pioggia diluisce i nutrienti e può farlo traboccare.` });
   }
+  // sensore che non risponde: le ultime misure senza temperatura (o lo stato dell'ultimo contatto)
+  const m = serie?.misure || [];
+  let k = m.length; while (k > 0 && m[k - 1][1] == null) k--;
+  if (serie?.ultimo && (k < m.length || (serie.stato && serie.stato.t == null && serie.stato.modo === MODI_TORRE[4])) && adesso - (serie.ultimo || 0) < 3 * 86400) {
+    const da = k < m.length ? m[k][0] : serie.ultimo;
+    out.push({ tipo: "sensore", testo: `🌡️ Il sensore della torre non risponde${k < m.length ? " da " + oraIt(da) : ""}: ${cfg.guasto_ferma ? "pompa ferma, come nelle impostazioni" : `pompa in ciclo di emergenza (${cfg.accesa_min} min accesa ogni ${cfg.guasto_pausa} min di pausa)`}`
+      + `${torre?.posizione !== "casa" ? ", ferma nelle ore di gelo previste" : ""}. Controlla i fili dell'SHT40 (SDA 21, SCL 22, 3V3, GND).` });
+  }
+  if (serie?.stato?.memoria === "guasta")
+    out.push({ tipo: "memoria", testo: "💾 La memoria dell'ESP32 è guasta: la pompa lavora, ma con il modem spento le misure si perdono. Ricarica il programma; se resta così, la scheda va cambiata." });
+  else if (serie?.memoria_formattata && adesso - serie.memoria_formattata < 86400)
+    out.push({ tipo: "memoria", testo: "💾 La memoria dell'ESP32 non si leggeva ed è stata riformattata: le misure non ancora mandate sono andate perse. La torre lavora normalmente." });
   const r = riepilogoTorre(serie, adesso);
   if (r.freddoMin >= 10) out.push({ tipo: "freddo", testo: `❄️ Nelle ultime 24 ore la pompa è rimasta ferma per il freddo circa ${r.freddoMin >= 90 ? Math.round(r.freddoMin / 60) + " ore" : r.freddoMin + " minuti"}${r.min != null ? ` (minima ${nv(r.min)} °C ${oraIt(r.minOra)})` : ""}.` });
   return out;

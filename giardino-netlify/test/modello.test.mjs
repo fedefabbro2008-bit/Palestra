@@ -621,6 +621,30 @@ test("torre idroponica: impostazioni controllate, misure unite senza doppioni, r
   assert.deepEqual(tipi({ ...tr, posizione: "veranda" }, serie, { notte: [{ ora: "03", t: 1 }], days: [] }), ["freddo"], "in veranda solo il gelo vero");
   assert.ok(tipi(tr, { ...serie, ultimo: adesso - 30 * h }, null).includes("silenzio"), "torre zitta da più di 26 ore");
   assert.match(M.avvisiTorre(tr, serie, met, "2027-01-10", adesso)[0].testo, /Rischio di ghiaccio nel serbatoio/);
+  // sensore che non risponde: ciclo di emergenza impostabile, avviso con l'ora da cui manca la temperatura
+  assert.equal(M.configTorre({}).guasto_pausa, 20); assert.equal(M.configTorre({}).guasto_ferma, false);
+  assert.equal(M.configTorre({ guasto_pausa: 1, guasto_ferma: "sì" }).guasto_pausa, 5); assert.equal(M.configTorre({ guasto_ferma: "sì" }).guasto_ferma, false, "solo true vero");
+  const guasto = M.unisciMisure(serie, { avvio: 1, sec: 10 * h, stato: { modo: "senza sensore" }, misure: [[adesso - h, null, null, 900, 4, 1, 9 * h]] }, adesso).serie;
+  const sens = M.avvisiTorre({ ...tr, posizione: "casa" }, guasto, null, "2027-01-10", adesso).find((a) => a.tipo === "sensore");
+  assert.ok(sens); assert.match(sens.testo, /non risponde da .*ciclo di emergenza \(15 min accesa ogni 20 min di pausa\)/); assert.doesNotMatch(sens.testo, /gelo/, "in casa niente gelo");
+  assert.match(M.avvisiTorre({ ...tr, config: { guasto_ferma: true } }, guasto, null, "2027-01-10", adesso).find((a) => a.tipo === "sensore").testo, /pompa ferma, come nelle impostazioni/);
+  assert.ok(!M.avvisiTorre(tr, serie, null, "2027-01-10", adesso).some((a) => a.tipo === "sensore"), "sensore a posto: niente avviso");
+  // memoria dell'ESP32 riformattata: il server se lo ricorda per un giorno
+  const form = M.unisciMisure(serie, { stato: { memoria: "formattata" }, misure: [] }, adesso).serie;
+  assert.equal(form.memoria_formattata, adesso); assert.ok(tipi(tr, form, null).includes("memoria"));
+  assert.ok(!tipi(tr, form, null, adesso + 25 * h).includes("memoria"));
+});
+
+test("torre: ore di gelo previste stanotte per l'ESP32 col sensore guasto (ora italiana → secondi, ore vicine unite)", () => {
+  const notte = [{ ora: "18", t: 5 }, { ora: "02", t: 1 }, { ora: "03", t: 2.5 }, { ora: "05", t: 4 }], tr = { posizione: "fuori", config: { freddo_stop: 2 } };
+  const ore = (y, m, d, hh) => Date.UTC(y, m - 1, d, hh) / 1000;
+  // gennaio, ora solare (UTC+1): le 02 italiane sono l'01 UTC; un'ora di margine prima e dopo; 02 e 03 unite
+  assert.deepEqual(M.finestreGelo(tr, { notte }, "2027-01-10", "Europe/Rome"), [[ore(2027, 1, 11, 0), ore(2027, 1, 11, 3)]]);
+  // luglio, ora legale (UTC+2), gelo alle 22 di sera (stesso giorno)
+  assert.deepEqual(M.finestreGelo(tr, { notte: [{ ora: "22", t: 0 }] }, "2027-07-10", "Europe/Rome"), [[ore(2027, 7, 10, 19), ore(2027, 7, 10, 21)]]);
+  assert.deepEqual(M.finestreGelo({ ...tr, posizione: "casa" }, { notte }, "2027-01-10"), []);
+  assert.deepEqual(M.finestreGelo({ ...tr, posizione: "veranda" }, { notte }, "2027-01-10"), [], "in veranda solo sotto 0 °C fuori");
+  assert.deepEqual(M.finestreGelo(tr, null, "2027-01-10"), []);
 });
 
 test("piante nella torre idroponica: niente calcolo dell'acqua, controlli col dito, avvisi per pianta né concime", () => {

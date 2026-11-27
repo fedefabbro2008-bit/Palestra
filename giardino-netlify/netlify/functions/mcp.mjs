@@ -431,7 +431,8 @@ async function toolImpostazioni(ctx, a) {
 // La chiave dell'ESP32 non esce mai dal connettore: la crea, la cambia o la toglie solo l'app.
 const NOMI_CFG = { accesa_min: "pompa accesa per ciclo (min)", soglie: "fasce di temperatura: sopra (°C)", pause: "pausa per fascia (min)", freddo_stop: "pompa ferma sotto (°C)",
   freddo_riparte: "riparte sopra (°C)", notte_da: "notte dalle (ora)", notte_a: "notte fino alle (ora)", notte_fattore: "di notte pause ×", umido_soglia: "umidità alta da (%)",
-  umido_fattore: "con umidità alta pause ×", pausa_max: "pausa massima (min)", misura_ogni_min: "una misura ogni (min)", wifi_ogni_min: "prova il Wi-Fi ogni (min)", wifi_max_min: "con il modem spento al massimo ogni (min)" };
+  umido_fattore: "con umidità alta pause ×", pausa_max: "pausa massima (min)", misura_ogni_min: "una misura ogni (min)", wifi_ogni_min: "prova il Wi-Fi ogni (min)", wifi_max_min: "con il modem spento al massimo ogni (min)",
+  guasto_pausa: "sensore guasto: pausa di emergenza (min)", guasto_ferma: "sensore guasto: pompa ferma" };
 const POS_T = { fuori: "fuori (pioggia e gelo)", veranda: "in veranda", casa: "in casa" };
 const TZ_T = "Europe/Rome";
 const fmtOra = (s, tz = TZ_T) => new Date(s * 1000).toLocaleString("it-IT", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -474,6 +475,7 @@ async function toolTorre(ctx, a = {}) {
   L.push("", `## Impostazioni (versione ${+tr.rev || 1})`, `- pompa accesa ${c.accesa_min} min per ciclo; pause: ${fasce(c)}`,
     `- freddo: pompa ferma sotto ${fmt(c.freddo_stop)} °C, riparte sopra ${fmt(c.freddo_riparte)} °C`,
     `- notte dalle ${c.notte_da} alle ${c.notte_a}: pause ×${fmt(c.notte_fattore)}; umidità da ${fmt(c.umido_soglia, 0)}%: pause ×${fmt(c.umido_fattore)}; pausa massima ${c.pausa_max} min`,
+    `- sensore che non risponde: ${c.guasto_ferma ? "pompa ferma" : `ciclo di emergenza (${c.accesa_min} min accesa, ${c.guasto_pausa} di pausa)`}, ferma nelle ore di gelo previste`,
     `- una misura ogni ${c.misura_ogni_min} min; Wi-Fi ogni ${c.wifi_ogni_min} min (con il modem spento si allunga fino a ${c.wifi_max_min})`);
   if (tr.comando?.id) L.push(`- accensione a mano chiesta: ${tr.comando.pompa_s} s (chiesta ${isFinite(Date.parse(tr.comando.at)) ? fmtOra(Date.parse(tr.comando.at) / 1000, tz) : "–"}; vale 2 ore, ${serie.fatti?.includes(tr.comando.id) ? "già fatta" : "in attesa"})`);
   // storico
@@ -501,7 +503,7 @@ async function toolTorre(ctx, a = {}) {
 }
 // Impostazioni della torre: tutte quelle dell'app, più l'accensione a mano. Valori fuori dai limiti: errore, non si salva niente.
 const LIM_T = { accesa_min: [1, 60, 1], freddo_stop: [0, 10], freddo_riparte: [1, 15], notte_da: [0, 23, 1], notte_a: [0, 23, 1], notte_fattore: [1, 4], umido_soglia: [50, 100],
-  umido_fattore: [1, 3], pausa_max: [10, 360, 1], misura_ogni_min: [5, 60, 1], wifi_ogni_min: [5, 120, 1], wifi_max_min: [15, 240, 1] };
+  umido_fattore: [1, 3], pausa_max: [10, 360, 1], misura_ogni_min: [5, 60, 1], wifi_ogni_min: [5, 120, 1], wifi_max_min: [15, 240, 1], guasto_pausa: [5, 240, 1] };
 function numeroT(k, v, lo, hi, intero) {
   const n = +v;
   if (v == null || v === "" || !isFinite(n) || n < lo || n > hi) throw new Error(`${k}: tra ${lo} e ${hi}`);
@@ -517,6 +519,7 @@ async function toolTorreImposta(ctx, a = {}) {
     nuove.soglie = a.soglie.map((x, i) => numeroT("soglie[" + i + "]", x, -10, 45)); if (nuove.soglie.some((x, i) => i && x >= nuove.soglie[i - 1])) throw new Error("soglie: dalla più alta alla più bassa"); }
   if (a.pause != null) { if (!Array.isArray(a.pause) || a.pause.length !== 6) throw new Error("pause: 6 valori in minuti, uno per fascia (l'ultima tra il freddo e la fascia più bassa)");
     nuove.pause = a.pause.map((x, i) => numeroT("pause[" + i + "]", x, 1, 240, true)); }
+  if (a.guasto_ferma != null) { if (typeof a.guasto_ferma !== "boolean") throw new Error("guasto_ferma: true o false"); nuove.guasto_ferma = a.guasto_ferma; }
   const altro = {};
   if (a.nome != null) { const n = testo(a.nome, 40); if (!n) throw new Error("nome vuoto"); altro.nome = n; }
   if (a.posizione != null) { if (!M.POSIZIONI_TORRE.includes(a.posizione)) throw new Error("posizione: " + M.POSIZIONI_TORRE.join(", ")); altro.posizione = a.posizione; }
@@ -534,7 +537,7 @@ async function toolTorreImposta(ctx, a = {}) {
     if (pompa && (altro.attiva ?? tr.attiva) === false) throw new Error("La torre è spenta nell'app: l'accensione a mano non arriverebbe. Prima riattivala (attiva: true) se l'utente vuole.");
     rev = (+tr.rev || 1) + (cambiata ? 1 : 0);
     d.torre = { ...tr, ...altro, config: conf, rev, ...(pompa ? { comando: { id: "c" + Date.now().toString(36), pompa_s: pompa, at: new Date().toISOString() } } : {}) };
-    for (const k of Object.keys(conf)) if (JSON.stringify(conf[k]) !== JSON.stringify(prima[k])) fatto.push(`${NOMI_CFG[k] || k}: ${[].concat(prima[k]).join("/")} → ${[].concat(conf[k]).join("/")}`);
+    for (const k of Object.keys(conf)) if (JSON.stringify(conf[k]) !== JSON.stringify(prima[k])) { const v = (x) => (typeof x === "boolean" ? (x ? "sì" : "no") : [].concat(x).join("/")); fatto.push(`${NOMI_CFG[k] || k}: ${v(prima[k])} → ${v(conf[k])}`); }
     for (const [k, v] of Object.entries(altro)) if (tr[k] !== v) fatto.push(k === "attiva" ? (v ? "torre riattivata nell'app" : "torre spenta nell'app") : `${k}: ${tr[k] ?? "–"} → ${v}`);
     if (pompa) fatto.push(`accensione a mano per ${pompa} s (arriva all'ESP32 al prossimo collegamento, entro 2 ore; mai sotto il freddo)`);
     if (!fatto.length) return false;
@@ -608,11 +611,13 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { storico: { type: "string", enum: ["giorni", "ore", "misure"] }, giorni: { type: "integer", minimum: 1, maximum: 31, description: "ultimi N giorni (predefinito 7; 1 per misure)" },
       dal: { type: "string", description: "AAAA-MM-GG" }, al: { type: "string", description: "AAAA-MM-GG" } } }, annotations: { ...RO, title: "Torre" }, run: toolTorre },
   { name: "torre_imposta", title: "Impostazioni della torre", write: true,
-    description: "Cambia le impostazioni della torre idroponica (le stesse dell'app; arrivano all'ESP32 al prossimo collegamento) o chiede un'accensione a mano della pompa. Prima leggi «torre», proponi e cambia solo con l'accordo dell'utente. La pompa: dopo ogni ciclo di «accesa_min» minuti fa una pausa che dipende dalla temperatura dell'aria: soglie = 5 temperature decrescenti, pause = 6 minuti (sopra soglie[0], sopra soglie[1], … sopra soglie[4], e l'ultima tra freddo_stop e soglie[4]); di notte (notte_da–notte_a) le pause × notte_fattore, con umidità ≥ umido_soglia × umido_fattore, mai oltre pausa_max. Sotto freddo_stop la pompa è ferma, riparte sopra freddo_riparte (almeno 1 °C in più). ripristina: true torna ai valori iniziali (poi applica gli altri campi). La chiave dell'ESP32 non si vede né si cambia da qui.",
+    description: "Cambia le impostazioni della torre idroponica (le stesse dell'app; arrivano all'ESP32 al prossimo collegamento) o chiede un'accensione a mano della pompa. Prima leggi «torre», proponi e cambia solo con l'accordo dell'utente. La pompa: dopo ogni ciclo di «accesa_min» minuti fa una pausa che dipende dalla temperatura dell'aria: soglie = 5 temperature decrescenti, pause = 6 minuti (sopra soglie[0], sopra soglie[1], … sopra soglie[4], e l'ultima tra freddo_stop e soglie[4]); di notte (notte_da–notte_a) le pause × notte_fattore, con umidità ≥ umido_soglia × umido_fattore, mai oltre pausa_max. Sotto freddo_stop la pompa è ferma, riparte sopra freddo_riparte (almeno 1 °C in più). Se il sensore non risponde: ciclo di emergenza (accesa_min accesa, guasto_pausa ferma) o pompa ferma (guasto_ferma); nelle ore di gelo previste dal meteo, ferma. ripristina: true torna ai valori iniziali (poi applica gli altri campi). La chiave dell'ESP32 non si vede né si cambia da qui.",
     inputSchema: { type: "object", properties: {
       accesa_min: { type: "integer", minimum: 1, maximum: 60 }, soglie: { type: "array", items: { type: "number" }, minItems: 5, maxItems: 5 }, pause: { type: "array", items: { type: "integer", minimum: 1, maximum: 240 }, minItems: 6, maxItems: 6 },
       freddo_stop: { type: "number", minimum: 0, maximum: 10 }, freddo_riparte: { type: "number", minimum: 1, maximum: 15 }, notte_da: { type: "integer", minimum: 0, maximum: 23 }, notte_a: { type: "integer", minimum: 0, maximum: 23 },
       notte_fattore: { type: "number", minimum: 1, maximum: 4 }, umido_soglia: { type: "number", minimum: 50, maximum: 100 }, umido_fattore: { type: "number", minimum: 1, maximum: 3 }, pausa_max: { type: "integer", minimum: 10, maximum: 360 },
+      guasto_pausa: { type: "integer", minimum: 5, maximum: 240, description: "sensore che non risponde: pausa del ciclo di emergenza (la pompa resta accesa accesa_min)" },
+      guasto_ferma: { type: "boolean", description: "sensore che non risponde: pompa ferma invece del ciclo di emergenza (sconsigliato col caldo: le radici seccano)" },
       misura_ogni_min: { type: "integer", minimum: 5, maximum: 60 }, wifi_ogni_min: { type: "integer", minimum: 5, maximum: 120 }, wifi_max_min: { type: "integer", minimum: 15, maximum: 240 },
       nome: { type: "string" }, posizione: { type: "string", enum: ["fuori", "veranda", "casa"], description: "dove sta: conta per gli avvisi di gelo e pioggia" }, orto: { type: "string", description: "id dell'orto (per il meteo degli avvisi)" },
       attiva: { type: "boolean", description: "false = spenta nell'app (l'utente non la vede, niente avvisi; l'ESP32 continua da solo)" },
