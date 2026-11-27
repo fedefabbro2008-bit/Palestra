@@ -711,6 +711,10 @@ test("torre: serbatoio, consumo dalle piante e dal meteo, scala imparata dai rab
   const [a3] = tipi(t0 + 14 * d); assert.match(a3.testo, /Serbatoio al minimo/); assert.ok(a3.urgente);
   assert.ok(M.urgentiTorre(tr, { ...serie, ultimo: t0 + 14 * d }, t0 + 14 * d, "UTC", met, [la]).testi.some((x) => /Serbatoio al minimo/.test(x)), "subito su Telegram");
   assert.equal(tipi(t0 + presto * d, { ...tr, serbatoio: { ...tr.serbatoio, anticipo: 1 } }).length, 0, "anticipo di un giorno: non ancora");
+  // intervalli con pioggia: solo per alzare la stima (la pioggia può essere entrata nel serbatoio)
+  const bagnato = (litri) => ({ ...tr, serbatoio: { capacita: 20, rabbocchi: [{ at: iso(t0 - 5 * d) }, { at: iso(t0), litri }] } });
+  const pv = M.lavoriTorre(bagnato(0.5), serie, t0 + d, "UTC", ctx).serbatoio; assert.equal(pv.imparati, 0); assert.equal(pv.piovosi, 1); assert.equal(pv.scalaPrudente, 1.5, "beveva poco: non abbassa");
+  assert.ok(M.lavoriTorre(bagnato(30), serie, t0 + d, "UTC", ctx).serbatoio.scalaPrudente > 1.5, "beveva molto: alza");
   // senza rabbocchi con i litri: scala 1,5; senza piante: come 7 lattughe
   const solo = { ...tr, serbatoio: { capacita: 20, rabbocchi: [{ at: iso(t0) }] } };
   sb = M.lavoriTorre(solo, serie, t0 + d, "UTC", { met, piante: [] }).serbatoio;

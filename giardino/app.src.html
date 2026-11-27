@@ -2168,7 +2168,7 @@ function renderLavori(tr){
   const tsb=!sb.ultimo?'Segna quando lo riempi: da lì l\'app calcola quanto ne resta.'
     :'Riempito '+gg(sb.giorni)+(sb.rimasti==null?(sb.capacita?'':' · scrivi i litri del serbatoio nelle impostazioni per sapere quanto ne resta')
       :' · restano circa '+fmt(sb.rimasti,0)+' L su '+fmt(sb.capacita,0)+(sb.giorniAlMinimo==null?' · più di '+SERBATOIO.giorniAvanti+' giorni di scorta':sb.giorniAlMinimo<=0?' · al minimo: riempilo':' · al minimo verso '+giorno(sb.alMinimo))
-        +' (stima prudente'+(sb.imparati?'':', ancora senza rabbocchi con i litri')+')');
+        +' (stima prudente'+(sb.imparati?'':', da affinare con i litri dei prossimi rabbocchi')+')');
   let h=riga('rabbocco','🪣 Serbatoio',tsb,sb.rimasti!=null?sb.rimasti<=sb.minimo||(sb.giorniAlMinimo!=null&&sb.giorniAlMinimo<=sb.anticipo):sb.ultimo&&sb.controlla>0&&sb.giorni>=sb.controlla,'Riempito');
   if(sb.ultimo&&sb.capacita) h+=`<div class="hint">La torre beve circa ${fmt(sb.consumo,1)} L al giorno (ultima settimana); per gli avvisi l'app conta fino a ${fmt(sb.consumoPrudente,1)} L nei prossimi giorni, con il meteo previsto${sb.piante?'':' e come se nella torre ci fossero 7 lattughe (segna le piante della torre per una stima migliore)'}. Avviso ${sb.anticipo} ${sb.anticipo===1?'giorno':'giorni'} prima del minimo (${fmt(sb.minimo,0)} L).</div>`;
   const ic={nutrienti:'🧪',soluzione:'🔄',pulizia:'🧽'};

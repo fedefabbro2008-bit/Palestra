@@ -879,15 +879,18 @@ function contestoSerbatoio(torre, serie, tz, ctx = {}) {
   return { litri, pioggia, piante: piante.length, pos };
 }
 function stimaSerbatoio(sb, C, adesso) {
-  const sec = (iso) => Date.parse(iso) / 1000, rab = sb.rabbocchi, scale = [];
+  // gli intervalli con 5 mm di pioggia o più (torre fuori) possono solo alzare la stima: la pioggia può essere entrata nel
+  // serbatoio e far sembrare che la torre abbia bevuto meno
+  const sec = (iso) => Date.parse(iso) / 1000, rab = sb.rabbocchi, scale = [], piovose = [];
   for (let i = Math.max(1, rab.length - 6); i < rab.length; i++) {
     const r = rab[i]; if (!r.litri) continue;
-    const a = sec(rab[i - 1].at), b = sec(r.at); if (b - a < 12 * 3600 || C.pioggia(a, b) >= 5) continue;
-    const g = C.litri(a, b); if (g >= 0.2) scale.push(Math.min(8, Math.max(0.2, r.litri / g)));
+    const a = sec(rab[i - 1].at), b = sec(r.at); if (b - a < 12 * 3600) continue;
+    const g = C.litri(a, b); if (!(g >= 0.2)) continue;
+    (C.pioggia(a, b) >= 5 ? piovose : scale).push(Math.min(8, Math.max(0.2, r.litri / g)));
   }
-  const ult = scale.slice(-4), media = ult.length ? ult.reduce((x, y) => x + y, 0) / ult.length : 1;
-  const prudente = ult.length ? Math.max(media * SERBATOIO.margine, ...ult.slice(-3)) : SERBATOIO.senzaDati, u = rab.at(-1);
-  const out = { ultimo: u?.at || null, giorni: u ? (adesso - sec(u.at)) / 86400 : null, imparati: ult.length, scala: media, scalaPrudente: prudente, piante: C.piante,
+  const ult = scale.slice(-4), media = ult.length ? ult.reduce((x, y) => x + y, 0) / ult.length : 1, alza = piovose.slice(-3);
+  const prudente = ult.length ? Math.max(media * SERBATOIO.margine, ...ult.slice(-3), ...alza) : Math.max(SERBATOIO.senzaDati, ...alza), u = rab.at(-1);
+  const out = { ultimo: u?.at || null, giorni: u ? (adesso - sec(u.at)) / 86400 : null, imparati: ult.length, piovosi: alza.length, scala: media, scalaPrudente: prudente, piante: C.piante,
     consumo: media * C.litri(adesso - 7 * 86400, adesso) / 7, consumoPrudente: prudente * C.litri(adesso, adesso + 3 * 86400) / 3, rimasti: null, giorniAlMinimo: null, alMinimo: null,
     minimo: sb.minimo != null ? (sb.capacita ? Math.min(sb.minimo, sb.capacita) : sb.minimo) : sb.capacita ? sb.capacita * SERBATOIO.minimo : null };
   if (!u || !sb.capacita) return out;
@@ -1019,7 +1022,7 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome",
   // serbatoio e manutenzione
   const lav = lavoriTorre(torre, serie, adesso, tz, { met, piante }), sb = lav.serbatoio;
   const giornoIt = (s) => new Date(s * 1000).toLocaleDateString("it-IT", { timeZone: tz, weekday: "long", day: "numeric", month: "long" });
-  const stima = `secondo la stima prudente${sb.imparati ? "" : " (ancora senza rabbocchi con i litri: molto larga)"}`;
+  const stima = `secondo la stima prudente${sb.imparati ? "" : " (ancora da affinare con i litri dei prossimi rabbocchi: molto larga)"}`;
   if (sb.rimasti != null && sb.rimasti <= sb.minimo)
     out.push({ tipo: "serbatoio", urgente: true, testo: `🪣 Serbatoio al minimo: ${stima} restano circa ${nv(sb.rimasti, 0)} L (minimo per la pompa ${nv(sb.minimo, 0)} L). Riempilo appena puoi, la pompa non deve pescare aria; poi segnalo nell'app.` });
   else if (sb.giorniAlMinimo != null && sb.giorniAlMinimo <= sb.anticipo)
