@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="4bb83f7b9e5a">
+<meta name="giardino-build" content="6d0027821671">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -155,8 +155,6 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .tl-row.scad .tl-t span{color:var(--warn);font-weight:600}
 .tl-row .btn{flex-shrink:0;white-space:nowrap}
 .grid2.allinea{align-items:end}
-.solo-lettore{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
-.btn.busy{opacity:.6;pointer-events:none}
 .tr-head .sub{white-space:nowrap}
 .tr-val{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .tr-val b{font-size:1.9rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -1055,9 +1053,6 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
           <div class="field"><span class="flabel">Chiave per l'ESP32</span><div class="code" id="torreChiave"></div>
             <div class="row"><button class="btn primary" type="button" id="torreCopia">Copia la chiave</button><button class="btn ghost" type="button" id="torreNuovaChiave">Nuova chiave</button></div>
             <span class="hint">Nel programma dell'ESP32 incollala in <b>CHIAVE_TORRE</b> e ricaricalo. Con una chiave nuova quella vecchia non vale più.</span></div>
-          <div class="field"><span class="flabel">Programma dell'ESP32</span><div class="sub" id="torreFw"></div>
-            <div class="row"><label class="btn" for="torreFwFile" id="torreFwL">Carica un programma nuovo (.bin)</label><input type="file" id="torreFwFile" class="solo-lettore" accept=".bin,application/octet-stream"><button class="btn ghost" type="button" id="torreFwTogli" hidden>Togli</button></div>
-            <span class="hint">Nel programma alza <b>VERSIONE_FW_N</b>, poi Arduino IDE: Sketch → Esporta binario compilato, e qui scegli <b>torre_esp32.ino.bin</b> (nella cartella build dello sketch). La torre lo scarica e lo installa da sola al prossimo collegamento, con la pompa spenta; installato, il file si cancella dal sito (contiene la password del Wi-Fi). Se la scheda lo permette, un programma nuovo che non riesce a collegarsi torna a quello di prima. Funziona dalla versione 5 in poi: la prima volta col cavo.</span></div>
           <div class="field"><span class="flabel">Pompa</span>
             <div class="grid2"><div class="field"><label for="torreAccesa">Accesa per (minuti)</label><input type="text" inputmode="numeric" id="torreAccesa"></div></div>
             <span class="hint">Pausa dopo ogni accensione, secondo la temperatura misurata dalla torre (minuti):</span>
@@ -1504,13 +1499,6 @@ window.GiardinoNet={
   riconosci:immagine=>api('POST',{immagine},'riconosci'),
   torre:giorni=>api('GET',null,'torre&giorni='+(giorni||8)),
   torreAzione:action=>api('POST',{action},'torre'),
-  // programma nuovo per l'ESP32 della torre (il .bin, così com'è); null lo toglie
-  async firmware(file){
-    if(offline&&navigator.onLine===false) throw Object.assign(new Error(SENZA_RETE),{offline:true});
-    let r; try{ r=await fetch(API+'?op=firmware',{method:file?'POST':'DELETE',headers:{'x-giardino-code':code,'x-giardino-gzip':'no',...(file?{'content-type':'application/octet-stream'}:{})},body:file||undefined,cache:'no-store'}); }
-    catch(e){ throw Object.assign(new Error(SENZA_RETE),{offline:true}); }
-    const j=await r.json().catch(()=>null); if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')')); return j;
-  },
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
   async geocodifica(q){
@@ -4313,10 +4301,7 @@ function renderTorreSet(){
   setVal($('#torreNotteDa'),c.notte_da); setVal($('#torreNotteA'),c.notte_a); setVal($('#torreNotteX'),numIn(c.notte_fattore));
   const sb=serbatoioTorre(tr.serbatoio), lv=lavoriTorreDati(tr.lavori);
   setVal($('#torreCap'),numIn(sb.capacita)); setVal($('#torreControlla'),sb.controlla); setVal($('#torreNutr'),lv.nutrienti.ogni); setVal($('#torreSol'),lv.soluzione.ogni); setVal($('#torrePul'),lv.pulizia.ogni);
-  const st=TORRE?.stato, fw=tr.firmware;
-  $('#torreFw').textContent=(st?.fw?'Sulla torre: versione '+st.fw+'.':'La torre non ha ancora detto quale versione ha.')
-    +(fw?(fw.installato||st?.fw>=fw.versione?' Versione '+fw.versione+' caricata e installata (il file è stato cancellato dal sito).':' Versione '+fw.versione+' caricata ('+fmt(fw.dimensione/1024,0)+' KB): la torre la installa al prossimo collegamento.'):'');
-  $('#torreFwTogli').hidden=!fw;
+  const st=TORRE?.stato;
   $('#torreRev').textContent=!TORRE?.ultimo?'La torre non si è ancora collegata.':st?.rev===tr.rev?'La torre ha le impostazioni di adesso.':'Impostazioni nuove in attesa: arrivano alla torre quando trova il Wi-Fi.';
 }
 async function torreAzione(action){
@@ -4330,13 +4315,6 @@ function wireTorre(){
   document.querySelectorAll('#torreSheet input[name=torreOre]').forEach(x=>x.addEventListener('change',()=>{ torreOre=+x.value;
     document.querySelectorAll('#torreSheet .seg label').forEach(l=>l.classList.toggle('on',!!l.querySelector('input:checked'))); renderTorreSheet(); }));
   $('#torreLavori').addEventListener('click',e=>{ const b=e.target.closest('[data-lavoro]'); if(b) segnaLavoro(b.dataset.lavoro); });
-  $('#torreFwFile').addEventListener('change',async e=>{ const f=e.target.files?.[0]; e.target.value=''; if(!f) return;
-    const N=window.GiardinoNet; $('#torreFwL').classList.add('busy');
-    try{ const x=await N.firmware(f); await N.aggiorna(false); renderAll(); toast('Programma versione '+x.torre.firmware.versione+' caricato: la torre lo installa al prossimo collegamento'); }
-    catch(err){ toast(err?.offline?'Serve la rete':'Non caricato: '+(err?.message||err)); }
-    finally{ $('#torreFwL').classList.remove('busy'); } });
-  $('#torreFwTogli').addEventListener('click',async()=>{ const N=window.GiardinoNet;
-    try{ await N.firmware(null); await N.aggiorna(false); renderAll(); toast('Programma tolto: la torre tiene quello che ha'); }catch(err){ toast(err?.offline?'Serve la rete':'Non riuscito: '+(err?.message||err)); } });
   $('#torrePompa').addEventListener('click',()=>{ if(!S.torre) return;
     S.torre={...S.torre, comando:{id:uid(), pompa_s:60, at:new Date().toISOString()}}; saveMain(); renderTorreSheet(); toast('Pompa: arriva alla torre quando trova il Wi-Fi'); });
   $('#torreOn').addEventListener('change',async e=>{

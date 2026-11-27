@@ -310,13 +310,6 @@ window.GiardinoNet={
   riconosci:immagine=>api('POST',{immagine},'riconosci'),
   torre:giorni=>api('GET',null,'torre&giorni='+(giorni||8)),
   torreAzione:action=>api('POST',{action},'torre'),
-  // programma nuovo per l'ESP32 della torre (il .bin, così com'è); null lo toglie
-  async firmware(file){
-    if(offline&&navigator.onLine===false) throw Object.assign(new Error(SENZA_RETE),{offline:true});
-    let r; try{ r=await fetch(API+'?op=firmware',{method:file?'POST':'DELETE',headers:{'x-giardino-code':code,'x-giardino-gzip':'no',...(file?{'content-type':'application/octet-stream'}:{})},body:file||undefined,cache:'no-store'}); }
-    catch(e){ throw Object.assign(new Error(SENZA_RETE),{offline:true}); }
-    const j=await r.json().catch(()=>null); if(!r.ok) throw new Error(j?.error||('Errore del server ('+r.status+')')); return j;
-  },
   telegram:(action,extra)=>action?api('POST',{action,...(extra||{})},'telegram'):api('GET',null,'telegram'),
   aggiorna,
   async geocodifica(q){

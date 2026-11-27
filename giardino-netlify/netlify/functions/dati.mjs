@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { VERSIONE } from "../lib/versione.mjs";
 import { nuovaTorre, torreDallApp, serieVuota, GIORNI_TORRE } from "../lib/torre.mjs";
 import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, misureArpae, inEmiliaRomagna, leggi, aggiorna, CAMPI, siteUrl, tg, meteo, oraLocale, pianoAttivo, pianiOrti, messaggioMattina, COMANDI, M } from "../lib/core.mjs";
@@ -21,7 +20,6 @@ import { store, reply, comprimi, riconosciPianta, codiceDa, newToken, misureArpa
    POST /api/dati?op=riconosci       { immagine: data URL JPEG } → { risultati:[{nome, scientifico, specie, probabilita}] } (Pl@ntNet)
    GET  /api/dati?op=torre&giorni=8   → { stato, ultimo, misure:[[ora, t, u, pompaS, modo], …] }  misure della torre idroponica
    POST /api/dati?op=torre            { action: chiave | togli }  crea (o cambia) la chiave della torre, oppure la toglie con le misure
-   POST /api/dati?op=firmware         corpo: il .bin del programma della torre (l'ESP32 lo installa al prossimo collegamento); DELETE lo toglie
    GET  /api/dati?op=versione         → { versione }  impronta della versione online, senza codice (per il controllo dopo la pubblicazione) */
 
 export const config = { path: "/api/dati", rateLimit: { windowSize: 60, windowLimit: 120, aggregateBy: ["ip", "domain"] } };
@@ -39,7 +37,6 @@ async function gestisci(request) {
     if (op === "mcp") return await opMcp(request, st, code);
     if (op === "telegram") return await opTelegram(request, st, code);
     if (op === "torre") return await opTorre(request, st, code, url);
-    if (op === "firmware") return await opFirmware(request, st, code);
     if (op === "riconosci") {   // foto della pianta → specie più probabili (Pl@ntNet)
       if (request.method !== "POST") return reply({ error: "metodo non consentito" }, 405);
       const b = await request.json().catch(() => null), r = await riconosciPianta(b?.immagine);
@@ -163,33 +160,9 @@ async function opTorre(request, st, code, url) {
     const out = await aggiorna(st, code, (d) => { vecchia = d.torre?.chiave || null; if (!d.torre) return false; delete d.torre; });
     if (vecchia) await st.delete("k-" + vecchia);
     await st.delete("s-" + code);
-    await st.delete("f-" + code);
     return reply({ torre: null, rev: out?.rev });
   }
   return reply({ error: "azione non valida" }, 400);
-}
-
-// Programma nuovo per l'ESP32 della torre (il .bin esportato dall'Arduino IDE): la torre lo scarica e lo installa da sola.
-// Si riconosce dal primo byte (0xE9, immagine ESP32) e dalla firma «GIARDINO-TORRE-FW:<versione>:» che il programma contiene.
-const FW_MAX = 1920 * 1024;
-async function opFirmware(request, st, code) {
-  const cur = await leggi(st, code);
-  if (!cur?.data?.torre) return reply({ error: "nessuna torre" }, 400);
-  if (request.method === "DELETE") {
-    await st.delete("f-" + code);
-    const out = await aggiorna(st, code, (d) => { if (!d.torre?.firmware) return false; delete d.torre.firmware; });
-    return reply({ torre: out?.data?.torre ?? cur.data.torre });
-  }
-  if (request.method !== "POST") return reply({ error: "metodo non consentito" }, 405);
-  const bin = new Uint8Array(await request.arrayBuffer());
-  if (!bin.length || bin.length > FW_MAX) return reply({ error: `il file deve essere il .bin del programma (al massimo ${FW_MAX / 1024} KB)` }, 413);
-  if (bin[0] !== 0xe9) return reply({ error: "non è un programma per ESP32: esporta il .bin dall'Arduino IDE (Sketch → Esporta binario compilato)" }, 400);
-  const m = /GIARDINO-TORRE-FW:(\d{1,5}):/.exec(Buffer.from(bin).toString("latin1"));
-  if (!m) return reply({ error: "non è il programma della torre (manca la firma GIARDINO-TORRE-FW)" }, 400);
-  const versione = +m[1], md5 = createHash("md5").update(bin).digest("hex");
-  await st.set("f-" + code, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.length));
-  const out = await aggiorna(st, code, (d) => { if (!d.torre) return false; d.torre.firmware = { versione, md5, dimensione: bin.length, caricato: new Date().toISOString() }; });
-  return reply({ torre: out.data.torre, rev: out.rev, updatedAt: out.updatedAt });
 }
 
 async function opTelegram(request, st, code) {

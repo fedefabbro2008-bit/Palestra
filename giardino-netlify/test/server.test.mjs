@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 // Funzioni del sito: dati, connettore per Claude, Telegram (webhook e bot orario).
 // Si lancia con:  node --import ./test/registra-finto.mjs --test test/server.test.mjs   (dalla cartella giardino-netlify)
 import { test } from "node:test";
@@ -832,23 +831,6 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   assert.ok((await strumento("torre_imposta", { accesa_min: 11 })).isError, "senza permesso");
   assert.ok(!(await strumento("torre")).isError, "leggere si può sempre");
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
-  // programma nuovo dall'app: controllato, offerto all'ESP32 se più recente, scaricato solo con la chiave, tolto
-  const fwFinto = new Uint8Array(5000); fwFinto[0] = 0xe9; fwFinto.set(new TextEncoder().encode("GIARDINO-TORRE-FW:9:"), 100);
-  const carica = (bin) => dati(new Request(B + "/api/dati?op=firmware", { method: "POST", headers: { ...H, "content-type": "application/octet-stream" }, body: bin }));
-  assert.equal((await carica(new Uint8Array([1, 2, 3]))).status, 400, "non è un programma per ESP32");
-  const senzaFirma = new Uint8Array(100); senzaFirma[0] = 0xe9; assert.equal((await carica(senzaFirma)).status, 400, "non è quello della torre");
-  const up = await (await carica(fwFinto)).json(); assert.equal(up.torre.firmware.versione, 9); assert.equal(up.torre.firmware.dimensione, 5000);
-  const of = (await manda(chiave, { ...corpo, fw: 5, misure: [] })).body;
-  assert.deepEqual(of.firmware, { versione: 9, dimensione: 5000, md5: createHash("md5").update(fwFinto).digest("hex") });
-  const scarica = (k) => torreFn(new Request(B + "/api/torre?firmware=1", { headers: { "x-torre-chiave": k } }));
-  assert.equal((await scarica("A".repeat(26))).status, 403);
-  const giu = await scarica(chiave); assert.equal(giu.status, 200); assert.deepEqual(new Uint8Array(await giu.arrayBuffer()), fwFinto);
-  // installato: non si offre più e il file (con password del Wi-Fi e chiave) si cancella; restano versione e data
-  assert.ok(!("firmware" in (await manda(chiave, { ...corpo, fw: 9, misure: [] })).body), "già installato: non si offre");
-  assert.equal((await scarica(chiave)).status, 404, "file cancellato"); assert.ok((await leggiDati()).torre.firmware.installato);
-  assert.ok(!("firmware" in (await manda(chiave, { ...corpo, fw: 5, misure: [] })).body), "installato una volta: non si riofre");
-  assert.equal((await dati(new Request(B + "/api/dati?op=firmware", { method: "DELETE", headers: H }))).status, 200);
-  assert.ok(!(await leggiDati()).torre.firmware);
   // avvisi urgenti subito su Telegram (sensore guasto, riavvio per calo di tensione), una volta; riassunti per giorno e riavvii all'app
   const urgenti = () => inviati.filter((x) => x[0] === "sendMessage" && /Torre idroponica/.test(x[1].text)).map((x) => x[1].text).join("\n");
   inviati.length = 0;

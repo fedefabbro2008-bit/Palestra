@@ -5,16 +5,12 @@
 // Versione 5: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
 // Novità della v5: watchdog (se il programma si blocca l'ESP32 riparte da solo, con la pompa spenta); limite di sicurezza
 // per la pompa accesa; motivo di ogni riavvio mandato all'app (corrente, calo di tensione, blocco); riscaldatore dell'SHT40
-// quando resta a lungo nell'umidità; programma nuovo installato via Wi-Fi (caricato dall'app), con ritorno a quello di prima
-// se il nuovo non riesce a collegarsi.
+// quando resta a lungo nell'umidità.
 // Novità della v4: certificato del sito verificato; misure cancellate solo dopo la conferma del sito; memoria non formattata
 // al primo errore; sensore che non risponde: riprova, avvisa l'app, ciclo di emergenza impostabile e pompa ferma nelle ore di
 // gelo previste dal meteo; a ogni accensione e spegnimento della pompa si collega e lo dice all'app (se il modem è acceso).
 // Librerie (Gestione librerie dell'IDE): «Adafruit SHT4x» (con le sue dipendenze) e «ArduinoJson» 7.
-// Scheda: «ESP32 Dev Module». Strumenti → Partition Scheme: «Default 4MB with spiffs» (LittleFS e due spazi per il programma,
-// che servono all'aggiornamento via Wi-Fi). Se l'IDE dice che il programma è troppo grande: «Minimal SPIFFS (1.9MB APP with OTA)».
-// Aggiornare via Wi-Fi: Sketch → Esporta binario compilato, poi nell'app Impostazioni → Torre idroponica → Carica un programma
-// nuovo, e scegli torre_esp32.ino.bin (nella cartella «build» dello sketch). Ricordati di alzare VERSIONE_FW_N.
+// Scheda: «ESP32 Dev Module». Strumenti → Partition Scheme: «Default 4MB with spiffs» (serve per LittleFS).
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
@@ -25,10 +21,8 @@
 #include <ArduinoJson.h>
 #include <Adafruit_SHT4x.h>
 #include <time.h>
-#include <Update.h>
 #include "esp_sleep.h"
 #include "esp_task_wdt.h"
-#include "esp_ota_ops.h"
 #include "driver/gpio.h"
 
 // ================== DA COMPILARE ==================
@@ -46,11 +40,7 @@ const bool VERIFICA_CERTIFICATO = true;
 const int  PIN_RELE    = 26;
 const bool RELE_ATTIVO = HIGH;                         // High Level Trigger
 const char* FUSO       = "CET-1CEST,M3.5.0,M10.5.0/3"; // ora italiana con ora legale
-#define VERSIONE_FW_N 5                                // a ogni programma nuovo da caricare via Wi-Fi: un numero più alto
-#define STR_(x) #x
-#define STR(x) STR_(x)
-const uint32_t VERSIONE_FW = VERSIONE_FW_N;
-const char MARCA_FW[] = "GIARDINO-TORRE-FW:" STR(VERSIONE_FW_N) ":";   // il sito riconosce così il programma della torre
+const uint32_t VERSIONE_FW = 5;
 const uint32_t WATCHDOG_S = 90;                        // il programma bloccato per 90 s: l'ESP32 riparte da solo
 const uint32_t SVEGLIO_ALL_AVVIO_MS = 180000;          // 3 minuti per i comandi dal Monitor seriale
 
@@ -559,56 +549,6 @@ RNZu9YO6bVi9JNlWSOrvxKJGgYhqOkbRqZtNyWHa0V1Xahg=
 )PEM";
 
 bool chiaveRifiutata = false;
-uint32_t fwVersione = 0, fwDimensione = 0, fwFallito = 0; uint8_t fwTentativi = 0; char fwMd5[33] = "";
-
-// ---------- programma nuovo via Wi-Fi ----------
-// Ritorno a quello di prima: se il bootloader lo permette, il programma nuovo resta «in prova» finché non parla col sito;
-// se non ci riesce entro un'ora l'ESP32 torna al programma vecchio (che lo riscaricherà più avanti).
-extern "C" bool verifyRollbackLater() { return true; }   // la conferma la dà programmaConfermato(), non l'avvio
-bool inProva() {
-  esp_ota_img_states_t st;
-  return esp_ota_get_state_partition(esp_ota_get_running_partition(), &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY;
-}
-void programmaConfermato() { if (inProva()) { esp_ota_mark_app_valid_cancel_rollback(); Serial.println("Programma nuovo confermato"); } }
-void controllaProva() {
-  if (inProva() && millis() > 3600000UL) { Serial.println("Il programma nuovo non parla col sito da un'ora: torno a quello di prima"); Serial.flush(); esp_ota_mark_app_invalid_rollback_and_reboot(); }
-}
-bool aggiornaProgramma() {
-  if (!fwVersione || fwVersione == fwFallito || fwTentativi >= 2 || !fwDimensione || strlen(fwMd5) != 32) return false;
-  if (pompaAccesa || manualeFinoMs) return false;           // si aggiorna solo con la pompa spenta (ci riprova al collegamento dopo)
-  fwTentativi++;
-  Serial.printf("Programma nuovo v%lu (%lu byte): lo scarico\n", (unsigned long)fwVersione, (unsigned long)fwDimensione);
-  WiFiClientSecure client;
-  if (VERIFICA_CERTIFICATO) client.setCACert(CERTIFICATI); else client.setInsecure();
-  client.setHandshakeTimeout(20);
-  HTTPClient http; http.setConnectTimeout(10000); http.setTimeout(15000);
-  tieniVivo();
-  if (!http.begin(client, String(SITO) + "?firmware=1")) return false;
-  http.addHeader("x-torre-chiave", CHIAVE_TORRE);
-  int code = http.GET();
-  if (code != 200 || http.getSize() != (int)fwDimensione || !Update.begin(fwDimensione)) {
-    Serial.printf("Aggiornamento: non parte (risposta %d)\n", code); http.end(); if (fwTentativi >= 2) fwFallito = fwVersione; return false;
-  }
-  Update.setMD5(fwMd5);                                     // il file deve essere identico a quello caricato
-  auto* s = http.getStreamPtr(); uint8_t buf[1024]; uint32_t scritti = 0, t0 = millis();
-  while (scritti < fwDimensione && millis() - t0 < 180000) {
-    tieniVivo();
-    size_t disp = s->available();
-    if (!disp) { if (!http.connected()) break; delay(5); continue; }
-    int n = s->readBytes(buf, disp < sizeof buf ? disp : sizeof buf);
-    if (n <= 0 || Update.write(buf, n) != (size_t)n) break;
-    scritti += n;
-  }
-  http.end();
-  if (scritti != fwDimensione || !Update.end()) {
-    Serial.printf("Aggiornamento non riuscito (%s): resta il programma di adesso\n", Update.errorString()); Update.abort();
-    if (fwTentativi >= 2) fwFallito = fwVersione;
-    return false;
-  }
-  Serial.println("Programma nuovo installato: riavvio"); Serial.flush();
-  spegniWiFi(); rele(false); delay(300); ESP.restart();
-  return true;
-}
 bool mandaBlocco(int &comandoPompaS) {
   File f = LittleFS.open(FILE_MISURE, "r");
   JsonDocument doc;
@@ -671,11 +611,6 @@ bool mandaBlocco(int &comandoPompaS) {
   applicaGelo(ris["gelo"].as<JsonArray>());
   int c = ris["comando"]["pompa_s"] | 0;                    // arriva una volta sola: non cancellarlo con l'invio dopo
   if (c > 0) comandoPompaS = c;
-  JsonObject fw = ris["firmware"];                          // programma nuovo caricato dall'app
-  if (!fw.isNull() && (fw["versione"] | 0UL) > VERSIONE_FW) {
-    fwVersione = fw["versione"] | 0UL; fwDimensione = fw["dimensione"] | 0UL; strlcpy(fwMd5, fw["md5"] | "", sizeof fwMd5);
-  }
-  programmaConfermato();
   memoriaFormattata = false;                                // detto al sito
   if (n) togliPrime(n);
   Serial.printf("Mandate %u misure\n", (unsigned)n);
@@ -702,7 +637,6 @@ void collegati() {
   chiaveRifiutata = false;
   for (int i = 0; i < 5; i++) { tieniVivo(); if (!mandaBlocco(comando) || !quanteMisure()) break; }
   tieniVivo();
-  aggiornaProgramma();                                      // se c'è un programma nuovo (riavvia l'ESP32 se riesce)
   spegniWiFi();
   if (chiaveRifiutata) attesaWiFiMin = cfg.wifiMaxMin;      // chiave sbagliata: riprova di rado, le misure restano in memoria
   if (comando > 0 && comando <= 600 && !pompaVietata()) {   // accensione dall'app, mai col freddo
@@ -737,7 +671,7 @@ void setup() {
   pinMode(PIN_RELE, OUTPUT); digitalWrite(PIN_RELE, !RELE_ATTIVO);
   setCpuFrequencyMhz(80);                                   // basta e consuma meno
   Serial.begin(115200); delay(300);
-  Serial.printf("\n=== Torre idroponica · %s ===\n", MARCA_FW);
+  Serial.printf("\n=== Torre idroponica · programma v%lu ===\n", (unsigned long)VERSIONE_FW);
   avviaWatchdog();
   setenv("TZ", FUSO, 1); tzset();
   WiFi.mode(WIFI_OFF);
@@ -780,7 +714,6 @@ void setup() {
 
 void loop() {
   tieniVivo();
-  controllaProva();
   uint32_t ora = millis();
   // limite di sicurezza: pompa accesa troppo a lungo (errore nel programma): si spegne e lo si registra
   if (pompaAccesa && ora - cambioPompaMs > limitePompaMs()) {
