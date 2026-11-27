@@ -730,7 +730,7 @@ export function lavoriTorreDati(x = {}) {
 export function torreDallApp(nuova, vecchia) {
   if (!vecchia || !nuova || typeof nuova !== "object") return vecchia || null;
   const c = nuova.comando, rev = Math.max(+vecchia.rev || 1, Math.round(+nuova.rev || 0));
-  return { ...vecchia, serbatoio: serbatoioTorre(nuova.serbatoio || vecchia.serbatoio), lavori: lavoriTorreDati(nuova.lavori || vecchia.lavori), energia: energiaTorreDati(nuova.energia || vecchia.energia), attiva: nuova.attiva !== false, nome: String(nuova.nome || vecchia.nome || "Torre idroponica").slice(0, 40),
+  return { ...vecchia, serbatoio: serbatoioTorre(nuova.serbatoio || vecchia.serbatoio), lavori: lavoriTorreDati(nuova.lavori || vecchia.lavori), attiva: nuova.attiva !== false, nome: String(nuova.nome || vecchia.nome || "Torre idroponica").slice(0, 40),
     posizione: POSIZIONI_TORRE.includes(nuova.posizione) ? nuova.posizione : vecchia.posizione || "fuori", orto: typeof nuova.orto === "string" ? nuova.orto.slice(0, 20) : vecchia.orto || "p",
     config: configTorre(nuova.config || vecchia.config), rev,
     comando: c && typeof c === "object" && c.id && +c.pompa_s > 0 ? { id: String(c.id).slice(0, 20), pompa_s: Math.min(600, Math.round(+c.pompa_s)), at: String(c.at || new Date().toISOString()).slice(0, 30) } : null };
@@ -839,24 +839,6 @@ export function lavoriTorre(torre, serie, adesso, tz = "Europe/Rome") {
   return { serbatoio: serb, voci };
 }
 
-// Energia: watt della pompa e Wh del power bank (dall'utente); consumo dai minuti di pompa misurati (media degli ultimi
-// 7 giorni interi), autonomia e pannello che serve questo mese. Stime: ESP32 a riposo con la sua scheda ~0,12 W, relè
-// acceso 0,35 W, radio del Wi-Fi per gli impulsi del power bank 0,6 W; dal power bank esce l'85% dei Wh scritti; dal
-// pannello USB arriva alla batteria circa il 60%. Sole utile: ore equivalenti di pieno sole per mese, nord Italia (~44°),
-// pannello verso sud inclinato.
-export function energiaTorreDati(x = {}) { return { pompa_w: numTorre(x?.pompa_w, 0.1, 100, null), batteria_wh: numTorre(x?.batteria_wh, 1, 2000, null) }; }
-export const SOLE_MESE = [2.2, 3.0, 4.0, 4.8, 5.5, 6.0, 6.3, 5.6, 4.5, 3.3, 2.3, 1.9];
-export function energiaTorre(torre, serie, adesso, tz = "Europe/Rome") {
-  const e = energiaTorreDati(torre?.energia), oggiG = giornoTorre(adesso, tz);
-  const interi = (serie?.giorni || []).filter((x) => x[0] < oggiG && x[7] >= 100).slice(-7);
-  const pompaMin = interi.length ? interi.reduce((a, x) => a + x[5], 0) / interi.length : null;
-  const pb = serie?.stato?.pb, impulsiWh = pb ? 0.6 * (pb[1] / 1000) / pb[0] * 24 : 0, baseWh = 0.12 * 24;
-  const mese = +giornoTorre(adesso, tz).slice(5, 7) - 1, sole = SOLE_MESE[mese];
-  if (e.pompa_w == null || pompaMin == null) return { ...e, giorni: interi.length, pompaMin, totale: null, autonomiaOre: null, pannelloW: null, sole, mese };
-  const pompaWh = pompaMin / 60 * (e.pompa_w + 0.35), totale = pompaWh + baseWh + impulsiWh;
-  return { ...e, giorni: interi.length, pompaMin, pompaWh, baseWh, impulsiWh, totale, sole, mese,
-    autonomiaOre: e.batteria_wh ? e.batteria_wh * 0.85 / (totale / 24) : null, pannelloW: totale / (sole * 0.6) };
-}
 // Stato della pompa quando l'ultimo contatto è vecchio (modem spento): dalla fine della fase che l'ESP32 ha detto, i cicli
 // che fa da solo con le impostazioni e l'ultima temperatura e umidità. Una stima, fino a 12 ore; null se non si può.
 export function pompaStimata(stato, config, adesso, tz = "Europe/Rome") {

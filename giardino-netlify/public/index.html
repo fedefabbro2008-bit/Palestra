@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="516789992ccb">
+<meta name="giardino-build" content="c44f13448b0e">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1078,10 +1078,6 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
               <div class="field"><label for="torreSol">Cambio soluzione ogni (giorni)</label><input type="text" inputmode="numeric" id="torreSol"></div>
               <div class="field"><label for="torrePul">Pulizia pompa ogni (ore di pompa)</label><input type="text" inputmode="numeric" id="torrePul"></div></div>
             <span class="hint">0 = nessun promemoria. Con i litri del serbatoio e quelli che aggiungi a ogni rabbocco l'app impara quanto beve la torre (più col caldo) e avvisa quando ne resta meno di un terzo; finché non lo sa, ti ricorda di controllare ogni tanti giorni.</span></div>
-          <div class="field"><span class="flabel">Energia</span>
-            <div class="grid2 allinea"><div class="field"><label for="torreW">Pompa (watt)</label><input type="text" inputmode="decimal" id="torreW"></div>
-              <div class="field"><label for="torreWh">Power bank (Wh)</label><input type="text" inputmode="decimal" id="torreWh"></div></div>
-            <span class="hint">Watt scritti sulla pompa (se ci sono volt e ampere: V × A). Wh scritti sul power bank (se c'è solo mAh: mAh × 3,7 ÷ 1000). Servono per consumo, autonomia e pannello.</span></div>
           <div class="row"><button class="btn primary" type="button" id="torreSalva">Salva</button></div>
           <span class="hint" id="torreRev"></span>
           <div><button class="btn ghost danger" type="button" id="torreTogli">Togli la torre e le sue misure</button></div>
@@ -1185,7 +1181,6 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
   <div class="wxd-grid" id="torreGrid"></div>
   <div id="torreAvvisi" class="stack"></div>
   <div><h3 class="eyebrow">Serbatoio e manutenzione</h3><div id="torreLavori"></div></div>
-  <div><h3 class="eyebrow">Energia</h3><div id="torreEnergia" class="stack"></div></div>
   <div class="row"><button class="btn" type="button" id="torrePompa">💧 Accendi la pompa 1 minuto</button></div>
   <span class="hint" id="torrePompaH"></span>
   <div class="row"><button class="btn ghost" type="button" id="torreChiudi">Chiudi</button></div>
@@ -2282,7 +2277,7 @@ function lavoriTorreDati(x = {}) {
 function torreDallApp(nuova, vecchia) {
   if (!vecchia || !nuova || typeof nuova !== "object") return vecchia || null;
   const c = nuova.comando, rev = Math.max(+vecchia.rev || 1, Math.round(+nuova.rev || 0));
-  return { ...vecchia, serbatoio: serbatoioTorre(nuova.serbatoio || vecchia.serbatoio), lavori: lavoriTorreDati(nuova.lavori || vecchia.lavori), energia: energiaTorreDati(nuova.energia || vecchia.energia), attiva: nuova.attiva !== false, nome: String(nuova.nome || vecchia.nome || "Torre idroponica").slice(0, 40),
+  return { ...vecchia, serbatoio: serbatoioTorre(nuova.serbatoio || vecchia.serbatoio), lavori: lavoriTorreDati(nuova.lavori || vecchia.lavori), attiva: nuova.attiva !== false, nome: String(nuova.nome || vecchia.nome || "Torre idroponica").slice(0, 40),
     posizione: POSIZIONI_TORRE.includes(nuova.posizione) ? nuova.posizione : vecchia.posizione || "fuori", orto: typeof nuova.orto === "string" ? nuova.orto.slice(0, 20) : vecchia.orto || "p",
     config: configTorre(nuova.config || vecchia.config), rev,
     comando: c && typeof c === "object" && c.id && +c.pompa_s > 0 ? { id: String(c.id).slice(0, 20), pompa_s: Math.min(600, Math.round(+c.pompa_s)), at: String(c.at || new Date().toISOString()).slice(0, 30) } : null };
@@ -2391,24 +2386,6 @@ function lavoriTorre(torre, serie, adesso, tz = "Europe/Rome") {
   return { serbatoio: serb, voci };
 }
 
-// Energia: watt della pompa e Wh del power bank (dall'utente); consumo dai minuti di pompa misurati (media degli ultimi
-// 7 giorni interi), autonomia e pannello che serve questo mese. Stime: ESP32 a riposo con la sua scheda ~0,12 W, relè
-// acceso 0,35 W, radio del Wi-Fi per gli impulsi del power bank 0,6 W; dal power bank esce l'85% dei Wh scritti; dal
-// pannello USB arriva alla batteria circa il 60%. Sole utile: ore equivalenti di pieno sole per mese, nord Italia (~44°),
-// pannello verso sud inclinato.
-function energiaTorreDati(x = {}) { return { pompa_w: numTorre(x?.pompa_w, 0.1, 100, null), batteria_wh: numTorre(x?.batteria_wh, 1, 2000, null) }; }
-const SOLE_MESE = [2.2, 3.0, 4.0, 4.8, 5.5, 6.0, 6.3, 5.6, 4.5, 3.3, 2.3, 1.9];
-function energiaTorre(torre, serie, adesso, tz = "Europe/Rome") {
-  const e = energiaTorreDati(torre?.energia), oggiG = giornoTorre(adesso, tz);
-  const interi = (serie?.giorni || []).filter((x) => x[0] < oggiG && x[7] >= 100).slice(-7);
-  const pompaMin = interi.length ? interi.reduce((a, x) => a + x[5], 0) / interi.length : null;
-  const pb = serie?.stato?.pb, impulsiWh = pb ? 0.6 * (pb[1] / 1000) / pb[0] * 24 : 0, baseWh = 0.12 * 24;
-  const mese = +giornoTorre(adesso, tz).slice(5, 7) - 1, sole = SOLE_MESE[mese];
-  if (e.pompa_w == null || pompaMin == null) return { ...e, giorni: interi.length, pompaMin, totale: null, autonomiaOre: null, pannelloW: null, sole, mese };
-  const pompaWh = pompaMin / 60 * (e.pompa_w + 0.35), totale = pompaWh + baseWh + impulsiWh;
-  return { ...e, giorni: interi.length, pompaMin, pompaWh, baseWh, impulsiWh, totale, sole, mese,
-    autonomiaOre: e.batteria_wh ? e.batteria_wh * 0.85 / (totale / 24) : null, pannelloW: totale / (sole * 0.6) };
-}
 // Stato della pompa quando l'ultimo contatto è vecchio (modem spento): dalla fine della fase che l'ESP32 ha detto, i cicli
 // che fa da solo con le impostazioni e l'ultima temperatura e umidità. Una stima, fino a 12 ore; null se non si può.
 function pompaStimata(stato, config, adesso, tz = "Europe/Rome") {
@@ -4295,7 +4272,7 @@ function renderTorreSheet(){
     c('Ferma per freddo',r.freddoMin?(r.freddoMin>=90?fmt(r.freddoMin/60,1)+' h':r.freddoMin+' min'):'mai')].join(''));
   const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000);
   setHTML($('#torreAvvisi'),avv.map(a=>`<div class="alert ${a.tipo==='pioggia'?'info':''}">${a.tipo==='pioggia'?ICON.info:ICON.warn}<div>${esc(a.testo)}</div></div>`).join(''));
-  renderLavori(tr); renderEnergia(tr);
+  renderLavori(tr);
   const c2=tr.comando, attesa=c2&&Date.parse(c2.at)>Date.now()-2*3600e3;
   $('#torrePompa').disabled=!!attesa;
   $('#torrePompaH').textContent=attesa?'Accensione chiesta '+quandoTorre(Date.parse(c2.at)/1000)+': arriva alla torre quando trova il Wi-Fi (vale 2 ore).'
@@ -4323,19 +4300,6 @@ function renderLavori(tr){
     h+=riga(v.tipo,ic[v.tipo]+' '+v.nome,testo,v.scaduto,'Fatto');
   }
   setHTML($('#torreLavori'),h);
-}
-// Energia: consumo dai minuti di pompa misurati, autonomia del power bank, pannello per questo mese
-function renderEnergia(tr){
-  const E=energiaTorre(tr, TORRE||{}, Date.now()/1000), r=(t,v,n)=>`<div class="tl-row"><div class="tl-t"><b>${esc(t)}</b><span>${esc(v)}</span></div>${n?`<span class="sub">${esc(n)}</span>`:''}</div>`;
-  const mesi=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
-  if(E.pompa_w==null){ setHTML($('#torreEnergia'),'<div class="sub">Scrivi i watt della pompa (e i Wh del power bank) in Impostazioni → Torre idroponica: qui vedrai consumo, autonomia e il pannello che serve.</div>'); return; }
-  if(E.totale==null){ setHTML($('#torreEnergia'),'<div class="sub">Serve almeno un giorno intero di misure per calcolare il consumo.</div>'); return; }
-  const ore=E.autonomiaOre, dur=ore==null?null:ore>=48?fmt(ore/24,1)+' giorni':Math.round(ore)+' ore';
-  setHTML($('#torreEnergia'),
-    r('⚡ Consumo','circa '+fmt(E.totale,0)+' Wh al giorno','pompa '+Math.round(E.pompaMin)+' min/giorno')
-    +(dur?r('🔋 Power bank','dura circa '+dur+' senza ricarica',fmt(E.batteria_wh,0)+' Wh'):'')
-    +r('☀️ Pannello','almeno '+fmt(Math.ceil(E.pannelloW),0)+' W a '+mesi[E.mese],'sole utile ~'+fmt(E.sole,1)+' h')
-    +`<div class="hint">Stima: media degli ultimi ${E.giorni} giorni interi${E.impulsiWh?', compresi gli impulsi che tengono acceso il power bank':''}. Il pannello è quello che ricarica in un giorno quello che la torre consuma; per i giorni nuvolosi conviene il doppio.</div>`);
 }
 function segnaLavoro(tipo){
   if(!S.torre) return;
@@ -4372,7 +4336,6 @@ function renderTorreSet(){
   setVal($('#torreCal'),numIn(c.cal_t)); setVal($('#torreGuastoP'),c.guasto_pausa); $('#torreGuastoFerma').checked=!!c.guasto_ferma;
   setVal($('#torreNotteDa'),c.notte_da); setVal($('#torreNotteA'),c.notte_a); setVal($('#torreNotteX'),numIn(c.notte_fattore));
   const sb=serbatoioTorre(tr.serbatoio), lv=lavoriTorreDati(tr.lavori);
-  const en=energiaTorreDati(tr.energia); setVal($('#torreW'),numIn(en.pompa_w)); setVal($('#torreWh'),numIn(en.batteria_wh));
   setVal($('#torreCap'),numIn(sb.capacita)); setVal($('#torreControlla'),sb.controlla); setVal($('#torreNutr'),lv.nutrienti.ogni); setVal($('#torreSol'),lv.soluzione.ogni); setVal($('#torrePul'),lv.pulizia.ogni);
   const st=TORRE?.stato;
   $('#torreRev').textContent=!TORRE?.ultimo?'La torre non si è ancora collegata.':st?.rev===tr.rev?'La torre ha le impostazioni di adesso.':'Impostazioni nuove in attesa: arrivano alla torre quando trova il Wi-Fi.';
@@ -4414,7 +4377,7 @@ function wireTorre(){
     const sb=serbatoioTorre(S.torre.serbatoio), lv=lavoriTorreDati(S.torre.lavori), ogni=(id,d)=>n(id)??d;
     sb.capacita=n('#torreCap'); sb.controlla=ogni('#torreControlla',sb.controlla);
     for(const [k,id] of [['nutrienti','#torreNutr'],['soluzione','#torreSol'],['pulizia','#torrePul']]) lv[k]={...lv[k], ogni:ogni(id,lv[k].ogni)};
-    S.torre={...S.torre, energia:energiaTorreDati({pompa_w:n('#torreW'), batteria_wh:n('#torreWh')}), serbatoio:serbatoioTorre(sb), lavori:lavoriTorreDati(lv), nome:$('#torreNome').value.trim().slice(0,40)||'Torre idroponica', posizione:pos, orto:$('#torreOrtoF').hidden?(S.torre.orto||'p'):$('#torreOrto').value, config:nuova, rev:(S.torre.rev||1)+(cambiata?1:0)};
+    S.torre={...S.torre, serbatoio:serbatoioTorre(sb), lavori:lavoriTorreDati(lv), nome:$('#torreNome').value.trim().slice(0,40)||'Torre idroponica', posizione:pos, orto:$('#torreOrtoF').hidden?(S.torre.orto||'p'):$('#torreOrto').value, config:nuova, rev:(S.torre.rev||1)+(cambiata?1:0)};
     document.querySelectorAll('#torreSet input').forEach(x=>{ x.blur(); x._last=undefined; });
     saveMain(); renderAll(); toast(cambiata?'Salvato: arriva alla torre quando trova il Wi-Fi':'Salvato');
   });

@@ -704,16 +704,8 @@ test("torre: serbatoio (consumo imparato dai rabbocchi e dalla temperatura) e ma
   assert.deepEqual(x.serbatoio, { capacita: null, controlla: 60, rabbocchi: [{ at: iso(t0), litri: null }] }); assert.equal(x.lavori.pulizia.ogni, 5000); assert.equal(x.lavori.nutrienti.ogni, 7);
 });
 
-test("torre: energia (consumo, autonomia, pannello) e stato della pompa stimato quando il modem è spento", () => {
-  const d = 86400, t0 = Date.UTC(2027, 0, 20, 12) / 1000;   // gennaio: sole utile 2,2 h
-  const giorni = []; for (let i = 7; i >= 1; i--) giorni.push([new Date((t0 - i * d) * 1000).toISOString().slice(0, 10), 2, 9, 5, 70, 120, 0, 144]);
-  const serie = { giorni, misure: [], stato: { pb: [15, 1500, 0] } };
-  assert.equal(M.energiaTorre({}, serie, t0, "UTC").totale, null, "senza i watt della pompa niente calcolo");
-  const e = M.energiaTorre({ energia: { pompa_w: 2.5, batteria_wh: 37 } }, serie, t0, "UTC");
-  // pompa: 120 min × (2,5 + 0,35 W) = 5,7 Wh; ESP32 0,12 W × 24 = 2,88 Wh; impulsi 0,6 W × 1,5/15 × 24 = 1,44 Wh
-  assert.ok(Math.abs(e.totale - (5.7 + 2.88 + 1.44)) < 0.01); assert.equal(e.giorni, 7);
-  assert.ok(Math.abs(e.autonomiaOre - 37 * 0.85 / (e.totale / 24)) < 0.01); assert.ok(Math.abs(e.pannelloW - e.totale / (2.2 * 0.6)) < 0.01);
-  assert.deepEqual(M.energiaTorreDati({ pompa_w: "x", batteria_wh: 99999 }), { pompa_w: null, batteria_wh: 2000 });
+test("torre: stato della pompa stimato quando il modem è spento, avviso «corrente» col power bank", () => {
+  const t0 = Date.UTC(2027, 0, 20, 12) / 1000, serie = { giorni: [], misure: [], stato: { pb: [15, 1500, 0] } };
   // stima: pompa spenta alle 12:00 UTC con 20 °C (pausa 25 min), accesa 15 min, poi di nuovo pausa
   const st = { pompa: false, fine: t0, t: 20, u: 60, modo: "normale" }, cfg = { notte_da: 22, notte_a: 6 };
   assert.deepEqual(M.pompaStimata(st, cfg, t0 - 60, "UTC"), { pompa: false, fine: t0, stima: false }, "fase in corso: non è una stima");

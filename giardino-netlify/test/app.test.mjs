@@ -649,12 +649,10 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   await page.fill("#torreGuastoP", "35"); await page.check("#torreGuastoFerma"); await page.fill("#torreCal", "−2"); await page.click("#torreSalva");
   assert.deepEqual(await page.evaluate(() => [S.torre.config.guasto_pausa, S.torre.config.guasto_ferma, S.torre.config.cal_t, S.torre.rev]), [35, true, -2, 3]);
   // serbatoio e manutenzione: impostazioni (non cambiano la versione per l'ESP32), rabbocco coi litri, lavori fatti
-  await page.fill("#torreCap", "12"); await page.fill("#torreNutr", "10"); await page.fill("#torrePul", "0"); await page.fill("#torreW", "2,5"); await page.fill("#torreWh", "37"); await page.click("#torreSalva");
-  assert.deepEqual(await page.evaluate(() => S.torre.energia), { pompa_w: 2.5, batteria_wh: 37 });
+  await page.fill("#torreCap", "12"); await page.fill("#torreNutr", "10"); await page.fill("#torrePul", "0"); await page.click("#torreSalva");
   assert.deepEqual(await page.evaluate(() => [S.torre.serbatoio.capacita, S.torre.lavori.nutrienti.ogni, S.torre.lavori.pulizia.ogni, S.torre.rev]), [12, 10, 0, 3]);
   await page.click("#tab-oggi"); await page.click("#torreBox"); await quando(page, () => !document.querySelector("#torreSheet").hidden);
   assert.match(await page.textContent("#torreLavori"), /Segna quando lo riempi.*Mai segnato \(ogni 10 giorni\)/s);
-  assert.match(await page.textContent("#torreEnergia"), /Serve almeno un giorno intero di misure/);
   page.once("dialog", (d) => d.accept("6,5"));
   await page.click('#torreLavori [data-lavoro="rabbocco"]');
   await page.click('#torreLavori [data-lavoro="soluzione"]');

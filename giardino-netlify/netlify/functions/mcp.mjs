@@ -480,11 +480,6 @@ async function toolTorre(ctx, a = {}) {
     `- serbatoio${sb.capacita ? " " + fmt(sb.capacita, 0) + " L" : " (capacità non indicata)"}: ${sb.ultimo ? "ultimo rabbocco " + gg(sb.giorni) : "nessun rabbocco segnato"}${sb.consumo ? `; beve circa ${fmt(sb.consumo)} L al giorno a 20 °C (imparato dai rabbocchi)` : ""}${sb.rimasti != null ? `; restano circa ${fmt(sb.rimasti, 0)} L` : ""}${sb.controlla ? `; promemoria se non sa stimare: ogni ${sb.controlla} giorni` : ""}`,
     `- rabbocchi: ${sb.rabbocchi.length ? sb.rabbocchi.slice(-6).map((r) => fmtOra(Date.parse(r.at) / 1000, tz) + (r.litri ? " " + fmt(r.litri) + " L" : "")).join(", ") : "–"}`,
     ...lav.voci.map((v) => `- ${v.nome.toLowerCase()}: ${v.tipo === "pulizia" ? (v.quanto != null ? Math.round(v.quanto) + " ore di pompa " + (v.ultimo ? "dall'ultima" : "finora") : "–") : v.ultimo ? gg(v.quanto) : "mai segnato"}${v.ogni ? ` (ogni ${v.ogni}${v.tipo === "pulizia" ? " ore di pompa" : " giorni"})` : " (promemoria spento)"}${v.scaduto ? " ⚠️ da fare" : ""}`));
-  // energia e power bank
-  const en = M.energiaTorre(tr, serie, adesso, tz);
-  if (en.totale != null) L.push(`Energia (stima dagli ultimi ${en.giorni} giorni interi): circa ${fmt(en.totale, 0)} Wh al giorno (pompa ${fmt(en.pompa_w)} W per ${Math.round(en.pompaMin)} min al giorno)`
-    + `${en.autonomiaOre != null ? `; power bank da ${fmt(en.batteria_wh, 0)} Wh: circa ${fmt(en.autonomiaOre, 0)} ore senza ricarica` : ""}; pannello per questo mese almeno ${Math.ceil(en.pannelloW)} W (sole utile ~${fmt(en.sole)} h).`);
-  else L.push(en.pompa_w == null ? "Energia: watt della pompa non indicati (torre_imposta.pompa_w)." : "Energia: serve almeno un giorno intero di misure.");
   if (st?.pb) L.push(`Power bank tenuto acceso dall'ESP32: radio accesa ${fmt(st.pb[1] / 1000)} s ogni ${st.pb[0]} s${st.pb[2] ? ` (allungato da solo ${st.pb[2]} volte dopo spegnimenti)` : ""}.`);
   const rv = (serie.riavvii || []).slice(-5);
   if (rv.length) L.push(`Ultimi riavvii dell'ESP32: ${rv.map((r) => `${fmtOra(r.ora, tz)} (${M.RIAVVII_TORRE[r.motivo] || r.motivo})`).join(", ")}.`);
@@ -550,8 +545,6 @@ async function toolTorreImposta(ctx, a = {}) {
   // serbatoio e manutenzione: non cambiano le impostazioni dell'ESP32
   const man = {};
   if (a.capacita != null) man.capacita = numeroT("capacita", a.capacita, 1, 1000);
-  if (a.pompa_w != null) man.pompa_w = numeroT("pompa_w", a.pompa_w, 0.1, 100);
-  if (a.batteria_wh != null) man.batteria_wh = numeroT("batteria_wh", a.batteria_wh, 1, 2000);
   if (a.controlla_giorni != null) man.controlla = numeroT("controlla_giorni", a.controlla_giorni, 0, 60, true);
   for (const [k, lim] of [["nutrienti_ogni", 365], ["soluzione_ogni", 365], ["pulizia_ogni_ore", 5000]]) if (a[k] != null) man[k] = numeroT(k, a[k], 0, lim, true);
   let segna = null;
@@ -576,9 +569,6 @@ async function toolTorreImposta(ctx, a = {}) {
     if (pompa) fatto.push(`accensione a mano per ${pompa} s (arriva all'ESP32 al prossimo collegamento, entro 2 ore; mai sotto il freddo)`);
     if (Object.keys(man).length || segna) {
       const sb = M.serbatoioTorre(tr.serbatoio), lv = M.lavoriTorreDati(tr.lavori);
-      const en = M.energiaTorreDati(tr.energia);
-      for (const [k, u] of [["pompa_w", "W"], ["batteria_wh", "Wh"]]) if (man[k] != null && man[k] !== en[k]) { fatto.push(`${k === "pompa_w" ? "pompa" : "power bank"}: ${en[k] ?? "–"} → ${man[k]} ${u}`); en[k] = man[k]; }
-      d.torre.energia = M.energiaTorreDati(en);
       if (man.capacita != null && man.capacita !== sb.capacita) { fatto.push(`serbatoio: ${sb.capacita ?? "–"} → ${man.capacita} L`); sb.capacita = man.capacita; }
       if (man.controlla != null && man.controlla !== sb.controlla) { fatto.push(`controlla il livello ogni: ${sb.controlla} → ${man.controlla} giorni`); sb.controlla = man.controlla; }
       for (const [k, t] of [["nutrienti_ogni", "nutrienti"], ["soluzione_ogni", "soluzione"], ["pulizia_ogni_ore", "pulizia"]])
@@ -592,7 +582,7 @@ async function toolTorreImposta(ctx, a = {}) {
   });
   if (out?.data) ctx.saved(out);
   if (!fatto.length) return "Niente da cambiare: la torre ha già queste impostazioni.";
-  return "Torre aggiornata (impostazioni versione " + rev + "):\n- " + fatto.join("\n- ") + (fatto.some((x) => x.includes("→") && !/^(nome|posizione|orto|serbatoio|controlla|nutrienti|cambio|pulizia|pompa:|power bank)/.test(x)) ? "\nL'ESP32 le riceve al prossimo collegamento (ogni 15 minuti circa quando il modem è acceso)." : "");
+  return "Torre aggiornata (impostazioni versione " + rev + "):\n- " + fatto.join("\n- ") + (fatto.some((x) => x.includes("→") && !/^(nome|posizione|orto|serbatoio|controlla|nutrienti|cambio|pulizia)/.test(x)) ? "\nL'ESP32 le riceve al prossimo collegamento (ogni 15 minuti circa quando il modem è acceso)." : "");
 }
 
 const RO = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -672,8 +662,7 @@ const TOOLS = [
       attiva: { type: "boolean", description: "false = spenta nell'app (l'utente non la vede, niente avvisi; l'ESP32 continua da solo)" },
       pompa_s: { type: "integer", minimum: 5, maximum: 600, description: "accende la pompa a mano per questi secondi al prossimo collegamento (entro 2 ore; non col freddo)" },
       ripristina: { type: "boolean" },
-      capacita: { type: "number", description: "litri del serbatoio (per stimare quanto ne resta)" },
-      pompa_w: { type: "number", description: "watt della pompa (per consumo, autonomia e pannello)" }, batteria_wh: { type: "number", description: "Wh del power bank (mAh × 3,7 ÷ 1000)" }, controlla_giorni: { type: "integer", minimum: 0, maximum: 60, description: "promemoria del livello finché l'app non sa stimare il consumo (0 = spento)" },
+      capacita: { type: "number", description: "litri del serbatoio (per stimare quanto ne resta)" }, controlla_giorni: { type: "integer", minimum: 0, maximum: 60, description: "promemoria del livello finché l'app non sa stimare il consumo (0 = spento)" },
       nutrienti_ogni: { type: "integer", minimum: 0, maximum: 365, description: "giorni tra un'aggiunta di nutrienti e l'altra (0 = nessun promemoria)" }, soluzione_ogni: { type: "integer", minimum: 0, maximum: 365, description: "giorni tra un cambio della soluzione e l'altro" },
       pulizia_ogni_ore: { type: "integer", minimum: 0, maximum: 5000, description: "ore di pompa tra una pulizia e l'altra" },
       segna: { type: "string", enum: ["rabbocco", "nutrienti", "soluzione", "pulizia"], description: "segna un lavoro fatto dall'utente (rabbocco: serbatoio riempito; soluzione: cambiata tutta, vale anche come rabbocco)" },

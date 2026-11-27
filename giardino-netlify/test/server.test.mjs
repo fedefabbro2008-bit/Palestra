@@ -827,9 +827,6 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   assert.match(tx, /serbatoio: – → 20 L/); assert.match(tx, /rabbocco segnato \(4 L\)/); assert.doesNotMatch(tx, /L'ESP32 le riceve/, "non riguarda l'ESP32");
   assert.deepEqual([(await leggiDati()).torre.serbatoio.capacita, (await leggiDati()).torre.lavori.nutrienti.ogni, (await leggiDati()).torre.serbatoio.rabbocchi.at(-1).litri], [20, 10, 4]);
   assert.match((await strumento("torre_imposta", { segna: "pulizia", quando: "2020-01-01" })).content[0].text, /ultimi 60 giorni/);
-  tx = (await strumento("torre_imposta", { pompa_w: 2.5, batteria_wh: 37 })).content[0].text;
-  assert.match(tx, /pompa: – → 2.5 W/); assert.match(tx, /power bank: – → 37 Wh/); assert.doesNotMatch(tx, /L'ESP32 le riceve/);
-  assert.deepEqual((await leggiDati()).torre.energia, { pompa_w: 2.5, batteria_wh: 37 });
   tx = (await strumento("torre")).content[0].text;
   assert.match(tx, /## Serbatoio e manutenzione/); assert.match(tx, /serbatoio 20 L: ultimo rabbocco oggi/); assert.match(tx, /nutrienti: mai segnato \(ogni 10 giorni\)/);
   await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
