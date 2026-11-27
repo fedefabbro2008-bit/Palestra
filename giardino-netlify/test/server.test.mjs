@@ -147,7 +147,7 @@ test("connettore per Claude: lettura, zona, ordine alfabetico, permessi", async 
   KEY = (await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "on" } })).body.token;
   assert.match(KEY, /^[A-Z2-7]{26}$/);
   assert.equal((await rpc("initialize", { protocolVersion: "2025-06-18" })).result.serverInfo.name, "giardino");
-  assert.equal((await rpc("tools/list")).result.tools.length, 12);
+  assert.equal((await rpc("tools/list")).result.tools.length, 14);
   assert.equal((await rpc("initialize", {})).result.serverInfo.version, "2.0.0");
   const g = (await strumento("giardino")).content[0].text;
   const ordine = ["Basilico", "Pomodoro", "Zucchine", "Aglio"].map((n) => g.indexOf("**" + n + "**"));
@@ -798,8 +798,32 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
     inviati.length = 0; await bot(); return inviati.filter((x) => x[0] === "sendMessage" && /Torre idroponica/.test(x[1].text)).map((x) => x[1].text); };
   const [m] = await giro();
   assert.ok(m, "avviso della torre"); assert.match(m, /Stanotte fino a 1 °C: sotto 2 °C la pompa si ferma da sola/); assert.match(m, /ferma per il freddo/);
+  // dal connettore: stato, storico e impostazioni; la chiave dell'ESP32 non esce mai
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  let tx = (await strumento("torre")).content[0].text;
+  assert.match(tx, /Ultimo contatto/); assert.match(tx, /pompa accesa 10 min per ciclo/); assert.match(tx, /Ultime 24 ore: minima 1,5 °C/); assert.ok(!tx.includes(chiave), "niente chiave");
+  assert.match((await strumento("torre", { storico: "misure", giorni: 31 })).content[0].text, /;17,2;62;900;normale\n.*;1,5;90;0;freddo: pompa ferma/);
+  assert.match((await strumento("torre", { storico: "giorni" })).content[0].text, /giorno;minima °C \(ora\)/);
+  assert.match((await strumento("torre", { storico: "ore", giorni: 2 })).content[0].text, /giorno ora;°C media/);
+  assert.match((await strumento("giardino", { compatto: true })).content[0].text, /Torre idroponica \(fuori\): ultimo contatto/);
+  tx = (await strumento("torre_imposta", { accesa_min: 12, pause: [3, 6, 10, 20, 40, 60], notte_fattore: 3 })).content[0].text;
+  assert.match(tx, /versione 3/); assert.match(tx, /pompa accesa per ciclo \(min\): 10 → 12/);
+  assert.equal((await leggiDati()).torre.config.accesa_min, 12); assert.equal((await leggiDati()).torre.chiave, chiave);
+  assert.ok((await strumento("torre_imposta", { freddo_stop: 20 })).isError, "fuori dai limiti");
+  assert.ok((await strumento("torre_imposta", { soglie: [30, 31, 20, 12, 5] })).isError, "soglie in ordine");
+  assert.ok((await strumento("torre_imposta", { freddo_stop: 3, freddo_riparte: 3.5 })).isError, "riparte almeno 1 °C sopra");
+  assert.equal((await leggiDati()).torre.rev, 3, "gli errori non salvano niente");
+  assert.match((await strumento("torre_imposta", { pompa_s: 30 })).content[0].text, /accensione a mano per 30 s/);
+  const cm = (await manda(chiave, { ...corpo, rev: 2, misure: [] })).body;
+  assert.equal(cm.config.accesa_min, 12); assert.equal(cm.comando.pompa_s, 30);
+  assert.match((await strumento("torre_imposta", { accesa_min: 12 })).content[0].text, /Niente da cambiare/);
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: false } });
+  assert.ok((await strumento("torre_imposta", { accesa_min: 11 })).isError, "senza permesso");
+  assert.ok(!(await strumento("torre")).isError, "leggere si può sempre");
+  await call(dati, "/api/dati?op=mcp", { method: "POST", headers: H, body: { action: "write", on: true } });
+  const tr3 = (await leggiDati()).torre;
   // spenta: niente avvisi (l'app è come se non ci fosse), la torre può mandare lo stesso
-  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { torre: { ...tr2, attiva: false } } } });
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { torre: { ...tr3, attiva: false } } } });
   assert.equal((await giro()).length, 0, "spenta: nessun messaggio");
   assert.equal((await manda(chiave, { ...corpo, misure: [] })).status, 200);
   // nuova chiave: la vecchia non vale più; tolta: via tutto
