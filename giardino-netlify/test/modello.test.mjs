@@ -756,11 +756,22 @@ test("torre: galleggiante, acqua calda, alimentazione, sensore bloccato, riepilo
   // sensore bloccato: 3 ore di misure identiche
   const fermo = { ultimo: adesso, misure: Array.from({ length: 19 }, (_, i) => [adesso - (18 - i) * 600, 21.37, 55.1, 0, 0, 1, i]) };
   assert.ok(tipi(fermo).includes("sensore_fermo")); fermo.misure[5][1] = 21.38; assert.ok(!tipi(fermo).includes("sensore_fermo"));
+  // una misura ogni 5 minuti: bastano 3 ore uguali (prima servivano 18 misure su 2 ore e mezza: mai)
+  const fermo5 = { ultimo: adesso, misure: Array.from({ length: 37 }, (_, i) => [adesso - (36 - i) * 300, 21.37, 55.1, 0, 0, 1, i]) };
+  assert.ok(tipi(fermo5).includes("sensore_fermo"));
+  // una ogni ora: 12 misure uguali
+  assert.ok(tipi({ ultimo: adesso, misure: Array.from({ length: 12 }, (_, i) => [adesso - (11 - i) * 3600, 21.37, 55.1, 0, 0, 1, i]) }).includes("sensore_fermo"));
+  assert.ok(!tipi({ ultimo: adesso, misure: Array.from({ length: 11 }, (_, i) => [adesso - (10 - i) * 3600, 21.37, 55.1, 0, 0, 1, i]) }).includes("sensore_fermo"), "11 misure: poche");
   // riepilogo della settimana
   const giorni = []; for (let i = 7; i >= 1; i--) giorni.push([new Date((adesso - i * 86400) * 1000).toISOString().slice(0, 10), 14 + i, 26 + i, 20, 60, 240, i === 1 ? 30 : 0, 144]);
   const r = M.riepilogoTorreSettimana(tr, { giorni, misure: [] }, null, adesso, "UTC");
   assert.match(r, /la settimana\n🌡️ minima 15 °C \(sab 10\), massima 33 °C \(dom 4\), umidità media 60%\n💧 pompa accesa 28 ore, ferma per il freddo 30 minuti/);
   assert.equal(M.riepilogoTorreSettimana(tr, { giorni: [], misure: [] }, null, adesso, "UTC"), null);
+  // serbatoio già al minimo: «da riempire oggi», mai una data passata
+  const trS = { ...tr, serbatoio: { capacita: 10, minimo: 3, rabbocchi: [{ at: new Date((adesso - 30 * 86400) * 1000).toISOString(), litri: 10 }] } };
+  assert.match(M.riepilogoTorreSettimana(trS, { giorni, misure: [] }, null, adesso, "UTC"), /da riempire oggi/);
+  // urgente del freddo con la sonda dell'acqua: la temperatura dell'acqua
+  assert.match(M.urgentiTorre(tr, { stato: { modo: "freddo: pompa ferma", t: 6, ta: 1.5 }, misure: [], ultimo: adesso }, adesso, "UTC").testi.join(), /freddo \(acqua 1,5 °C\)/);
   // pulsanti: attorno ai litri bevuti dall'ultimo rabbocco; senza stima 1, 2, 4, 6
   assert.deepEqual(M.pulsantiRiempito({ capacita: 12, rimasti: 7 }).inline_keyboard[0].map((b) => b.callback_data), ["tr|r|3", "tr|r|4", "tr|r|5", "tr|r|6"]);
   assert.deepEqual(M.pulsantiRiempito({}).inline_keyboard[0].map((b) => b.callback_data), ["tr|r|1", "tr|r|2", "tr|r|4", "tr|r|6"]);

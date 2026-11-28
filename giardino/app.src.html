@@ -2079,7 +2079,7 @@ function renderNotifiche(){
   const i=S.impostazioni;
   setHTML($('#notList'),notifVisibili().map(([k,t,d])=>`<div class="sw-row"><label class="sw-t" for="not-${k}"><b>${t}</b><span>${esc(d(i))}</span></label>${NOTIFICHE_CON_ORA.includes(k)?selettoreOra(k,t):''}<input type="checkbox" role="switch" class="sw" id="not-${k}" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></div>`
     +(NOTIFICHE_GIORNALIERE.includes(k)?selettoreGiorni(k,t):'')+(k==='backup'?selettoreBackup():'')).join('')
-    +(torreOn()?`<div class="sw-row"><label class="sw-t" for="urgOre"><b>Avvisi urgenti della torre</b><span>Sensore guasto, freddo, serbatoio vuoto: arrivano subito, poi si ripetono finché il problema resta</span></label><select class="ora" id="urgOre" aria-label="Ripeti ogni">${ORE_URGENTI.map(o=>`<option value="${o}"${o===oreUrgenti(i)?' selected':''}>ogni ${o} h</option>`).join('')}</select></div>`:''));
+    +(torreOn()?`<div class="sw-row"><label class="sw-t" for="urgOre"><b>Avvisi urgenti della torre</b><span>Sensore guasto, freddo, serbatoio vuoto: arrivano subito, poi si ripetono finché il problema resta</span></label><select class="ora" id="urgOre" aria-label="Ripeti ogni">${[...new Set([...ORE_URGENTI, oreUrgenti(i)])].sort((a,b)=>a-b).map(o=>`<option value="${o}"${o===oreUrgenti(i)?' selected':''}>ogni ${o} h</option>`).join('')}</select></div>`:''));
   chipNotifiche();
 }
 /* ================= Torre idroponica =================
@@ -2195,7 +2195,8 @@ function renderTorreSheet(){
   $('#torrePompa').disabled=!!attesa;
   $('#torrePompaH').textContent=attesa?'Accensione di '+durata(c2.pompa_s)+' chiesta '+quandoTorre(Date.parse(c2.at)/1000)+': arriva alla torre quando trova il Wi-Fi (vale 2 ore).'
     :'Da 30 secondi a 10 minuti. L\'accensione arriva alla torre quando trova il Wi-Fi; con il freddo resta ferma.';
-  $('#torreCronoUsa').hidden=!CRONO.fine;
+  // «Usa N minuti»: solo dopo una misura e se cambia qualcosa (dopo averlo usato, i minuti sono già quelli)
+  const cu=$('#torreCronoUsa'); cu.hidden=!CRONO.fine||+cu.dataset.min===configTorre(tr.config).accesa_min;
 }
 // periodi lunghi: minima e massima (col giorno), umidità media, pompa e freddo sommati dai riassunti per giorno
 function riepilogoGiorni(g){

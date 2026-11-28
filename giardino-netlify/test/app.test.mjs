@@ -663,6 +663,7 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   assert.match(await page.textContent("#torreCronoR"), /2 min 40 s\. Ti consiglio 5 min per ciclo \(adesso 15\): circa il 67% di energia della pompa in meno/);
   const rev0 = await page.evaluate(() => S.torre.rev); await page.click("#torreCronoUsa");
   assert.deepEqual(await page.evaluate(() => [S.torre.config.accesa_min, S.torre.rev]), [5, rev0 + 1]);
+  await page.evaluate(() => renderAll()); assert.ok(await page.isHidden("#torreCronoUsa"), "usato: non torna dopo un nuovo disegno");
   await page.click("#torreChiudi"); await quando(page, () => document.querySelector("#torreSheet").hidden);
   // nel modulo della pianta c'è la torre (con la torre accesa)
   await page.click("#tab-piante"); await page.click("#addPlantBtn");

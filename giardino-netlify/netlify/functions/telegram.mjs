@@ -92,20 +92,20 @@ async function rabbocco(st, t, code, cq, azione, valore, rispondi) {
   const chat = cq.message.chat.id, msg = cq.message.message_id, ora = new Date().toISOString();
   if (azione === "r") {
     const l = +valore; if (!(l >= 0 && l <= 1000)) return rispondi();
-    let fatto = false;
-    await aggiorna(st, code, (d) => { if (!d.torre) return false; const sb = M.serbatoioTorre(d.torre.serbatoio);
+    const out = await aggiorna(st, code, (d) => { if (!d.torre) return false; const sb = M.serbatoioTorre(d.torre.serbatoio);
       if (sb.rabbocchi.some((r) => Date.parse(ora) - Date.parse(r.at) < 120e3)) return false;   // doppio tocco
-      sb.rabbocchi = [...sb.rabbocchi, { at: ora, litri: l > 0 ? l : null }]; d.torre = { ...d.torre, serbatoio: M.serbatoioTorre(sb) }; fatto = true; });
-    if (!fatto) return rispondi("Già segnato");
+      sb.rabbocchi = [...sb.rabbocchi, { at: ora, litri: l > 0 ? l : null }]; d.torre = { ...d.torre, serbatoio: M.serbatoioTorre(sb) }; });
+    // deciso da quello che è salvato davvero (con due tocchi insieme un tentativo può perdere contro l'altro e ripartire)
+    if (!M.serbatoioTorre(out?.data?.torre?.serbatoio).rabbocchi.some((r) => r.at === ora)) return rispondi("Già segnato");
     const testo = `✔ Riempito${l > 0 ? " (" + String(l).replace(".", ",") + " L)" : ""}`;
     await Promise.all([rispondi(testo), tg(t.token, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: { inline_keyboard: [[{ text: testo, callback_data: "x" }, { text: "↩️ Annulla", callback_data: `tr|z|${Date.parse(ora)}` }]] } }, { ignora: true })]);
     return;
   }
   if (azione === "z") {
     const at = new Date(+valore).toISOString();
-    await aggiorna(st, code, (d) => { if (!d.torre) return false; const sb = M.serbatoioTorre(d.torre.serbatoio), prima = sb.rabbocchi.length;
+    const out = await aggiorna(st, code, (d) => { if (!d.torre) return false; const sb = M.serbatoioTorre(d.torre.serbatoio), prima = sb.rabbocchi.length;
       sb.rabbocchi = sb.rabbocchi.filter((r) => r.at !== at); if (sb.rabbocchi.length === prima) return false; d.torre = { ...d.torre, serbatoio: sb }; });
-    const sb = M.serbatoioTorre((await leggi(st, code))?.data?.torre?.serbatoio);
+    const sb = M.serbatoioTorre(out?.data?.torre?.serbatoio);   // salvato o già com'era: niente lettura in più
     await Promise.all([rispondi("Annullato"), tg(t.token, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: M.pulsantiRiempito(sb) }, { ignora: true })]);
     return;
   }
