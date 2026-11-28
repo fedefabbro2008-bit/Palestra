@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="26c62c2d0374">
+<meta name="giardino-build" content="de7c803e34cf">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -162,8 +162,9 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .tr-val{display:flex;align-items:center;gap:10px}
 /* temperatura e umidità sulla stessa riga finché ci stanno; lo stato della pompa nello spazio a destra (va a capo se serve) */
 .tr-num{display:flex;align-items:baseline;gap:2px 12px;flex-wrap:wrap;flex:0 1 auto;min-width:0}
-.tr-st{flex:1 1 7.5em;min-width:7.5em;text-align:right}
-.tr-st .pill{display:inline-flex;flex-direction:column;align-items:flex-end;gap:1px;padding:5px 10px}
+/* prima si stringe la pillola (fino al titolo su una riga), poi va a capo l'umidità */
+.tr-st{flex:1 100000 auto;min-width:min-content;text-align:right}   /* (fattori sotto 1 non bastano: il resto sborderebbe) */.tr-st .ps{white-space:nowrap}
+.tr-st .pill{display:inline-flex;flex-direction:column;align-items:flex-end;gap:1px;padding:5px 10px;max-width:none}
 .tr-st .ps{font-weight:700}.nw{white-space:nowrap}.tr-st .pd{font-size:.76rem;font-weight:500;opacity:.92}
 .tr-val b{font-size:1.9rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .tr-val .u{font-size:1.05rem;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -2267,16 +2268,17 @@ function frequenzaBackup(imp) {
   const g = Number(imp?.backup_giorno);
   return { ogni, giorno: Number.isInteger(g) && g >= 0 && g <= 6 ? g : 0 };
 }
-// è il giorno del backup? (ultimo = data dell'ultimo inviato). Se il giorno scelto salta (bot fermo), arriva appena può.
+// è il giorno del backup? (ultimo = data dell'ultimo inviato). Legato al calendario, non ai giorni dall'ultimo: il giorno
+// scelto più recente (oggi compreso) è «coperto» da un backup fatto da un giorno prima in poi (ogni 2 settimane: da quello
+// della settimana prima). Se il giorno scelto salta (bot fermo) arriva appena può, e dopo si torna sempre al giorno scelto.
 function backupOggi(imp, oggi, ultimo) {
   const { ogni, giorno } = frequenzaBackup(imp);
   if (ogni === "mese") return (ultimo || "").slice(0, 7) !== oggi.slice(0, 7);
-  const u = String(ultimo || ""), giusto = new Date(oggi + "T12:00:00Z").getUTCDay() === giorno;
-  // (i backup di prima salvavano solo il mese: vale come il primo del mese)
-  const gg = Math.round((Date.parse(oggi + "T12:00:00Z") - Date.parse((u.length >= 10 ? u.slice(0, 10) : u.slice(0, 7) + "-01") + "T12:00:00Z")) / 864e5);
-  if (!u || !Number.isFinite(gg)) return giusto;
-  const per = ogni === "settimana" ? 7 : 14;
-  return gg >= per - 1 && giusto || gg >= per + 2;
+  const u = String(ultimo || ""), dow = new Date(oggi + "T12:00:00Z").getUTCDay();
+  const ult = u.length >= 10 ? u.slice(0, 10) : u.length >= 7 ? u.slice(0, 7) + "-01" : "";   // i backup di prima: solo il mese
+  if (!/^\d{4}-\d\d-\d\d$/.test(ult) || isNaN(Date.parse(ult))) return dow === giorno;    // mai fatto: il primo nel giorno scelto
+  const scelto = addDays(oggi, -((dow - giorno + 7) % 7));
+  return ult < addDays(scelto, ogni === "settimana" ? -1 : -8);
 }
 const testoFrequenzaBackup = (imp) => { const { ogni, giorno } = frequenzaBackup(imp); return ogni === "mese" ? "una volta al mese" : FREQUENZE_BACKUP[ogni] + ", " + ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"][giorno]; };
 const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));

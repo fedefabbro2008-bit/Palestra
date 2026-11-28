@@ -787,11 +787,30 @@ test("notifiche: giorni della settimana per quelle quotidiane, ripetizione degli
   const set = { backup_ogni: "settimana", backup_giorno: 0 };
   assert.equal(M.backupOggi(set, "2027-07-11", null), true, "domenica, mai fatto"); assert.equal(M.backupOggi(set, "2027-07-12", null), false, "lunedì");
   assert.equal(M.backupOggi(set, "2027-07-11", "2027-07-04"), true, "una settimana dopo"); assert.equal(M.backupOggi(set, "2027-07-11", "2027-07-10"), false, "ieri: no");
-  assert.equal(M.backupOggi(set, "2027-07-13", "2027-07-04"), true, "domenica saltata: appena può"); assert.equal(M.backupOggi(set, "2027-07-12", "2027-07-04"), false);
+  assert.equal(M.backupOggi(set, "2027-07-13", "2027-07-04"), true, "domenica saltata: appena può"); assert.equal(M.backupOggi(set, "2027-07-12", "2027-07-04"), true, "anche il lunedì");
+  assert.equal(M.backupOggi(set, "2027-07-14", "2027-07-12"), false, "recuperato lunedì: si aspetta domenica");
   assert.equal(M.backupOggi(set, "2027-07-11", "2027-07"), true, "data vecchia (solo il mese)");
   const due = { backup_ogni: "2settimane", backup_giorno: 3 };   // mercoledì
   assert.equal(M.backupOggi(due, "2027-07-14", "2027-07-07"), false, "solo 1 settimana"); assert.equal(M.backupOggi(due, "2027-07-21", "2027-07-07"), true, "2 settimane");
   assert.deepEqual(M.frequenzaBackup({ backup_ogni: "boh", backup_giorno: 9 }), { ogni: "mese", giorno: 0 });
+  // giorno per giorno per 10 settimane, partendo da un backup 1-6 giorni prima del giorno scelto (passaggio dal mese, recupero):
+  // ogni backup dopo il primo cade nel giorno scelto, a 7 o 14 giorni dal precedente; con un giorno saltato, recupera e torna lì
+  for (const ogni of ["settimana", "2settimane"]) for (const giorno of [0, 3]) for (const prima of [1, 2, 3, 4, 5, 6]) for (const salta of [null, 21]) {
+    const imp = { backup_ogni: ogni, backup_giorno: giorno };
+    let d = "2027-07-04"; while (new Date(d + "T12:00:00Z").getUTCDay() !== giorno) d = M.addDays(d, 1);
+    let ultimo = M.addDays(d, -prima); const inviati = [];
+    for (let i = 0; i < 70; i++) { const g = M.addDays(d, i); if (i === salta) continue; if (M.backupOggi(imp, g, ultimo)) { inviati.push(g); ultimo = g; } }
+    const dove = `${ogni} ${giorno} prima ${prima} salta ${salta}`;
+    const giusti = inviati.filter((g) => new Date(g + "T12:00:00Z").getUTCDay() === giorno);
+    assert.ok(inviati.length - giusti.length <= (salta == null ? 0 : 1), dove + ": " + inviati.join(" "));   // fuori giorno solo il recupero
+    // tra due backup nel giorno scelto: un periodo (7 o 14 giorni), due se in mezzo c'è il recupero di quello saltato
+    const per = ogni === "settimana" ? 7 : 14, ok = salta == null ? [per] : [per, 2 * per];
+    for (let k = 1; k < giusti.length; k++) { const gap = (Date.parse(giusti[k]) - Date.parse(giusti[k - 1])) / 864e5; assert.ok(ok.includes(gap), dove + ": " + inviati.join(" ")); }
+    // il recupero arriva il giorno dopo quello saltato (se quel giorno toccava)
+    const recupero = inviati.find((g) => new Date(g + "T12:00:00Z").getUTCDay() !== giorno);
+    if (recupero) assert.equal(recupero, M.addDays(d, 22), dove + ": recupero " + recupero);
+    assert.ok(giusti.length >= (ogni === "settimana" ? 8 : 4), dove + ": pochi " + inviati.join(" "));
+  }
   assert.equal(M.testoFrequenzaBackup(due), "ogni 2 settimane, mercoledì"); assert.equal(M.testoFrequenzaBackup({}), "una volta al mese");
   assert.equal(M.oreUrgenti({}), 12); assert.equal(M.oreUrgenti({ urgenti_ore: 3 }), 3); assert.equal(M.oreUrgenti({ urgenti_ore: 99 }), 12);
   const t = { posizione: "casa", config: {} }, adesso = Date.UTC(2027, 6, 12, 12) / 1000;

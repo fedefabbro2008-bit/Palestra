@@ -694,16 +694,17 @@ export function frequenzaBackup(imp) {
   const g = Number(imp?.backup_giorno);
   return { ogni, giorno: Number.isInteger(g) && g >= 0 && g <= 6 ? g : 0 };
 }
-// è il giorno del backup? (ultimo = data dell'ultimo inviato). Se il giorno scelto salta (bot fermo), arriva appena può.
+// è il giorno del backup? (ultimo = data dell'ultimo inviato). Legato al calendario, non ai giorni dall'ultimo: il giorno
+// scelto più recente (oggi compreso) è «coperto» da un backup fatto da un giorno prima in poi (ogni 2 settimane: da quello
+// della settimana prima). Se il giorno scelto salta (bot fermo) arriva appena può, e dopo si torna sempre al giorno scelto.
 export function backupOggi(imp, oggi, ultimo) {
   const { ogni, giorno } = frequenzaBackup(imp);
   if (ogni === "mese") return (ultimo || "").slice(0, 7) !== oggi.slice(0, 7);
-  const u = String(ultimo || ""), giusto = new Date(oggi + "T12:00:00Z").getUTCDay() === giorno;
-  // (i backup di prima salvavano solo il mese: vale come il primo del mese)
-  const gg = Math.round((Date.parse(oggi + "T12:00:00Z") - Date.parse((u.length >= 10 ? u.slice(0, 10) : u.slice(0, 7) + "-01") + "T12:00:00Z")) / 864e5);
-  if (!u || !Number.isFinite(gg)) return giusto;
-  const per = ogni === "settimana" ? 7 : 14;
-  return gg >= per - 1 && giusto || gg >= per + 2;
+  const u = String(ultimo || ""), dow = new Date(oggi + "T12:00:00Z").getUTCDay();
+  const ult = u.length >= 10 ? u.slice(0, 10) : u.length >= 7 ? u.slice(0, 7) + "-01" : "";   // i backup di prima: solo il mese
+  if (!/^\d{4}-\d\d-\d\d$/.test(ult) || isNaN(Date.parse(ult))) return dow === giorno;    // mai fatto: il primo nel giorno scelto
+  const scelto = addDays(oggi, -((dow - giorno + 7) % 7));
+  return ult < addDays(scelto, ogni === "settimana" ? -1 : -8);
 }
 export const testoFrequenzaBackup = (imp) => { const { ogni, giorno } = frequenzaBackup(imp); return ogni === "mese" ? "una volta al mese" : FREQUENZE_BACKUP[ogni] + ", " + ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"][giorno]; };
 export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));

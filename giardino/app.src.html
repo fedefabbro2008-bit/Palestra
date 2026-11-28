@@ -145,8 +145,9 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .tr-val{display:flex;align-items:center;gap:10px}
 /* temperatura e umidità sulla stessa riga finché ci stanno; lo stato della pompa nello spazio a destra (va a capo se serve) */
 .tr-num{display:flex;align-items:baseline;gap:2px 12px;flex-wrap:wrap;flex:0 1 auto;min-width:0}
-.tr-st{flex:1 1 7.5em;min-width:7.5em;text-align:right}
-.tr-st .pill{display:inline-flex;flex-direction:column;align-items:flex-end;gap:1px;padding:5px 10px}
+/* prima si stringe la pillola (fino al titolo su una riga), poi va a capo l'umidità */
+.tr-st{flex:1 100000 auto;min-width:min-content;text-align:right}   /* (fattori sotto 1 non bastano: il resto sborderebbe) */.tr-st .ps{white-space:nowrap}
+.tr-st .pill{display:inline-flex;flex-direction:column;align-items:flex-end;gap:1px;padding:5px 10px;max-width:none}
 .tr-st .ps{font-weight:700}.nw{white-space:nowrap}.tr-st .pd{font-size:.76rem;font-weight:500;opacity:.92}
 .tr-val b{font-size:1.9rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .tr-val .u{font-size:1.05rem;color:var(--muted);font-variant-numeric:tabular-nums}
