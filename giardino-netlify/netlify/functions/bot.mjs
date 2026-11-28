@@ -174,8 +174,12 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
     if (fa("torre") && torre && torre.attiva !== false) {
       try {
         const v = M.vistaOrto(data, torre.orto || "p"), met = v.location ? await meteoDi(v) : null, serie = await st.get("s-" + code, { type: "json" });
-        const avv = avvisiTorre(torre, serie, met, oggi, Math.floor(Date.now() / 1000), met?.tz || t.tz || "Europe/Rome", data.plants);
-        if (avv.length) await invia(`🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + avv.map((a) => esc(a.testo)).join("\n"));
+        const ora = Math.floor(Date.now() / 1000), tzT = met?.tz || t.tz || "Europe/Rome", avv = avvisiTorre(torre, serie, met, oggi, ora, tzT, data.plants);
+        // col serbatoio da riempire, i pulsanti «Riempito» (con i litri) sotto il messaggio
+        const serb = avv.some((a) => a.tipo === "serbatoio" || a.tipo === "livello") ? { reply_markup: M.pulsantiRiempito(M.lavoriTorre(torre, serie, ora, tzT, { met, piante: data.plants }).serbatoio) } : {};
+        if (avv.length) await invia(`🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + avv.map((a) => esc(a.testo)).join("\n"), serb);
+        // la domenica, con il riepilogo delle piante, quello della torre
+        if (fa("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0) { const r = M.riepilogoTorreSettimana(torre, serie, met, ora, tzT, data.plants); if (r) await invia(esc(r)); }
       } catch (e) { console.warn("torre:", e?.message); }
     }
   }

@@ -2113,6 +2113,7 @@ function datiTorre(){ const m=TORRE?.misure||[], st=TORRE?.stato||null, ultima=[
 // stato della pompa: con l'ora di fine fase mandata dall'ESP32 (a ogni accensione e spegnimento, se il modem è acceso)
 function testoPompa(st, ult){
   if(/freddo/.test(st?.modo||'')) return 'pompa ferma per il freddo';
+  if(st?.livello==='basso'||/serbatoio vuoto/.test(st?.modo||'')) return 'pompa ferma: serbatoio vuoto';
   const ora=s=>new Date(s*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}), fine=st?.fine>Date.now()/1000?st.fine:0;
   if(st?.fine&&!fine){   // fase finita dall'ultimo contatto (modem spento): stima dai cicli che la torre fa da sola
     const e=pompaStimata(st, S.torre?.config, Date.now()/1000);
@@ -2131,7 +2132,7 @@ function renderTorre(){
   if(!ult) h+=`<div class="sub">In attesa della torre: copia la chiave da Impostazioni → Torre idroponica nel programma dell'ESP32. I dati arrivano quando trova il Wi-Fi.</div>`;
   else {
     const freddo=/freddo/.test(st?.modo||'');
-    h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}</span><span class="pill ${freddo?'':'water'}">${esc(testoPompa(st, ult))}</span></div>`;
+    h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}${st?.ta!=null?' · acqua '+fmt(st.ta,1)+'°':''}</span><span class="pill ${freddo||st?.livello==='basso'?'':'water'}">${esc(testoPompa(st, ult))}</span></div>`;
     h+=graficoTorre(m,24,{w:320,h:46,assi:false});
   }
   const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000, undefined, S.plants);
@@ -2153,7 +2154,9 @@ function renderTorreSheet(){
     c('Massima',r.max!=null?fmt(r.max,1)+'°':'–',oraDi(r.maxOra)),
     c('Umidità media',r.umidita!=null?r.umidita+' %':'–'),
     c('Pompa',r.pompaMin>=120?fmt(r.pompaMin/60,r.pompaMin>=6000?0:1)+' h':r.pompaMin+' min',PERIODI_TORRE[torreOre]),
-    c('Ferma per freddo',r.freddoMin?(r.freddoMin>=90?fmt(r.freddoMin/60,1)+' h':r.freddoMin+' min'):'mai')].join(''));
+    c('Ferma per freddo',r.freddoMin?(r.freddoMin>=90?fmt(r.freddoMin/60,1)+' h':r.freddoMin+' min'):'mai'),
+    ...(st?.ta!=null?[c('Acqua',fmt(st.ta,1)+'°',st.livello?'serbatoio '+(st.livello==='basso'?'vuoto':'ok'):'')]:st?.livello?[c('Serbatoio',st.livello==='basso'?'vuoto':'ok','galleggiante')]:[]),
+    ...(st?.v!=null?[c('Alimentazione',fmt(st.v,2)+' V','la più bassa '+fmt(st.vmin??st.v,2)+' V')]:[])].join(''));
   const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000, undefined, S.plants);
   setHTML($('#torreAvvisi'),avv.map(a=>`<div class="alert ${a.tipo==='pioggia'?'info':''}">${a.tipo==='pioggia'?ICON.info:ICON.warn}<div>${esc(a.testo)}</div></div>`).join(''));
   renderLavori(tr);

@@ -739,6 +739,27 @@ test("torre: serbatoio, consumo dalle piante e dal meteo, scala imparata dai rab
   assert.equal(r1, r2); assert.notEqual(M.lavoriTorre(tr, serie, t0 + 6 * d + 90, "UTC", ctx), r1); assert.notEqual(M.lavoriTorre({ ...tr }, serie, t0 + 6 * d, "UTC", ctx), r1);
 });
 
+test("torre: galleggiante, acqua calda, alimentazione, sensore bloccato, riepilogo della domenica, pulsanti «Riempito»", () => {
+  const h = 3600, adesso = Date.UTC(2027, 6, 11, 18) / 1000, tr = { posizione: "casa", config: {}, nome: "Torre" };   // domenica 11 luglio 2027
+  const tipi = (serie) => M.avvisiTorre(tr, serie, null, "2027-07-11", adesso, "UTC").map((a) => a.tipo);
+  const s = M.unisciMisure(null, { stato: { livello: "basso", ta: 27.3, v: 4.9, vmin: 4.41 }, misure: [] }, adesso).serie;
+  assert.deepEqual([s.stato.livello, s.stato.ta, s.stato.v, s.stato.vmin], ["basso", 27.3, 4.9, 4.41]);
+  assert.ok(["livello", "acqua", "tensione"].every((t) => tipi(s).includes(t)));
+  assert.ok(M.urgentiTorre(tr, s, adesso, "UTC").testi.some((x) => /galleggiante/.test(x)), "serbatoio vuoto: subito");
+  assert.equal(M.unisciMisure(null, { stato: { livello: "boh", ta: 99 }, misure: [] }, adesso).serie.stato.livello, null);
+  // sensore bloccato: 3 ore di misure identiche
+  const fermo = { ultimo: adesso, misure: Array.from({ length: 19 }, (_, i) => [adesso - (18 - i) * 600, 21.37, 55.1, 0, 0, 1, i]) };
+  assert.ok(tipi(fermo).includes("sensore_fermo")); fermo.misure[5][1] = 21.38; assert.ok(!tipi(fermo).includes("sensore_fermo"));
+  // riepilogo della settimana
+  const giorni = []; for (let i = 7; i >= 1; i--) giorni.push([new Date((adesso - i * 86400) * 1000).toISOString().slice(0, 10), 14 + i, 26 + i, 20, 60, 240, i === 1 ? 30 : 0, 144]);
+  const r = M.riepilogoTorreSettimana(tr, { giorni, misure: [] }, null, adesso, "UTC");
+  assert.match(r, /la settimana\n🌡️ minima 15 °C \(sab 10\), massima 33 °C \(dom 4\), umidità media 60%\n💧 pompa accesa 28 ore, ferma per il freddo 30 minuti/);
+  assert.equal(M.riepilogoTorreSettimana(tr, { giorni: [], misure: [] }, null, adesso, "UTC"), null);
+  // pulsanti: attorno ai litri bevuti dall'ultimo rabbocco; senza stima 1, 2, 4, 6
+  assert.deepEqual(M.pulsantiRiempito({ capacita: 12, rimasti: 7 }).inline_keyboard[0].map((b) => b.callback_data), ["tr|r|3", "tr|r|4", "tr|r|5", "tr|r|6"]);
+  assert.deepEqual(M.pulsantiRiempito({}).inline_keyboard[0].map((b) => b.callback_data), ["tr|r|1", "tr|r|2", "tr|r|4", "tr|r|6"]);
+});
+
 test("torre: manutenzione (nutrienti, soluzione, pulizia) e promemoria senza litri", () => {
   const d = 86400, t0 = Date.UTC(2027, 5, 1) / 1000, iso = (s) => new Date(s * 1000).toISOString();
   const giorni = []; for (let i = -2; i < 20; i++) giorni.push([new Date((t0 + i * d) * 1000).toISOString().slice(0, 10), 15, 25, 20, 60, 120, 0, 144]);

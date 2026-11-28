@@ -792,6 +792,20 @@ test("torre nell'app: aggiornata a pezzi (invariato o solo la coda), sempre ugua
   const vecchia = await leggi(""); assert.ok(!vecchia.parziale && vecchia.misure.length === 6);
 });
 
+test("torre: «Riempito» dai pulsanti di Telegram (con i litri, doppio tocco ignorato, Annulla)", async () => {
+  await call(dati, "/api/dati?op=torre", { method: "POST", headers: H, body: { action: "chiave" } });
+  const tocca = (id, data) => webhook({ callback_query: { id, data, message: { message_id: 9, chat: { id: 77 }, reply_markup: { inline_keyboard: [] } } } });
+  inviati.length = 0;
+  await tocca("r1", "tr|r|4");
+  let sb = (await leggiDati()).torre.serbatoio; assert.equal(sb.rabbocchi.length, 1); assert.equal(sb.rabbocchi[0].litri, 4);
+  const mod = inviati.find((x) => x[0] === "editMessageReplyMarkup"); assert.match(JSON.stringify(mod[1].reply_markup), /Riempito \(4 L\).*Annulla/);
+  await tocca("r2", "tr|r|6"); assert.equal((await leggiDati()).torre.serbatoio.rabbocchi.length, 1, "doppio tocco: uno solo");
+  const annulla = mod[1].reply_markup.inline_keyboard[0][1].callback_data;
+  await tocca("r3", annulla); assert.equal((await leggiDati()).torre.serbatoio.rabbocchi.length, 0, "annullato");
+  await tocca("r4", "tr|r|0"); sb = (await leggiDati()).torre.serbatoio; assert.equal(sb.rabbocchi.at(-1).litri, null, "senza litri");
+  await call(dati, "/api/dati?op=torre", { method: "POST", headers: H, body: { action: "togli" } });
+});
+
 test("torre: a ogni invio dell'ESP32 tre letture e una scrittura; il meteo una volta l'ora (o se cambia la posizione)", async () => {
   const C6 = "GRD-TORREVELOCE-ABCDEFGHJK", H6 = { "x-giardino-code": C6 }, torreFn = (await import("../netlify/functions/torre.mjs")).default;
   await call(dati, "/api/dati", { method: "POST", headers: H6, body: { changes: { location: { name: "Castrocaro Terme", lat: 44.18, lon: 11.95 } } } });
