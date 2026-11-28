@@ -145,13 +145,20 @@ uint32_t quandoComunica() {
   uint32_t a = cambioPompaMs + 3000, b = ultimoInvioPompaMs + 60000;
   return ultimoInvioPompaMs && (int32_t)(b - a) > 0 ? b : a;
 }
+void leggiTensione();
 void rele(bool on) {
+  bool parte = on && !pompaAccesa;
   if (on != pompaAccesa) { comunicaPompa = true; cambioPompaMs = millis(); }
   if (on && !pompaAccesa) accesaDaMs = millis();
   if (!on && pompaAccesa) secondiPompa += (millis() - accesaDaMs) / 1000;
   pompaAccesa = on;
   gpio_hold_dis((gpio_num_t)PIN_RELE);
   digitalWrite(PIN_RELE, on ? RELE_ATTIVO : !RELE_ATTIVO);
+#if USA_TENSIONE
+  if (parte) { delay(150); leggiTensione(); }               // la tensione più bassa è appena parte la pompa (anche a mano)
+#else
+  (void)parte;
+#endif
 }
 
 // ---------- ora: resta giusta dopo un riavvio senza mancanza di corrente (la memoria RTC non si cancella) ----------
@@ -221,7 +228,7 @@ void leggiAcqua() {
 // scende); cinque letture, vince la maggioranza (l'acqua che ondeggia)
 void leggiLivello() {
 #if USA_GALLEGGIANTE
-  if (pompaAccesa || millis() - cambioPompaMs < 60000UL) return;
+  if (pompaAccesa || (cambioPompaMs && millis() - cambioPompaMs < 60000UL)) return;   // all'accensione si legge subito
   int chiuso = 0; for (int i = 0; i < 5; i++) { chiuso += digitalRead(PIN_GALLEGGIANTE) == LOW; delay(20); }
   bool pieno = PIENO_SE_CHIUSO ? chiuso >= 3 : chiuso < 3;
   if (serbatoioVuoto && pieno) Serial.println("Galleggiante: serbatoio di nuovo pieno");
@@ -316,9 +323,6 @@ void prossimaFase() {
     return;
   }
   rele(true);
-#if USA_TENSIONE
-  delay(150); leggiTensione();                             // la tensione più bassa è appena parte la pompa
-#endif
   fineFaseMs = millis() + accesaS * 1000UL;
   Serial.printf("Pompa accesa per %lu min (%s, %.1f °C, %.0f %%)\n", accesaS / 60, NOMI_MODO[modo], ultimaT, ultimaU);
 }
@@ -865,6 +869,7 @@ void setup() {
   avviaSensore();
 #if USA_GALLEGGIANTE
   pinMode(PIN_GALLEGGIANTE, INPUT_PULLUP);
+  delay(10); leggiLivello();                                // pompa sicuramente spenta: il livello si sa prima del primo ciclo
 #endif
 #if USA_SONDA_ACQUA
   sondaAcqua.begin(); sondaAcqua.setResolution(11);         // 0,125 °C, misura in circa 0,4 s
