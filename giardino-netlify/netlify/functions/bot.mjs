@@ -46,7 +46,10 @@ async function uno(st, tkey) {
   // ogni notifica alla sua ora (Impostazioni → Notifiche): dovute = da fare adesso; passate = ora finita senza giro del bot
   const fatti = fattiOggi(t, oggi), dovute = new Set(), passate = [];
   for (const k of M.NOTIFICHE_CON_ORA) {
-    if (fatti.has(k) || ora < M.oraNotifica(imp, k) || !M.notificaOggi(imp, k, oggi)) continue;   // non è il suo giorno
+    if (fatti.has(k)) continue;
+    // non è il suo giorno (Impostazioni → Notifiche): segnata come fatta senza mandarla, così i giri dopo escono subito
+    if (!M.notificaOggi(imp, k, oggi)) { passate.push(k); continue; }
+    if (ora < M.oraNotifica(imp, k)) continue;
     if (ora < M.fineNotifica(imp, k)) dovute.add(k); else passate.push(k);
   }
   if (!dovute.size && !passate.length) return;
@@ -169,17 +172,20 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
       await invia(m.testo, { reply_markup: m.tastiera });
       next.avviso_piano = idPiano;
     }
-    // 7. torre idroponica (solo se attiva): silenzio, gelo e pioggia previsti dove si trova, freddo misurato
-    const torre = data.torre;
-    if (fa("torre") && torre && torre.attiva !== false) {
+    // 7. torre idroponica (solo se attiva): silenzio, gelo e pioggia previsti dove si trova, freddo misurato; la domenica,
+    //    all'ora del riepilogo delle piante (anche se è diversa da quella della torre), il riepilogo della settimana della torre
+    const torre = data.torre, riepTorre = fa("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0;
+    if ((fa("torre") || riepTorre) && torre && torre.attiva !== false) {
       try {
         const v = M.vistaOrto(data, torre.orto || "p"), met = v.location ? await meteoDi(v) : null, serie = await st.get("s-" + code, { type: "json" });
-        const ora = Math.floor(Date.now() / 1000), tzT = met?.tz || t.tz || "Europe/Rome", avv = avvisiTorre(torre, serie, met, oggi, ora, tzT, data.plants);
-        // col serbatoio da riempire, i pulsanti «Riempito» (con i litri) sotto il messaggio
-        const serb = avv.some((a) => a.tipo === "serbatoio" || a.tipo === "livello") ? { reply_markup: M.pulsantiRiempito(M.lavoriTorre(torre, serie, ora, tzT, { met, piante: data.plants }).serbatoio) } : {};
-        if (avv.length) await invia(`🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + avv.map((a) => esc(a.testo)).join("\n"), serb);
-        // la domenica, con il riepilogo delle piante, quello della torre
-        if (fa("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0) { const r = M.riepilogoTorreSettimana(torre, serie, met, ora, tzT, data.plants); if (r) await invia(esc(r)); }
+        const ora = Math.floor(Date.now() / 1000), tzT = met?.tz || t.tz || "Europe/Rome";
+        if (fa("torre")) {
+          const avv = avvisiTorre(torre, serie, met, oggi, ora, tzT, data.plants);
+          // col serbatoio da riempire, i pulsanti «Riempito» (con i litri) sotto il messaggio
+          const serb = avv.some((a) => a.tipo === "serbatoio" || a.tipo === "livello") ? { reply_markup: M.pulsantiRiempito(M.lavoriTorre(torre, serie, ora, tzT, { met, piante: data.plants }).serbatoio) } : {};
+          if (avv.length) await invia(`🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + avv.map((a) => esc(a.testo)).join("\n"), serb);
+        }
+        if (riepTorre) { const r = M.riepilogoTorreSettimana(torre, serie, met, ora, tzT, data.plants); if (r) await invia(esc(r)); }
       } catch (e) { console.warn("torre:", e?.message); }
     }
   }

@@ -661,6 +661,11 @@ test("torre: riassunti per giorno (un anno), riavvii, limite di sicurezza, avvis
   const corrente = { ...s, riavvii: [{ avvio: 9, ora: adesso - h, motivo: "corrente" }] };
   assert.ok(av(corrente).some((a) => a.tipo === "corrente")); assert.ok(!av(corrente).some((a) => a.tipo === "riavvii"));
   assert.ok(!av({ ...s, riavvii: [{ avvio: 9, ora: adesso - h, motivo: "programma" }] }).some((a) => /riavvii|corrente/.test(a.tipo)), "aggiornamento: niente avviso");
+  // tante mancanze di corrente: contate in italiano giusto, col consiglio sull'alimentazione
+  const sei = { ...s, stato: { pb: [15, 1500, 0] }, riavvii: [1, 2, 3, 4, 5, 6].map((i) => ({ avvio: 20 + i, ora: adesso - i * 600, motivo: "corrente" })) };
+  const t6 = av(sei).find((a) => a.tipo === "riavvii").testo;
+  assert.match(t6, /6 volte nelle ultime 24 ore \(6 mancanze di corrente; ultimo/); assert.match(t6, /power bank che va in riposo.*allunga da solo/);
+  assert.match(av({ ...sei, riavvii: [...sei.riavvii, { avvio: 30, ora: adesso - 60, motivo: "tensione" }, { avvio: 31, ora: adesso - 30, motivo: "tensione" }] }).find((a) => a.tipo === "riavvii").testo, /2 cali di tensione, 6 mancanze di corrente/);
   // limite di sicurezza: misura col modo 6
   assert.match(av({ ...s, misure: [[adesso - h, 20, 50, 1800, 6, 7, 9]] }).find((a) => a.tipo === "sicurezza").testo, /30 minuti di fila/);
   // urgenti: il sensore quando comincia, poi non prima di 12 ore; finito, si dimentica; riavvio anomalo una volta
@@ -751,11 +756,22 @@ test("torre: galleggiante, acqua calda, alimentazione, sensore bloccato, riepilo
   // sensore bloccato: 3 ore di misure identiche
   const fermo = { ultimo: adesso, misure: Array.from({ length: 19 }, (_, i) => [adesso - (18 - i) * 600, 21.37, 55.1, 0, 0, 1, i]) };
   assert.ok(tipi(fermo).includes("sensore_fermo")); fermo.misure[5][1] = 21.38; assert.ok(!tipi(fermo).includes("sensore_fermo"));
+  // una misura ogni 5 minuti: bastano 3 ore uguali (prima servivano 18 misure su 2 ore e mezza: mai)
+  const fermo5 = { ultimo: adesso, misure: Array.from({ length: 37 }, (_, i) => [adesso - (36 - i) * 300, 21.37, 55.1, 0, 0, 1, i]) };
+  assert.ok(tipi(fermo5).includes("sensore_fermo"));
+  // una ogni ora: 12 misure uguali
+  assert.ok(tipi({ ultimo: adesso, misure: Array.from({ length: 12 }, (_, i) => [adesso - (11 - i) * 3600, 21.37, 55.1, 0, 0, 1, i]) }).includes("sensore_fermo"));
+  assert.ok(!tipi({ ultimo: adesso, misure: Array.from({ length: 11 }, (_, i) => [adesso - (10 - i) * 3600, 21.37, 55.1, 0, 0, 1, i]) }).includes("sensore_fermo"), "11 misure: poche");
   // riepilogo della settimana
   const giorni = []; for (let i = 7; i >= 1; i--) giorni.push([new Date((adesso - i * 86400) * 1000).toISOString().slice(0, 10), 14 + i, 26 + i, 20, 60, 240, i === 1 ? 30 : 0, 144]);
   const r = M.riepilogoTorreSettimana(tr, { giorni, misure: [] }, null, adesso, "UTC");
   assert.match(r, /la settimana\n🌡️ minima 15 °C \(sab 10\), massima 33 °C \(dom 4\), umidità media 60%\n💧 pompa accesa 28 ore, ferma per il freddo 30 minuti/);
   assert.equal(M.riepilogoTorreSettimana(tr, { giorni: [], misure: [] }, null, adesso, "UTC"), null);
+  // serbatoio già al minimo: «da riempire oggi», mai una data passata
+  const trS = { ...tr, serbatoio: { capacita: 10, minimo: 3, rabbocchi: [{ at: new Date((adesso - 30 * 86400) * 1000).toISOString(), litri: 10 }] } };
+  assert.match(M.riepilogoTorreSettimana(trS, { giorni, misure: [] }, null, adesso, "UTC"), /da riempire oggi/);
+  // urgente del freddo con la sonda dell'acqua: la temperatura dell'acqua
+  assert.match(M.urgentiTorre(tr, { stato: { modo: "freddo: pompa ferma", t: 6, ta: 1.5 }, misure: [], ultimo: adesso }, adesso, "UTC").testi.join(), /freddo \(acqua 1,5 °C\)/);
   // pulsanti: attorno ai litri bevuti dall'ultimo rabbocco; senza stima 1, 2, 4, 6
   assert.deepEqual(M.pulsantiRiempito({ capacita: 12, rimasti: 7 }).inline_keyboard[0].map((b) => b.callback_data), ["tr|r|3", "tr|r|4", "tr|r|5", "tr|r|6"]);
   assert.deepEqual(M.pulsantiRiempito({}).inline_keyboard[0].map((b) => b.callback_data), ["tr|r|1", "tr|r|2", "tr|r|4", "tr|r|6"]);
@@ -771,11 +787,30 @@ test("notifiche: giorni della settimana per quelle quotidiane, ripetizione degli
   const set = { backup_ogni: "settimana", backup_giorno: 0 };
   assert.equal(M.backupOggi(set, "2027-07-11", null), true, "domenica, mai fatto"); assert.equal(M.backupOggi(set, "2027-07-12", null), false, "lunedì");
   assert.equal(M.backupOggi(set, "2027-07-11", "2027-07-04"), true, "una settimana dopo"); assert.equal(M.backupOggi(set, "2027-07-11", "2027-07-10"), false, "ieri: no");
-  assert.equal(M.backupOggi(set, "2027-07-13", "2027-07-04"), true, "domenica saltata: appena può"); assert.equal(M.backupOggi(set, "2027-07-12", "2027-07-04"), false);
+  assert.equal(M.backupOggi(set, "2027-07-13", "2027-07-04"), true, "domenica saltata: appena può"); assert.equal(M.backupOggi(set, "2027-07-12", "2027-07-04"), true, "anche il lunedì");
+  assert.equal(M.backupOggi(set, "2027-07-14", "2027-07-12"), false, "recuperato lunedì: si aspetta domenica");
   assert.equal(M.backupOggi(set, "2027-07-11", "2027-07"), true, "data vecchia (solo il mese)");
   const due = { backup_ogni: "2settimane", backup_giorno: 3 };   // mercoledì
   assert.equal(M.backupOggi(due, "2027-07-14", "2027-07-07"), false, "solo 1 settimana"); assert.equal(M.backupOggi(due, "2027-07-21", "2027-07-07"), true, "2 settimane");
   assert.deepEqual(M.frequenzaBackup({ backup_ogni: "boh", backup_giorno: 9 }), { ogni: "mese", giorno: 0 });
+  // giorno per giorno per 10 settimane, partendo da un backup 1-6 giorni prima del giorno scelto (passaggio dal mese, recupero):
+  // ogni backup dopo il primo cade nel giorno scelto, a 7 o 14 giorni dal precedente; con un giorno saltato, recupera e torna lì
+  for (const ogni of ["settimana", "2settimane"]) for (const giorno of [0, 3]) for (const prima of [1, 2, 3, 4, 5, 6]) for (const salta of [null, 21]) {
+    const imp = { backup_ogni: ogni, backup_giorno: giorno };
+    let d = "2027-07-04"; while (new Date(d + "T12:00:00Z").getUTCDay() !== giorno) d = M.addDays(d, 1);
+    let ultimo = M.addDays(d, -prima); const inviati = [];
+    for (let i = 0; i < 70; i++) { const g = M.addDays(d, i); if (i === salta) continue; if (M.backupOggi(imp, g, ultimo)) { inviati.push(g); ultimo = g; } }
+    const dove = `${ogni} ${giorno} prima ${prima} salta ${salta}`;
+    const giusti = inviati.filter((g) => new Date(g + "T12:00:00Z").getUTCDay() === giorno);
+    assert.ok(inviati.length - giusti.length <= (salta == null ? 0 : 1), dove + ": " + inviati.join(" "));   // fuori giorno solo il recupero
+    // tra due backup nel giorno scelto: un periodo (7 o 14 giorni), due se in mezzo c'è il recupero di quello saltato
+    const per = ogni === "settimana" ? 7 : 14, ok = salta == null ? [per] : [per, 2 * per];
+    for (let k = 1; k < giusti.length; k++) { const gap = (Date.parse(giusti[k]) - Date.parse(giusti[k - 1])) / 864e5; assert.ok(ok.includes(gap), dove + ": " + inviati.join(" ")); }
+    // il recupero arriva il giorno dopo quello saltato (se quel giorno toccava)
+    const recupero = inviati.find((g) => new Date(g + "T12:00:00Z").getUTCDay() !== giorno);
+    if (recupero) assert.equal(recupero, M.addDays(d, 22), dove + ": recupero " + recupero);
+    assert.ok(giusti.length >= (ogni === "settimana" ? 8 : 4), dove + ": pochi " + inviati.join(" "));
+  }
   assert.equal(M.testoFrequenzaBackup(due), "ogni 2 settimane, mercoledì"); assert.equal(M.testoFrequenzaBackup({}), "una volta al mese");
   assert.equal(M.oreUrgenti({}), 12); assert.equal(M.oreUrgenti({ urgenti_ore: 3 }), 3); assert.equal(M.oreUrgenti({ urgenti_ore: 99 }), 12);
   const t = { posizione: "casa", config: {} }, adesso = Date.UTC(2027, 6, 12, 12) / 1000;

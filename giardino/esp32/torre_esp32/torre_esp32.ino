@@ -279,7 +279,8 @@ bool geloPrevisto() {
   for (uint8_t i = 0; i < nGelo; i++) if (t >= gelo[i][0] && t < gelo[i][1]) return true;
   return false;
 }
-bool pompaVietata() { return fermaPerFreddo || (isnan(ultimaT) && geloPrevisto()); }
+// il freddo lo dice la sonda dell'acqua se c'è (fermaPerFreddo), se no l'aria; senza nessuna delle due, le ore di gelo previste
+bool pompaVietata() { return fermaPerFreddo || (isnan(ultimaT) && isnan(tAcqua) && geloPrevisto()); }
 
 // ---------- decisione del ciclo ----------
 void decidi(uint32_t &accesaS, uint32_t &pausaS) {
@@ -290,7 +291,7 @@ void decidi(uint32_t &accesaS, uint32_t &pausaS) {
   if (fermaPerFreddo) { modo = FREDDO; accesaS = 0; pausaS = cfg.misuraOgniMin * 60; return; }
   if (isnan(T)) {                                          // sensore guasto: ciclo di emergenza, ferma col gelo previsto
     modo = SENZA_SENSORE;
-    if (cfg.guastoFerma || geloPrevisto()) { accesaS = 0; pausaS = cfg.misuraOgniMin * 60; }
+    if (cfg.guastoFerma || (isnan(tAcqua) && geloPrevisto())) { accesaS = 0; pausaS = cfg.misuraOgniMin * 60; }
     else { accesaS = cfg.accesaMin * 60; pausaS = cfg.guastoPausa * 60; }
     return;
   }
@@ -322,7 +323,7 @@ void prossimaFase() {
   if (accesaS == 0) {
     fineFaseMs = millis() + pausaS * 1000UL;
     if (modo == SERBATOIO_VUOTO) Serial.println("Serbatoio vuoto: pompa ferma finché non lo riempi");
-    else if (modo == SENZA_SENSORE) Serial.println(geloPrevisto() ? "Sensore guasto e gelo previsto: pompa ferma" : "Sensore guasto: pompa ferma (impostazioni)");
+    else if (modo == SENZA_SENSORE) Serial.println(isnan(tAcqua) && geloPrevisto() ? "Sensore guasto e gelo previsto: pompa ferma" : "Sensore guasto: pompa ferma (impostazioni)");
     else Serial.printf("Freddo (%.1f °C): pompa ferma, riparte sopra %.0f °C\n", ultimaT, cfg.freddoRiparte);
     return;
   }

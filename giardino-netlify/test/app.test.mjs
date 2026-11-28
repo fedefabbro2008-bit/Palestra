@@ -645,7 +645,7 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   await page.evaluate(() => caricaTorre(true));
   await page.click("#tab-oggi");
   await quando(page, () => /16,4°/.test(document.querySelector("#torreBox").textContent));
-  assert.match(await page.textContent("#torreBox"), /pompa accesa ancora 1[34] min \(fino alle \d\d:\d\d\)/);
+  assert.match(await page.textContent("#torreBox"), /pompa accesa ancora 1[34] min, fino alle \d\d:\d\d/);
   // aggiornamento a pezzi: una misura nuova arriva all'app (solo la coda)
   const r2 = await torreFn(new Request("https://x/api/torre", { method: "POST", headers: { "x-torre-chiave": chiave }, body: JSON.stringify({ v: 1, fw: 2, rev: 1, avvio: 1, sec: 200, stato: { modo: "normale", pompa: false, t: 17.1, u: 66 }, misure: [[adesso + 60, 17.1, 66, 0, 0, 1, 31]] }) }));
   assert.equal(r2.status, 200);
@@ -663,6 +663,7 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   assert.match(await page.textContent("#torreCronoR"), /2 min 40 s\. Ti consiglio 5 min per ciclo \(adesso 15\): circa il 67% di energia della pompa in meno/);
   const rev0 = await page.evaluate(() => S.torre.rev); await page.click("#torreCronoUsa");
   assert.deepEqual(await page.evaluate(() => [S.torre.config.accesa_min, S.torre.rev]), [5, rev0 + 1]);
+  await page.evaluate(() => renderAll()); assert.ok(await page.isHidden("#torreCronoUsa"), "usato: non torna dopo un nuovo disegno");
   await page.click("#torreChiudi"); await quando(page, () => document.querySelector("#torreSheet").hidden);
   // nel modulo della pianta c'è la torre (con la torre accesa)
   await page.click("#tab-piante"); await page.click("#addPlantBtn");
