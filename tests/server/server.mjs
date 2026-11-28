@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 /* Server di prova: serve l'app e chiama le funzioni VERE di netlify/functions (non copie), con l'archivio finto
    (blobs-finto.mjs, via hooks.mjs) e un Telegram finto. Avvio: node --import ./tests/server/hooks.mjs tests/server/server.mjs [porta]
-   /__ctl?reset=1 svuota l'archivio; altri comandi: delay, fail, down, dump, tgrun, tglog, tgclear, tgfail, tgnoupd,
+   /__ctl?reset=1 svuota l'archivio; altri comandi: delay, fail, down, dump, tgrun (=1 o una data ISO), tglog, tgclear, tgfail, tgnoupd,
    version (pagina «nuova versione»), hang (nessuna risposta: rete lentissima). */
 import { fileURLToPath } from 'node:url';
 import handler from '../../netlify/functions/sync.mjs';
 import mcpHandler from '../../netlify/functions/mcp.mjs';
-import tgScheduled from '../../netlify/functions/telegram-backup.mjs';
+import { runBackups } from '../../netlify/functions/telegram-backup.mjs';
 // Telegram finto: registra le chiamate, risponde come l'API vera
 globalThis.tgFake = { calls: [], fail: null, updates: [{ update_id: 1, message: { chat: { id: 4242, type: 'private', first_name: 'Fede' } } }] };
 const realFetch = globalThis.fetch;
@@ -48,7 +48,7 @@ http.createServer(async (req, res) => {
     const out = await handler(r);
     res.writeHead(out.status, Object.fromEntries(out.headers)); return res.end(Buffer.from(await out.arrayBuffer()));
   }
-  if (url.pathname === '/__ctl') { const q = url.searchParams; if (q.has('delay')) globalThis.__delayWrite = +q.get('delay'); if (q.has('fail')) globalThis.__fail = q.get('fail')==='1'; if (q.has('down')) globalThis.__apiDown = q.get('down')==='1'; if (q.has('dump')) { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify([...(globalThis.__stores||new Map()).entries()].map(([k,m])=>[k,[...m.entries()]]))); } if (q.has('pagelog')) { const l = globalThis.__pageLog || []; globalThis.__pageLog = []; res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify(l)); } if (q.has('version')) globalThis.__version = q.get('version') || null; if (q.has('hang')) globalThis.__hang = q.get('hang')==='1'; if(q.has('reset')) { (globalThis.__stores||new Map()).clear(); globalThis.__version = null; globalThis.__hang = false; } if (q.has('tgrun')) { await tgScheduled(new Request('http://x')); } if (q.has('tglog')) { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify(globalThis.tgFake.calls)); } if (q.has('tgclear')) globalThis.tgFake.calls = []; if (q.has('tgfail')) globalThis.tgFake.fail = q.get('tgfail') || null; if (q.has('tgnoupd')) globalThis.tgFake.updates = q.get('tgnoupd')==='1' ? [] : [{ update_id: 1, message: { chat: { id: 4242, type: 'private', first_name: 'Fede' } } }]; res.writeHead(200); return res.end('ok'); }
+  if (url.pathname === '/__ctl') { const q = url.searchParams; if (q.has('delay')) globalThis.__delayWrite = +q.get('delay'); if (q.has('fail')) globalThis.__fail = q.get('fail')==='1'; if (q.has('down')) globalThis.__apiDown = q.get('down')==='1'; if (q.has('dump')) { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify([...(globalThis.__stores||new Map()).entries()].map(([k,m])=>[k,[...m.entries()]]))); } if (q.has('pagelog')) { const l = globalThis.__pageLog || []; globalThis.__pageLog = []; res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify(l)); } if (q.has('version')) globalThis.__version = q.get('version') || null; if (q.has('hang')) globalThis.__hang = q.get('hang')==='1'; if(q.has('reset')) { (globalThis.__stores||new Map()).clear(); globalThis.__version = null; globalThis.__hang = false; } if (q.has('tgrun')) { const v = q.get('tgrun'); await runBackups(v && v !== '1' ? Date.parse(v) : Date.parse('2026-06-01T07:00:00Z')); }   /* tgrun=1: un lunedì 1° del mese (tocca a tutte le frequenze); tgrun=<data ISO>: quel giorno */ if (q.has('tglog')) { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify(globalThis.tgFake.calls)); } if (q.has('tgclear')) globalThis.tgFake.calls = []; if (q.has('tgfail')) globalThis.tgFake.fail = q.get('tgfail') || null; if (q.has('tgnoupd')) globalThis.tgFake.updates = q.get('tgnoupd')==='1' ? [] : [{ update_id: 1, message: { chat: { id: 4242, type: 'private', first_name: 'Fede' } } }]; res.writeHead(200); return res.end('ok'); }
   if (globalThis.__fail && !url.pathname.endsWith('sw.js')) { res.writeHead(500); return res.end('errore'); }
   let p = decodeURIComponent(url.pathname); if (p.endsWith('/')) p += 'index.html';
   const f = path.join(ROOT, p);

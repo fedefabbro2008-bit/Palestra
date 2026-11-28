@@ -59,7 +59,9 @@ Regole:
   forma compatta dell'app; nell'annullo `before.session = null`), tutto o niente su una copia, e
   `annulla_correzione_storico` (pila delle ultime 10 modifiche, in chiave `h-`). Il segno `claudeLog` tiene anche le
   ultime modifiche (`items`): l'app mostra insieme tutte quelle non ancora viste e «Rimetti com'era» le annulla tutte.
-- `netlify/functions/telegram-backup.mjs` + `netlify/lib/telegram.mjs`: backup su Telegram il 1° e il 16 del mese.
+- `netlify/functions/telegram-backup.mjs` + `netlify/lib/telegram.mjs`: backup su Telegram. La funzione gira ogni giorno alle
+  07:00 UTC e manda solo a chi tocca con la frequenza scelta nell'app (`freq`: giorno, settimana = lunedì, quindici = 1 e 16,
+  mese = 1°; di serie quindici), mai due volte in 12 ore. Nelle prove `/__ctl?tgrun=<data ISO>` la fa girare in quel giorno.
 
 ## Stile
 

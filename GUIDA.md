@@ -124,7 +124,7 @@ Il pulsante **«Altri allenamenti»** allunga la scheda e mostra:
 | **Backup e dati** | **Esporta backup** (file con tutto), **Importa**, backup automatico, esporta statistiche / scheda / CSV, ripristina un backup automatico, rimetti la scheda iniziale |
 | **Più dispositivi e senza rete** | **Sincronizzazione**: crea un codice su un dispositivo e inseriscilo sull'altro con «Collega» |
 | **Claude legge i tuoi allenamenti** | Il **connettore** per Claude: attivalo, copia l'indirizzo e aggiungilo in Claude. Due interruttori: «Claude può modificare la scheda» e «Claude può correggere lo storico» (spenti = Claude legge soltanto). Ogni modifica di Claude compare nell'app con «Rimetti com'era» |
-| **Backup su Telegram** | Con il token di un bot e la tua chat: un backup il 1° e il 16 di ogni mese, o subito con «Invia» |
+| **Backup su Telegram** | Con il token di un bot e la tua chat: il backup completo con la frequenza che scegli in «Ogni quanto» (ogni giorno, ogni lunedì, il 1° e il 16, il 1° del mese), o subito con «Invia ora» |
 | **Notifiche fine recupero** | Avviso quando finisce il recupero (iPhone: solo con l'app installata) |
 
 ---

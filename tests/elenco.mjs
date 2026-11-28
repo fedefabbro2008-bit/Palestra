@@ -64,6 +64,7 @@ export const TESTS = [
   { nome: 'backup-collegamento', file: 'ui/backup-collegamento.test.js', cosa: 'codice nel backup, ricollega su un telefono nuovo' },
   { nome: 'telegram', file: 'ui/telegram.test.js', cosa: 'backup su Telegram: collega, invii, errori, scollega' },
   { nome: 'telegram-backup-completo', file: 'ui/telegram-backup-completo.test.js', cosa: 'il file di Telegram = Backup completo' },
+  { nome: 'telegram-frequenza', file: 'ui/telegram-frequenza.test.js', cosa: 'backup su Telegram: frequenza scelta (giorno, lunedì, 1 e 16, 1°), invii solo nei giorni giusti' },
   { nome: 'claude-collega', file: 'ui/claude-collega.test.js', cosa: 'collegamento con Claude e indirizzo' },
   { nome: 'claude-chiave', file: 'ui/claude-chiave.test.js', cosa: 'nuova chiave, disattiva, senza rete' },
   { nome: 'claude-riquadro-chiaro', file: 'ui/claude-riquadro-chiaro.test.js', cosa: 'riquadro di Claude in tema chiaro' },

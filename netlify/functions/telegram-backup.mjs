@@ -1,11 +1,13 @@
 import { getStore } from "@netlify/blobs";
-import { sendBackup } from "../lib/telegram.mjs";
+import { sendBackup, isDue } from "../lib/telegram.mjs";
 
-/* Palestra · backup su Telegram due volte al mese: il 1° e il 16 alle 07:00 UTC (08:00 in Italia d'inverno, 09:00
-   d'estate). Per ogni codice di sincronizzazione con Telegram collegato (Impostazioni → Backup su Telegram) manda il
-   file di backup dei dati sincronizzati. Gira anche con l'app chiusa. */
+/* Palestra · backup su Telegram. Gira ogni giorno alle 07:00 UTC (08:00 in Italia d'inverno, 09:00 d'estate) e, per ogni
+   codice di sincronizzazione con Telegram collegato (Impostazioni → Backup su Telegram), manda il file di backup dei dati
+   sincronizzati solo se quel giorno tocca con la frequenza scelta (ogni giorno, ogni lunedì, il 1° e il 16, il 1° del
+   mese). Gira anche con l'app chiusa. Un backup già arrivato nelle ultime 12 ore (es. «Invia ora») non si ripete. */
 
-export default async () => {
+const GAP = 12 * 3600 * 1000;
+export async function runBackups(now = Date.now()) {
   const store = getStore({ name: "palestra-sync", consistency: "strong" });
   const { blobs } = await store.list({ prefix: "t-" });
   let ok = 0, ko = 0;
@@ -14,6 +16,9 @@ export default async () => {
     let conf = null, etag = null;
     try { const f = await store.getWithMetadata(key, { type: "json" }); if (f) { conf = f.data; etag = f.etag || null; } } catch (e) { conf = null; }
     if (!conf || !conf.token || !conf.chatId) continue;
+    if (!isDue(conf.freq, now)) continue;
+    const ago = now - Number((conf.last && conf.last.ok && conf.last.at) || 0);
+    if (ago >= 0 && ago < GAP) continue;
     const at = Date.now();
     let last;
     try { await sendBackup(store, code, conf, at); last = { at, ok: true }; ok++; }
@@ -22,6 +27,9 @@ export default async () => {
     try { await store.setJSON(key, { ...conf, last }, etag ? { onlyIfMatch: etag } : {}); } catch (e) { /* l'esito si perde, il backup no */ }
   }
   console.log(`backup Telegram: ${ok} inviati, ${ko} non riusciti`);
-};
+  return { ok, ko };
+}
 
-export const config = { schedule: "0 7 1,16 * *" };
+export default async () => { await runBackups(Date.now()); };
+
+export const config = { schedule: "0 7 * * *" };

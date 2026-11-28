@@ -349,6 +349,9 @@ main{
 .more-new .more-pill{flex:1 1 0;}
 .more-new .more-pill .dp-focus{white-space:normal;}
 /* eliminare allenamenti: pulsante in fondo alla zona; acceso, ogni giornata e versione corta mostra una ✕ e un tocco la elimina */
+.tg-freq{margin-top:12px; display:flex; align-items:center; gap:10px;}
+.tg-freq label{flex:0 0 auto; font-size:13px; color:var(--text-dim);}
+.tg-freq select{flex:1; min-width:0; font:inherit; font-size:16px;}
 .del-mode-btn{width:100%; display:flex; align-items:center; justify-content:center; gap:7px; font:inherit; font-size:13px; color:var(--text-dim);
   background:none; border:1px dashed var(--border-input); border-radius:var(--r-ctl,14px); padding:11px 14px; cursor:pointer; text-align:center;}
 .del-mode-btn .ic{width:15px; height:15px; flex:0 0 auto;}
@@ -2282,9 +2285,9 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
 
     <div class="card" id="tgCard" hidden>
       <h2><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4L3 11l6 2.5L11.5 20 15 15l4.5 3.5z"/><path d="M9 13.5l6-4.5"/></svg>Backup su Telegram<button class="info-btn" type="button" aria-label="Spiegazione" aria-expanded="false" aria-controls="infoTg"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></h2>
-      <div class="card-info" id="infoTg"><p>Il <b>1° e il 16 di ogni mese</b> (verso le 8 d'inverno, le 9 d'estate) il server ti manda su Telegram il <b>backup completo</b>: scheda, storico e impostazioni, lo stesso file di «Backup completo». Funziona anche con l'app chiusa, perché parte dai dati <b>sincronizzati</b>.</p><p>Per ripristinarlo: scarica il file da Telegram e in <b>Backup e dati</b> tocca <b>Importa</b>. Il file contiene il codice di sincronizzazione: su un telefono nuovo l'app propone di ricollegarlo, e tornano anche sincronizzazione, Telegram e Claude.</p><p>Il <b>token</b> del bot resta sul server: l'app non lo rilegge e non lo mostra. <b>Scollega</b> lo cancella. Il bot può essere anche quello di un'altra tua app: in quel caso, se non trova la chat, scrivi il chat ID a mano.</p></div>
+      <div class="card-info" id="infoTg"><p>Con la <b>frequenza che scegli</b> (ogni giorno, ogni lunedì, il 1° e il 16 del mese o il 1° del mese; verso le 8 d'inverno, le 9 d'estate) il server ti manda su Telegram il <b>backup completo</b>: scheda, storico e impostazioni, lo stesso file di «Backup completo». Funziona anche con l'app chiusa, perché parte dai dati <b>sincronizzati</b>.</p><p>Per ripristinarlo: scarica il file da Telegram e in <b>Backup e dati</b> tocca <b>Importa</b>. Il file contiene il codice di sincronizzazione: su un telefono nuovo l'app propone di ricollegarlo, e tornano anche sincronizzazione, Telegram e Claude.</p><p>Il <b>token</b> del bot resta sul server: l'app non lo rilegge e non lo mostra. <b>Scollega</b> lo cancella. Il bot può essere anche quello di un'altra tua app: in quel caso, se non trova la chat, scrivi il chat ID a mano.</p></div>
       <div id="tgOff">
-        <p class="sync-intro">Due volte al mese ti arriva su Telegram il backup completo, da reimportare se perdi o cambi telefono.</p>
+        <p class="sync-intro">Ti arriva su Telegram il backup completo, ogni quanto vuoi tu, da reimportare se perdi o cambi telefono.</p>
         <ol class="clock-steps">
           <li>In Telegram apri <b>@BotFather</b>, scrivi <b>/newbot</b> e copia il <b>token</b> che ti dà.</li>
           <li>Apri il tuo bot e scrivigli un messaggio qualsiasi, per esempio «ciao».</li>
@@ -2301,6 +2304,9 @@ body.light #seasonBg[data-s="autunno"]{--o:0.166;} body.light #seasonBg[data-s="
         <div class="tg-state" id="tgState"></div>
         <div class="btn-grid" style="margin-top:12px;"><button class="btn" id="tgSendBtn" type="button">Invia ora</button><button class="btn danger" id="tgOffBtn" type="button">Scollega</button></div>
       </div>
+      <div class="field tg-freq"><label for="tgFreq">Ogni quanto</label><select id="tgFreq">
+        <option value="giorno">Ogni giorno</option><option value="settimana">Ogni settimana (lunedì)</option>
+        <option value="quindici">Due volte al mese (1° e 16)</option><option value="mese">Una volta al mese (1°)</option></select></div>
       <div class="bk-status sync-st" id="tgStatus" hidden></div>
     </div>
 
@@ -10142,6 +10148,8 @@ document.getElementById('mcpCopyKeyBtn').addEventListener('click', ()=>{ if(mcp.
    Qui si collega il bot (token, chat), si manda un backup subito e si scollega. Il token va al server e basta.
    var: renderSync la legge e può essere chiamata prima di questa parte del codice */
 var tgSt = { state:'unknown', info:null, busy:false, msg:'', kind:'' };
+/* ogni quanto arriva il backup: scelta prima di collegare (va con «Collega») o cambiata dopo (si salva subito sul server) */
+var tgFreqWanted = 'quindici';
 async function tgReq(body){
   const url = SYNC_API+'?code='+encodeURIComponent(sync.code)+'&op=tg';
   const r = await fetchT(url, body ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body), cache:'no-store' } : { cache:'no-store' }, 30000);
@@ -10159,6 +10167,7 @@ async function tgRun(body){
     if(body && body.action==='on'){ const t = document.getElementById('tgToken'), c = document.getElementById('tgChat'); if(t) t.value = ''; if(c) c.value = ''; infoToast('Collegato: controlla Telegram, è arrivato il primo backup', 4000); }
     if(body && body.action==='send') infoToast('Backup inviato su Telegram', 2600);
     if(body && body.action==='off') infoToast('Backup su Telegram scollegato', 2600);
+    if(body && body.action==='freq' && j.next) infoToast('Frequenza salvata: prossimo backup '+new Date(j.next).toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long' }), 3000);
   }catch(e){
     if(e.data && e.data.active!=null){ tgSt.state = e.data.active ? 'on' : 'off'; tgSt.info = e.data; }
     if(body){
@@ -10183,6 +10192,8 @@ function renderTg(){
       + `<span>Prossimo backup: <b>${escapeHtml(when(i.next))}</b></span>`
       + (last ? `<span class="${last.ok ? '' : 'ko'}">Ultimo: ${escapeHtml(fmtAgo(num(last.at)))}${last.ok ? ' ✓' : ' · non riuscito: '+escapeHtml(String(last.error||''))}</span>` : ''));
   }
+  const fs = document.getElementById('tgFreq');
+  if(fs){ const f = active && i.freq ? i.freq : tgFreqWanted; if(fs.value!==f) fs.value = f; fs.disabled = tgSt.busy; }
   ['tgOnBtn','tgSendBtn','tgOffBtn'].forEach(id=>{ const b = document.getElementById(id); if(b) b.disabled = tgSt.busy; });
   const st = document.getElementById('tgStatus');
   st.hidden = !tgSt.msg; setText(st, tgSt.msg); st.className = 'bk-status sync-st'+(tgSt.kind ? ' '+tgSt.kind : '');
@@ -10191,7 +10202,11 @@ document.getElementById('tgOnBtn').addEventListener('click', ()=>{
   const token = document.getElementById('tgToken').value.trim(), chatId = document.getElementById('tgChat').value.trim();
   if(!/^\d{5,12}:[A-Za-z0-9_-]{30,60}$/.test(token)){ tgSt.msg = 'Incolla il token che ti ha dato @BotFather: è come 123456789:ABC…'; tgSt.kind = 'warn'; renderTg(); document.getElementById('tgToken').focus(); return; }
   if(!sync.lastOk){ tgSt.msg = 'Prima sincronizza almeno una volta (Sincronizza ora), poi riprova.'; tgSt.kind = 'warn'; renderTg(); return; }
-  tgRun({ action:'on', token, chatId });
+  tgRun({ action:'on', token, chatId, freq: tgFreqWanted });
+});
+document.getElementById('tgFreq').addEventListener('change', e=>{
+  tgFreqWanted = e.target.value;
+  if(tgSt.state==='on') tgRun({ action:'freq', freq: e.target.value });
 });
 document.getElementById('tgSendBtn').addEventListener('click', ()=> tgRun({ action:'send' }));
 document.getElementById('tgOffBtn').addEventListener('click', async ()=>{

@@ -1,7 +1,8 @@
 /* Palestra · backup su Telegram (usato da sync.mjs, op=tg, e dalla funzione programmata telegram-backup.mjs).
    Il backup è lo stesso file di "Backup completo" nell'app (type "palestra-backup"): si reimporta da
    Impostazioni → Backup e dati → Importa. Si prende dai dati sincronizzati ("u-<codice>").
-   In archivio: "t-<codice>" -> { token, chatId, chatName, bot, at, last:{ at, ok, error } }.
+   In archivio: "t-<codice>" -> { token, chatId, chatName, bot, at, freq, last:{ at, ok, error } }.
+   freq = ogni quanto arriva (vedi FREQS); senza = il 1° e il 16, come prima.
    Il token del bot resta sul server: l'app non lo rilegge mai. */
 
 const API = "https://api.telegram.org/bot";
@@ -72,12 +73,22 @@ export async function sendBackup(store, code, conf, now = Date.now()) {
   return b;
 }
 
-/* prossimo invio: il 1° o il 16 del mese alle 07:00 UTC (come la funzione programmata) */
-export function nextRun(now = Date.now()) {
-  const d = new Date(now);
-  for (let m = 0; m < 3; m++) for (const day of [1, 16]) {
-    const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + m, day, 7, 0, 0);
-    if (t > now) return t;
+/* frequenza dei backup: la funzione programmata gira ogni giorno alle 07:00 UTC e manda solo a chi tocca quel giorno */
+export const FREQS = { giorno: "ogni giorno", settimana: "ogni lunedì", quindici: "il 1° e il 16 del mese", mese: "il 1° del mese" };
+export const freqOf = (f) => Object.prototype.hasOwnProperty.call(FREQS, f) ? f : "quindici";
+function dueOn(f, t) {
+  const d = new Date(t), wd = d.getUTCDay(), md = d.getUTCDate();
+  return f === "giorno" || (f === "settimana" && wd === 1) || (f === "quindici" && (md === 1 || md === 16)) || (f === "mese" && md === 1);
+}
+/* il giorno dell'ora data (UTC) è uno di quelli in cui va mandato il backup */
+export function isDue(freq, now = Date.now()) { return dueOn(freqOf(freq), now); }
+
+/* prossimo invio con quella frequenza, alle 07:00 UTC (come la funzione programmata) */
+export function nextRun(now = Date.now(), freq) {
+  const f = freqOf(freq), d = new Date(now);
+  for (let i = 0; i < 70; i++) {
+    const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + i, 7, 0, 0);
+    if (t > now && dueOn(f, t)) return t;
   }
   return null;
 }

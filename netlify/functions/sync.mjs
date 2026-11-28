@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { TOKEN_RE, tg, findChat, sendBackup, nextRun } from "../lib/telegram.mjs";
+import { TOKEN_RE, tg, findChat, sendBackup, nextRun, FREQS, freqOf } from "../lib/telegram.mjs";
 
 /* Palestra · sincronizzazione tra dispositivi.
    GET  /api/sync?code=XXXX   -> i dati salvati per quel codice, oppure {}
@@ -77,15 +77,16 @@ async function mcpKey(request, store, code) {
 }
 
 /* backup su Telegram (vedi ../lib/telegram.mjs e telegram-backup.mjs). Solo chi ha il codice:
-   GET  ...&op=tg                                    -> { active, chatName, bot, last, next }   (mai il token)
-   POST ...&op=tg {action:"on", token, chatId?}      -> controlla il bot, trova la chat, manda subito un backup, salva
+   GET  ...&op=tg                                    -> { active, chatName, bot, last, next, freq }   (mai il token)
+   POST ...&op=tg {action:"on", token, chatId?, freq?} -> controlla il bot, trova la chat, manda subito un backup, salva
+                  {action:"freq", freq}              -> cambia ogni quanto arriva (giorno, settimana, quindici, mese)
                   {action:"send"}                    -> manda adesso un backup (al più uno al minuto)
                   {action:"off"}                     -> scollega e dimentica il token */
 async function tgKey(request, store, code) {
   const key = "t-" + code;
   let cur = null;
   try { cur = await store.get(key, { type: "json" }); } catch (e) { return reply({ error: "lettura non riuscita" }, 503); }
-  const state = (c) => c && c.token ? { active: true, chatName: c.chatName || "", bot: c.bot || "", last: c.last || null, next: nextRun() } : { active: false, next: nextRun() };
+  const state = (c) => c && c.token ? { active: true, chatName: c.chatName || "", bot: c.bot || "", last: c.last || null, freq: freqOf(c.freq), next: nextRun(Date.now(), c.freq) } : { active: false, freq: "quindici", next: nextRun() };
   if (request.method === "GET") return reply(state(cur));
   let body = null;
   try { body = await request.json(); } catch (e) { return reply({ error: "JSON non valido" }, 400); }
@@ -93,6 +94,13 @@ async function tgKey(request, store, code) {
   if (action === "off") {
     try { await store.delete(key); } catch (e) { return reply({ error: "non riuscito" }, 500); }
     return reply({ active: false, next: nextRun() });
+  }
+  if (action === "freq") {
+    if (!cur || !cur.token) return reply({ error: "Telegram non collegato" }, 409);
+    if (!Object.prototype.hasOwnProperty.call(FREQS, body.freq)) return reply({ error: "frequenza non valida" }, 400);
+    const next = { ...cur, freq: body.freq };
+    try { await store.setJSON(key, next); } catch (e) { return reply({ error: "salvataggio non riuscito" }, 500); }
+    return reply(state(next));
   }
   if (action === "send") {
     if (!cur || !cur.token) return reply({ error: "Telegram non collegato" }, 409);
@@ -115,7 +123,7 @@ async function tgKey(request, store, code) {
     let chat = chatIn ? { id: chatIn, name: "" } : await findChat(token);
     if (!chat) return reply({ error: "Il bot non ha ancora messaggi: su Telegram apri @" + (me.username || "il tuo bot") + ", scrivigli un messaggio qualsiasi e riprova" }, 404);
     if (!chat.name) { try { const c = await tg(token, "getChat", { chat_id: chat.id }); chat.name = c.title || [c.first_name, c.last_name].filter(Boolean).join(" ") || c.username || "chat"; } catch (e) { chat.name = "chat " + chat.id; } }
-    const conf = { token, chatId: chat.id, chatName: chat.name, bot: me.username || "", at: Date.now() };
+    const conf = { token, chatId: chat.id, chatName: chat.name, bot: me.username || "", at: Date.now(), freq: freqOf(body.freq) };
     // primo backup subito: se Telegram lo rifiuta, non si salva niente
     const at = Date.now();
     await sendBackup(store, code, conf, at);
