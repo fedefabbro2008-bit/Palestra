@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="4d3b02af5a88">
+<meta name="giardino-build" content="722454345451">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -159,7 +159,12 @@ section.view{display:flex;flex-direction:column;gap:14px}
 #torreMinuti{width:4.2em;flex:0 0 auto;padding-left:6px;padding-right:6px}
 .grid2.allinea{align-items:end}
 .tr-head .sub{white-space:nowrap}
-.tr-val{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.tr-val{display:flex;align-items:center;gap:10px}
+/* temperatura e umidità sulla stessa riga finché ci stanno; lo stato della pompa nello spazio a destra (va a capo se serve) */
+.tr-num{display:flex;align-items:baseline;gap:2px 12px;flex-wrap:wrap;flex:0 1 auto;min-width:0}
+.tr-st{flex:1 1 7.5em;min-width:7.5em;text-align:right}
+.tr-st .pill{display:inline-flex;flex-direction:column;align-items:flex-end;gap:1px;padding:5px 10px}
+.tr-st .ps{font-weight:700}.nw{white-space:nowrap}.tr-st .pd{font-size:.76rem;font-weight:500;opacity:.92}
 .tr-val b{font-size:1.9rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .tr-val .u{font-size:1.05rem;color:var(--muted);font-variant-numeric:tabular-nums}
 .tr-graf{width:100%;height:auto;display:block}
@@ -2287,6 +2292,9 @@ const TORRE_DEF = { accesa_min: 15, soglie: [30, 27, 20, 12, 5], pause: [5, 10, 
 const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale", "sicurezza: pompa fermata", "serbatoio vuoto: pompa ferma"];
 // perché l'ESP32 si è riavviato (esp_reset_reason): quelli da segnalare sono tensione, blocco ed errore
 const RIAVVII_TORRE = { corrente: "è mancata la corrente", tensione: "calo di tensione", blocco: "blocco (watchdog)", errore: "errore del programma", programma: "programma aggiornato", tasto: "tasto EN", altro: "altro" };
+// gli stessi motivi contati («3 mancanze di corrente», «1 calo di tensione»)
+const CONTO_RIAVVII = { tensione: ["calo di tensione", "cali di tensione"], blocco: ["blocco (watchdog)", "blocchi (watchdog)"], errore: ["errore del programma", "errori del programma"],
+  corrente: ["mancanza di corrente", "mancanze di corrente"], altro: ["altro motivo", "altri motivi"] };
 const RIASSUNTI_GIORNI = 400;     // riassunti per giorno tenuti sul server (le misure una per una: GIORNI_TORRE)
 const POSIZIONI_TORRE = ["fuori", "veranda", "casa"];
 const GIORNI_TORRE = 31;          // misure tenute sul server
@@ -2615,17 +2623,19 @@ function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome", piante
   }
   // riavvii delle ultime 24 ore: corrente mancata, calo di tensione (la pompa che parte), blocchi
   const rv = (serie?.riavvii || []).filter((r) => adesso - r.ora < 86400 && !["programma", "tasto"].includes(r.motivo));
+  // consiglio per la corrente mancata, dallo stato del power bank tenuto acceso ([ogni s, per ms, quante volte allungato])
+  const pb = serie?.stato?.pb, consiglioPb = !pb ? ""
+    : pb[0] <= 5 && pb[1] >= 4000 ? " Col power bank: l'impulso che lo tiene acceso è già al massimo e non basta; serve un alimentatore che resti sempre acceso."
+    : pb[2] ? ` Col power bank: probabilmente si è spento; il programma ha già allungato da solo l'impulso che lo tiene acceso (ora ${String(pb[1] / 1000).replace(".", ",")} s ogni ${pb[0]} s).`
+    : " Se è alimentata dal power bank e succede di nuovo, il programma allunga da solo l'impulso che lo tiene acceso.";
   if (rv.some((r) => r.motivo !== "corrente") || rv.length >= 3) {
-    const n = (m) => rv.filter((r) => r.motivo === m).length, parti = ["tensione", "blocco", "errore", "corrente", "altro"].filter(n).map((m) => `${n(m)} ${RIAVVII_TORRE[m]}`);
+    const n = (m) => rv.filter((r) => r.motivo === m).length, parti = ["tensione", "blocco", "errore", "corrente", "altro"].filter(n).map((m) => `${n(m)} ${CONTO_RIAVVII[m][n(m) === 1 ? 0 : 1]}`);
     out.push({ tipo: "riavvii", testo: `🔁 La torre si è riavviata ${rv.length === 1 ? "una volta" : rv.length + " volte"} nelle ultime 24 ore (${parti.join(", ")}; ultimo ${oraIt(rv.at(-1).ora)}).`
       + (n("tensione") ? " Calo di tensione: quasi sempre la pompa che parte e abbassa l'alimentazione dell'ESP32. Alimentatore più potente, o ESP32 e pompa su alimentatori diversi." : "")
+      + (n("corrente") >= 3 ? " Mancanza di corrente: se non l'hai staccata tu, l'alimentazione si spegne da sola (power bank che va in riposo, o che scatta quando parte la pompa: prova ESP32 e pompa su due uscite o alimentatori diversi)." + consiglioPb : "")
       + (n("blocco") || n("errore") ? " Blocco o errore: l'ESP32 è ripartito da solo con la pompa spenta; se succede spesso dimmelo." : "") });
   } else if (rv.length) {
-    const pb = serie?.stato?.pb;
-    out.push({ tipo: "corrente", testo: `🔌 Alla torre è mancata la corrente (${oraIt(rv.at(-1).ora)}): è ripartita da sola.`
-      + (pb ? pb[0] <= 5 && pb[1] >= 4000 ? " Col power bank: l'impulso che lo tiene acceso è già al massimo e non basta; serve un alimentatore che resti sempre acceso."
-        : pb[2] ? ` Col power bank: probabilmente si è spento; il programma ha già allungato da solo l'impulso che lo tiene acceso (ora ${String(pb[1] / 1000).replace(".", ",")} s ogni ${pb[0]} s).`
-        : " Se è alimentata dal power bank e succede di nuovo, il programma allunga da solo l'impulso che lo tiene acceso." : "") });
+    out.push({ tipo: "corrente", testo: `🔌 Alla torre è mancata la corrente (${oraIt(rv.at(-1).ora)}): è ripartita da sola.` + consiglioPb });
   }
   if ((serie?.misure || []).some((r) => r[4] === 6 && adesso - r[0] < 86400))
     out.push({ tipo: "sicurezza", testo: `⛔ Nelle ultime 24 ore la pompa è rimasta accesa troppo a lungo e l'ESP32 l'ha fermata (limite di sicurezza: ${Math.max(15, 2 * cfg.accesa_min)} minuti di fila).` });
@@ -4467,18 +4477,20 @@ function graficoTorre(righe, ore, {w=320, h=150, assi=true}={}){
 }
 function datiTorre(){ const m=TORRE?.misure||[], st=TORRE?.stato||null, ultima=[...m].reverse().find(r=>r[1]!=null);
   return {m, st, ult:TORRE?.ultimo||0, t:st?.t??ultima?.[1]??null, u:st?.u??ultima?.[2]??null}; }
-// stato della pompa: con l'ora di fine fase mandata dall'ESP32 (a ogni accensione e spegnimento, se il modem è acceso)
-function testoPompa(st, ult){
-  if(/freddo/.test(st?.modo||'')) return 'pompa ferma per il freddo';
-  if(st?.livello==='basso'||/serbatoio vuoto/.test(st?.modo||'')) return 'pompa ferma: serbatoio vuoto';
-  const ora=s=>new Date(s*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}), fine=st?.fine>Date.now()/1000?st.fine:0;
+// stato della pompa: con l'ora di fine fase mandata dall'ESP32 (a ogni accensione e spegnimento, se il modem è acceso).
+// [stato, dettaglio]: nel riquadro su due righe, a destra della temperatura
+function statoPompa(st, ult){
+  if(/freddo/.test(st?.modo||'')) return ['pompa ferma','per il freddo'];
+  if(st?.livello==='basso'||/serbatoio vuoto/.test(st?.modo||'')) return ['pompa ferma','serbatoio vuoto'];
+  const ora=s=>new Date(s*1000).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}), adesso=Date.now()/1000, fine=st?.fine>adesso?st.fine:0;
+  const min=f=>Math.max(1,Math.ceil((f-adesso)/60));
   if(st?.fine&&!fine){   // fase finita dall'ultimo contatto (modem spento): stima dai cicli che la torre fa da sola
-    const e=pompaStimata(st, S.torre?.config, Date.now()/1000);
-    if(e) return e.pompa?'pompa probabilmente accesa ancora '+Math.max(1,Math.ceil((e.fine-Date.now()/1000)/60))+' min (stima)':'pompa probabilmente in pausa, riparte verso le '+ora(e.fine)+' (stima)';
-    return ult?(st.pompa?'pompa accesa':'pompa in pausa')+' alle '+ora(ult):'pompa: stato non noto';
+    const e=pompaStimata(st, S.torre?.config, adesso);
+    if(e) return e.pompa?['pompa accesa (stima)','ancora circa '+min(e.fine)+' min']:['pompa in pausa (stima)','riparte verso le '+ora(e.fine)];
+    return ult?[st.pompa?'pompa accesa':'pompa in pausa','alle '+ora(ult)]:['pompa','stato non noto'];
   }
-  if(st?.pompa){ if(!fine) return 'pompa accesa'; const m=Math.max(1,Math.ceil((fine-Date.now()/1000)/60)); return 'pompa accesa ancora '+m+' min (fino alle '+ora(fine)+')'; }
-  return fine&&st?.modo!=='senza sensore'?'pompa in pausa, riparte alle '+ora(fine):'pompa in pausa';
+  if(st?.pompa) return fine?['pompa accesa','ancora '+min(fine)+' min, fino alle '+ora(fine)]:['pompa accesa',''];
+  return fine&&st?.modo!=='senza sensore'?['pompa in pausa','riparte alle '+ora(fine)]:['pompa in pausa',''];
 }
 function renderTorre(){
   const box=$('#torreBox'); if(!box) return;
@@ -4489,7 +4501,7 @@ function renderTorre(){
   if(!ult) h+=`<div class="sub">In attesa della torre: copia la chiave da Impostazioni → Torre idroponica nel programma dell'ESP32. I dati arrivano quando trova il Wi-Fi.</div>`;
   else {
     const freddo=/freddo/.test(st?.modo||'');
-    h+=`<div class="tr-val"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${u!=null?fmt(u,0)+' % umidità':''}${st?.ta!=null?' · acqua '+fmt(st.ta,1)+'°':''}</span><span class="pill ${freddo||st?.livello==='basso'?'':'water'}">${esc(testoPompa(st, ult))}</span></div>`;
+    h+=`<div class="tr-val"><div class="tr-num"><b>${t!=null?fmt(t,1)+'°':'–'}</b><span class="u">${[u!=null?fmt(u,0)+' % umidità':'', st?.ta!=null?'acqua '+fmt(st.ta,1)+'°':''].filter(Boolean).map(x=>`<span class="nw">${x}</span>`).join(' · ')}</span></div><div class="tr-st">${((p)=>`<span class="pill ${freddo||st?.livello==='basso'?'':'water'}"><span class="ps">${esc(p[0])}</span>${p[1]?` <span class="pd">${p[1].split(', ').map(x=>`<span class="nw">${esc(x)}</span>`).join(', ')}</span>`:''}</span>`)(statoPompa(st, ult))}</div></div>`;
     h+=graficoTorre(m,24,{w:320,h:46,assi:false});
   }
   const avv=avvisiTorre(tr, TORRE||{}, meteoTorre(), today(), Date.now()/1000, undefined, S.plants);

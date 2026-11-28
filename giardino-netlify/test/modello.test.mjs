@@ -661,6 +661,11 @@ test("torre: riassunti per giorno (un anno), riavvii, limite di sicurezza, avvis
   const corrente = { ...s, riavvii: [{ avvio: 9, ora: adesso - h, motivo: "corrente" }] };
   assert.ok(av(corrente).some((a) => a.tipo === "corrente")); assert.ok(!av(corrente).some((a) => a.tipo === "riavvii"));
   assert.ok(!av({ ...s, riavvii: [{ avvio: 9, ora: adesso - h, motivo: "programma" }] }).some((a) => /riavvii|corrente/.test(a.tipo)), "aggiornamento: niente avviso");
+  // tante mancanze di corrente: contate in italiano giusto, col consiglio sull'alimentazione
+  const sei = { ...s, stato: { pb: [15, 1500, 0] }, riavvii: [1, 2, 3, 4, 5, 6].map((i) => ({ avvio: 20 + i, ora: adesso - i * 600, motivo: "corrente" })) };
+  const t6 = av(sei).find((a) => a.tipo === "riavvii").testo;
+  assert.match(t6, /6 volte nelle ultime 24 ore \(6 mancanze di corrente; ultimo/); assert.match(t6, /power bank che va in riposo.*allunga da solo/);
+  assert.match(av({ ...sei, riavvii: [...sei.riavvii, { avvio: 30, ora: adesso - 60, motivo: "tensione" }, { avvio: 31, ora: adesso - 30, motivo: "tensione" }] }).find((a) => a.tipo === "riavvii").testo, /2 cali di tensione, 6 mancanze di corrente/);
   // limite di sicurezza: misura col modo 6
   assert.match(av({ ...s, misure: [[adesso - h, 20, 50, 1800, 6, 7, 9]] }).find((a) => a.tipo === "sicurezza").testo, /30 minuti di fila/);
   // urgenti: il sensore quando comincia, poi non prima di 12 ore; finito, si dimentica; riavvio anomalo una volta

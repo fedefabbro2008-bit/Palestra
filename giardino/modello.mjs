@@ -719,6 +719,9 @@ export const TORRE_DEF = { accesa_min: 15, soglie: [30, 27, 20, 12, 5], pause: [
 export const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale", "sicurezza: pompa fermata", "serbatoio vuoto: pompa ferma"];
 // perché l'ESP32 si è riavviato (esp_reset_reason): quelli da segnalare sono tensione, blocco ed errore
 export const RIAVVII_TORRE = { corrente: "è mancata la corrente", tensione: "calo di tensione", blocco: "blocco (watchdog)", errore: "errore del programma", programma: "programma aggiornato", tasto: "tasto EN", altro: "altro" };
+// gli stessi motivi contati («3 mancanze di corrente», «1 calo di tensione»)
+const CONTO_RIAVVII = { tensione: ["calo di tensione", "cali di tensione"], blocco: ["blocco (watchdog)", "blocchi (watchdog)"], errore: ["errore del programma", "errori del programma"],
+  corrente: ["mancanza di corrente", "mancanze di corrente"], altro: ["altro motivo", "altri motivi"] };
 export const RIASSUNTI_GIORNI = 400;     // riassunti per giorno tenuti sul server (le misure una per una: GIORNI_TORRE)
 export const POSIZIONI_TORRE = ["fuori", "veranda", "casa"];
 export const GIORNI_TORRE = 31;          // misure tenute sul server
@@ -1047,17 +1050,19 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome",
   }
   // riavvii delle ultime 24 ore: corrente mancata, calo di tensione (la pompa che parte), blocchi
   const rv = (serie?.riavvii || []).filter((r) => adesso - r.ora < 86400 && !["programma", "tasto"].includes(r.motivo));
+  // consiglio per la corrente mancata, dallo stato del power bank tenuto acceso ([ogni s, per ms, quante volte allungato])
+  const pb = serie?.stato?.pb, consiglioPb = !pb ? ""
+    : pb[0] <= 5 && pb[1] >= 4000 ? " Col power bank: l'impulso che lo tiene acceso è già al massimo e non basta; serve un alimentatore che resti sempre acceso."
+    : pb[2] ? ` Col power bank: probabilmente si è spento; il programma ha già allungato da solo l'impulso che lo tiene acceso (ora ${String(pb[1] / 1000).replace(".", ",")} s ogni ${pb[0]} s).`
+    : " Se è alimentata dal power bank e succede di nuovo, il programma allunga da solo l'impulso che lo tiene acceso.";
   if (rv.some((r) => r.motivo !== "corrente") || rv.length >= 3) {
-    const n = (m) => rv.filter((r) => r.motivo === m).length, parti = ["tensione", "blocco", "errore", "corrente", "altro"].filter(n).map((m) => `${n(m)} ${RIAVVII_TORRE[m]}`);
+    const n = (m) => rv.filter((r) => r.motivo === m).length, parti = ["tensione", "blocco", "errore", "corrente", "altro"].filter(n).map((m) => `${n(m)} ${CONTO_RIAVVII[m][n(m) === 1 ? 0 : 1]}`);
     out.push({ tipo: "riavvii", testo: `🔁 La torre si è riavviata ${rv.length === 1 ? "una volta" : rv.length + " volte"} nelle ultime 24 ore (${parti.join(", ")}; ultimo ${oraIt(rv.at(-1).ora)}).`
       + (n("tensione") ? " Calo di tensione: quasi sempre la pompa che parte e abbassa l'alimentazione dell'ESP32. Alimentatore più potente, o ESP32 e pompa su alimentatori diversi." : "")
+      + (n("corrente") >= 3 ? " Mancanza di corrente: se non l'hai staccata tu, l'alimentazione si spegne da sola (power bank che va in riposo, o che scatta quando parte la pompa: prova ESP32 e pompa su due uscite o alimentatori diversi)." + consiglioPb : "")
       + (n("blocco") || n("errore") ? " Blocco o errore: l'ESP32 è ripartito da solo con la pompa spenta; se succede spesso dimmelo." : "") });
   } else if (rv.length) {
-    const pb = serie?.stato?.pb;
-    out.push({ tipo: "corrente", testo: `🔌 Alla torre è mancata la corrente (${oraIt(rv.at(-1).ora)}): è ripartita da sola.`
-      + (pb ? pb[0] <= 5 && pb[1] >= 4000 ? " Col power bank: l'impulso che lo tiene acceso è già al massimo e non basta; serve un alimentatore che resti sempre acceso."
-        : pb[2] ? ` Col power bank: probabilmente si è spento; il programma ha già allungato da solo l'impulso che lo tiene acceso (ora ${String(pb[1] / 1000).replace(".", ",")} s ogni ${pb[0]} s).`
-        : " Se è alimentata dal power bank e succede di nuovo, il programma allunga da solo l'impulso che lo tiene acceso." : "") });
+    out.push({ tipo: "corrente", testo: `🔌 Alla torre è mancata la corrente (${oraIt(rv.at(-1).ora)}): è ripartita da sola.` + consiglioPb });
   }
   if ((serie?.misure || []).some((r) => r[4] === 6 && adesso - r[0] < 86400))
     out.push({ tipo: "sicurezza", testo: `⛔ Nelle ultime 24 ore la pompa è rimasta accesa troppo a lungo e l'ESP32 l'ha fermata (limite di sicurezza: ${Math.max(15, 2 * cfg.accesa_min)} minuti di fila).` });
