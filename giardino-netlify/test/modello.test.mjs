@@ -623,6 +623,7 @@ test("torre idroponica: impostazioni controllate, misure unite senza doppioni, r
   assert.match(M.avvisiTorre(tr, serie, met, "2027-01-10", adesso)[0].testo, /Rischio di ghiaccio nel serbatoio/);
   // sensore che non risponde: ciclo di emergenza impostabile, avviso con l'ora da cui manca la temperatura
   assert.equal(M.configTorre({}).guasto_pausa, 20); assert.equal(M.configTorre({}).guasto_ferma, false);
+  assert.equal(M.configTorre({}).tieni_pb, true); assert.equal(M.configTorre({ tieni_pb: false }).tieni_pb, false); assert.equal(M.configTorre({ tieni_pb: "no" }).tieni_pb, true, "solo false spegne");
   assert.equal(M.configTorre({}).cal_t, 0); assert.equal(M.configTorre({ cal_t: -2 }).cal_t, -2); assert.equal(M.configTorre({ cal_t: -25 }).cal_t, -10); assert.equal(M.configTorre({ cal_t: "1,5" }).cal_t, 0);
   assert.equal(M.configTorre({ guasto_pausa: 1, guasto_ferma: "sì" }).guasto_pausa, 5); assert.equal(M.configTorre({ guasto_ferma: "sì" }).guasto_ferma, false, "solo true vero");
   const guasto = M.unisciMisure(serie, { avvio: 1, sec: 10 * h, stato: { modo: "senza sensore" }, misure: [[adesso - h, null, null, 900, 4, 1, 9 * h]] }, adesso).serie;
@@ -765,6 +766,17 @@ test("notifiche: giorni della settimana per quelle quotidiane, ripetizione degli
   assert.deepEqual(M.giorniNotifica(imp, "mattina"), [1, 3, 5]); assert.deepEqual(M.giorniNotifica(imp, "verifica"), [0, 1, 2, 3, 4, 5, 6], "settimanale: ignora");
   assert.deepEqual(M.giorniNotifica(imp, "sera"), [0, 1, 2, 3, 4, 5, 6], "vuoto: tutti");
   assert.equal(M.notificaOggi(imp, "mattina", "2027-07-12"), true, "lunedì"); assert.equal(M.notificaOggi(imp, "mattina", "2027-07-13"), false, "martedì");
+  // backup: ogni mese (predefinito), ogni settimana o ogni 2 settimane nel giorno scelto (2027-07-11 è domenica)
+  assert.equal(M.backupOggi({}, "2027-07-11", "2027-07-01"), false, "mese: già fatto"); assert.equal(M.backupOggi({}, "2027-08-02", "2027-07-01"), true, "mese nuovo");
+  const set = { backup_ogni: "settimana", backup_giorno: 0 };
+  assert.equal(M.backupOggi(set, "2027-07-11", null), true, "domenica, mai fatto"); assert.equal(M.backupOggi(set, "2027-07-12", null), false, "lunedì");
+  assert.equal(M.backupOggi(set, "2027-07-11", "2027-07-04"), true, "una settimana dopo"); assert.equal(M.backupOggi(set, "2027-07-11", "2027-07-10"), false, "ieri: no");
+  assert.equal(M.backupOggi(set, "2027-07-13", "2027-07-04"), true, "domenica saltata: appena può"); assert.equal(M.backupOggi(set, "2027-07-12", "2027-07-04"), false);
+  assert.equal(M.backupOggi(set, "2027-07-11", "2027-07"), true, "data vecchia (solo il mese)");
+  const due = { backup_ogni: "2settimane", backup_giorno: 3 };   // mercoledì
+  assert.equal(M.backupOggi(due, "2027-07-14", "2027-07-07"), false, "solo 1 settimana"); assert.equal(M.backupOggi(due, "2027-07-21", "2027-07-07"), true, "2 settimane");
+  assert.deepEqual(M.frequenzaBackup({ backup_ogni: "boh", backup_giorno: 9 }), { ogni: "mese", giorno: 0 });
+  assert.equal(M.testoFrequenzaBackup(due), "ogni 2 settimane, mercoledì"); assert.equal(M.testoFrequenzaBackup({}), "una volta al mese");
   assert.equal(M.oreUrgenti({}), 12); assert.equal(M.oreUrgenti({ urgenti_ore: 3 }), 3); assert.equal(M.oreUrgenti({ urgenti_ore: 99 }), 12);
   const t = { posizione: "casa", config: {} }, adesso = Date.UTC(2027, 6, 12, 12) / 1000;
   const s = { ultimo: adesso, stato: { modo: "senza sensore", t: null }, misure: [[adesso - 600, null, null, 0, 4, 1, 1]] };

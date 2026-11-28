@@ -766,6 +766,20 @@ test("orari delle notifiche: ognuna alla sua ora, quelle fatte non si ripetono, 
   assert.ok(!testi.some((x) => x.includes("Giardino —")), "non è il giorno del mattino: niente");
   assert.match((await strumento("impostazioni", { giorni: { mattina: [0, 1, 2, 3, 4, 5, 6] } })).content[0].text, /mattina ogni giorno/);
   assert.ok(!("mattina" in ((await leggiDati()).impostazioni.giorni || {})), "tutti i giorni: si toglie");
+  // backup ogni settimana: solo nel giorno scelto
+  const dow = new Date(OGGI + "T12:00:00Z").getUTCDay(), doc = () => inviati.some((x) => x[0] === "sendDocument");
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { ...imp({ mattina: 13, sera: 13, controllo: 13, avvisi: 13, riepilogo: 13, piano: 13, backup: 12 }), backup_ogni: "settimana", backup_giorno: altro } } } });
+  await st.setJSON("t-" + CODE, { ...(await st.get("t-" + CODE, { type: "json" })), inviati_il: {}, ultimo_backup: null });
+  await giro(); assert.ok(!doc(), "non è il giorno del backup");
+  assert.match((await strumento("impostazioni", { backup_giorno: dow })).content[0].text, /backup su Telegram ogni settimana, /);
+  assert.ok((await strumento("impostazioni", { backup_ogni: "anno" })).isError); assert.ok((await strumento("impostazioni", { backup_giorno: 7 })).isError);
+  await st.setJSON("t-" + CODE, { ...(await st.get("t-" + CODE, { type: "json" })), inviati_il: {} });
+  await giro(); assert.ok(doc(), "il giorno del backup arriva"); assert.equal((await st.get("t-" + CODE, { type: "json" })).ultimo_backup, OGGI);
+  await st.setJSON("t-" + CODE, { ...(await st.get("t-" + CODE, { type: "json" })), inviati_il: {} });
+  await giro(); assert.ok(!doc(), "una volta sola");
+  assert.match((await strumento("giardino")).content[0].text, /backup ogni settimana, /);
+  assert.match((await strumento("impostazioni", { backup_ogni: "mese" })).content[0].text, /backup su Telegram una volta al mese/);
+  assert.ok(!("backup_ogni" in (await leggiDati()).impostazioni), "mese = predefinito: si toglie");
   // pulizia
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants, piano_claude: d0.piano_claude, vacanza: d0.vacanza, impostazioni: d0.impostazioni } } });
   await st.setJSON("t-" + CODE, { ...t0 });
@@ -906,6 +920,10 @@ test("torre idroponica: chiave, misure dall'ESP32 (anche senza ora), impostazion
   assert.match((await strumento("torre")).content[0].text, /correzione del termometro: -2 °C/);
   assert.equal((await leggiDati()).torre.config.guasto_pausa, 30);
   assert.ok((await strumento("torre_imposta", { guasto_ferma: "sì" })).isError);
+  assert.match((await strumento("torre")).content[0].text, /power bank: tenuto acceso/);
+  assert.match((await strumento("torre_imposta", { tieni_pb: false })).content[0].text, /power bank tenuto acceso: sì → no/);
+  assert.match((await strumento("torre")).content[0].text, /power bank: non tenuto acceso/);
+  assert.equal((await leggiDati()).torre.config.tieni_pb, false); assert.ok((await strumento("torre_imposta", { tieni_pb: 1 })).isError);
   tx = (await strumento("torre_imposta", { capacita: 20, nutrienti_ogni: 10, segna: "rabbocco", litri: 4 })).content[0].text;
   assert.match(tx, /serbatoio: – → 20 L/); assert.match(tx, /rabbocco segnato \(4 L\)/); assert.doesNotMatch(tx, /L'ESP32 le riceve/, "non riguarda l'ESP32");
   assert.deepEqual([(await leggiDati()).torre.serbatoio.capacita, (await leggiDati()).torre.lavori.nutrienti.ogni, (await leggiDati()).torre.serbatoio.rabbocchi.at(-1).litri], [20, 10, 4]);

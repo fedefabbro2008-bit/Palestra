@@ -3,7 +3,7 @@
 // Pompa: cicli in base alla temperatura e all'umidità misurate, più lunghi di notte; ferma sotto 2 °C
 // (riparte sopra 4 °C). Misure salvate in memoria e mandate all'app Giardino quando c'è il Wi-Fi.
 // Versione 9: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
-// Novità della v9: pezzi facoltativi, spenti di serie (vedi «PEZZI FACOLTATIVI» qui sotto): galleggiante del serbatoio
+// Novità della v9: il power bank tenuto acceso si accende e si spegne dall'app; pezzi facoltativi, spenti di serie (vedi «PEZZI FACOLTATIVI» qui sotto): galleggiante del serbatoio
 // (pompa bloccata col serbatoio vuoto), sonda DS18B20 nell'acqua (il gelo si decide sulla temperatura dell'acqua),
 // misura della tensione di alimentazione (cali quando parte la pompa, power bank che si scarica).
 // Novità della v8: diagnostica per l'app (memoria libera e impulsi del power bank non partiti); se la radio non parte
@@ -70,8 +70,10 @@ const char* SITO          = "https://giardino-fede.netlify.app/api/torre";   // 
 // seriale compare «certificato non accettato» e la torre non si collega più: vuol dire che il sito ha cambiato certificato.
 const bool VERIFICA_CERTIFICATO = true;
 // Alimentazione da power bank: true lo tiene acceso con un breve consumo ogni tanti secondi (circa 1 Wh al giorno).
+// Si accende e si spegne dall'app (Impostazioni → Torre → Alimentazione): questo è solo il valore finché l'app non lo manda.
+// Spento con un alimentatore da muro, un power bank con la modalità «bassa corrente» o una batteria fatta apposta.
 // Se il power bank si spegne lo stesso (nell'app compare «è mancata la corrente»): POWERBANK_OGNI_S più basso
-// (per esempio 8) o POWERBANK_PER_MS più alto (per esempio 3000). Con un alimentatore da muro mettilo a false.
+// (per esempio 8) o POWERBANK_PER_MS più alto (per esempio 3000).
 const bool     TIENI_ACCESO_POWERBANK = true;
 const uint32_t POWERBANK_OGNI_S  = 15;
 const uint32_t POWERBANK_PER_MS  = 1500;
@@ -100,6 +102,8 @@ struct Config {
   float    calT = 0;                               // correzione del termometro (°C), dall'app
   bool     guastoFerma = false;                    // sensore che non risponde: pompa ferma invece del ciclo
   uint32_t rev = 0;                                // versione delle impostazioni (dall'app)
+  bool     tieniPb = TIENI_ACCESO_POWERBANK;      // power bank tenuto acceso, dall'app (in fondo: la struttura cambia
+                                                   // misura, le impostazioni vecchie si scartano e il sito le rimanda)
 } cfg;
 
 Preferences prefs;
@@ -396,6 +400,7 @@ void applicaConfig(JsonObject c) {
   cfg.guastoPausa   = c["guasto_pausa"]    | cfg.guastoPausa;
   cfg.guastoFerma   = c["guasto_ferma"]    | cfg.guastoFerma;
   cfg.calT          = c["cal_t"]           | cfg.calT;
+  cfg.tieniPb       = c["tieni_pb"]        | cfg.tieniPb;
   if (cfg.calT < -10 || cfg.calT > 10) cfg.calT = 0;
   cfg.rev           = c["rev"]             | cfg.rev;
   salvaConfig();
@@ -673,7 +678,7 @@ bool mandaBlocco(int &comandoPompaS) {
   st["livello"] = serbatoioVuoto ? "basso" : "ok";
 #endif
   if (!isnan(tensione)) { st["v"] = tensione; st["vmin"] = tensioneMin; }
-  if (TIENI_ACCESO_POWERBANK) { JsonArray pb = st["pb"].to<JsonArray>(); pb.add(pbOgniS); pb.add(pbPerMs); pb.add(pbAllungato); }
+  if (cfg.tieniPb) { JsonArray pb = st["pb"].to<JsonArray>(); pb.add(pbOgniS); pb.add(pbPerMs); pb.add(pbAllungato); }
   { JsonArray dg = st["diag"].to<JsonArray>(); dg.add(ESP.getFreeHeap()); dg.add(ESP.getMinFreeHeap()); dg.add(impulsiFalliti); }   // diagnostica
   st["riavvio"] = motivoRiavvio;
   if (oraNota()) {                                          // da quando la pompa è così e quando finisce questa fase (ora vera)
@@ -777,7 +782,7 @@ void caricaPowerBank(bool fwNuovo, bool persaCorrente) {
   pbOgniS = prefs.getUInt("pbOgni", POWERBANK_OGNI_S); pbPerMs = prefs.getUInt("pbPer", POWERBANK_PER_MS); pbAllungato = prefs.getUChar("pbN", 0);
   bool eraVivo = prefs.getBool("pbVivo", false);
   if (eraVivo) prefs.putBool("pbVivo", false);
-  if (TIENI_ACCESO_POWERBANK && persaCorrente && eraVivo && !fwNuovo && (pbOgniS > 5 || pbPerMs < 4000)) {
+  if (cfg.tieniPb && persaCorrente && eraVivo && !fwNuovo && (pbOgniS > 5 || pbPerMs < 4000)) {
     pbOgniS = max<uint32_t>(5, pbOgniS * 2 / 3); pbPerMs = min<uint32_t>(4000, pbPerMs * 3 / 2); if (pbAllungato < 99) pbAllungato++;
     prefs.putUInt("pbOgni", pbOgniS); prefs.putUInt("pbPer", pbPerMs); prefs.putUChar("pbN", pbAllungato);
     Serial.printf("Power bank spento? Impulso allungato: %lu ms ogni %lu s\n", (unsigned long)pbPerMs, (unsigned long)pbOgniS);
@@ -800,7 +805,7 @@ void impulsoPowerBank() {
   WiFi.mode(WIFI_OFF);
 }
 void tieniAccesoPowerBank() {
-  if (!TIENI_ACCESO_POWERBANK || (int32_t)(millis() - prossimoImpulsoMs) < 0) return;
+  if (!cfg.tieniPb || (int32_t)(millis() - prossimoImpulsoMs) < 0) return;
   if (!pompaAccesa) impulsoPowerBank();
   prossimoImpulsoMs = millis() + pbOgniS * 1000UL;
 }
@@ -815,7 +820,7 @@ void riposa() {
   if (strlen(CHIAVE_TORRE)) piuVicino(prossimoWiFiMs);
   if (manualeFinoMs) piuVicino(manualeFinoMs);
   if (comunicaPompa) piuVicino(quandoComunica());
-  if (TIENI_ACCESO_POWERBANK) piuVicino(prossimoImpulsoMs);
+  if (cfg.tieniPb) piuVicino(prossimoImpulsoMs);
   if (attesa < 50) return;
   if (ora < SVEGLIO_ALL_AVVIO_MS) { delay(min<int32_t>(attesa, 100)); return; }   // primi 3 minuti: sveglio per i comandi
   Serial.flush();
@@ -853,6 +858,7 @@ void setup() {
   if (fwNuovo) motivoRiavvio = "programma";
   Serial.printf("Riavvio: %s\n", motivoRiavvio);
   riprendiOra(accensione);
+  caricaConfig();                                           // prima del power bank: dice se tenerlo acceso
   caricaPowerBank(fwNuovo, accensione && !fwNuovo);
   // memoria: si riprova prima di formattare; la prima accensione in assoluto la formatta senza dirlo (è vuota)
   for (int i = 0; i < 3 && !memoriaOk; i++) { memoriaOk = LittleFS.begin(false); if (!memoriaOk) delay(300); }
@@ -862,7 +868,6 @@ void setup() {
     memoriaFormattata = memoriaOk && avvioN > 1;
     if (!memoriaOk) Serial.println("Memoria guasta: la torre lavora lo stesso, ma le misure non restano se manca il Wi-Fi");
   }
-  caricaConfig();
   caricaGelo();
   attesaWiFiMin = cfg.wifiOgniMin;
   Wire.begin(21, 22);
@@ -881,7 +886,7 @@ void setup() {
   prossimaFase();
   prossimaMisuraMs = millis() + 60000;
   prossimoWiFiMs = millis() + 20000;
-  if (TIENI_ACCESO_POWERBANK) Serial.printf("Power bank tenuto acceso: radio accesa %lu ms ogni %lu s\n", (unsigned long)pbPerMs, (unsigned long)pbOgniS);
+  if (cfg.tieniPb) Serial.printf("Power bank tenuto acceso: radio accesa %lu ms ogni %lu s\n", (unsigned long)pbPerMs, (unsigned long)pbOgniS);
   prossimoImpulsoMs = millis() + pbOgniS * 1000UL;
   Serial.println("Comandi (primi 3 minuti dopo l'accensione): p = pompa 30 s, t = misura, s = stato, w = Wi-Fi, c = cancella misure");
 }

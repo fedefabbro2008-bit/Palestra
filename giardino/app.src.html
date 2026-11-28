@@ -377,6 +377,7 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 .giorni{display:flex;gap:4px;margin:-4px 0 10px}
 .giorni button{flex:1 1 0;min-width:0;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);font:inherit;font-size:.8rem;font-weight:700;cursor:pointer}
 .giorni button[aria-pressed="true"]{background:var(--water);border-color:var(--water);color:var(--on-water)}
+.bk{margin:-4px 0 10px}.bk .ora{flex:1 1 0;min-width:0}
 .giorni[aria-disabled="true"]{opacity:.45;pointer-events:none}
 .sw-row:first-child{border-top:0;padding-top:2px}
 .sw-row select.ora{flex:none;width:auto;min-width:0;padding:6px 26px 6px 10px;font-size:16px;font-variant-numeric:tabular-nums;border-radius:10px;background-position:right 8px center}
@@ -1056,6 +1057,9 @@ html.quieto :is(.wx-lampo,.wx-bagliore,.hfx .lampo),html.quieto .lev i::after{an
             <div class="grid2"><div class="field"><label for="torreGuastoP">Pausa di emergenza (minuti)</label><input type="text" inputmode="numeric" id="torreGuastoP"></div></div>
             <label class="check"><input type="checkbox" id="torreGuastoFerma"><span>Pompa ferma invece del ciclo di emergenza</span></label>
             <span class="hint">Ciclo di emergenza: la pompa resta accesa i minuti di sopra, poi si ferma per questa pausa; nelle ore di gelo previste dal meteo resta ferma. Ferma del tutto: con il caldo le radici seccano in poche ore.</span></div>
+          <div class="field"><span class="flabel">Alimentazione</span>
+            <label class="check"><input type="checkbox" id="torrePb"><span>Tieni acceso il power bank</span></label>
+            <span class="hint">Molti power bank si spengono da soli quando l'ESP32 consuma poco: con questa opzione l'ESP32 accende la radio un attimo ogni 15 secondi circa (si regola da solo se il power bank si spegne lo stesso), circa 1 Wh al giorno. Spegnila con un alimentatore da muro, un power bank con la modalità «bassa corrente» o una batteria fatta apposta: la torre consuma meno. Arriva all'ESP32 (dalla v9) al prossimo collegamento.</span></div>
           <div class="field"><span class="flabel">Notte (pause più lunghe)</span>
             <div class="grid2"><div class="field"><label for="torreNotteDa">Dalle (ora)</label><input type="text" inputmode="numeric" id="torreNotteDa"></div>
               <div class="field"><label for="torreNotteA">Alle (ora)</label><input type="text" inputmode="numeric" id="torreNotteA"></div>
@@ -2035,7 +2039,7 @@ const NOTIF=[
   ['avvisi','Avvisi per domani',()=>'Gelo, caldo, vento, temporali e grandine'],
   ['verifica','Controllo del sabato',()=>"Una pianta da toccare con il dito: così l'app impara quanto beve"],
   ['riepilogo','Riepilogo della domenica',()=>'Acqua data e piante della settimana'],
-  ['backup','Backup mensile',()=>'Il file con tutti i dati, una volta al mese'],
+  ['backup','Backup',i=>'Il file con tutti i dati, '+testoFrequenzaBackup(i)],
   ['piano','Fine del piano di Claude',()=>'Quando il piano salvato da Claude sta per finire'],
   ['torre','Torre idroponica',()=>'Gelo e pioggia previsti dove si trova, freddo misurato, torre che non si fa sentire']];
 const notifVisibili=()=>NOTIF.filter(([k])=>k!=='torre'||torreOn());
@@ -2060,10 +2064,16 @@ function selettoreGiorni(k,t){
   return `<div class="giorni" role="group" aria-label="Giorni: ${esc(t)}" data-giorni="${k}"${notAttiva(k)?'':' aria-disabled="true"'}>${ORDINE_GIORNI.map(d=>`<button type="button" data-giorno="${d}" aria-pressed="${g.includes(d)}" aria-label="${NOMI_GIORNI[d]}">${LETTERE_GIORNI[d]}</button>`).join('')}</div>`;
 }
 const ORE_URGENTI=[1,2,3,6,12,24];
+// backup: ogni settimana / 2 settimane (nel giorno scelto) o ogni mese
+function selettoreBackup(){
+  const {ogni,giorno}=frequenzaBackup(S.impostazioni), off=notAttiva('backup')?'':' disabled';
+  return `<div class="row bk"><select class="ora" id="bkOgni" aria-label="Frequenza del backup"${off}>${Object.entries(FREQUENZE_BACKUP).map(([k,t])=>`<option value="${k}"${k===ogni?' selected':''}>${t}</option>`).join('')}</select>`
+    +(ogni==='mese'?'':`<select class="ora" id="bkGiorno" aria-label="Giorno del backup"${off}>${ORDINE_GIORNI.map(d=>`<option value="${d}"${d===giorno?' selected':''}>${NOMI_GIORNI[d]}</option>`).join('')}</select>`)+`</div>`;
+}
 function renderNotifiche(){
   const i=S.impostazioni;
   setHTML($('#notList'),notifVisibili().map(([k,t,d])=>`<div class="sw-row"><label class="sw-t" for="not-${k}"><b>${t}</b><span>${esc(d(i))}</span></label>${NOTIFICHE_CON_ORA.includes(k)?selettoreOra(k,t):''}<input type="checkbox" role="switch" class="sw" id="not-${k}" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></div>`
-    +(NOTIFICHE_GIORNALIERE.includes(k)?selettoreGiorni(k,t):'')).join('')
+    +(NOTIFICHE_GIORNALIERE.includes(k)?selettoreGiorni(k,t):'')+(k==='backup'?selettoreBackup():'')).join('')
     +(torreOn()?`<div class="sw-row"><label class="sw-t" for="urgOre"><b>Avvisi urgenti della torre</b><span>Sensore guasto, freddo, serbatoio vuoto: arrivano subito, poi si ripetono finché il problema resta</span></label><select class="ora" id="urgOre" aria-label="Ripeti ogni">${ORE_URGENTI.map(o=>`<option value="${o}"${o===oreUrgenti(i)?' selected':''}>ogni ${o} h</option>`).join('')}</select></div>`:''));
   chipNotifiche();
 }
@@ -2267,7 +2277,7 @@ function renderTorreSet(){
   setVal($('#torreAccesa'),c.accesa_min);
   const pz=$('#torrePause'); if(!pz.contains(document.activeElement)) setHTML(pz,FASCE_TORRE(c).map((f,i)=>`<div class="field"><label for="torreP${i}">${esc(f)}</label><input type="text" inputmode="numeric" id="torreP${i}" value="${c.pause[i]}"></div>`).join(''));
   setVal($('#torreStop'),numIn(c.freddo_stop)); setVal($('#torreRiparte'),numIn(c.freddo_riparte));
-  setVal($('#torreCal'),numIn(c.cal_t)); setVal($('#torreGuastoP'),c.guasto_pausa); $('#torreGuastoFerma').checked=!!c.guasto_ferma;
+  setVal($('#torreCal'),numIn(c.cal_t)); setVal($('#torreGuastoP'),c.guasto_pausa); $('#torreGuastoFerma').checked=!!c.guasto_ferma; $('#torrePb').checked=c.tieni_pb!==false;
   setVal($('#torreNotteDa'),c.notte_da); setVal($('#torreNotteA'),c.notte_a); setVal($('#torreNotteX'),numIn(c.notte_fattore));
   const sb=serbatoioTorre(tr.serbatoio), lv=lavoriTorreDati(tr.lavori);
   setVal($('#torreCap'),numIn(sb.capacita)); setVal($('#torreMin'),numIn(sb.minimo)); setVal($('#torreAnt'),sb.anticipo); setVal($('#torreControlla'),sb.controlla); setVal($('#torreNutr'),lv.nutrienti.ogni); setVal($('#torreSol'),lv.soluzione.ogni); setVal($('#torrePul'),lv.pulizia.ogni);
@@ -2323,7 +2333,7 @@ function wireTorre(){
     if(!S.torre) return;
     const c=configTorre(S.torre.config), n=id=>numOrNull($(id).value), pos=document.querySelector('#torrePos input:checked')?.value||S.torre.posizione;
     const nuova=configTorre({...c, accesa_min:n('#torreAccesa'), pause:c.pause.map((p,i)=>n('#torreP'+i)??p), freddo_stop:n('#torreStop'), freddo_riparte:n('#torreRiparte'),
-      notte_da:n('#torreNotteDa'), notte_a:n('#torreNotteA'), notte_fattore:n('#torreNotteX'), guasto_pausa:n('#torreGuastoP'), guasto_ferma:$('#torreGuastoFerma').checked, cal_t:numOrNull(String($('#torreCal').value).replace('−','-'))??0});
+      notte_da:n('#torreNotteDa'), notte_a:n('#torreNotteA'), notte_fattore:n('#torreNotteX'), guasto_pausa:n('#torreGuastoP'), guasto_ferma:$('#torreGuastoFerma').checked, tieni_pb:$('#torrePb').checked, cal_t:numOrNull(String($('#torreCal').value).replace('−','-'))??0});
     const cambiata=JSON.stringify(nuova)!==JSON.stringify(c);
     const sb=serbatoioTorre(S.torre.serbatoio), lv=lavoriTorreDati(S.torre.lavori), ogni=(id,d)=>n(id)??d;
     sb.capacita=n('#torreCap'); sb.minimo=n('#torreMin'); sb.anticipo=ogni('#torreAnt',sb.anticipo); sb.controlla=ogni('#torreControlla',sb.controlla);
@@ -3158,6 +3168,11 @@ function wire(){
     toast(NOTIF.find(x=>x[0]===k)[1]+': '+(g.size===7?'ogni giorno':ORDINE_GIORNI.filter(x=>g.has(x)).map(x=>NOMI_GIORNI[x].slice(0,3)).join(', ')));
   });
   $('#notList').addEventListener('change',e=>{
+    if(e.target.id==='bkOgni'||e.target.id==='bkGiorno'){
+      const v=e.target.value, imp={...S.impostazioni};
+      if(e.target.id==='bkOgni'){ if(v==='mese') delete imp.backup_ogni; else imp.backup_ogni=v; } else imp.backup_giorno=+v;
+      S.impostazioni=imp; saveMain(); renderNotifiche(); toast('Backup su Telegram: '+testoFrequenzaBackup(imp)); return;
+    }
     if(e.target.id==='urgOre'){ const h=+e.target.value; S.impostazioni={...S.impostazioni, urgenti_ore:h}; saveMain(); toast('Avvisi urgenti: ripetuti ogni '+h+' '+(h===1?'ora':'ore')); return; }
     const o=e.target.closest('[data-ora]');
     if(o){ const k=o.dataset.ora, h=parseInt(o.value,10); if(!(h>=0&&h<=23)) return;
@@ -3165,6 +3180,7 @@ function wire(){
       toast(NOTIF.find(x=>x[0]===k)[1]+': alle '+String(h).padStart(2,'0')+':00'); return; }
     const x=e.target.closest('[data-not]'); if(!x) return;
     const sel=$('#notList [data-ora="'+x.dataset.not+'"]'); if(sel) sel.disabled=!x.checked;
+    if(x.dataset.not==='backup') document.querySelectorAll('#notList .bk select').forEach(s=>s.disabled=!x.checked);
     const gg=$('#notList [data-giorni="'+x.dataset.not+'"]'); if(gg){ if(x.checked) gg.removeAttribute('aria-disabled'); else gg.setAttribute('aria-disabled','true'); }
     const n={...(S.impostazioni.notifiche||{})}; if(x.checked) delete n[x.dataset.not]; else n[x.dataset.not]=false;
     S.impostazioni={...S.impostazioni, notifiche:n}; saveMain(); chipNotifiche();

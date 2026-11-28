@@ -208,7 +208,7 @@ test("flusso completo a 390 px", async (t) => {
   await page.click('#notList [data-not="mattina"]');
   assert.equal(await page.textContent("#notVal"), "7 su 8"); assert.ok(await page.isHidden("#notHint"));
   // ogni notifica alla sua ora: di partenza quelle di prima (mattino 7, sera 19), poi quella scelta, salvata sul server
-  assert.equal(await page.locator("#notList select.ora").count(), 8, "tutte con la loro ora");
+  assert.equal(await page.locator("#notList select[data-ora]").count(), 8, "tutte con la loro ora");
   assert.deepEqual([await page.inputValue('#notList [data-ora="mattina"]'), await page.inputValue('#notList [data-ora="avvisi"]')], ["7", "19"]);
   await page.selectOption('#notList [data-ora="avvisi"]', "21");
   assert.equal(await page.evaluate(() => S.impostazioni.orari.avvisi), 21);
@@ -219,6 +219,14 @@ test("flusso completo a 390 px", async (t) => {
   assert.equal(await page.getAttribute('#notList [data-giorni="mattina"] [data-giorno="6"]', "aria-pressed"), "false");
   for (const d of [6, 0]) await page.click(`#notList [data-giorni="mattina"] [data-giorno="${d}"]`);
   assert.equal(await page.evaluate(() => S.impostazioni.giorni.mattina), undefined, "di nuovo ogni giorno");
+  // backup: ogni mese (senza giorno), poi ogni 2 settimane il mercoledì
+  assert.equal(await page.inputValue("#bkOgni"), "mese"); assert.equal(await page.locator("#bkGiorno").count(), 0);
+  await page.selectOption("#bkOgni", "2settimane"); await page.selectOption("#bkGiorno", "3");
+  assert.deepEqual(await page.evaluate(() => [S.impostazioni.backup_ogni, S.impostazioni.backup_giorno]), ["2settimane", 3]);
+  assert.match(await page.textContent('#notList label[for="not-backup"]'), /ogni 2 settimane, mercoledì/);
+  await page.click('#notList [data-not="backup"]'); assert.ok(await page.isDisabled("#bkOgni"), "backup spento: frequenza ferma");
+  await page.click('#notList [data-not="backup"]'); await page.selectOption("#bkOgni", "mese");
+  assert.equal(await page.evaluate(() => S.impostazioni.backup_ogni), undefined, "ogni mese = predefinito");
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
   { const cod = await page.evaluate(() => window.GiardinoNet.codice()), srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": cod } }))).text()).data.impostazioni;
     assert.equal(srv.orari.avvisi, 21, "il bot la legge dal server"); }
@@ -666,8 +674,9 @@ test("torre idroponica: si accende dalle Impostazioni, riquadro in Oggi con i da
   await page.fill("#torreAccesa", "10"); await page.click('#torrePos label:has(input[value="veranda"])'); await page.click("#torreSalva");
   assert.deepEqual(await page.evaluate(() => [S.torre.config.accesa_min, S.torre.posizione, S.torre.rev]), [10, "veranda", 3]);
   assert.equal(await page.inputValue("#torreGuastoP"), "20"); assert.ok(!(await page.isChecked("#torreGuastoFerma")));
-  await page.fill("#torreGuastoP", "35"); await page.check("#torreGuastoFerma"); await page.fill("#torreCal", "−2"); await page.click("#torreSalva");
-  assert.deepEqual(await page.evaluate(() => [S.torre.config.guasto_pausa, S.torre.config.guasto_ferma, S.torre.config.cal_t, S.torre.rev]), [35, true, -2, 4]);
+  assert.ok(await page.isChecked("#torrePb"), "power bank tenuto acceso di serie");
+  await page.fill("#torreGuastoP", "35"); await page.check("#torreGuastoFerma"); await page.fill("#torreCal", "−2"); await page.uncheck("#torrePb"); await page.click("#torreSalva");
+  assert.deepEqual(await page.evaluate(() => [S.torre.config.guasto_pausa, S.torre.config.guasto_ferma, S.torre.config.cal_t, S.torre.config.tieni_pb, S.torre.rev]), [35, true, -2, false, 4]);
   // serbatoio e manutenzione: impostazioni (non cambiano la versione per l'ESP32), rabbocco coi litri, lavori fatti
   await page.fill("#torreCap", "12"); await page.fill("#torreNutr", "10"); await page.fill("#torrePul", "0"); await page.click("#torreSalva");
   assert.deepEqual(await page.evaluate(() => [S.torre.serbatoio.capacita, S.torre.lavori.nutrienti.ogni, S.torre.lavori.pulizia.ogni, S.torre.rev]), [12, 10, 0, 4]);

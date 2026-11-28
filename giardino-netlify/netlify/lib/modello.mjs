@@ -686,6 +686,26 @@ export function giorniNotifica(imp, tipo) {
 export const notificaOggi = (imp, tipo, oggi) => giorniNotifica(imp, tipo).includes(new Date(oggi + "T12:00:00Z").getUTCDay());
 // avvisi urgenti della torre: ogni quante ore si ripetono finché il problema resta (impostazioni.urgenti_ore, 1–48)
 export const oreUrgenti = (imp) => { const n = Math.round(+imp?.urgenti_ore); return n >= 1 && n <= 48 ? n : 12; };
+// Backup su Telegram: ogni settimana, ogni 2 settimane (nel giorno scelto, 0 = domenica) o ogni mese (il primo giorno utile).
+// impostazioni.backup_ogni = "settimana" | "2settimane" | "mese" (predefinito), impostazioni.backup_giorno = 0..6 (predefinito domenica).
+export const FREQUENZE_BACKUP = { settimana: "ogni settimana", "2settimane": "ogni 2 settimane", mese: "ogni mese" };
+export function frequenzaBackup(imp) {
+  const ogni = Object.hasOwn(FREQUENZE_BACKUP, imp?.backup_ogni) ? imp.backup_ogni : "mese";
+  const g = Number(imp?.backup_giorno);
+  return { ogni, giorno: Number.isInteger(g) && g >= 0 && g <= 6 ? g : 0 };
+}
+// è il giorno del backup? (ultimo = data dell'ultimo inviato). Se il giorno scelto salta (bot fermo), arriva appena può.
+export function backupOggi(imp, oggi, ultimo) {
+  const { ogni, giorno } = frequenzaBackup(imp);
+  if (ogni === "mese") return (ultimo || "").slice(0, 7) !== oggi.slice(0, 7);
+  const u = String(ultimo || ""), giusto = new Date(oggi + "T12:00:00Z").getUTCDay() === giorno;
+  // (i backup di prima salvavano solo il mese: vale come il primo del mese)
+  const gg = Math.round((Date.parse(oggi + "T12:00:00Z") - Date.parse((u.length >= 10 ? u.slice(0, 10) : u.slice(0, 7) + "-01") + "T12:00:00Z")) / 864e5);
+  if (!u || !Number.isFinite(gg)) return giusto;
+  const per = ogni === "settimana" ? 7 : 14;
+  return gg >= per - 1 && giusto || gg >= per + 2;
+}
+export const testoFrequenzaBackup = (imp) => { const { ogni, giorno } = frequenzaBackup(imp); return ogni === "mese" ? "una volta al mese" : FREQUENZE_BACKUP[ogni] + ", " + ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"][giorno]; };
 export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));
 
 /* ---------------- Torre idroponica (ESP32 + pompa + SHT40) ----------------
@@ -694,7 +714,8 @@ export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp
 // impostazioni della pompa: gli stessi nomi del programma dell'ESP32
 export const TORRE_DEF = { accesa_min: 15, soglie: [30, 27, 20, 12, 5], pause: [5, 10, 15, 25, 45, 60], freddo_stop: 2, freddo_riparte: 4,
   notte_da: 22, notte_a: 6, notte_fattore: 2, umido_soglia: 92, umido_fattore: 1.5, pausa_max: 120, misura_ogni_min: 10, wifi_ogni_min: 15, wifi_max_min: 60,
-  guasto_pausa: 20, guasto_ferma: false, cal_t: 0 };   // cal_t: correzione del termometro (°C)   // sensore che non risponde: ciclo di emergenza (o pompa ferma)
+  guasto_pausa: 20, guasto_ferma: false, cal_t: 0, tieni_pb: true };   // tieni_pb: l'ESP32 tiene acceso il power bank con un breve consumo ogni tanto
+   // cal_t: correzione del termometro (°C)   // sensore che non risponde: ciclo di emergenza (o pompa ferma)
 export const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale", "sicurezza: pompa fermata", "serbatoio vuoto: pompa ferma"];
 // perché l'ESP32 si è riavviato (esp_reset_reason): quelli da segnalare sono tensione, blocco ed errore
 export const RIAVVII_TORRE = { corrente: "è mancata la corrente", tensione: "calo di tensione", blocco: "blocco (watchdog)", errore: "errore del programma", programma: "programma aggiornato", tasto: "tasto EN", altro: "altro" };
@@ -723,6 +744,7 @@ export function configTorre(c = {}) {
   o.guasto_pausa = Math.round(numTorre(c.guasto_pausa, 5, 240, d.guasto_pausa));
   o.guasto_ferma = c.guasto_ferma === true;
   o.cal_t = Math.round(numTorre(c.cal_t, -10, 10, d.cal_t) * 10) / 10;
+  o.tieni_pb = c.tieni_pb !== false;
   return o;
 }
 export const nuovaTorre = (chiave) => ({ attiva: true, chiave, nome: "Torre idroponica", posizione: "fuori", orto: "p", config: configTorre(), rev: 1, creata: new Date().toISOString() });

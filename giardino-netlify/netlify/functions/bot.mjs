@@ -10,7 +10,7 @@ import { avvisiTorre } from "../lib/torre.mjs";
        · le piante da controllare col dito oggi (dal piano della sera) ancora senza risposta;
        · avvisi per domani (gelo con le temperature ora per ora della notte, caldo, vento e raffiche, temporale, grandine);
        · la domenica, il riepilogo della settimana;
-       · il primo giorno utile di ogni mese, il file di backup;
+       · il file di backup: ogni settimana o ogni 2 settimane nel giorno scelto, o il primo giorno utile di ogni mese;
        · se il piano di Claude finisce domani (o è già finito), una volta per piano, l'invito ad aggiornarlo;
    - le innaffiature notificate e rimaste senza risposta, il giorno dopo, si considerano fatte. */
 export const config = { schedule: "@hourly" };
@@ -157,9 +157,9 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
       // 4. la domenica, il riepilogo della settimana (uno per orto)
       if (fa("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0) await invia(riepilogoSettimana(v, oggi, await meteoDi(v)));
     }
-    // 5. una volta al mese, il backup (tutti gli orti insieme)
-    if (fa("backup") && (t.ultimo_backup || "").slice(0, 7) !== oggi.slice(0, 7)) {
-      try { await inviaFile(t.token, t.chat_id, `giardino-backup-${oggi}.json`, JSON.stringify(backup(data), null, 2), "🗂 Backup mensile del Giardino: in caso di bisogno importalo dall'app (Impostazioni → Backup)."); next.ultimo_backup = oggi; }
+    // 5. il backup (tutti gli orti insieme): ogni settimana, ogni 2 settimane o ogni mese (impostazioni.backup_ogni)
+    if (fa("backup") && M.backupOggi(imp, oggi, t.ultimo_backup)) {
+      try { await inviaFile(t.token, t.chat_id, `giardino-backup-${oggi}.json`, JSON.stringify(backup(data), null, 2), "🗂 Backup " + ({ settimana: "settimanale", "2settimane": "di ogni 2 settimane", mese: "mensile" })[M.frequenzaBackup(imp).ogni] + " del Giardino: in caso di bisogno importalo dall'app (Impostazioni → Backup)."); next.ultimo_backup = oggi; }
       catch (e) { console.error("backup", e?.message); }
     }
     // 6. il piano di Claude sta per finire: lo dico una volta per piano, il giorno prima dell'ultimo (o appena me ne accorgo)
