@@ -10,7 +10,7 @@ import { avvisiTorre } from "../lib/torre.mjs";
        · le piante da controllare col dito oggi (dal piano della sera) ancora senza risposta;
        · avvisi per domani (gelo con le temperature ora per ora della notte, caldo, vento e raffiche, temporale, grandine);
        · la domenica, il riepilogo della settimana;
-       · il primo giorno utile di ogni mese, il file di backup;
+       · il file di backup: ogni settimana o ogni 2 settimane nel giorno scelto, o il primo giorno utile di ogni mese;
        · se il piano di Claude finisce domani (o è già finito), una volta per piano, l'invito ad aggiornarlo;
    - le innaffiature notificate e rimaste senza risposta, il giorno dopo, si considerano fatte. */
 export const config = { schedule: "@hourly" };
@@ -46,7 +46,7 @@ async function uno(st, tkey) {
   // ogni notifica alla sua ora (Impostazioni → Notifiche): dovute = da fare adesso; passate = ora finita senza giro del bot
   const fatti = fattiOggi(t, oggi), dovute = new Set(), passate = [];
   for (const k of M.NOTIFICHE_CON_ORA) {
-    if (fatti.has(k) || ora < M.oraNotifica(imp, k)) continue;
+    if (fatti.has(k) || ora < M.oraNotifica(imp, k) || !M.notificaOggi(imp, k, oggi)) continue;   // non è il suo giorno
     if (ora < M.fineNotifica(imp, k)) dovute.add(k); else passate.push(k);
   }
   if (!dovute.size && !passate.length) return;
@@ -157,9 +157,9 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
       // 4. la domenica, il riepilogo della settimana (uno per orto)
       if (fa("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0) await invia(riepilogoSettimana(v, oggi, await meteoDi(v)));
     }
-    // 5. una volta al mese, il backup (tutti gli orti insieme)
-    if (fa("backup") && (t.ultimo_backup || "").slice(0, 7) !== oggi.slice(0, 7)) {
-      try { await inviaFile(t.token, t.chat_id, `giardino-backup-${oggi}.json`, JSON.stringify(backup(data), null, 2), "🗂 Backup mensile del Giardino: in caso di bisogno importalo dall'app (Impostazioni → Backup)."); next.ultimo_backup = oggi; }
+    // 5. il backup (tutti gli orti insieme): ogni settimana, ogni 2 settimane o ogni mese (impostazioni.backup_ogni)
+    if (fa("backup") && M.backupOggi(imp, oggi, t.ultimo_backup)) {
+      try { await inviaFile(t.token, t.chat_id, `giardino-backup-${oggi}.json`, JSON.stringify(backup(data), null, 2), "🗂 Backup " + ({ settimana: "settimanale", "2settimane": "di ogni 2 settimane", mese: "mensile" })[M.frequenzaBackup(imp).ogni] + " del Giardino: in caso di bisogno importalo dall'app (Impostazioni → Backup)."); next.ultimo_backup = oggi; }
       catch (e) { console.error("backup", e?.message); }
     }
     // 6. il piano di Claude sta per finire: lo dico una volta per piano, il giorno prima dell'ultimo (o appena me ne accorgo)
@@ -174,8 +174,12 @@ async function invii(st, tkey, t, cur, code, imp, on, oggi, dovute) {
     if (fa("torre") && torre && torre.attiva !== false) {
       try {
         const v = M.vistaOrto(data, torre.orto || "p"), met = v.location ? await meteoDi(v) : null, serie = await st.get("s-" + code, { type: "json" });
-        const avv = avvisiTorre(torre, serie, met, oggi, Math.floor(Date.now() / 1000), met?.tz || t.tz || "Europe/Rome", data.plants);
-        if (avv.length) await invia(`🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + avv.map((a) => esc(a.testo)).join("\n"));
+        const ora = Math.floor(Date.now() / 1000), tzT = met?.tz || t.tz || "Europe/Rome", avv = avvisiTorre(torre, serie, met, oggi, ora, tzT, data.plants);
+        // col serbatoio da riempire, i pulsanti «Riempito» (con i litri) sotto il messaggio
+        const serb = avv.some((a) => a.tipo === "serbatoio" || a.tipo === "livello") ? { reply_markup: M.pulsantiRiempito(M.lavoriTorre(torre, serie, ora, tzT, { met, piante: data.plants }).serbatoio) } : {};
+        if (avv.length) await invia(`🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + avv.map((a) => esc(a.testo)).join("\n"), serb);
+        // la domenica, con il riepilogo delle piante, quello della torre
+        if (fa("riepilogo") && new Date(oggi + "T12:00:00Z").getUTCDay() === 0) { const r = M.riepilogoTorreSettimana(torre, serie, met, ora, tzT, data.plants); if (r) await invia(esc(r)); }
       } catch (e) { console.warn("torre:", e?.message); }
     }
   }

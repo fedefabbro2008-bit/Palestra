@@ -87,11 +87,37 @@ const BREVE = { fatto: "annaffiata", saltato: "saltata", umido: "umida", secco: 
 // e i litri del pulsante «Annaffiato», se li aveva (così torna uguale)
 const annullaCb = (data, pid, v, l) => `g|${data}|${pid}|z${v}${+l > 0 ? "|" + l : ""}`;
 
+// Serbatoio della torre riempito, dai pulsanti sotto i messaggi: tr|r|<litri> (0 = non so) e tr|z|<istante> per annullare
+async function rabbocco(st, t, code, cq, azione, valore, rispondi) {
+  const chat = cq.message.chat.id, msg = cq.message.message_id, ora = new Date().toISOString();
+  if (azione === "r") {
+    const l = +valore; if (!(l >= 0 && l <= 1000)) return rispondi();
+    let fatto = false;
+    await aggiorna(st, code, (d) => { if (!d.torre) return false; const sb = M.serbatoioTorre(d.torre.serbatoio);
+      if (sb.rabbocchi.some((r) => Date.parse(ora) - Date.parse(r.at) < 120e3)) return false;   // doppio tocco
+      sb.rabbocchi = [...sb.rabbocchi, { at: ora, litri: l > 0 ? l : null }]; d.torre = { ...d.torre, serbatoio: M.serbatoioTorre(sb) }; fatto = true; });
+    if (!fatto) return rispondi("Già segnato");
+    const testo = `✔ Riempito${l > 0 ? " (" + String(l).replace(".", ",") + " L)" : ""}`;
+    await Promise.all([rispondi(testo), tg(t.token, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: { inline_keyboard: [[{ text: testo, callback_data: "x" }, { text: "↩️ Annulla", callback_data: `tr|z|${Date.parse(ora)}` }]] } }, { ignora: true })]);
+    return;
+  }
+  if (azione === "z") {
+    const at = new Date(+valore).toISOString();
+    await aggiorna(st, code, (d) => { if (!d.torre) return false; const sb = M.serbatoioTorre(d.torre.serbatoio), prima = sb.rabbocchi.length;
+      sb.rabbocchi = sb.rabbocchi.filter((r) => r.at !== at); if (sb.rabbocchi.length === prima) return false; d.torre = { ...d.torre, serbatoio: sb }; });
+    const sb = M.serbatoioTorre((await leggi(st, code))?.data?.torre?.serbatoio);
+    await Promise.all([rispondi("Annullato"), tg(t.token, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: M.pulsantiRiempito(sb) }, { ignora: true })]);
+    return;
+  }
+  return rispondi();
+}
+
 async function pulsante(st, t, code, cq) {
   // la conferma non blocca mai il resto (parte insieme ai pulsanti nuovi): se Telegram non risponde resta solo nel registro
   const rispondi = (text) => tg(t.token, "answerCallbackQuery", { callback_query_id: cq.id, ...(text ? { text } : {}) }, { ignora: true }).catch((e) => { console.warn("Telegram answerCallbackQuery:", e?.message); return null; });
   if (cq.message?.chat?.id !== t.chat_id) return rispondi();
   const [k, data, pid, x, lt] = String(cq.data || "").split("|");
+  if (k === "tr") return rabbocco(st, t, code, cq, data, pid, rispondi);
   if (k === "v" && /^[us]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return verifica(st, t, code, cq, rispondi);
   if (k === "g" && /^z[casn]$/.test(x || "") && /^\d{4}-\d{2}-\d{2}$/.test(data || "")) return annulla(st, t, code, cq, data, pid, x[1], rispondi, lt);
   const tipo = TIPI[x];

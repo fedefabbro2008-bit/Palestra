@@ -59,12 +59,13 @@ export default async (request) => {
   }
   // avvisi urgenti su Telegram, subito (torre accesa nell'app e notifica «torre» accesa)
   if (torre.attiva !== false && notifica(cur.data.impostazioni, "torre")) {
-    const u = urgentiTorre(torre, serie, adesso, tz, metAvvisi, cur.data.plants);
+    const u = urgentiTorre(torre, serie, adesso, tz, metAvvisi, cur.data.plants, M.oreUrgenti(cur.data.impostazioni));
     if (u.testi.length) {
       const tel = await st.get("t-" + code, { type: "json" }).catch(() => null);
       if (tel?.token && tel?.chat_id) {
         const ok = await entro(tg(tel.token, "sendMessage", { chat_id: tel.chat_id, parse_mode: "HTML", disable_web_page_preview: true,
-          text: `🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + u.testi.map(esc).join("\n") }, { ignora: true }).catch(() => null), 3000);
+          text: `🌱 <b>${esc(torre.nome || "Torre idroponica")}</b>\n` + u.testi.map(esc).join("\n"),
+          ...(u.testi.some((x) => x.startsWith("🪣")) ? { reply_markup: M.pulsantiRiempito(M.lavoriTorre(torre, serie, adesso, tz, { met: metAvvisi, piante: cur.data.plants }).serbatoio) } : {}) }, { ignora: true }).catch(() => null), 3000);
         if (ok) serie.urgenti = u.urgenti;
       }
     } else serie.urgenti = u.urgenti;

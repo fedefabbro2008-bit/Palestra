@@ -673,6 +673,39 @@ export function oraNotifica(imp, tipo){
   const m=NOTIFICHE_MATTINO.includes(tipo), d=Number(m?imp?.ora_mattina:imp?.ora_sera);
   return Number.isInteger(d) && d>=0 && d<=23 ? d : (m?7:19);
 }
+// Giorni della settimana di una notifica quotidiana (impostazioni.giorni = {tipo: [0..6]}, 0 = domenica): senza, tutti.
+// Le notifiche settimanali e mensili hanno già il loro giorno.
+export const NOTIFICHE_GIORNALIERE = ["mattina", "sera", "controllo", "avvisi", "torre"];
+export const GIORNI_SETTIMANA = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
+export function giorniNotifica(imp, tipo) {
+  const g = imp?.giorni?.[tipo];
+  if (!NOTIFICHE_GIORNALIERE.includes(tipo) || !Array.isArray(g)) return [0, 1, 2, 3, 4, 5, 6];
+  const v = [...new Set(g.map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))].sort();
+  return v.length ? v : [0, 1, 2, 3, 4, 5, 6];
+}
+export const notificaOggi = (imp, tipo, oggi) => giorniNotifica(imp, tipo).includes(new Date(oggi + "T12:00:00Z").getUTCDay());
+// avvisi urgenti della torre: ogni quante ore si ripetono finché il problema resta (impostazioni.urgenti_ore, 1–48)
+export const oreUrgenti = (imp) => { const n = Math.round(+imp?.urgenti_ore); return n >= 1 && n <= 48 ? n : 12; };
+// Backup su Telegram: ogni settimana, ogni 2 settimane (nel giorno scelto, 0 = domenica) o ogni mese (il primo giorno utile).
+// impostazioni.backup_ogni = "settimana" | "2settimane" | "mese" (predefinito), impostazioni.backup_giorno = 0..6 (predefinito domenica).
+export const FREQUENZE_BACKUP = { settimana: "ogni settimana", "2settimane": "ogni 2 settimane", mese: "ogni mese" };
+export function frequenzaBackup(imp) {
+  const ogni = Object.hasOwn(FREQUENZE_BACKUP, imp?.backup_ogni) ? imp.backup_ogni : "mese";
+  const g = Number(imp?.backup_giorno);
+  return { ogni, giorno: Number.isInteger(g) && g >= 0 && g <= 6 ? g : 0 };
+}
+// è il giorno del backup? (ultimo = data dell'ultimo inviato). Se il giorno scelto salta (bot fermo), arriva appena può.
+export function backupOggi(imp, oggi, ultimo) {
+  const { ogni, giorno } = frequenzaBackup(imp);
+  if (ogni === "mese") return (ultimo || "").slice(0, 7) !== oggi.slice(0, 7);
+  const u = String(ultimo || ""), giusto = new Date(oggi + "T12:00:00Z").getUTCDay() === giorno;
+  // (i backup di prima salvavano solo il mese: vale come il primo del mese)
+  const gg = Math.round((Date.parse(oggi + "T12:00:00Z") - Date.parse((u.length >= 10 ? u.slice(0, 10) : u.slice(0, 7) + "-01") + "T12:00:00Z")) / 864e5);
+  if (!u || !Number.isFinite(gg)) return giusto;
+  const per = ogni === "settimana" ? 7 : 14;
+  return gg >= per - 1 && giusto || gg >= per + 2;
+}
+export const testoFrequenzaBackup = (imp) => { const { ogni, giorno } = frequenzaBackup(imp); return ogni === "mese" ? "una volta al mese" : FREQUENZE_BACKUP[ogni] + ", " + ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"][giorno]; };
 export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));
 
 /* ---------------- Torre idroponica (ESP32 + pompa + SHT40) ----------------
@@ -681,8 +714,9 @@ export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp
 // impostazioni della pompa: gli stessi nomi del programma dell'ESP32
 export const TORRE_DEF = { accesa_min: 15, soglie: [30, 27, 20, 12, 5], pause: [5, 10, 15, 25, 45, 60], freddo_stop: 2, freddo_riparte: 4,
   notte_da: 22, notte_a: 6, notte_fattore: 2, umido_soglia: 92, umido_fattore: 1.5, pausa_max: 120, misura_ogni_min: 10, wifi_ogni_min: 15, wifi_max_min: 60,
-  guasto_pausa: 20, guasto_ferma: false, cal_t: 0 };   // cal_t: correzione del termometro (°C)   // sensore che non risponde: ciclo di emergenza (o pompa ferma)
-export const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale", "sicurezza: pompa fermata"];
+  guasto_pausa: 20, guasto_ferma: false, cal_t: 0, tieni_pb: true };   // tieni_pb: l'ESP32 tiene acceso il power bank con un breve consumo ogni tanto
+   // cal_t: correzione del termometro (°C)   // sensore che non risponde: ciclo di emergenza (o pompa ferma)
+export const MODI_TORRE = ["normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale", "sicurezza: pompa fermata", "serbatoio vuoto: pompa ferma"];
 // perché l'ESP32 si è riavviato (esp_reset_reason): quelli da segnalare sono tensione, blocco ed errore
 export const RIAVVII_TORRE = { corrente: "è mancata la corrente", tensione: "calo di tensione", blocco: "blocco (watchdog)", errore: "errore del programma", programma: "programma aggiornato", tasto: "tasto EN", altro: "altro" };
 export const RIASSUNTI_GIORNI = 400;     // riassunti per giorno tenuti sul server (le misure una per una: GIORNI_TORRE)
@@ -710,6 +744,7 @@ export function configTorre(c = {}) {
   o.guasto_pausa = Math.round(numTorre(c.guasto_pausa, 5, 240, d.guasto_pausa));
   o.guasto_ferma = c.guasto_ferma === true;
   o.cal_t = Math.round(numTorre(c.cal_t, -10, 10, d.cal_t) * 10) / 10;
+  o.tieni_pb = c.tieni_pb !== false;
   return o;
 }
 export const nuovaTorre = (chiave) => ({ attiva: true, chiave, nome: "Torre idroponica", posizione: "fuori", orto: "p", config: configTorre(), rev: 1, creata: new Date().toISOString() });
@@ -763,6 +798,8 @@ export function unisciMisure(serie, body, adesso, tz = "Europe/Rome") {
   s.stato = { modo: String(st.modo || "").slice(0, 30), pompa: st.pompa === true, ...(["guasta", "formattata"].includes(st.memoria) ? { memoria: st.memoria } : {}), t: numMisura(st.t, -40, 125), u: numMisura(st.u, 0, 100), rssi: numMisura(st.rssi, -120, 0), fw: +body?.fw || null, rev: +body?.rev || 0,
     da: +st.da > adesso - 7 * 86400 && +st.da <= adesso + 600 ? Math.round(+st.da) : null, fine: +st.fine > adesso - 600 && +st.fine < adesso + 86400 ? Math.round(+st.fine) : null,
     // power bank tenuto acceso: [ogni quanti secondi, per quanti millisecondi, quante volte il programma l'ha accorciato da solo]
+    // sonde facoltative (dalla v9): temperatura dell'acqua, galleggiante del serbatoio, tensione di alimentazione (adesso e la più bassa)
+    ta: numMisura(st.ta, -10, 60), livello: ["ok", "basso"].includes(st.livello) ? st.livello : null, v: numMisura(st.v, 0, 7), vmin: numMisura(st.vmin, 0, 7),
     // diagnostica dell'ESP32 (dalla v8): [memoria libera, memoria libera minima, impulsi del power bank non partiti]
     diag: Array.isArray(st.diag) ? st.diag.slice(0, 3).map((n) => (n != null && isFinite(+n) && +n >= 0 ? Math.round(+n) : null)) : null,
     pb: Array.isArray(st.pb) && +st.pb[0] >= 1 && +st.pb[0] <= 600 && +st.pb[1] >= 50 && +st.pb[1] <= 20000 ? [Math.round(+st.pb[0]), Math.round(+st.pb[1]), Math.max(0, Math.min(99, Math.round(+st.pb[2] || 0)))] : null };
@@ -1024,6 +1061,18 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome",
   }
   if ((serie?.misure || []).some((r) => r[4] === 6 && adesso - r[0] < 86400))
     out.push({ tipo: "sicurezza", testo: `⛔ Nelle ultime 24 ore la pompa è rimasta accesa troppo a lungo e l'ESP32 l'ha fermata (limite di sicurezza: ${Math.max(15, 2 * cfg.accesa_min)} minuti di fila).` });
+  // sonde facoltative: galleggiante, acqua calda, alimentazione
+  const st = serie?.stato, recente = serie?.ultimo && adesso - serie.ultimo < 3 * 3600;
+  if (recente && st?.livello === "basso")
+    out.push({ tipo: "livello", urgente: true, testo: "🪣 Serbatoio vuoto (lo dice il galleggiante): la pompa resta ferma finché non lo riempi. Riempilo e premi «Riempito» nell'app." });
+  if (recente && st?.ta != null && st.ta >= 26)
+    out.push({ tipo: "acqua", testo: `🌡️ Acqua del serbatoio a ${nv(st.ta)} °C: sopra i 26 °C trattiene poco ossigeno e le radici rischiano di marcire. Ombreggia o isola il serbatoio.` });
+  if (recente && st?.vmin != null && st.vmin < 4.6)
+    out.push({ tipo: "tensione", testo: `🔋 Alimentazione bassa: è scesa a ${nv(st.vmin, 2)} V (sotto 4,6 V l'ESP32 rischia di riavviarsi). Power bank quasi scarico, cavo lungo o sottile, o alimentatore debole quando parte la pompa.` });
+  // sensore bloccato: 3 ore di misure con temperatura e umidità identiche (un sensore vero cambia almeno di un centesimo)
+  const ult = (serie?.misure || []).filter((r) => r[1] != null && r[2] != null).slice(-18);
+  if (ult.length >= 18 && ult.at(-1)[0] - ult[0][0] >= 2.5 * 3600 && adesso - ult.at(-1)[0] < 6 * 3600 && ult.every((r) => r[1] === ult[0][1] && r[2] === ult[0][2]))
+    out.push({ tipo: "sensore_fermo", testo: `🌡️ Il sensore della torre segna da ${Math.round((ult.at(-1)[0] - ult[0][0]) / 3600)} ore sempre ${nv(ult[0][1], 2)} °C e ${nv(ult[0][2], 1)}%: probabilmente è bloccato. Stacca e riattacca la corrente della torre; se resta così, controlla i fili dell'SHT40.` });
   // serbatoio e manutenzione
   const lav = lavoriTorre(torre, serie, adesso, tz, { met, piante }), sb = lav.serbatoio;
   const giornoIt = (s) => new Date(s * 1000).toLocaleDateString("it-IT", { timeZone: tz, weekday: "long", day: "numeric", month: "long" });
@@ -1052,17 +1101,18 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome",
 
 // Avvisi urgenti della torre, da mandare appena arrivano le misure (non la sera): ogni tipo quando comincia, poi al massimo
 // ogni 12 ore finché dura; i riavvii anomali uno per accensione, al massimo uno all'ora. Restituisce i testi e lo stato nuovo.
-export const URGENTI_TORRE = ["sensore", "freddo_ora", "sicurezza", "serbatoio_ora", "riavvii"];
-export function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = null, piante = null) {
+export const URGENTI_TORRE = ["sensore", "freddo_ora", "sicurezza", "serbatoio_ora", "livello_ora", "riavvii"];
+export function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = null, piante = null, ogniOre = 12) {
   const gia = { ...(serie?.urgenti || {}) }, testi = [], tutti = avvisiTorre(torre, serie, met, giornoTorre(adesso, tz), adesso, tz, piante);
   const attivi = new Map(tutti.filter((a) => ["sensore", "sicurezza"].includes(a.tipo)).map((a) => [a.tipo, a.testo]));
   const serb = tutti.find((a) => a.tipo === "serbatoio" && a.urgente);   // serbatoio al minimo o che ci arriva entro un giorno
   if (serb) attivi.set("serbatoio_ora", serb.testo);
+  const liv = tutti.find((a) => a.tipo === "livello"); if (liv) attivi.set("livello_ora", liv.testo);
   const st = serie?.stato;
   if (st && /freddo/.test(st.modo || "")) attivi.set("freddo_ora", `❄️ Pompa ferma per il freddo${st.t != null ? ` (${String(st.t).replace(".", ",")} °C)` : ""}: riparte da sola sopra ${String(configTorre(torre?.config).freddo_riparte).replace(".", ",")} °C. Se gela, copri o porta dentro il serbatoio.`);
-  for (const k of ["sensore", "freddo_ora", "sicurezza", "serbatoio_ora"]) {
+  for (const k of ["sensore", "freddo_ora", "sicurezza", "serbatoio_ora", "livello_ora"]) {
     if (!attivi.has(k)) { delete gia[k]; continue; }
-    if (!gia[k] || adesso - gia[k] >= 12 * 3600) { testi.push(attivi.get(k)); gia[k] = adesso; }
+    if (!gia[k] || adesso - gia[k] >= ogniOre * 3600 - 300) { testi.push(attivi.get(k)); gia[k] = adesso; }
   }
   const nuovi = (serie?.riavvii || []).filter((r) => ["tensione", "blocco", "errore"].includes(r.motivo) && r.ora > (gia.riavvio_ora || 0) && adesso - r.ora < 6 * 3600);
   if (nuovi.length && (!gia.riavvii || adesso - gia.riavvii >= 3600)) {
@@ -1071,6 +1121,30 @@ export function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = nul
     gia.riavvii = adesso; gia.riavvio_ora = Math.max(...nuovi.map((x) => x.ora));   // detti tutti quelli fino a qui
   }
   return { testi, urgenti: gia };
+}
+
+// Riepilogo della settimana della torre (la domenica, con quello delle piante): gli ultimi 7 giorni interi.
+export function riepilogoTorreSettimana(torre, serie, met, adesso, tz = "Europe/Rome", piante = null) {
+  const nv = (n, d = 1) => String(Math.round(n * 10 ** d) / 10 ** d).replace(".", ","), oggi = giornoTorre(adesso, tz);
+  const g = (serie?.giorni || []).filter((x) => x[0] < oggi).slice(-7);
+  if (!g.length) return null;
+  const t = g.filter((x) => x[1] != null), min = t.reduce((a, x) => (!a || x[1] < a[1] ? x : a), null), max = t.reduce((a, x) => (!a || x[2] > a[2] ? x : a), null);
+  const u = g.filter((x) => x[4] != null), pompa = g.reduce((a, x) => a + (x[5] || 0), 0), freddo = g.reduce((a, x) => a + (x[6] || 0), 0);
+  const giorno = (d) => new Date(d + "T12:00:00Z").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", timeZone: "UTC" });
+  const L = [`🌱 ${torre?.nome || "Torre idroponica"} — la settimana`];
+  if (min) L.push(`🌡️ minima ${nv(min[1])} °C (${giorno(min[0])}), massima ${nv(max[2])} °C (${giorno(max[0])})${u.length ? `, umidità media ${Math.round(u.reduce((a, x) => a + x[4], 0) / u.length)}%` : ""}`);
+  L.push(`💧 pompa accesa ${pompa >= 120 ? nv(pompa / 60) + " ore" : pompa + " minuti"}${freddo ? `, ferma per il freddo ${freddo >= 120 ? nv(freddo / 60) + " ore" : freddo + " minuti"}` : ""}`);
+  const lav = lavoriTorre(torre, serie, adesso, tz, { met, piante }), sb = lav.serbatoio;
+  if (sb.capacita && sb.ultimo) L.push(`🪣 serbatoio: beve circa ${nv(sb.consumo)} L al giorno; restano circa ${nv(sb.rimasti, 0)} L su ${nv(sb.capacita, 0)}${sb.alMinimo ? ", da riempire entro " + new Date((sb.alMinimo - 86400) * 1000).toLocaleDateString("it-IT", { timeZone: tz, weekday: "long", day: "numeric" }) : ""} (stima prudente)`);
+  const prossimi = lav.voci.filter((v) => v.ogni > 0 && v.quanto != null && (v.tipo === "pulizia" || v.ultimo)).map((v) => v.tipo === "pulizia" ? `pulizia della pompa tra ${Math.max(0, Math.round(v.ogni - v.quanto))} ore di pompa` : `${v.nome.toLowerCase()} ${v.quanto >= v.ogni ? "da fare" : "tra " + Math.ceil(v.ogni - v.quanto) + " giorni"}`);
+  if (prossimi.length) L.push("🧰 " + prossimi.join(", "));
+  return L.join("\n");
+}
+// Pulsanti «Riempito» sotto i messaggi del serbatoio: i litri attorno alla stima (quanto è stato bevuto dall'ultimo rabbocco).
+export function pulsantiRiempito(sb) {
+  let v = [1, 2, 4, 6];
+  if (sb?.capacita && sb.rimasti != null) { const usato = Math.max(0.5, sb.capacita - sb.rimasti), r = (x) => Math.max(0.5, Math.round(x * 2) / 2); v = [...new Set([r(usato * 0.6), r(usato * 0.8), r(usato), r(usato * 1.2)])]; }
+  return { inline_keyboard: [v.map((l) => ({ text: `🪣 ${String(l).replace(".", ",")} L`, callback_data: `tr|r|${l}` })), [{ text: "🪣 Riempito, non so i litri", callback_data: "tr|r|0" }]] };
 }
 
 /* ---------------- Acqua di tutta la vita ----------------

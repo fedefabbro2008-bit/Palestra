@@ -113,7 +113,7 @@ async function toolGiardino(ctx, a = {}) {
   const rec = tutto.eventi.filter((e) => e.data >= M.addDays(oggi, -7)).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 25);
   if (rec.length) L.push("", "## Ultimi 7 giorni", ...rec.map((e) => `- [${e.id}] ${e.data} ${tutto.plants.find((p) => p.id === e.plantId)?.nome || e.plantId}: ${e.tipo}${e.litri ? " " + fmt(+e.litri, 2) + " L" : ""}${e.nota ? " — " + e.nota : ""} (${e.fonte})`));
   if (tuttePiante.some(daScrivere)) L.push("", ...COME_SCHEDA);
-  L.push("", `Misure dell'utente: bicchiere ${fmt(imp.bicchiere, 2)} L, annaffiatoio ${fmt(imp.annaffiatoio)} L. Notifiche Telegram (ora · accesa/spenta): ${M.NOTIFICHE_CON_ORA.map((k) => k + " " + String(M.oraNotifica(imp, k)).padStart(2, "0") + ":00" + (imp.notifiche?.[k] === false ? " spenta" : "")).join(", ")}.`);
+  L.push("", `Misure dell'utente: bicchiere ${fmt(imp.bicchiere, 2)} L, annaffiatoio ${fmt(imp.annaffiatoio)} L. Notifiche Telegram (ora · accesa/spenta): ${M.NOTIFICHE_CON_ORA.map((k) => k + " " + String(M.oraNotifica(imp, k)).padStart(2, "0") + ":00" + (imp.notifiche?.[k] === false ? " spenta" : M.giorniNotifica(imp, k).length < 7 ? " (" + M.giorniNotifica(imp, k).map((x) => M.GIORNI_SETTIMANA[x]).join(", ") + ")" : "")).join(", ")}; avvisi urgenti della torre ripetuti ogni ${M.oreUrgenti(imp)} ore; backup ${M.testoFrequenzaBackup(imp)}.`);
   return L.join("\n");
 }
 // un orto in breve: meteo di oggi e dei 2 giorni dopo, una riga per pianta (oggi, acqua nel terriccio, prossima innaffiatura), avvisi
@@ -417,14 +417,29 @@ async function toolImpostazioni(ctx, a) {
     if (!Number.isInteger(+v) || +v < 0 || +v > 23) throw new Error("orari: " + k + " tra 0 e 23 (ora intera)");
     orari[k] = +v;
   }
-  if (!Object.keys(nuove).length && !Object.keys(notif).length && !Object.keys(orari).length) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), orari, notifiche.");
+  // giorni della settimana delle notifiche quotidiane (0 = domenica); tutti e 7 = ogni giorno
+  const giorni = {};
+  for (const [k, v] of Object.entries(a.giorni && typeof a.giorni === "object" ? a.giorni : {})) {
+    if (!M.NOTIFICHE_GIORNALIERE.includes(k)) throw new Error("giorni: " + k + " non è quotidiana (" + M.NOTIFICHE_GIORNALIERE.join(", ") + ")");
+    if (!Array.isArray(v) || !v.length || v.some((x) => !Number.isInteger(+x) || +x < 0 || +x > 6)) throw new Error("giorni: " + k + " = elenco di giorni da 0 (domenica) a 6 (sabato), almeno uno");
+    giorni[k] = [...new Set(v.map(Number))].sort();
+  }
+  if (a.urgenti_ore != null && !(Number.isInteger(+a.urgenti_ore) && +a.urgenti_ore >= 1 && +a.urgenti_ore <= 48)) throw new Error("urgenti_ore: da 1 a 48");
+  if (a.backup_ogni != null && !Object.hasOwn(M.FREQUENZE_BACKUP, a.backup_ogni)) throw new Error("backup_ogni: " + Object.keys(M.FREQUENZE_BACKUP).join(", "));
+  if (a.backup_giorno != null && !(Number.isInteger(+a.backup_giorno) && +a.backup_giorno >= 0 && +a.backup_giorno <= 6)) throw new Error("backup_giorno: da 0 (domenica) a 6 (sabato)");
+  if (!Object.keys(nuove).length && !Object.keys(notif).length && !Object.keys(orari).length && !Object.keys(giorni).length && a.urgenti_ore == null && a.backup_ogni == null && a.backup_giorno == null) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), orari, giorni, urgenti_ore, backup_ogni, backup_giorno, notifiche.");
+  let bk = "";
   const out = await aggiorna(ctx.store, ctx.code, (d) => {
     const prima = { ...IMP_DEF, ...(d.impostazioni || {}) }, n = { ...(prima.notifiche || {}) };
     for (const [k, v] of Object.entries(notif)) { if (v) delete n[k]; else n[k] = false; }
-    d.impostazioni = { ...prima, ...nuove, notifiche: n, ...(Object.keys(orari).length ? { orari: { ...(prima.orari || {}), ...orari } } : {}) };
+    const gg = { ...(prima.giorni || {}) }; for (const [k, v] of Object.entries(giorni)) { if (v.length === 7) delete gg[k]; else gg[k] = v; }
+    d.impostazioni = { ...prima, ...nuove, notifiche: n, ...(Object.keys(orari).length ? { orari: { ...(prima.orari || {}), ...orari } } : {}), ...(Object.keys(giorni).length ? { giorni: gg } : {}), ...(a.urgenti_ore != null ? { urgenti_ore: +a.urgenti_ore } : {}),
+      ...(a.backup_ogni != null ? { backup_ogni: a.backup_ogni } : {}), ...(a.backup_giorno != null ? { backup_giorno: +a.backup_giorno } : {}) };
+    if (d.impostazioni.backup_ogni === "mese") delete d.impostazioni.backup_ogni;
+    bk = M.testoFrequenzaBackup(d.impostazioni);
   });
   ctx.saved(out);
-  return "Impostazioni aggiornate: " + [...Object.entries(nuove).map(([k, v]) => k + " " + v), ...Object.entries(notif).map(([k, v]) => "notifica " + k + (v ? " accesa" : " spenta")), ...Object.entries(orari).map(([k, v]) => k + " alle " + String(v).padStart(2, "0") + ":00")].join(", ") + ".";
+  return "Impostazioni aggiornate: " + [...Object.entries(nuove).map(([k, v]) => k + " " + v), ...Object.entries(notif).map(([k, v]) => "notifica " + k + (v ? " accesa" : " spenta")), ...Object.entries(orari).map(([k, v]) => k + " alle " + String(v).padStart(2, "0") + ":00"), ...Object.entries(giorni).map(([k, v]) => k + " " + (v.length === 7 ? "ogni giorno" : v.map((x) => M.GIORNI_SETTIMANA[x]).join(", "))), ...(a.urgenti_ore != null ? ["avvisi urgenti della torre ripetuti ogni " + a.urgenti_ore + " ore"] : []), ...(a.backup_ogni != null || a.backup_giorno != null ? ["backup su Telegram " + bk] : [])].join(", ") + ".";
 }
 
 /* ---------------- torre idroponica ---------------- */
@@ -432,7 +447,7 @@ async function toolImpostazioni(ctx, a) {
 const NOMI_CFG = { accesa_min: "pompa accesa per ciclo (min)", soglie: "fasce di temperatura: sopra (°C)", pause: "pausa per fascia (min)", freddo_stop: "pompa ferma sotto (°C)",
   freddo_riparte: "riparte sopra (°C)", notte_da: "notte dalle (ora)", notte_a: "notte fino alle (ora)", notte_fattore: "di notte pause ×", umido_soglia: "umidità alta da (%)",
   umido_fattore: "con umidità alta pause ×", pausa_max: "pausa massima (min)", misura_ogni_min: "una misura ogni (min)", wifi_ogni_min: "prova il Wi-Fi ogni (min)", wifi_max_min: "con il modem spento al massimo ogni (min)",
-  guasto_pausa: "sensore guasto: pausa di emergenza (min)", guasto_ferma: "sensore guasto: pompa ferma", cal_t: "correzione del termometro (°C)" };
+  guasto_pausa: "sensore guasto: pausa di emergenza (min)", guasto_ferma: "sensore guasto: pompa ferma", cal_t: "correzione del termometro (°C)", tieni_pb: "power bank tenuto acceso" };
 const POS_T = { fuori: "fuori (pioggia e gelo)", veranda: "in veranda", casa: "in casa" };
 const TZ_T = "Europe/Rome";
 const fmtOra = (s, tz = TZ_T) => new Date(s * 1000).toLocaleString("it-IT", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -463,7 +478,7 @@ async function toolTorre(ctx, a = {}) {
   else {
     const fa = (adesso - serie.ultimo) / 60;
     L.push(`Ultimo contatto: ${fmtOra(serie.ultimo, tz)} (${minuti(fa)} fa)${fa > M.SILENZIO_ORE * 60 ? " ⚠️ troppo tempo: corrente o Wi-Fi" : ""}. Il modem dell'utente è spento di notte e la mattina: le misure arrivano tutte insieme quando si riaccende.`);
-    if (st) L.push(`Allora: ${st.t != null ? fmt(st.t) + " °C, " : ""}${st.u != null ? fmt(st.u, 0) + "% di umidità, " : ""}pompa ${st.pompa ? "accesa" : "spenta"}${st.da ? " dalle " + oraT(st.da, tz) : ""}${st.fine ? (st.pompa ? ", fino alle " : ", fase finisce alle ") + oraT(st.fine, tz) : ""}, modo «${st.modo || "–"}»${st.rssi != null ? `, Wi-Fi ${fmt(st.rssi, 0)} dBm` : ""}${st.fw ? `, programma v${st.fw}` : ""}.`);
+    if (st) L.push(`Allora: ${st.t != null ? fmt(st.t) + " °C, " : ""}${st.u != null ? fmt(st.u, 0) + "% di umidità, " : ""}pompa ${st.pompa ? "accesa" : "spenta"}${st.da ? " dalle " + oraT(st.da, tz) : ""}${st.fine ? (st.pompa ? ", fino alle " : ", fase finisce alle ") + oraT(st.fine, tz) : ""}, modo «${st.modo || "–"}»${st.rssi != null ? `, Wi-Fi ${fmt(st.rssi, 0)} dBm` : ""}${st.fw ? `, programma v${st.fw}` : ""}${st.ta != null ? `, acqua del serbatoio ${fmt(st.ta)} °C` : ""}${st.livello ? `, galleggiante: livello ${st.livello === "basso" ? "BASSO (pompa ferma)" : "ok"}` : ""}${st.v != null ? `, alimentazione ${fmt(st.v, 2)} V (la più bassa ${fmt(st.vmin ?? st.v, 2)} V)` : ""}.`);
     const es = M.pompaStimata(st, tr.config, adesso, tz);
     if (es?.stima) L.push(`Adesso, stimato dai cicli (l'ultimo contatto è vecchio): pompa probabilmente ${es.pompa ? "accesa fino alle " : "in pausa fino alle "}${oraT(es.fine, tz)}.`);
     L.push(st?.rev === (+tr.rev || 1) ? "Impostazioni: l'ESP32 ha quelle di adesso." : "Impostazioni nuove in attesa: arrivano all'ESP32 al prossimo collegamento.");
@@ -493,6 +508,7 @@ async function toolTorre(ctx, a = {}) {
     `- notte dalle ${c.notte_da} alle ${c.notte_a}: pause ×${fmt(c.notte_fattore)}; umidità da ${fmt(c.umido_soglia, 0)}%: pause ×${fmt(c.umido_fattore)}; pausa massima ${c.pausa_max} min`,
     `- correzione del termometro: ${c.cal_t ? (c.cal_t > 0 ? "+" : "") + fmt(c.cal_t) + " °C (l'ESP32 dalla v7 la applica e ricalcola l'umidità)" : "nessuna"}`,
     `- sensore che non risponde: ${c.guasto_ferma ? "pompa ferma" : `ciclo di emergenza (${c.accesa_min} min accesa, ${c.guasto_pausa} di pausa)`}, ferma nelle ore di gelo previste`,
+    `- power bank: ${c.tieni_pb === false ? "non tenuto acceso (alimentatore da muro, power bank a bassa corrente o batteria: consuma meno)" : "tenuto acceso con un breve consumo ogni tanto (dalla v9 si spegne da qui)"}`,
     `- una misura ogni ${c.misura_ogni_min} min; Wi-Fi ogni ${c.wifi_ogni_min} min (con il modem spento si allunga fino a ${c.wifi_max_min})`);
   if (tr.comando?.id) L.push(`- accensione a mano chiesta: ${tr.comando.pompa_s} s (chiesta ${isFinite(Date.parse(tr.comando.at)) ? fmtOra(Date.parse(tr.comando.at) / 1000, tz) : "–"}; vale 2 ore, ${serie.fatti?.includes(tr.comando.id) ? "già fatta" : "in attesa"})`);
   // storico
@@ -539,6 +555,7 @@ async function toolTorreImposta(ctx, a = {}) {
   if (a.pause != null) { if (!Array.isArray(a.pause) || a.pause.length !== 6) throw new Error("pause: 6 valori in minuti, uno per fascia (l'ultima tra il freddo e la fascia più bassa)");
     nuove.pause = a.pause.map((x, i) => numeroT("pause[" + i + "]", x, 1, 240, true)); }
   if (a.guasto_ferma != null) { if (typeof a.guasto_ferma !== "boolean") throw new Error("guasto_ferma: true o false"); nuove.guasto_ferma = a.guasto_ferma; }
+  if (a.tieni_pb != null) { if (typeof a.tieni_pb !== "boolean") throw new Error("tieni_pb: true o false"); nuove.tieni_pb = a.tieni_pb; }
   const altro = {};
   if (a.nome != null) { const n = testo(a.nome, 40); if (!n) throw new Error("nome vuoto"); altro.nome = n; }
   if (a.posizione != null) { if (!M.POSIZIONI_TORRE.includes(a.posizione)) throw new Error("posizione: " + M.POSIZIONI_TORRE.join(", ")); altro.posizione = a.posizione; }
@@ -648,8 +665,12 @@ const TOOLS = [
     description: "Toglie il tuo piano salvato: app e promemoria Telegram tornano al calcolo automatico dell'app (meteo reale, aggiornato ogni giorno). Usalo se il piano è superato o l'utente lo chiede.",
     inputSchema: { type: "object", properties: {} }, annotations: { ...RW, destructiveHint: true, title: "Calcolo automatico" }, run: toolPianoAutomatico },
   { name: "impostazioni", title: "Misure e orari", write: true,
-    description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri), l'ora di ogni notifica Telegram (orari = {tipo: 0-23}, ora intera) e accende (true) o spegne (false) le notifiche Telegram: mattina (piano del mattino), sera (promemoria delle piante ancora da innaffiare), controllo (la sera, le piante da controllare col dito ancora senza risposta), avvisi (gelo, caldo, vento per domani), verifica (controllo del sabato col dito), riepilogo (domenica), backup (mensile), piano (fine del piano di Claude), torre (la sera: gelo e pioggia previsti dove sta la torre idroponica, freddo misurato, torre che non si fa sentire).",
+    description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri), l'ora di ogni notifica Telegram (orari = {tipo: 0-23}, ora intera) e accende (true) o spegne (false) le notifiche Telegram: mattina (piano del mattino), sera (promemoria delle piante ancora da innaffiare), controllo (la sera, le piante da controllare col dito ancora senza risposta), avvisi (gelo, caldo, vento per domani), verifica (controllo del sabato col dito), riepilogo (domenica), backup (il file con tutti i dati: backup_ogni settimana, 2settimane o mese, backup_giorno), piano (fine del piano di Claude), torre (la sera: gelo e pioggia previsti dove sta la torre idroponica, freddo misurato, torre che non si fa sentire).",
     inputSchema: { type: "object", properties: { bicchiere: { type: "number" }, annaffiatoio: { type: "number" }, ora_mattina: { type: "integer", description: "vecchio: ora di partenza delle notifiche del mattino senza un'ora propria" }, ora_sera: { type: "integer", description: "vecchio: ora di partenza delle altre senza un'ora propria" },
+      giorni: { type: "object", description: "giorni della settimana delle notifiche quotidiane (mattina, sera, controllo, avvisi, torre): elenco 0-6, 0 = domenica; tutti e 7 = ogni giorno", properties: Object.fromEntries(M.NOTIFICHE_GIORNALIERE.map((k) => [k, { type: "array", items: { type: "integer", minimum: 0, maximum: 6 } }])), additionalProperties: false },
+      backup_ogni: { type: "string", enum: Object.keys(M.FREQUENZE_BACKUP), description: "ogni quanto arriva il backup su Telegram: settimana, 2settimane (nel giorno backup_giorno) o mese (il primo giorno utile; predefinito)" },
+      backup_giorno: { type: "integer", minimum: 0, maximum: 6, description: "giorno del backup settimanale o di ogni 2 settimane: 0 = domenica (predefinito) … 6 = sabato" },
+      urgenti_ore: { type: "integer", minimum: 1, maximum: 48, description: "ogni quante ore si ripetono gli avvisi urgenti della torre finché il problema resta (predefinito 12)" },
       orari: { type: "object", description: "ora di ogni notifica, 0-23 (ora intera)", properties: Object.fromEntries(M.NOTIFICHE_CON_ORA.map((k) => [k, { type: "integer", minimum: 0, maximum: 23 }])), additionalProperties: false },
       notifiche: { type: "object", properties: Object.fromEntries(NOTIFICHE.map((k) => [k, { type: "boolean" }])), additionalProperties: false } } }, annotations: { ...RW, title: "Impostazioni" }, run: toolImpostazioni },
   { name: "torre", title: "Torre idroponica",
@@ -664,6 +685,7 @@ const TOOLS = [
       notte_fattore: { type: "number", minimum: 1, maximum: 4 }, umido_soglia: { type: "number", minimum: 50, maximum: 100 }, umido_fattore: { type: "number", minimum: 1, maximum: 3 }, pausa_max: { type: "integer", minimum: 10, maximum: 360 },
       cal_t: { type: "number", minimum: -10, maximum: 10, description: "correzione del termometro in °C (es. -2 se segna 2 gradi in più di un termometro affidabile); l'ESP32 ricalcola anche l'umidità" },
       guasto_pausa: { type: "integer", minimum: 5, maximum: 240, description: "sensore che non risponde: pausa del ciclo di emergenza (la pompa resta accesa accesa_min)" },
+      tieni_pb: { type: "boolean", description: "l'ESP32 tiene acceso il power bank con un breve consumo ogni 15 s circa (predefinito true); false con alimentatore da muro, power bank con modalità bassa corrente o batteria fatta apposta: consuma meno" },
       guasto_ferma: { type: "boolean", description: "sensore che non risponde: pompa ferma invece del ciclo di emergenza (sconsigliato col caldo: le radici seccano)" },
       misura_ogni_min: { type: "integer", minimum: 5, maximum: 60 }, wifi_ogni_min: { type: "integer", minimum: 5, maximum: 120 }, wifi_max_min: { type: "integer", minimum: 15, maximum: 240 },
       nome: { type: "string" }, posizione: { type: "string", enum: ["fuori", "veranda", "casa"], description: "dove sta: conta per gli avvisi di gelo e pioggia" }, orto: { type: "string", description: "id dell'orto (per il meteo degli avvisi)" },

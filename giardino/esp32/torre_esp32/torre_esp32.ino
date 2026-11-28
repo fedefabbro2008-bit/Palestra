@@ -2,7 +2,10 @@
 // Consumo ridotto: processore a 80 MHz, riposo leggero tra un evento e l'altro, Wi-Fi solo pochi secondi.
 // Pompa: cicli in base alla temperatura e all'umidità misurate, più lunghi di notte; ferma sotto 2 °C
 // (riparte sopra 4 °C). Misure salvate in memoria e mandate all'app Giardino quando c'è il Wi-Fi.
-// Versione 8: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
+// Versione 9: pronta per l'app online (giardino-fede.netlify.app). Basta compilare Wi-Fi, password e chiave.
+// Novità della v9: il power bank tenuto acceso si accende e si spegne dall'app; pezzi facoltativi, spenti di serie (vedi «PEZZI FACOLTATIVI» qui sotto): galleggiante del serbatoio
+// (pompa bloccata col serbatoio vuoto), sonda DS18B20 nell'acqua (il gelo si decide sulla temperatura dell'acqua),
+// misura della tensione di alimentazione (cali quando parte la pompa, power bank che si scarica).
 // Novità della v8: diagnostica per l'app (memoria libera e impulsi del power bank non partiti); se la radio non parte
 // per l'impulso si riprova una volta e intanto il processore resta occupato (consuma lo stesso); dopo un collegamento il
 // prossimo impulso aspetta (la radio ha appena consumato).
@@ -34,6 +37,28 @@
 #include "esp_task_wdt.h"
 #include "driver/gpio.h"
 
+// ================== PEZZI FACOLTATIVI (0 = non montato, 1 = montato) ==================
+#ifndef USA_GALLEGGIANTE
+#define USA_GALLEGGIANTE 0   // galleggiante del serbatoio: un filo al GPIO 27, l'altro a GND
+#endif
+#ifndef USA_SONDA_ACQUA
+#define USA_SONDA_ACQUA 0    // sonda DS18B20 nell'acqua: DAT al GPIO 4, VCC a 3V3, GND (schedina con la resistenza da 4,7 kΩ)
+#endif                        //   serve installare le librerie «OneWire» e «DallasTemperature»
+#ifndef USA_TENSIONE
+#define USA_TENSIONE 0       // tensione di alimentazione: 5V → resistenza 100 kΩ → GPIO 34 → resistenza 100 kΩ → GND
+#endif
+const int  PIN_GALLEGGIANTE = 27;
+const bool PIENO_SE_CHIUSO  = true;  // galleggiante a contatto chiuso quando c'è acqua; se funziona al contrario metti false
+const int  PIN_SONDA_ACQUA  = 4;
+const int  PIN_TENSIONE     = 34;
+const float PARTITORE       = 2.0;   // due resistenze uguali: la tensione vera è il doppio di quella sul pin
+#if USA_SONDA_ACQUA
+#include <OneWire.h>
+#include <DallasTemperature.h>
+OneWire unFilo(PIN_SONDA_ACQUA);
+DallasTemperature sondaAcqua(&unFilo);
+#endif
+
 // ================== DA COMPILARE ==================
 const char* WIFI_NOME     = "il-tuo-wifi";       // nome della rete (2,4 GHz: l'ESP32 non vede i 5 GHz)
 const char* WIFI_PASSWORD = "la-tua-password";
@@ -45,17 +70,19 @@ const char* SITO          = "https://giardino-fede.netlify.app/api/torre";   // 
 // seriale compare «certificato non accettato» e la torre non si collega più: vuol dire che il sito ha cambiato certificato.
 const bool VERIFICA_CERTIFICATO = true;
 // Alimentazione da power bank: true lo tiene acceso con un breve consumo ogni tanti secondi (circa 1 Wh al giorno).
+// Si accende e si spegne dall'app (Impostazioni → Torre → Alimentazione): questo è solo il valore finché l'app non lo manda.
+// Spento con un alimentatore da muro, un power bank con la modalità «bassa corrente» o una batteria fatta apposta.
 // Se il power bank si spegne lo stesso (nell'app compare «è mancata la corrente»): POWERBANK_OGNI_S più basso
-// (per esempio 8) o POWERBANK_PER_MS più alto (per esempio 3000). Con un alimentatore da muro mettilo a false.
+// (per esempio 8) o POWERBANK_PER_MS più alto (per esempio 3000).
 const bool     TIENI_ACCESO_POWERBANK = true;
 const uint32_t POWERBANK_OGNI_S  = 15;
 const uint32_t POWERBANK_PER_MS  = 1500;
 // ==================================================
 
 const int  PIN_RELE    = 26;
-const bool RELE_ATTIVO = HIGH;                         // High Level Trigger
+const bool RELE_ATTIVO = HIGH;                         // High Level Trigger; va bene anche un modulo MOSFET (acceso con HIGH)
 const char* FUSO       = "CET-1CEST,M3.5.0,M10.5.0/3"; // ora italiana con ora legale
-const uint32_t VERSIONE_FW = 8;
+const uint32_t VERSIONE_FW = 9;
 const uint32_t WATCHDOG_S = 90;                        // il programma bloccato per 90 s: l'ESP32 riparte da solo
 const uint32_t SVEGLIO_ALL_AVVIO_MS = 180000;          // 3 minuti per i comandi dal Monitor seriale
 
@@ -75,6 +102,8 @@ struct Config {
   float    calT = 0;                               // correzione del termometro (°C), dall'app
   bool     guastoFerma = false;                    // sensore che non risponde: pompa ferma invece del ciclo
   uint32_t rev = 0;                                // versione delle impostazioni (dall'app)
+  bool     tieniPb = TIENI_ACCESO_POWERBANK;      // power bank tenuto acceso, dall'app (in fondo: la struttura cambia
+                                                   // misura, le impostazioni vecchie si scartano e il sito le rimanda)
 } cfg;
 
 Preferences prefs;
@@ -93,8 +122,11 @@ uint32_t prossimoImpulsoMs = 0;                   // prossimo impulso per il pow
 uint16_t impulsiFalliti = 0;                       // impulsi in cui la radio non è partita (diagnostica per l'app)
 uint32_t gelo[6][2]; uint8_t nGelo = 0;            // ore di gelo previste dal meteo (dal sito), usate solo col sensore guasto
 
-enum Modo : uint8_t { NORMALE, NOTTE, UMIDO, FREDDO, SENZA_SENSORE, MANUALE, SICUREZZA };
-const char* NOMI_MODO[] = {"normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale", "sicurezza: pompa fermata"};
+enum Modo : uint8_t { NORMALE, NOTTE, UMIDO, FREDDO, SENZA_SENSORE, MANUALE, SICUREZZA, SERBATOIO_VUOTO };
+const char* NOMI_MODO[] = {"normale", "notte", "umido", "freddo: pompa ferma", "senza sensore", "manuale", "sicurezza: pompa fermata", "serbatoio vuoto: pompa ferma"};
+float tAcqua = NAN;                                // sonda nell'acqua (NAN se non c'è o non risponde)
+bool serbatoioVuoto = false;                       // galleggiante: livello basso
+float tensione = NAN, tensioneMin = NAN;           // alimentazione adesso e la più bassa dall'ultimo invio
 const char* motivoRiavvio = "altro";               // perché l'ESP32 è ripartito: lo si dice all'app
 uint8_t umidoDiFila = 0; uint32_t ultimoCaldoMs = 0; bool maiScaldato = true;   // riscaldatore dell'SHT40
 Modo modo = NORMALE;
@@ -117,13 +149,20 @@ uint32_t quandoComunica() {
   uint32_t a = cambioPompaMs + 3000, b = ultimoInvioPompaMs + 60000;
   return ultimoInvioPompaMs && (int32_t)(b - a) > 0 ? b : a;
 }
+void leggiTensione();
 void rele(bool on) {
+  bool parte = on && !pompaAccesa;
   if (on != pompaAccesa) { comunicaPompa = true; cambioPompaMs = millis(); }
   if (on && !pompaAccesa) accesaDaMs = millis();
   if (!on && pompaAccesa) secondiPompa += (millis() - accesaDaMs) / 1000;
   pompaAccesa = on;
   gpio_hold_dis((gpio_num_t)PIN_RELE);
   digitalWrite(PIN_RELE, on ? RELE_ATTIVO : !RELE_ATTIVO);
+#if USA_TENSIONE
+  if (parte) { delay(150); leggiTensione(); }               // la tensione più bassa è appena parte la pompa (anche a mano)
+#else
+  (void)parte;
+#endif
 }
 
 // ---------- ora: resta giusta dopo un riavvio senza mancanza di corrente (la memoria RTC non si cancella) ----------
@@ -181,17 +220,48 @@ void avviaSensore() {
   shtOk = sht4.begin();
   if (shtOk) { sht4.setPrecision(SHT4X_HIGH_PRECISION); sht4.setHeater(SHT4X_NO_HEATER); }
 }
+// ---------- pezzi facoltativi ----------
+void leggiAcqua() {
+#if USA_SONDA_ACQUA
+  sondaAcqua.requestTemperatures();
+  float t = sondaAcqua.getTempCByIndex(0);
+  tAcqua = (t == DEVICE_DISCONNECTED_C || t < -30 || t > 80) ? NAN : t;
+#endif
+}
+// galleggiante: letto solo con la pompa spenta da almeno un minuto (con la pompa accesa l'acqua è nella torre e il livello
+// scende); cinque letture, vince la maggioranza (l'acqua che ondeggia)
+void leggiLivello() {
+#if USA_GALLEGGIANTE
+  if (pompaAccesa || (cambioPompaMs && millis() - cambioPompaMs < 60000UL)) return;   // all'accensione si legge subito
+  int chiuso = 0; for (int i = 0; i < 5; i++) { chiuso += digitalRead(PIN_GALLEGGIANTE) == LOW; delay(20); }
+  bool pieno = PIENO_SE_CHIUSO ? chiuso >= 3 : chiuso < 3;
+  if (serbatoioVuoto && pieno) Serial.println("Galleggiante: serbatoio di nuovo pieno");
+  if (!serbatoioVuoto && !pieno) Serial.println("Galleggiante: serbatoio vuoto, pompa ferma");
+  serbatoioVuoto = !pieno;
+#endif
+}
+void leggiTensione() {
+#if USA_TENSIONE
+  uint32_t mv = 0; for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(PIN_TENSIONE);
+  tensione = mv / 8.0f / 1000.0f * PARTITORE;
+  if (isnan(tensioneMin) || tensione < tensioneMin) tensioneMin = tensione;
+#endif
+}
+
 void aggiornaMisura() {
   float t, u;
   bool ok = misura(t, u);
   if (!ok) { avviaSensore(); ok = misura(t, u); }          // non risponde: lo si riavvia e si riprova subito
   if (ok) { ultimaT = t; ultimaU = u; if (erroriSensore) Serial.println("Sensore di nuovo a posto"); erroriSensore = 0; }
-  else { ultimaT = NAN; ultimaU = NAN; if (erroriSensore < 65535) erroriSensore++; fermaPerFreddo = false; }  // senza misura il freddo lo dice il meteo
+  else { ultimaT = NAN; ultimaU = NAN; if (erroriSensore < 65535) erroriSensore++; }
   ultimaMisuraMs = millis();
-  if (!isnan(ultimaT)) {                                   // freddo con isteresi: ferma sotto 2, riparte sopra 4
-    if (ultimaT < cfg.freddoStop) fermaPerFreddo = true;
-    else if (ultimaT > cfg.freddoRiparte) fermaPerFreddo = false;
-  }
+  leggiAcqua(); leggiLivello(); leggiTensione();
+  // freddo con isteresi (ferma sotto 2, riparte sopra 4): sulla temperatura dell'acqua se c'è la sonda, se no sull'aria;
+  // senza nessuna delle due il freddo lo dicono le ore di gelo previste
+  float tg = !isnan(tAcqua) ? tAcqua : ultimaT;
+  if (isnan(tg)) fermaPerFreddo = false;
+  else if (tg < cfg.freddoStop) fermaPerFreddo = true;
+  else if (tg > cfg.freddoRiparte) fermaPerFreddo = false;
 }
 // SHT40 nell'umidità alta per ore (nebbia, pioggia): la misura dell'umidità resta alta anche dopo. Il suo riscaldatore
 // interno lo asciuga: un secondo, al massimo una volta l'ora, dopo 3 misure di fila sopra il 95%. La misura dopo è fra 10 minuti.
@@ -215,13 +285,15 @@ bool pompaVietata() { return fermaPerFreddo || (isnan(ultimaT) && geloPrevisto()
 void decidi(uint32_t &accesaS, uint32_t &pausaS) {
   if (millis() - ultimaMisuraMs > 120000 || isnan(ultimaT)) aggiornaMisura();
   float T = ultimaT;
+  leggiLivello();
+  if (serbatoioVuoto) { modo = SERBATOIO_VUOTO; accesaS = 0; pausaS = cfg.misuraOgniMin * 60; return; }   // galleggiante
+  if (fermaPerFreddo) { modo = FREDDO; accesaS = 0; pausaS = cfg.misuraOgniMin * 60; return; }
   if (isnan(T)) {                                          // sensore guasto: ciclo di emergenza, ferma col gelo previsto
     modo = SENZA_SENSORE;
     if (cfg.guastoFerma || geloPrevisto()) { accesaS = 0; pausaS = cfg.misuraOgniMin * 60; }
     else { accesaS = cfg.accesaMin * 60; pausaS = cfg.guastoPausa * 60; }
     return;
   }
-  if (fermaPerFreddo) { modo = FREDDO; accesaS = 0; pausaS = cfg.misuraOgniMin * 60; return; }
   int fascia = 5;
   for (int i = 0; i < 5; i++) if (T > cfg.soglie[i]) { fascia = i; break; }
   float pausa = cfg.pause[fascia];
@@ -249,7 +321,8 @@ void prossimaFase() {
   pausaProssimaS = pausaS;
   if (accesaS == 0) {
     fineFaseMs = millis() + pausaS * 1000UL;
-    if (modo == SENZA_SENSORE) Serial.println(geloPrevisto() ? "Sensore guasto e gelo previsto: pompa ferma" : "Sensore guasto: pompa ferma (impostazioni)");
+    if (modo == SERBATOIO_VUOTO) Serial.println("Serbatoio vuoto: pompa ferma finché non lo riempi");
+    else if (modo == SENZA_SENSORE) Serial.println(geloPrevisto() ? "Sensore guasto e gelo previsto: pompa ferma" : "Sensore guasto: pompa ferma (impostazioni)");
     else Serial.printf("Freddo (%.1f °C): pompa ferma, riparte sopra %.0f °C\n", ultimaT, cfg.freddoRiparte);
     return;
   }
@@ -327,6 +400,7 @@ void applicaConfig(JsonObject c) {
   cfg.guastoPausa   = c["guasto_pausa"]    | cfg.guastoPausa;
   cfg.guastoFerma   = c["guasto_ferma"]    | cfg.guastoFerma;
   cfg.calT          = c["cal_t"]           | cfg.calT;
+  cfg.tieniPb       = c["tieni_pb"]        | cfg.tieniPb;
   if (cfg.calT < -10 || cfg.calT > 10) cfg.calT = 0;
   cfg.rev           = c["rev"]             | cfg.rev;
   salvaConfig();
@@ -599,7 +673,12 @@ bool mandaBlocco(int &comandoPompaS) {
   JsonObject st = doc["stato"].to<JsonObject>();
   st["modo"] = NOMI_MODO[fermaPerFreddo ? FREDDO : modo]; st["pompa"] = pompaAccesa; st["rssi"] = WiFi.RSSI();
   if (erroriSensore) st["sensore_errori"] = erroriSensore;
-  if (TIENI_ACCESO_POWERBANK) { JsonArray pb = st["pb"].to<JsonArray>(); pb.add(pbOgniS); pb.add(pbPerMs); pb.add(pbAllungato); }
+  if (!isnan(tAcqua)) st["ta"] = tAcqua;                   // pezzi facoltativi
+#if USA_GALLEGGIANTE
+  st["livello"] = serbatoioVuoto ? "basso" : "ok";
+#endif
+  if (!isnan(tensione)) { st["v"] = tensione; st["vmin"] = tensioneMin; }
+  if (cfg.tieniPb) { JsonArray pb = st["pb"].to<JsonArray>(); pb.add(pbOgniS); pb.add(pbPerMs); pb.add(pbAllungato); }
   { JsonArray dg = st["diag"].to<JsonArray>(); dg.add(ESP.getFreeHeap()); dg.add(ESP.getMinFreeHeap()); dg.add(impulsiFalliti); }   // diagnostica
   st["riavvio"] = motivoRiavvio;
   if (oraNota()) {                                          // da quando la pompa è così e quando finisce questa fase (ora vera)
@@ -656,6 +735,7 @@ bool mandaBlocco(int &comandoPompaS) {
   int c = ris["comando"]["pompa_s"] | 0;                    // arriva una volta sola: non cancellarlo con l'invio dopo
   if (c > 0) comandoPompaS = c;
   memoriaFormattata = false;                                // detto al sito
+  tensioneMin = tensione;                                   // la più bassa riparte da adesso
   if (n) togliPrime(n);
   Serial.printf("Mandate %u misure\n", (unsigned)n);
   return true;
@@ -684,7 +764,7 @@ void collegati() {
   spegniWiFi();
   if (chiaveRifiutata) attesaWiFiMin = cfg.wifiMaxMin;      // chiave sbagliata: riprova di rado, le misure restano in memoria
   prossimoImpulsoMs = millis() + pbOgniS * 1000UL;         // la radio ha appena consumato: il prossimo impulso aspetta
-  if (comando > 0 && comando <= 600 && !pompaVietata()) {   // accensione dall'app, mai col freddo
+  if (comando > 0 && comando <= 600 && !pompaVietata() && !serbatoioVuoto) {   // accensione dall'app, mai col freddo né a secco
     rele(true); modo = MANUALE; manualeFinoMs = millis() + comando * 1000UL;
     Serial.printf("Comando dall'app: pompa accesa %d s\n", comando);
   }
@@ -702,7 +782,7 @@ void caricaPowerBank(bool fwNuovo, bool persaCorrente) {
   pbOgniS = prefs.getUInt("pbOgni", POWERBANK_OGNI_S); pbPerMs = prefs.getUInt("pbPer", POWERBANK_PER_MS); pbAllungato = prefs.getUChar("pbN", 0);
   bool eraVivo = prefs.getBool("pbVivo", false);
   if (eraVivo) prefs.putBool("pbVivo", false);
-  if (TIENI_ACCESO_POWERBANK && persaCorrente && eraVivo && !fwNuovo && (pbOgniS > 5 || pbPerMs < 4000)) {
+  if (cfg.tieniPb && persaCorrente && eraVivo && !fwNuovo && (pbOgniS > 5 || pbPerMs < 4000)) {
     pbOgniS = max<uint32_t>(5, pbOgniS * 2 / 3); pbPerMs = min<uint32_t>(4000, pbPerMs * 3 / 2); if (pbAllungato < 99) pbAllungato++;
     prefs.putUInt("pbOgni", pbOgniS); prefs.putUInt("pbPer", pbPerMs); prefs.putUChar("pbN", pbAllungato);
     Serial.printf("Power bank spento? Impulso allungato: %lu ms ogni %lu s\n", (unsigned long)pbPerMs, (unsigned long)pbOgniS);
@@ -725,7 +805,7 @@ void impulsoPowerBank() {
   WiFi.mode(WIFI_OFF);
 }
 void tieniAccesoPowerBank() {
-  if (!TIENI_ACCESO_POWERBANK || (int32_t)(millis() - prossimoImpulsoMs) < 0) return;
+  if (!cfg.tieniPb || (int32_t)(millis() - prossimoImpulsoMs) < 0) return;
   if (!pompaAccesa) impulsoPowerBank();
   prossimoImpulsoMs = millis() + pbOgniS * 1000UL;
 }
@@ -740,7 +820,7 @@ void riposa() {
   if (strlen(CHIAVE_TORRE)) piuVicino(prossimoWiFiMs);
   if (manualeFinoMs) piuVicino(manualeFinoMs);
   if (comunicaPompa) piuVicino(quandoComunica());
-  if (TIENI_ACCESO_POWERBANK) piuVicino(prossimoImpulsoMs);
+  if (cfg.tieniPb) piuVicino(prossimoImpulsoMs);
   if (attesa < 50) return;
   if (ora < SVEGLIO_ALL_AVVIO_MS) { delay(min<int32_t>(attesa, 100)); return; }   // primi 3 minuti: sveglio per i comandi
   Serial.flush();
@@ -778,6 +858,7 @@ void setup() {
   if (fwNuovo) motivoRiavvio = "programma";
   Serial.printf("Riavvio: %s\n", motivoRiavvio);
   riprendiOra(accensione);
+  caricaConfig();                                           // prima del power bank: dice se tenerlo acceso
   caricaPowerBank(fwNuovo, accensione && !fwNuovo);
   // memoria: si riprova prima di formattare; la prima accensione in assoluto la formatta senza dirlo (è vuota)
   for (int i = 0; i < 3 && !memoriaOk; i++) { memoriaOk = LittleFS.begin(false); if (!memoriaOk) delay(300); }
@@ -787,18 +868,25 @@ void setup() {
     memoriaFormattata = memoriaOk && avvioN > 1;
     if (!memoriaOk) Serial.println("Memoria guasta: la torre lavora lo stesso, ma le misure non restano se manca il Wi-Fi");
   }
-  caricaConfig();
   caricaGelo();
   attesaWiFiMin = cfg.wifiOgniMin;
   Wire.begin(21, 22);
   avviaSensore();
+#if USA_GALLEGGIANTE
+  pinMode(PIN_GALLEGGIANTE, INPUT_PULLUP);
+  delay(10); leggiLivello();                                // pompa sicuramente spenta: il livello si sa prima del primo ciclo
+#endif
+#if USA_SONDA_ACQUA
+  sondaAcqua.begin(); sondaAcqua.setResolution(11);         // 0,125 °C, misura in circa 0,4 s
+  Serial.println(sondaAcqua.getDeviceCount() ? "Sonda dell'acqua ok" : "Sonda dell'acqua NON trovata");
+#endif
   Serial.println(shtOk ? "SHT40 ok" : "SHT40 NON trovato: ciclo di emergenza (riprova a ogni misura)");
   Serial.printf("Misure in memoria: %u\n", (unsigned)quanteMisure());
   aggiornaMisura();
   prossimaFase();
   prossimaMisuraMs = millis() + 60000;
   prossimoWiFiMs = millis() + 20000;
-  if (TIENI_ACCESO_POWERBANK) Serial.printf("Power bank tenuto acceso: radio accesa %lu ms ogni %lu s\n", (unsigned long)pbPerMs, (unsigned long)pbOgniS);
+  if (cfg.tieniPb) Serial.printf("Power bank tenuto acceso: radio accesa %lu ms ogni %lu s\n", (unsigned long)pbPerMs, (unsigned long)pbOgniS);
   prossimoImpulsoMs = millis() + pbOgniS * 1000UL;
   Serial.println("Comandi (primi 3 minuti dopo l'accensione): p = pompa 30 s, t = misura, s = stato, w = Wi-Fi, c = cancella misure");
 }
@@ -830,10 +918,16 @@ void loop() {
   while (Serial.available()) {
     char c = Serial.read();
     if (c == 'p') {
-      if (pompaVietata()) Serial.println("Troppo freddo: la pompa resta ferma");
+      if (serbatoioVuoto) Serial.println("Serbatoio vuoto: la pompa resta ferma");
+      else if (pompaVietata()) Serial.println("Troppo freddo: la pompa resta ferma");
       else { rele(true); modo = MANUALE; manualeFinoMs = millis() + 30000; Serial.println("Pompa 30 s"); }
     }
-    else if (c == 't') { aggiornaMisura(); Serial.printf("%.2f °C, %.1f %%%s\n", ultimaT, ultimaU, fermaPerFreddo ? " (freddo: pompa ferma)" : ""); }
+    else if (c == 't') {
+      aggiornaMisura(); Serial.printf("%.2f °C, %.1f %%%s\n", ultimaT, ultimaU, fermaPerFreddo ? " (freddo: pompa ferma)" : "");
+      if (USA_SONDA_ACQUA) Serial.printf("Acqua: %.2f °C\n", tAcqua);
+      if (USA_GALLEGGIANTE) Serial.println(serbatoioVuoto ? "Serbatoio: vuoto" : "Serbatoio: ok");
+      if (USA_TENSIONE) Serial.printf("Alimentazione: %.2f V (minima %.2f V)\n", tensione, tensioneMin);
+    }
     else if (c == 's') {
       Serial.printf("Pompa %s, modo %s, fase finisce tra %ld s\n", pompaAccesa ? "ACCESA" : "spenta",
                     NOMI_MODO[fermaPerFreddo ? FREDDO : modo], (long)((int32_t)(fineFaseMs - millis()) / 1000));

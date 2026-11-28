@@ -1,6 +1,6 @@
 # Giardino · compila il programma dell'ESP32 della torre idroponica a ogni modifica (repository pubblico: minuti gratuiti).
 # Stessa scheda e stesse librerie dell'Arduino IDE; due versioni del pacchetto ESP32 (la 2 e la 3), perché nell'IDE può
-# esserci l'una o l'altra. Così gli errori di compilazione si vedono qui, prima di caricare il programma.
+# esserci l'una o l'altra; e con i pezzi facoltativi (galleggiante, sonda dell'acqua, tensione) spenti e accesi. Così gli errori di compilazione si vedono qui, prima di caricare il programma.
 name: Giardino · programma ESP32
 on:
   push:
@@ -22,9 +22,10 @@ jobs:
       fail-fast: false
       matrix:
         esp32: ["2.0.17", "3.3.0"]
+        pezzi: ["base", "tutti"]
     steps:
       - uses: actions/checkout@v5
-      - name: Compila torre_esp32 (pacchetto ESP32 ${{ matrix.esp32 }})
+      - name: Compila torre_esp32 (pacchetto ESP32 ${{ matrix.esp32 }}, pezzi facoltativi ${{ matrix.pezzi }})
         uses: arduino/compile-sketches@v1
         with:
           fqbn: esp32:esp32:esp32:PartitionScheme=default
@@ -35,9 +36,13 @@ jobs:
           libraries: |
             - name: Adafruit SHT4x Library
             - name: ArduinoJson
+            - name: OneWire
+            - name: DallasTemperature
           sketch-paths: |
             - giardino/esp32/torre_esp32
           enable-warnings-report: true
           cli-compile-flags: |
             - --warnings
             - default
+            - --build-property
+            - compiler.cpp.extra_flags=${{ matrix.pezzi == 'tutti' && '-DUSA_SONDA_ACQUA=1 -DUSA_GALLEGGIANTE=1 -DUSA_TENSIONE=1' || '' }}
