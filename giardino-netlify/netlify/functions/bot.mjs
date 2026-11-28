@@ -46,7 +46,7 @@ async function uno(st, tkey) {
   // ogni notifica alla sua ora (Impostazioni → Notifiche): dovute = da fare adesso; passate = ora finita senza giro del bot
   const fatti = fattiOggi(t, oggi), dovute = new Set(), passate = [];
   for (const k of M.NOTIFICHE_CON_ORA) {
-    if (fatti.has(k) || ora < M.oraNotifica(imp, k)) continue;
+    if (fatti.has(k) || ora < M.oraNotifica(imp, k) || !M.notificaOggi(imp, k, oggi)) continue;   // non è il suo giorno
     if (ora < M.fineNotifica(imp, k)) dovute.add(k); else passate.push(k);
   }
   if (!dovute.size && !passate.length) return;

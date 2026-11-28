@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
-<meta name="giardino-build" content="26fbb581cd24">
+<meta name="giardino-build" content="e9d249c04477">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -390,6 +390,10 @@ table.mesi tr.ora td b::after{content:" · adesso";color:var(--water)}
 /* notifiche: interruttori come su iPhone */
 .notif{display:flex;flex-direction:column}
 .sw-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);cursor:pointer}
+.giorni{display:flex;gap:4px;margin:-4px 0 10px}
+.giorni button{flex:1 1 0;min-width:0;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);font:inherit;font-size:.8rem;font-weight:700;cursor:pointer}
+.giorni button[aria-pressed="true"]{background:var(--water);border-color:var(--water);color:var(--on-water)}
+.giorni[aria-disabled="true"]{opacity:.45;pointer-events:none}
 .sw-row:first-child{border-top:0;padding-top:2px}
 .sw-row select.ora{flex:none;width:auto;min-width:0;padding:6px 26px 6px 10px;font-size:16px;font-variant-numeric:tabular-nums;border-radius:10px;background-position:right 8px center}
 .sw-row select.ora:disabled{opacity:.45}
@@ -2232,6 +2236,19 @@ function oraNotifica(imp, tipo){
   const m=NOTIFICHE_MATTINO.includes(tipo), d=Number(m?imp?.ora_mattina:imp?.ora_sera);
   return Number.isInteger(d) && d>=0 && d<=23 ? d : (m?7:19);
 }
+// Giorni della settimana di una notifica quotidiana (impostazioni.giorni = {tipo: [0..6]}, 0 = domenica): senza, tutti.
+// Le notifiche settimanali e mensili hanno già il loro giorno.
+const NOTIFICHE_GIORNALIERE = ["mattina", "sera", "controllo", "avvisi", "torre"];
+const GIORNI_SETTIMANA = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
+function giorniNotifica(imp, tipo) {
+  const g = imp?.giorni?.[tipo];
+  if (!NOTIFICHE_GIORNALIERE.includes(tipo) || !Array.isArray(g)) return [0, 1, 2, 3, 4, 5, 6];
+  const v = [...new Set(g.map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))].sort();
+  return v.length ? v : [0, 1, 2, 3, 4, 5, 6];
+}
+const notificaOggi = (imp, tipo, oggi) => giorniNotifica(imp, tipo).includes(new Date(oggi + "T12:00:00Z").getUTCDay());
+// avvisi urgenti della torre: ogni quante ore si ripetono finché il problema resta (impostazioni.urgenti_ore, 1–48)
+const oreUrgenti = (imp) => { const n = Math.round(+imp?.urgenti_ore); return n >= 1 && n <= 48 ? n : 12; };
 const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));
 
 /* ---------------- Torre idroponica (ESP32 + pompa + SHT40) ----------------
@@ -2626,7 +2643,7 @@ function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome", piante
 // Avvisi urgenti della torre, da mandare appena arrivano le misure (non la sera): ogni tipo quando comincia, poi al massimo
 // ogni 12 ore finché dura; i riavvii anomali uno per accensione, al massimo uno all'ora. Restituisce i testi e lo stato nuovo.
 const URGENTI_TORRE = ["sensore", "freddo_ora", "sicurezza", "serbatoio_ora", "livello_ora", "riavvii"];
-function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = null, piante = null) {
+function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = null, piante = null, ogniOre = 12) {
   const gia = { ...(serie?.urgenti || {}) }, testi = [], tutti = avvisiTorre(torre, serie, met, giornoTorre(adesso, tz), adesso, tz, piante);
   const attivi = new Map(tutti.filter((a) => ["sensore", "sicurezza"].includes(a.tipo)).map((a) => [a.tipo, a.testo]));
   const serb = tutti.find((a) => a.tipo === "serbatoio" && a.urgente);   // serbatoio al minimo o che ci arriva entro un giorno
@@ -2636,7 +2653,7 @@ function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = null, pian
   if (st && /freddo/.test(st.modo || "")) attivi.set("freddo_ora", `❄️ Pompa ferma per il freddo${st.t != null ? ` (${String(st.t).replace(".", ",")} °C)` : ""}: riparte da sola sopra ${String(configTorre(torre?.config).freddo_riparte).replace(".", ",")} °C. Se gela, copri o porta dentro il serbatoio.`);
   for (const k of ["sensore", "freddo_ora", "sicurezza", "serbatoio_ora", "livello_ora"]) {
     if (!attivi.has(k)) { delete gia[k]; continue; }
-    if (!gia[k] || adesso - gia[k] >= 12 * 3600) { testi.push(attivi.get(k)); gia[k] = adesso; }
+    if (!gia[k] || adesso - gia[k] >= ogniOre * 3600 - 300) { testi.push(attivi.get(k)); gia[k] = adesso; }
   }
   const nuovi = (serie?.riavvii || []).filter((r) => ["tensione", "blocco", "errore"].includes(r.motivo) && r.ora > (gia.riavvio_ora || 0) && adesso - r.ora < 6 * 3600);
   if (nuovi.length && (!gia.riavvii || adesso - gia.riavvii >= 3600)) {
@@ -4346,9 +4363,18 @@ function selettoreOra(k, t){
   const h=oraNotifica(S.impostazioni,k), ore=ORE_NOTIFICA.includes(h)?ORE_NOTIFICA:[h,...ORE_NOTIFICA].sort((a,b)=>a-b);
   return `<select class="ora" data-ora="${k}" aria-label="Ora: ${esc(t)}"${notAttiva(k)?'':' disabled'}>${ore.map(o=>`<option value="${o}"${o===h?' selected':''}>${String(o).padStart(2,'0')}:00</option>`).join('')}</select>`;
 }
+// giorni della settimana delle notifiche quotidiane (da lunedì): tutti accesi = ogni giorno
+const ORDINE_GIORNI=[1,2,3,4,5,6,0], LETTERE_GIORNI={1:'L',2:'M',3:'M',4:'G',5:'V',6:'S',0:'D'}, NOMI_GIORNI={1:'lunedì',2:'martedì',3:'mercoledì',4:'giovedì',5:'venerdì',6:'sabato',0:'domenica'};
+function selettoreGiorni(k,t){
+  const g=giorniNotifica(S.impostazioni,k);
+  return `<div class="giorni" role="group" aria-label="Giorni: ${esc(t)}" data-giorni="${k}"${notAttiva(k)?'':' aria-disabled="true"'}>${ORDINE_GIORNI.map(d=>`<button type="button" data-giorno="${d}" aria-pressed="${g.includes(d)}" aria-label="${NOMI_GIORNI[d]}">${LETTERE_GIORNI[d]}</button>`).join('')}</div>`;
+}
+const ORE_URGENTI=[1,2,3,6,12,24];
 function renderNotifiche(){
   const i=S.impostazioni;
-  setHTML($('#notList'),notifVisibili().map(([k,t,d])=>`<div class="sw-row"><label class="sw-t" for="not-${k}"><b>${t}</b><span>${esc(d(i))}</span></label>${NOTIFICHE_CON_ORA.includes(k)?selettoreOra(k,t):''}<input type="checkbox" role="switch" class="sw" id="not-${k}" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></div>`).join(''));
+  setHTML($('#notList'),notifVisibili().map(([k,t,d])=>`<div class="sw-row"><label class="sw-t" for="not-${k}"><b>${t}</b><span>${esc(d(i))}</span></label>${NOTIFICHE_CON_ORA.includes(k)?selettoreOra(k,t):''}<input type="checkbox" role="switch" class="sw" id="not-${k}" data-not="${k}" aria-label="${t}"${notAttiva(k)?' checked':''}></div>`
+    +(NOTIFICHE_GIORNALIERE.includes(k)?selettoreGiorni(k,t):'')).join('')
+    +(torreOn()?`<div class="sw-row"><label class="sw-t" for="urgOre"><b>Avvisi urgenti della torre</b><span>Sensore guasto, freddo, serbatoio vuoto: arrivano subito, poi si ripetono finché il problema resta</span></label><select class="ora" id="urgOre" aria-label="Ripeti ogni">${ORE_URGENTI.map(o=>`<option value="${o}"${o===oreUrgenti(i)?' selected':''}>ogni ${o} h</option>`).join('')}</select></div>`:''));
   chipNotifiche();
 }
 /* ================= Torre idroponica =================
@@ -5432,13 +5458,24 @@ function wire(){
     ['#impB','#impA'].forEach(x=>{ $(x).blur(); $(x)._last=undefined; });   // mostra i valori validati, anche se uguali a prima
     saveMain(); renderAll(); toast('Salvato');
   });
+  // giorni della settimana: almeno uno; tutti = ogni giorno (si toglie l'impostazione)
+  $('#notList').addEventListener('click',e=>{
+    const b=e.target.closest('[data-giorno]'); if(!b) return;
+    const k=b.closest('[data-giorni]').dataset.giorni, d=+b.dataset.giorno, g=new Set(giorniNotifica(S.impostazioni,k));
+    if(g.has(d)){ if(g.size===1){ toast('Almeno un giorno: per non riceverla spegnila'); return; } g.delete(d); } else g.add(d);
+    const tutti={...(S.impostazioni.giorni||{})}; if(g.size===7) delete tutti[k]; else tutti[k]=[...g].sort();
+    S.impostazioni={...S.impostazioni, giorni:tutti}; saveMain(); b.setAttribute('aria-pressed',String(g.has(d)));
+    toast(NOTIF.find(x=>x[0]===k)[1]+': '+(g.size===7?'ogni giorno':ORDINE_GIORNI.filter(x=>g.has(x)).map(x=>NOMI_GIORNI[x].slice(0,3)).join(', ')));
+  });
   $('#notList').addEventListener('change',e=>{
+    if(e.target.id==='urgOre'){ const h=+e.target.value; S.impostazioni={...S.impostazioni, urgenti_ore:h}; saveMain(); toast('Avvisi urgenti: ripetuti ogni '+h+' '+(h===1?'ora':'ore')); return; }
     const o=e.target.closest('[data-ora]');
     if(o){ const k=o.dataset.ora, h=parseInt(o.value,10); if(!(h>=0&&h<=23)) return;
       S.impostazioni={...S.impostazioni, orari:{...(S.impostazioni.orari||{}), [k]:h}}; saveMain();
       toast(NOTIF.find(x=>x[0]===k)[1]+': alle '+String(h).padStart(2,'0')+':00'); return; }
     const x=e.target.closest('[data-not]'); if(!x) return;
     const sel=$('#notList [data-ora="'+x.dataset.not+'"]'); if(sel) sel.disabled=!x.checked;
+    const gg=$('#notList [data-giorni="'+x.dataset.not+'"]'); if(gg){ if(x.checked) gg.removeAttribute('aria-disabled'); else gg.setAttribute('aria-disabled','true'); }
     const n={...(S.impostazioni.notifiche||{})}; if(x.checked) delete n[x.dataset.not]; else n[x.dataset.not]=false;
     S.impostazioni={...S.impostazioni, notifiche:n}; saveMain(); chipNotifiche();
     const cp=$('#set-not .campana'); cp.classList.remove('squilla','zitto'); void cp.offsetWidth;

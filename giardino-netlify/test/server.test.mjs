@@ -755,6 +755,17 @@ test("orari delle notifiche: ognuna alla sua ora, quelle fatte non si ripetono, 
   assert.ok((await strumento("impostazioni", { orari: { boh: 9 } })).isError, "tipo sconosciuto");
   assert.ok((await strumento("impostazioni", { orari: { sera: 25 } })).isError);
   assert.match((await strumento("giardino")).content[0].text, /avvisi 21:00/);
+  // giorni della settimana: il mattino solo in un altro giorno → oggi non arriva
+  const altro = (new Date(OGGI + "T12:00:00Z").getUTCDay() + 3) % 7;
+  assert.match((await strumento("impostazioni", { giorni: { mattina: [altro] }, urgenti_ore: 6 })).content[0].text, /mattina .*avvisi urgenti della torre ripetuti ogni 6 ore/);
+  assert.deepEqual((await leggiDati()).impostazioni.giorni, { mattina: [altro] }); assert.equal((await leggiDati()).impostazioni.urgenti_ore, 6);
+  assert.ok((await strumento("impostazioni", { giorni: { verifica: [1] } })).isError, "settimanale: no");
+  assert.ok((await strumento("impostazioni", { giorni: { mattina: [] } })).isError, "almeno un giorno");
+  await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { impostazioni: { ...imp({ mattina: 12, sera: 12, controllo: 13, avvisi: 13, riepilogo: 13, piano: 13, backup: 13 }), giorni: { mattina: [altro] } } } } });
+  testi = await giro();
+  assert.ok(!testi.some((x) => x.includes("Giardino —")), "non è il giorno del mattino: niente");
+  assert.match((await strumento("impostazioni", { giorni: { mattina: [0, 1, 2, 3, 4, 5, 6] } })).content[0].text, /mattina ogni giorno/);
+  assert.ok(!("mattina" in ((await leggiDati()).impostazioni.giorni || {})), "tutti i giorni: si toglie");
   // pulizia
   await call(dati, "/api/dati", { method: "POST", headers: H, body: { changes: { plants: d0.plants, piano_claude: d0.piano_claude, vacanza: d0.vacanza, impostazioni: d0.impostazioni } } });
   await st.setJSON("t-" + CODE, { ...t0 });

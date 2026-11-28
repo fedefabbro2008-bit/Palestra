@@ -760,6 +760,19 @@ test("torre: galleggiante, acqua calda, alimentazione, sensore bloccato, riepilo
   assert.deepEqual(M.pulsantiRiempito({}).inline_keyboard[0].map((b) => b.callback_data), ["tr|r|1", "tr|r|2", "tr|r|4", "tr|r|6"]);
 });
 
+test("notifiche: giorni della settimana per quelle quotidiane, ripetizione degli urgenti", () => {
+  const imp = { giorni: { mattina: [1, 3, 5], verifica: [2], sera: [] } };
+  assert.deepEqual(M.giorniNotifica(imp, "mattina"), [1, 3, 5]); assert.deepEqual(M.giorniNotifica(imp, "verifica"), [0, 1, 2, 3, 4, 5, 6], "settimanale: ignora");
+  assert.deepEqual(M.giorniNotifica(imp, "sera"), [0, 1, 2, 3, 4, 5, 6], "vuoto: tutti");
+  assert.equal(M.notificaOggi(imp, "mattina", "2027-07-12"), true, "lunedì"); assert.equal(M.notificaOggi(imp, "mattina", "2027-07-13"), false, "martedì");
+  assert.equal(M.oreUrgenti({}), 12); assert.equal(M.oreUrgenti({ urgenti_ore: 3 }), 3); assert.equal(M.oreUrgenti({ urgenti_ore: 99 }), 12);
+  const t = { posizione: "casa", config: {} }, adesso = Date.UTC(2027, 6, 12, 12) / 1000;
+  const s = { ultimo: adesso, stato: { modo: "senza sensore", t: null }, misure: [[adesso - 600, null, null, 0, 4, 1, 1]] };
+  const u = M.urgentiTorre(t, s, adesso, "UTC", null, null, 3);
+  assert.equal(M.urgentiTorre(t, { ...s, urgenti: u.urgenti }, adesso + 2 * 3600, "UTC", null, null, 3).testi.length, 0);
+  assert.equal(M.urgentiTorre(t, { ...s, urgenti: u.urgenti }, adesso + 3 * 3600, "UTC", null, null, 3).testi.length, 1, "dopo 3 ore lo ripete");
+});
+
 test("torre: manutenzione (nutrienti, soluzione, pulizia) e promemoria senza litri", () => {
   const d = 86400, t0 = Date.UTC(2027, 5, 1) / 1000, iso = (s) => new Date(s * 1000).toISOString();
   const giorni = []; for (let i = -2; i < 20; i++) giorni.push([new Date((t0 + i * d) * 1000).toISOString().slice(0, 10), 15, 25, 20, 60, 120, 0, 144]);

@@ -673,6 +673,19 @@ export function oraNotifica(imp, tipo){
   const m=NOTIFICHE_MATTINO.includes(tipo), d=Number(m?imp?.ora_mattina:imp?.ora_sera);
   return Number.isInteger(d) && d>=0 && d<=23 ? d : (m?7:19);
 }
+// Giorni della settimana di una notifica quotidiana (impostazioni.giorni = {tipo: [0..6]}, 0 = domenica): senza, tutti.
+// Le notifiche settimanali e mensili hanno già il loro giorno.
+export const NOTIFICHE_GIORNALIERE = ["mattina", "sera", "controllo", "avvisi", "torre"];
+export const GIORNI_SETTIMANA = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"];
+export function giorniNotifica(imp, tipo) {
+  const g = imp?.giorni?.[tipo];
+  if (!NOTIFICHE_GIORNALIERE.includes(tipo) || !Array.isArray(g)) return [0, 1, 2, 3, 4, 5, 6];
+  const v = [...new Set(g.map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))].sort();
+  return v.length ? v : [0, 1, 2, 3, 4, 5, 6];
+}
+export const notificaOggi = (imp, tipo, oggi) => giorniNotifica(imp, tipo).includes(new Date(oggi + "T12:00:00Z").getUTCDay());
+// avvisi urgenti della torre: ogni quante ore si ripetono finché il problema resta (impostazioni.urgenti_ore, 1–48)
+export const oreUrgenti = (imp) => { const n = Math.round(+imp?.urgenti_ore); return n >= 1 && n <= 48 ? n : 12; };
 export const fineNotifica = (imp, tipo) => Math.min(24, Math.max(oraNotifica(imp,tipo)+3, NOTIFICHE_MATTINO.includes(tipo)?21:23));
 
 /* ---------------- Torre idroponica (ESP32 + pompa + SHT40) ----------------
@@ -1067,7 +1080,7 @@ export function avvisiTorre(torre, serie, met, oggi, adesso, tz = "Europe/Rome",
 // Avvisi urgenti della torre, da mandare appena arrivano le misure (non la sera): ogni tipo quando comincia, poi al massimo
 // ogni 12 ore finché dura; i riavvii anomali uno per accensione, al massimo uno all'ora. Restituisce i testi e lo stato nuovo.
 export const URGENTI_TORRE = ["sensore", "freddo_ora", "sicurezza", "serbatoio_ora", "livello_ora", "riavvii"];
-export function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = null, piante = null) {
+export function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = null, piante = null, ogniOre = 12) {
   const gia = { ...(serie?.urgenti || {}) }, testi = [], tutti = avvisiTorre(torre, serie, met, giornoTorre(adesso, tz), adesso, tz, piante);
   const attivi = new Map(tutti.filter((a) => ["sensore", "sicurezza"].includes(a.tipo)).map((a) => [a.tipo, a.testo]));
   const serb = tutti.find((a) => a.tipo === "serbatoio" && a.urgente);   // serbatoio al minimo o che ci arriva entro un giorno
@@ -1077,7 +1090,7 @@ export function urgentiTorre(torre, serie, adesso, tz = "Europe/Rome", met = nul
   if (st && /freddo/.test(st.modo || "")) attivi.set("freddo_ora", `❄️ Pompa ferma per il freddo${st.t != null ? ` (${String(st.t).replace(".", ",")} °C)` : ""}: riparte da sola sopra ${String(configTorre(torre?.config).freddo_riparte).replace(".", ",")} °C. Se gela, copri o porta dentro il serbatoio.`);
   for (const k of ["sensore", "freddo_ora", "sicurezza", "serbatoio_ora", "livello_ora"]) {
     if (!attivi.has(k)) { delete gia[k]; continue; }
-    if (!gia[k] || adesso - gia[k] >= 12 * 3600) { testi.push(attivi.get(k)); gia[k] = adesso; }
+    if (!gia[k] || adesso - gia[k] >= ogniOre * 3600 - 300) { testi.push(attivi.get(k)); gia[k] = adesso; }
   }
   const nuovi = (serie?.riavvii || []).filter((r) => ["tensione", "blocco", "errore"].includes(r.motivo) && r.ora > (gia.riavvio_ora || 0) && adesso - r.ora < 6 * 3600);
   if (nuovi.length && (!gia.riavvii || adesso - gia.riavvii >= 3600)) {

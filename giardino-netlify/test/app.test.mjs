@@ -212,6 +212,13 @@ test("flusso completo a 390 px", async (t) => {
   assert.deepEqual([await page.inputValue('#notList [data-ora="mattina"]'), await page.inputValue('#notList [data-ora="avvisi"]')], ["7", "19"]);
   await page.selectOption('#notList [data-ora="avvisi"]', "21");
   assert.equal(await page.evaluate(() => S.impostazioni.orari.avvisi), 21);
+  // giorni della settimana delle notifiche quotidiane: tolgo sabato e domenica dal mattino; settimanali senza giorni
+  assert.equal(await page.locator("#notList [data-giorni]").count(), 4, "mattina, sera, controllo, avvisi");
+  await page.click('#notList [data-giorni="mattina"] [data-giorno="6"]'); await page.click('#notList [data-giorni="mattina"] [data-giorno="0"]');
+  assert.deepEqual(await page.evaluate(() => S.impostazioni.giorni.mattina), [1, 2, 3, 4, 5]);
+  assert.equal(await page.getAttribute('#notList [data-giorni="mattina"] [data-giorno="6"]', "aria-pressed"), "false");
+  for (const d of [6, 0]) await page.click(`#notList [data-giorni="mattina"] [data-giorno="${d}"]`);
+  assert.equal(await page.evaluate(() => S.impostazioni.giorni.mattina), undefined, "di nuovo ogni giorno");
   await page.evaluate(() => window.GiardinoNet.aggiorna(false));
   { const cod = await page.evaluate(() => window.GiardinoNet.codice()), srv = JSON.parse(await (await dati(new Request("https://x/api/dati", { headers: { "x-giardino-code": cod } }))).text()).data.impostazioni;
     assert.equal(srv.orari.avvisi, 21, "il bot la legge dal server"); }

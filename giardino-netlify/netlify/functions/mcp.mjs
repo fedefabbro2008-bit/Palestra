@@ -113,7 +113,7 @@ async function toolGiardino(ctx, a = {}) {
   const rec = tutto.eventi.filter((e) => e.data >= M.addDays(oggi, -7)).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 25);
   if (rec.length) L.push("", "## Ultimi 7 giorni", ...rec.map((e) => `- [${e.id}] ${e.data} ${tutto.plants.find((p) => p.id === e.plantId)?.nome || e.plantId}: ${e.tipo}${e.litri ? " " + fmt(+e.litri, 2) + " L" : ""}${e.nota ? " — " + e.nota : ""} (${e.fonte})`));
   if (tuttePiante.some(daScrivere)) L.push("", ...COME_SCHEDA);
-  L.push("", `Misure dell'utente: bicchiere ${fmt(imp.bicchiere, 2)} L, annaffiatoio ${fmt(imp.annaffiatoio)} L. Notifiche Telegram (ora · accesa/spenta): ${M.NOTIFICHE_CON_ORA.map((k) => k + " " + String(M.oraNotifica(imp, k)).padStart(2, "0") + ":00" + (imp.notifiche?.[k] === false ? " spenta" : "")).join(", ")}.`);
+  L.push("", `Misure dell'utente: bicchiere ${fmt(imp.bicchiere, 2)} L, annaffiatoio ${fmt(imp.annaffiatoio)} L. Notifiche Telegram (ora · accesa/spenta): ${M.NOTIFICHE_CON_ORA.map((k) => k + " " + String(M.oraNotifica(imp, k)).padStart(2, "0") + ":00" + (imp.notifiche?.[k] === false ? " spenta" : M.giorniNotifica(imp, k).length < 7 ? " (" + M.giorniNotifica(imp, k).map((x) => M.GIORNI_SETTIMANA[x]).join(", ") + ")" : "")).join(", ")}; avvisi urgenti della torre ripetuti ogni ${M.oreUrgenti(imp)} ore.`);
   return L.join("\n");
 }
 // un orto in breve: meteo di oggi e dei 2 giorni dopo, una riga per pianta (oggi, acqua nel terriccio, prossima innaffiatura), avvisi
@@ -417,14 +417,23 @@ async function toolImpostazioni(ctx, a) {
     if (!Number.isInteger(+v) || +v < 0 || +v > 23) throw new Error("orari: " + k + " tra 0 e 23 (ora intera)");
     orari[k] = +v;
   }
-  if (!Object.keys(nuove).length && !Object.keys(notif).length && !Object.keys(orari).length) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), orari, notifiche.");
+  // giorni della settimana delle notifiche quotidiane (0 = domenica); tutti e 7 = ogni giorno
+  const giorni = {};
+  for (const [k, v] of Object.entries(a.giorni && typeof a.giorni === "object" ? a.giorni : {})) {
+    if (!M.NOTIFICHE_GIORNALIERE.includes(k)) throw new Error("giorni: " + k + " non è quotidiana (" + M.NOTIFICHE_GIORNALIERE.join(", ") + ")");
+    if (!Array.isArray(v) || !v.length || v.some((x) => !Number.isInteger(+x) || +x < 0 || +x > 6)) throw new Error("giorni: " + k + " = elenco di giorni da 0 (domenica) a 6 (sabato), almeno uno");
+    giorni[k] = [...new Set(v.map(Number))].sort();
+  }
+  if (a.urgenti_ore != null && !(Number.isInteger(+a.urgenti_ore) && +a.urgenti_ore >= 1 && +a.urgenti_ore <= 48)) throw new Error("urgenti_ore: da 1 a 48");
+  if (!Object.keys(nuove).length && !Object.keys(notif).length && !Object.keys(orari).length && !Object.keys(giorni).length && a.urgenti_ore == null) throw new Error("Indica almeno uno tra: bicchiere (L), annaffiatoio (L), orari, giorni, urgenti_ore, notifiche.");
   const out = await aggiorna(ctx.store, ctx.code, (d) => {
     const prima = { ...IMP_DEF, ...(d.impostazioni || {}) }, n = { ...(prima.notifiche || {}) };
     for (const [k, v] of Object.entries(notif)) { if (v) delete n[k]; else n[k] = false; }
-    d.impostazioni = { ...prima, ...nuove, notifiche: n, ...(Object.keys(orari).length ? { orari: { ...(prima.orari || {}), ...orari } } : {}) };
+    const gg = { ...(prima.giorni || {}) }; for (const [k, v] of Object.entries(giorni)) { if (v.length === 7) delete gg[k]; else gg[k] = v; }
+    d.impostazioni = { ...prima, ...nuove, notifiche: n, ...(Object.keys(orari).length ? { orari: { ...(prima.orari || {}), ...orari } } : {}), ...(Object.keys(giorni).length ? { giorni: gg } : {}), ...(a.urgenti_ore != null ? { urgenti_ore: +a.urgenti_ore } : {}) };
   });
   ctx.saved(out);
-  return "Impostazioni aggiornate: " + [...Object.entries(nuove).map(([k, v]) => k + " " + v), ...Object.entries(notif).map(([k, v]) => "notifica " + k + (v ? " accesa" : " spenta")), ...Object.entries(orari).map(([k, v]) => k + " alle " + String(v).padStart(2, "0") + ":00")].join(", ") + ".";
+  return "Impostazioni aggiornate: " + [...Object.entries(nuove).map(([k, v]) => k + " " + v), ...Object.entries(notif).map(([k, v]) => "notifica " + k + (v ? " accesa" : " spenta")), ...Object.entries(orari).map(([k, v]) => k + " alle " + String(v).padStart(2, "0") + ":00"), ...Object.entries(giorni).map(([k, v]) => k + " " + (v.length === 7 ? "ogni giorno" : v.map((x) => M.GIORNI_SETTIMANA[x]).join(", "))), ...(a.urgenti_ore != null ? ["avvisi urgenti della torre ripetuti ogni " + a.urgenti_ore + " ore"] : [])].join(", ") + ".";
 }
 
 /* ---------------- torre idroponica ---------------- */
@@ -650,6 +659,8 @@ const TOOLS = [
   { name: "impostazioni", title: "Misure e orari", write: true,
     description: "Cambia le misure usate per le dosi (bicchiere e annaffiatoio, in litri), l'ora di ogni notifica Telegram (orari = {tipo: 0-23}, ora intera) e accende (true) o spegne (false) le notifiche Telegram: mattina (piano del mattino), sera (promemoria delle piante ancora da innaffiare), controllo (la sera, le piante da controllare col dito ancora senza risposta), avvisi (gelo, caldo, vento per domani), verifica (controllo del sabato col dito), riepilogo (domenica), backup (mensile), piano (fine del piano di Claude), torre (la sera: gelo e pioggia previsti dove sta la torre idroponica, freddo misurato, torre che non si fa sentire).",
     inputSchema: { type: "object", properties: { bicchiere: { type: "number" }, annaffiatoio: { type: "number" }, ora_mattina: { type: "integer", description: "vecchio: ora di partenza delle notifiche del mattino senza un'ora propria" }, ora_sera: { type: "integer", description: "vecchio: ora di partenza delle altre senza un'ora propria" },
+      giorni: { type: "object", description: "giorni della settimana delle notifiche quotidiane (mattina, sera, controllo, avvisi, torre): elenco 0-6, 0 = domenica; tutti e 7 = ogni giorno", properties: Object.fromEntries(M.NOTIFICHE_GIORNALIERE.map((k) => [k, { type: "array", items: { type: "integer", minimum: 0, maximum: 6 } }])), additionalProperties: false },
+      urgenti_ore: { type: "integer", minimum: 1, maximum: 48, description: "ogni quante ore si ripetono gli avvisi urgenti della torre finché il problema resta (predefinito 12)" },
       orari: { type: "object", description: "ora di ogni notifica, 0-23 (ora intera)", properties: Object.fromEntries(M.NOTIFICHE_CON_ORA.map((k) => [k, { type: "integer", minimum: 0, maximum: 23 }])), additionalProperties: false },
       notifiche: { type: "object", properties: Object.fromEntries(NOTIFICHE.map((k) => [k, { type: "boolean" }])), additionalProperties: false } } }, annotations: { ...RW, title: "Impostazioni" }, run: toolImpostazioni },
   { name: "torre", title: "Torre idroponica",

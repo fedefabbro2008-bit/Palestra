@@ -59,7 +59,7 @@ export default async (request) => {
   }
   // avvisi urgenti su Telegram, subito (torre accesa nell'app e notifica «torre» accesa)
   if (torre.attiva !== false && notifica(cur.data.impostazioni, "torre")) {
-    const u = urgentiTorre(torre, serie, adesso, tz, metAvvisi, cur.data.plants);
+    const u = urgentiTorre(torre, serie, adesso, tz, metAvvisi, cur.data.plants, M.oreUrgenti(cur.data.impostazioni));
     if (u.testi.length) {
       const tel = await st.get("t-" + code, { type: "json" }).catch(() => null);
       if (tel?.token && tel?.chat_id) {
